@@ -5,6 +5,12 @@
 ```bash
 export RITS_API_KEY=********************************
 ```
+
+- IBM Researchers need to log-in to obtain their api-key in order to access RITS hosted models. 
+Navigate to: x
+- Currently, users need to either be on an IBM campus network, or utilize 
+the `tunnelall` IBM VPN profile to access the RITS UI and models
+
 2. Execute the code
 
 ```bash
