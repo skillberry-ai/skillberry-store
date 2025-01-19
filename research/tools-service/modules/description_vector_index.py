@@ -1,10 +1,12 @@
+import logging
+import os
+
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
-import os
-import logging
 
 logger = logging.getLogger(__name__)
+
 
 class DescriptionVectorIndex:
     def __init__(self, index_file: str = "description_index.faiss",

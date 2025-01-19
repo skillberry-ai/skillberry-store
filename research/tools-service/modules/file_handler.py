@@ -1,10 +1,12 @@
-import os
 import logging
-from fastapi import  HTTPException, UploadFile
-from fastapi.responses import FileResponse
+import os
 from typing import List
 
+from fastapi import HTTPException, UploadFile
+from fastapi.responses import FileResponse
+
 logger = logging.getLogger(__name__)
+
 
 class FileHandler:
     def __init__(self, directory_path: str):
@@ -116,5 +118,5 @@ class FileHandler:
             else:
                 raise HTTPException(status_code=404, detail=f"File '{filename}' not found.")
         except Exception as e:
-                logger.error(f"Error deleting file '{filename}': {e}")
-                raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
+            logger.error(f"Error deleting file '{filename}': {e}")
+            raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")

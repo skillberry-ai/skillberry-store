@@ -1,14 +1,16 @@
 import logging
-from fastapi import FastAPI, UploadFile, Form
 from typing import List, Optional
-from fastapi.middleware.cors import CORSMiddleware
 
-from tools.configure import get_directory_path, get_descriptions_directory
+from fastapi import FastAPI, File, UploadFile, Form
+from fastapi.middleware.cors import CORSMiddleware
+from modules.description import Description
+from modules.description_vector_index import DescriptionVectorIndex
 from modules.file_handler import FileHandler
 from modules.python_executor import PythonExecutor
-from modules.description import Description
+from tools.configure import get_directory_path, get_descriptions_directory
 
 logger = logging.getLogger(__name__)
+
 
 def create_app():
     directory_path = get_directory_path()
@@ -16,7 +18,8 @@ def create_app():
 
     file_handler = FileHandler(directory_path)
     python_executor = PythonExecutor(directory_path)
-    descriptions = Description(descriptions_directory)
+    descriptions = Description(descriptions_directory=descriptions_directory,
+                               vector_index=DescriptionVectorIndex)
 
     app = FastAPI()
 
@@ -42,7 +45,7 @@ def create_app():
         return file_handler.read_file(filename)
 
     @app.post("/files")
-    def write_file(file: UploadFile, description: Optional[str] = None):
+    def write_file(file: UploadFile = File(...), description: Optional[str] = None):
         logger.info(f"Request to upload file: {file.filename}")
         file_response = file_handler.write_file(file)
         if description:
@@ -74,7 +77,7 @@ def create_app():
         logger.info(f"Request to update description for file: {filename}")
         return descriptions.update_description(filename, new_description)
 
-    @app.get("/description/search")
+    @app.get("/description/search",response_model= list[dict[str, str]] )
     def search_description(search_term: str):
         logger.info(f"Request to search descriptions for term: {search_term}")
         return descriptions.search_description(search_term)

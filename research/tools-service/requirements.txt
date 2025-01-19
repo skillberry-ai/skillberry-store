@@ -1,7 +1,19 @@
-fastapi
-uvicorn
-python-multipart
-docker
-faiss-cpu
-transformers
-sentence-transformers
+# Main dependencies
+fastapi==0.69.0
+uvicorn==0.16.0
+python-multipart==0.0.6
+docker==7.1.0
+faiss-cpu==1.8.0
+transformers==4.48.0
+sentence-transformers==3.3.1
+httpx==0.20.0
+numpy==1.26.4
+
+# Test dependencies
+pytest==6.2.0
+pytest-asyncio==0.17.0
+
+# For development only
+black==22.3.0  # for code formatting
+flake8==3.9.0  # for linting
+mypy==0.910  # for type checking

@@ -1,6 +1,7 @@
 # File Management API
 
-This project provides a simple API for managing files in a specified directory using FastAPI. The API supports listing files, reading files, uploading files, and creating text files.
+This project provides a simple API for managing files in a specified directory using FastAPI. The API supports listing
+files, reading files, uploading files, and creating text files.
 
 ## Features
 

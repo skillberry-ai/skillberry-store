@@ -1,8 +1,9 @@
+import logging
 import os
 import sys
-import logging
 
 logger = logging.getLogger(__name__)
+
 
 def configure_logging():
     """
@@ -13,6 +14,7 @@ def configure_logging():
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     logger.info("Configuring logging")
+
 
 def get_directory_path():
     """
@@ -36,6 +38,7 @@ def get_directory_path():
     default_path = "/tmp/files"
     logger.info(f"Using default directory path: {default_path}")
     return default_path
+
 
 def get_descriptions_directory():
     """

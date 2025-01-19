@@ -1,10 +1,11 @@
+import logging
 import os
 
-import logging
-from fastapi import HTTPException
 import docker
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
+
 
 class PythonExecutor:
     def __init__(self, directory_path: str):
@@ -41,7 +42,7 @@ class PythonExecutor:
                 remove=True,  # Automatically remove the container after execution
                 detach=False,  # Run synchronously to get the result
                 stderr=True,  # Capture error output
-                stdout=True   # Capture standard output
+                stdout=True  # Capture standard output
             )
             logger.info(f"Python code executed successfully: {container.decode()}")
             return {"message": f"Execution result: {container.decode()}"}

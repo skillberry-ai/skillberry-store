@@ -1,15 +1,17 @@
-import os
 import logging
+import os
+from typing import List, Optional, Dict, Any
+
 from fastapi import HTTPException
-from typing import List, Optional
 from modules.description_vector_index import DescriptionVectorIndex
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL='sentence-transformers/all-MiniLM-L6-v2'
-EMBEDDING_MODEL_FILE_NAME="descriptions_index.faiss"
-EMBEDDING_MODEL_DIMENSION=384
-EMBEDDING_MODEL_SEARCH_K=5
+EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
+EMBEDDING_MODEL_FILE_NAME = "descriptions_index.faiss"
+EMBEDDING_MODEL_DIMENSION = 384
+EMBEDDING_MODEL_SEARCH_K = 5
+
 
 class Description:
     def __init__(self, descriptions_directory: str,
@@ -115,6 +117,16 @@ class Description:
             logger.error(f"Error deleting description for file '{filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error deleting description: {str(e)}")
 
-    def search_description(self, search_term: str, k: int = EMBEDDING_MODEL_SEARCH_K) -> List[str]:
+    def search_description(self, search_term: str, k: int = EMBEDDING_MODEL_SEARCH_K) -> list[dict[str, str | Any]]:
         results = self.vector_index.search(search_term, k)
-        return results
+
+        matched_files = []
+        for idx, dist in results:
+            if idx != -1:
+                filename = os.listdir(self.descriptions_directory)[idx]
+                matched_files.append({
+                    "filename": filename.replace(".txt", ""),
+                    "similarity_score": dist
+                })
+
+        return matched_files
