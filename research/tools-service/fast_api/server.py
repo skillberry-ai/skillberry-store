@@ -21,7 +21,12 @@ def create_app():
     descriptions = Description(descriptions_directory=descriptions_directory,
                                vector_index=DescriptionVectorIndex)
 
-    app = FastAPI()
+    app = FastAPI(title="blueberry",
+                        summary="Towards hallucination-less AI systems",
+                        contact={
+                            "name": "Eran Raichstein",
+                            "email": "eranra@il.ibm.com",
+                        })
 
     app.add_middleware(
         CORSMiddleware,
@@ -64,7 +69,8 @@ def create_app():
     def delete_file(filename: str):
         logger.info(f"Request to delete file: {filename}")
         file_handler.delete_file(filename)
-        descriptions.delete_description(filename)  # Delete associated description as well
+        # Delete associated description as well
+        descriptions.delete_description(filename)
         return {"message": f"File and its description '{filename}' deleted successfully."}
 
     @app.post("/files/execute/{filename}")
@@ -77,7 +83,7 @@ def create_app():
         logger.info(f"Request to update description for file: {filename}")
         return descriptions.update_description(filename, new_description)
 
-    @app.get("/description/search",response_model= list[dict[str, str]] )
+    @app.get("/description/search", response_model=list[dict[str, str]])
     def search_description(search_term: str):
         logger.info(f"Request to search descriptions for term: {search_term}")
         return descriptions.search_description(search_term)
