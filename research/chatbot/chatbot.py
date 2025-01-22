@@ -14,6 +14,35 @@ rits_api_url = os.environ["RITS_API_URL"]
 # App title
 st.set_page_config(page_title="💬 Blueberry Chatbot")
 
+def connect_to_llm():
+    try:
+        model = st.session_state.selected_model.split('/')[1].replace('.', '-').lower()
+        url = f"{rits_api_url}/{model}/v1"
+
+        # If there are no changes in the llm, return existing one
+        if ("llm" in st.session_state and
+                st.session_state.llm is not None and
+                st.session_state.llm.model_name == st.session_state.selected_model):
+            return st.session_state.llm
+
+        llm = ChatOpenAI(
+            model=f"{st.session_state.selected_model}",
+            temperature=st.session_state.temperature,
+            max_retries=2,
+            api_key='/',
+            base_url=url,
+            default_headers={'RITS_API_KEY': st.session_state.rits_api_key},
+        )
+    except Exception as e:
+        st.session_state.llm = None
+        st.warning("Can't connect to LLM, please fix the credentials!", icon='⚠️')
+        logger.error(e)
+        return
+
+    logger.info(f"Connected to LLM: {st.session_state.selected_model}")
+    st.session_state.llm = llm
+    return
+
 # Replicate Credentials
 with st.sidebar:
     st.title('💬 Blueberry Chatbot')
@@ -21,31 +50,32 @@ with st.sidebar:
              'It works against various LLM models and',
              'can be used to generate responses to user prompts.')
     try:
-        rits_api_key = st.secrets['RITS_API_TOKEN']
-        st.success('API provided using secrets file!', icon='✅')
-    except (KeyError, FileNotFoundError) as e:
         if 'RITS_API_TOKEN' in os.environ:
-            rits_api_key = os.environ['RITS_API_TOKEN']
+            st.session_state.rits_api_key = os.environ['RITS_API_TOKEN']
             st.success('API provided using environment variable!', icon='✅')
         else:
             key = st.text_input(
                 'Enter RITS API token:', type='password')
-            if not (len(key) == 10):
+            if not (len(key) >= 32):
                 st.warning('Please enter your credentials!', icon='⚠️')
             else:
-                rits_api_key = key
+                st.session_state.rits_api_key = key
                 st.success(
                     'Proceed to entering your prompt message!', icon='👉')
+    except Exception as e:
+        st.warning("Can't connect to LLM, please fix the credentials!", icon='⚠️')
 
     st.subheader('Models and parameters')
     selected_model = st.sidebar.selectbox(
         'Choose a model', ['meta-llama/Llama-3.1-8B-Instruct',
                            'meta-llama/llama-3-1-70b-instruct',
                            'meta-llama/llama-3-3-70b-instruct'], key='selected_model')
-    temperature = st.sidebar.slider(
-        'temperature', min_value=0.01, max_value=1.0, value=0.1, step=0.01)
+    temperature = st.sidebar.slider("temperature",key="temperature",
+                                    min_value=0.01, max_value=1.0, value=0.9, step=0.01)
     st.markdown(
         '👉 For additional details contact: eranra@il.ibm.com')
+    if "rits_api_key" in st.session_state and st.session_state.rits_api_key is not None:
+        connect_to_llm()
 
 # Store LLM generated responses
 if "messages" not in st.session_state.keys():
@@ -76,34 +106,23 @@ def generate_response(prompt_input):
         else:
             string_dialogue += "Assistant: " + dict_message["content"] + "\n\n"
 
-    model = selected_model.split('/')[1].replace('.', '-').lower()
-    url = f"{rits_api_url}/{model}/v1"
     try:
-        llm = ChatOpenAI(
-            model=f"{selected_model}",
-            temperature=temperature,
-            max_retries=2,
-            api_key='/',
-            base_url=url,
-            default_headers={'RITS_API_KEY': rits_api_key},
-        )
-
         # use openai API to call the LLM model
-        response = llm(string_dialogue + prompt_input + "Assistant: ")
-        output = response.choices[0].text.strip()
-    except Exception as e:
-        logger.error(f"Error: {e}")
+        llm_response = st.session_state.llm.invoke(string_dialogue + prompt_input + "Assistant: ")
+        output = llm_response.content
+    except Exception as e1:
+        logger.error(f"Error: {e1}")
         output = "I'm sorry can't get response from the model. Please try again."
     return output
 
 
 # User-provided prompt
-if prompt := st.chat_input(disabled='rits_api_key' not in locals()):
+if prompt := st.chat_input(disabled= not ("rits_api_key" in st.session_state and st.session_state.rits_api_key is not None)):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
 
-# Generate a new response if last message is not from assistant
+# Generate a new response if the last message is not from assistant
 if st.session_state.messages[-1]["role"] != "assistant":
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
