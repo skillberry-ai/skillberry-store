@@ -70,7 +70,7 @@ class DescriptionVectorIndex:
 
         # FAISS does not support updating a single vector, so we rebuild the index after removal
         embeddings = [embedding for embedding in self.index.reconstruct_n(0, self.index.ntotal)]
-        embeddings[index] = np.array([embedding], dtype=np.float32)
+        embeddings[index] = embedding
 
         new_index = faiss.IndexFlatL2(self.dimension)
         new_index.add(np.array(embeddings, dtype=np.float32))
@@ -110,7 +110,8 @@ class DescriptionVectorIndex:
 
         # Rebuild the FAISS index after deletion
         new_index = faiss.IndexFlatL2(self.dimension)
-        new_index.add(np.array(embeddings, dtype=np.float32))
+        if len(embeddings) > 0:
+            new_index.add(np.array(embeddings, dtype=np.float32))
         self.index = new_index
 
         self.save_index()
