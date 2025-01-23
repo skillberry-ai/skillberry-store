@@ -8,7 +8,7 @@ from modules.description_vector_index import DescriptionVectorIndex
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
-EMBEDDING_MODEL_FILE_NAME = "descriptions_index.faiss"
+EMBEDDING_MODEL_FILE_NAME = "index/descriptions_index.faiss"
 EMBEDDING_MODEL_DIMENSION = 384
 EMBEDDING_MODEL_SEARCH_K = 5
 
@@ -27,7 +27,8 @@ class Description:
                                          dimension=EMBEDDING_MODEL_DIMENSION,
                                          model=EMBEDDING_MODEL)
 
-        logger.info(f"Initialized Descriptions with directory: {self.descriptions_directory}")
+        logger.info(
+            f"Initialized Descriptions with directory: {self.descriptions_directory}")
 
     def load_index(self):
         """
@@ -37,7 +38,8 @@ class Description:
             logger.info(f"Loading existing FAISS index from {self.index_file}")
             self.index = faiss.read_index(self.index_file)
         else:
-            logger.info("No existing FAISS index found. Starting with an empty index.")
+            logger.info(
+                "No existing FAISS index found. Starting with an empty index.")
 
     def get_description_file_path(self, filename: str) -> str:
         """
@@ -67,11 +69,14 @@ class Description:
             # Add description embedding to the vector index
             self.vector_index.add_description(description)
 
-            logger.info(f"Description and embedding saved for file: {filename}")
+            logger.info(
+                f"Description and embedding saved for file: {filename}")
             return {"message": f"Description and embedding saved for file '{filename}'."}
         except Exception as e:
-            logger.error(f"Error saving description for file '{filename}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error saving description: {str(e)}")
+            logger.error(
+                f"Error saving description for file '{filename}': {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error saving description: {str(e)}")
 
     def update_description(self, filename: str, new_description: str) -> dict:
         """
@@ -79,22 +84,27 @@ class Description:
         """
         description_file_path = self.get_description_file_path(filename)
         if not os.path.exists(description_file_path):
-            raise HTTPException(status_code=404, detail=f"No description found for file '{filename}'")
+            raise HTTPException(
+                status_code=404, detail=f"No description found for file '{filename}'")
 
         try:
             with open(description_file_path, "w", encoding="utf-8") as f:
                 f.write(new_description)
 
             # Update the description in the vector index
-            index = list(os.listdir(self.descriptions_directory)).index(f"{filename}.txt")
+            index = list(os.listdir(self.descriptions_directory)
+                         ).index(f"{filename}.txt")
             self.vector_index.update_description(new_description, index)
 
-            logger.info(f"Description and embedding updated for file: {filename}")
+            logger.info(
+                f"Description and embedding updated for file: {filename}")
             return {"message": f"Description and embedding updated for file '{filename}'."}
 
         except Exception as e:
-            logger.error(f"Error updating description for file '{filename}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error updating description: {str(e)}")
+            logger.error(
+                f"Error updating description for file '{filename}': {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error updating description: {str(e)}")
 
     def delete_description(self, filename: str) -> dict:
         """
@@ -106,16 +116,20 @@ class Description:
                 os.remove(description_file_path)
 
                 # Find the index of the description in the vector index and delete it
-                index = list(os.listdir(self.descriptions_directory)).index(f"{filename}.txt")
+                index = list(os.listdir(self.descriptions_directory)).index(
+                    f"{filename}.txt")
                 self.vector_index.delete_description(index)
 
                 logger.info(f"Description deleted for file: {filename}")
                 return {"message": f"Description for file '{filename}' deleted successfully."}
             else:
-                raise HTTPException(status_code=404, detail=f"Description for file '{filename}' not found.")
+                raise HTTPException(
+                    status_code=404, detail=f"Description for file '{filename}' not found.")
         except Exception as e:
-            logger.error(f"Error deleting description for file '{filename}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error deleting description: {str(e)}")
+            logger.error(
+                f"Error deleting description for file '{filename}': {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error deleting description: {str(e)}")
 
     def search_description(self, search_term: str, k: int = EMBEDDING_MODEL_SEARCH_K) -> list[dict[str, str | Any]]:
         results = self.vector_index.search(search_term, k)

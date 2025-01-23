@@ -35,4 +35,6 @@ test: install_requirements ## Test the application
 	pytest
 
 clean: install_requirements ## Clean temporary files
-	rm -rf __pycache__ .pytest_cache
+	-rm -rf __pycache__ .pytest_cache
+	-rm -rf /tmp/files
+	-rm -rf /tmp/descriptions
