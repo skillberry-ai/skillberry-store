@@ -8,22 +8,25 @@ from modules.description_vector_index import DescriptionVectorIndex
 logger = logging.getLogger(__name__)
 
 EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
-EMBEDDING_MODEL_FILE_NAME = "index/descriptions_index.faiss"
 EMBEDDING_MODEL_DIMENSION = 384
 EMBEDDING_MODEL_SEARCH_K = 5
+
+INDEX_RELATIVE_DIRECTORY = "/index/"
+INDEX_FILE_NAME = "descriptions_index.faiss"
 
 
 class Description:
     def __init__(self, descriptions_directory: str,
-                 vector_index: DescriptionVectorIndex,
-                 index_file: str = EMBEDDING_MODEL_FILE_NAME):
+                 vector_index: DescriptionVectorIndex):
         """
         Initialize the Descriptions with a directory to store descriptions.
         Initialize the vector index
         """
         self.descriptions_directory = descriptions_directory
         os.makedirs(self.descriptions_directory, exist_ok=True)
-        self.vector_index = vector_index(index_file=self.get_description_file_path(index_file),
+        index_directory = descriptions_directory + INDEX_RELATIVE_DIRECTORY
+        os.makedirs(index_directory, exist_ok=True)
+        self.vector_index = vector_index(index_file=index_directory + INDEX_FILE_NAME,
                                          dimension=EMBEDDING_MODEL_DIMENSION,
                                          model=EMBEDDING_MODEL)
 
@@ -32,14 +35,9 @@ class Description:
 
     def load_index(self):
         """
-        Load the existing FAISS index from the file if it exists.
+        Load the index if exists.
         """
-        if os.path.exists(self.index_file):
-            logger.info(f"Loading existing FAISS index from {self.index_file}")
-            self.index = faiss.read_index(self.index_file)
-        else:
-            logger.info(
-                "No existing FAISS index found. Starting with an empty index.")
+        self.vector_index.load_index()
 
     def get_description_file_path(self, filename: str) -> str:
         """
@@ -92,8 +90,9 @@ class Description:
                 f.write(new_description)
 
             # Update the description in the vector index
-            index = list(os.listdir(self.descriptions_directory)
-                         ).index(f"{filename}.txt")
+            files = [f for f in os.listdir(self.descriptions_directory)
+                     if os.path.isfile(os.path.join(self.descriptions_directory, f))]
+            index = files.index(f"{filename}.txt")
             self.vector_index.update_description(new_description, index)
 
             logger.info(
@@ -113,12 +112,14 @@ class Description:
         description_file_path = self.get_description_file_path(filename)
         try:
             if os.path.exists(description_file_path):
-                os.remove(description_file_path)
 
                 # Find the index of the description in the vector index and delete it
-                index = list(os.listdir(self.descriptions_directory)).index(
-                    f"{filename}.txt")
+                files = [f for f in os.listdir(self.descriptions_directory)
+                         if os.path.isfile(os.path.join(self.descriptions_directory, f))]
+                index = files.index(f"{filename}.txt")
                 self.vector_index.delete_description(index)
+
+                os.remove(description_file_path)
 
                 logger.info(f"Description deleted for file: {filename}")
                 return {"message": f"Description for file '{filename}' deleted successfully."}
@@ -137,7 +138,9 @@ class Description:
         matched_files = []
         for idx, dist in results:
             if idx != -1:
-                filename = os.listdir(self.descriptions_directory)[idx]
+                files = [f for f in os.listdir(self.descriptions_directory)
+                         if os.path.isfile(os.path.join(self.descriptions_directory, f))]
+                filename = files[idx]
                 matched_files.append({
                     "filename": filename.replace(".txt", ""),
                     "similarity_score": dist
