@@ -14,9 +14,11 @@ rits_api_url = os.environ["RITS_API_URL"]
 # App title
 st.set_page_config(page_title="💬 Blueberry Chatbot")
 
+
 def connect_to_llm():
     try:
-        model = st.session_state.selected_model.split('/')[1].replace('.', '-').lower()
+        model = st.session_state.selected_model.split(
+            '/')[1].replace('.', '-').lower()
         url = f"{rits_api_url}/{model}/v1"
 
         # If there are no changes in the llm, return existing one
@@ -42,6 +44,7 @@ def connect_to_llm():
     logger.info(f"Connected to LLM: {st.session_state.selected_model}")
     st.session_state.llm = llm
     return
+
 
 # Replicate Credentials
 with st.sidebar:
@@ -69,11 +72,18 @@ with st.sidebar:
     selected_model = st.sidebar.selectbox(
         'Choose a model', ['meta-llama/Llama-3.1-8B-Instruct',
                            'meta-llama/llama-3-1-70b-instruct',
-                           'meta-llama/llama-3-3-70b-instruct'], key='selected_model')
-    temperature = st.sidebar.slider("temperature",key="temperature",
+                           'meta-llama/llama-3-3-70b-instruct',
+                           'ibm-granite/granite-3.1-8b-instruct'], key='selected_model')
+    temperature = st.sidebar.slider("temperature", key="temperature",
                                     min_value=0.01, max_value=1.0, value=0.9, step=0.01)
+
     st.markdown(
-        '👉 For additional details contact: eranra@il.ibm.com')
+        '''
+    👉 For additional details contact: eranra@il.ibm.com  
+
+    📄 RITS API token instructions [RITS docs](https://github.ibm.com/rits/rits/?tab=readme-ov-file#important-information)      
+    ''')
+
     if "rits_api_key" in st.session_state and st.session_state.rits_api_key is not None:
         connect_to_llm()
 
@@ -108,7 +118,8 @@ def generate_response(prompt_input):
 
     try:
         # use openai API to call the LLM model
-        llm_response = st.session_state.llm.invoke(string_dialogue + prompt_input + "Assistant: ")
+        llm_response = st.session_state.llm.invoke(
+            string_dialogue + prompt_input + "Assistant: ")
         output = llm_response.content
     except Exception as e1:
         logger.error(f"Error: {e1}")
@@ -117,7 +128,7 @@ def generate_response(prompt_input):
 
 
 # User-provided prompt
-if prompt := st.chat_input(disabled= not ("rits_api_key" in st.session_state and st.session_state.rits_api_key is not None)):
+if prompt := st.chat_input(disabled=not ("rits_api_key" in st.session_state and st.session_state.rits_api_key is not None)):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(prompt)
