@@ -1,0 +1,10 @@
+Returns the n-th prime number.
+
+Parameters:
+    n (int): The position of the prime number to return (1-based index).
+
+Returns:
+    int: The n-th prime number.
+
+Raises:
+    ValueError: If n is less than 1.

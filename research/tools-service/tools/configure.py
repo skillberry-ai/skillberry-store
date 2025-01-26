@@ -16,7 +16,7 @@ def configure_logging():
     logger.info("Configuring logging")
 
 
-def get_directory_path():
+def get_files_directory_path():
     """
     Determine the directory path for file operations.
 
@@ -50,4 +50,17 @@ def get_descriptions_directory():
         return env_path
     default_path = "/tmp/descriptions"
     logger.info(f"Using default descriptions directory: {default_path}")
+    return default_path
+
+
+def get_metadata_directory():
+    """
+    Get the directory path for metadata.
+    """
+    env_path = os.getenv("METADATA_DIRECTORY")
+    if env_path:
+        logger.info(f"Using metadata directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/metadata"
+    logger.info(f"Using default metadata directory: {default_path}")
     return default_path

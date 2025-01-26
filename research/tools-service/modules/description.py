@@ -65,7 +65,7 @@ class Description:
                 f.write(description)
 
             # Add description embedding to the vector index
-            self.vector_index.add_description(description)
+            self.vector_index.add_description(description=description, filename=filename)
 
             logger.info(
                 f"Description and embedding saved for file: {filename}")
@@ -90,11 +90,7 @@ class Description:
                 f.write(new_description)
 
             # Update the description in the vector index
-            files = [f for f in os.listdir(self.descriptions_directory)
-                     if os.path.isfile(os.path.join(self.descriptions_directory, f))]
-            index = files.index(f"{filename}.txt")
-            self.vector_index.update_description(new_description, index)
-
+            self.vector_index.update_description(new_description, filename)
             logger.info(
                 f"Description and embedding updated for file: {filename}")
             return {"message": f"Description and embedding updated for file '{filename}'."}
@@ -112,15 +108,8 @@ class Description:
         description_file_path = self.get_description_file_path(filename)
         try:
             if os.path.exists(description_file_path):
-
-                # Find the index of the description in the vector index and delete it
-                files = [f for f in os.listdir(self.descriptions_directory)
-                         if os.path.isfile(os.path.join(self.descriptions_directory, f))]
-                index = files.index(f"{filename}.txt")
-                self.vector_index.delete_description(index)
-
+                self.vector_index.delete_description(filename)
                 os.remove(description_file_path)
-
                 logger.info(f"Description deleted for file: {filename}")
                 return {"message": f"Description for file '{filename}' deleted successfully."}
             else:
@@ -133,17 +122,5 @@ class Description:
                 status_code=500, detail=f"Error deleting description: {str(e)}")
 
     def search_description(self, search_term: str, k: int = EMBEDDING_MODEL_SEARCH_K) -> list[dict[str, str | Any]]:
-        results = self.vector_index.search(search_term, k)
-
-        matched_files = []
-        for idx, dist in results:
-            if idx != -1:
-                files = [f for f in os.listdir(self.descriptions_directory)
-                         if os.path.isfile(os.path.join(self.descriptions_directory, f))]
-                filename = files[idx]
-                matched_files.append({
-                    "filename": filename.replace(".txt", ""),
-                    "similarity_score": dist
-                })
-
+        matched_files = self.vector_index.search(search_term, k)
         return matched_files

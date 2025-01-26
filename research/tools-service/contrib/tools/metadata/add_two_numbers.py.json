@@ -1,0 +1,24 @@
+{
+      "programming_language" : "python",
+      "packaging_format" : "code",
+      "name": "add_two_numbers",
+      "description": "Adds two numbers and returns the result.",
+      "parameters": {
+          "type": "object",
+          "properties": {
+              "num1": {
+                  "type": "number",
+                  "description": "The first number to add."
+              },
+              "num2": {
+                  "type": "number",
+                  "description": "The second number to add."
+              }
+          },
+          "required": ["num1", "num2"]
+      },
+      "returns": {
+          "type": "number",
+          "description": "The sum of the two input numbers."
+      }
+}

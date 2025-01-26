@@ -17,19 +17,29 @@ for file in "${BASE_PATH}"/tools/files/*; do
             description=$(cat "$description_file")
         fi
 
-        printf "Uploading %s with description:\n %s\n" "$filename" "$description"
+        # Check if corresponding metadata exists
+        metadata_file="${BASE_PATH}/tools/metadata/${filename}.json"
+        metadata=""
 
-        # change the description to be URL encoded
-        description=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$description'''))")
+        if [ -f "$metadata_file" ]; then
+            metadata=$(cat "$metadata_file")
+        fi
 
-        echo "$description"
+        printf "Uploading %s with description:\n %s\n and metadata: \n %s\n" "$filename" "$description" "$metadata"
+
+        # change the description and metadata to be URL encoded
+        file_description=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$description'''))")
+        file_metadata=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$metadata'''))")
+
+        echo "$file_description"
+        echo "$file_metadata"
 
         # Upload file with description using curl
         curl -X POST \
             -H 'accept: application/json' \
             -H 'Content-Type: multipart/form-data' \
             -F "file=@$file" \
-            "http://localhost:8000/files?description=${description}"
+            "http://localhost:8000/file?file_description=${file_description}&file_metadata=${file_metadata}"
         printf "\nUploaded %s Done." "$filename"
     fi
 done

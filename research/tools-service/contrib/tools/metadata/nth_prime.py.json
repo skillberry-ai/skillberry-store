@@ -1,0 +1,21 @@
+ {
+      "programming_language" : "python",
+      "packaging_format" : "code",
+      "name": "nth_prime",
+      "description": "Returns the n-th prime number.",
+      "parameters": {
+          "type": "object",
+          "properties": {
+              "n": {
+                  "type": "integer",
+                  "description": "The position of the prime number to return (1-based index).",
+                  "minimum": 1
+              }
+          },
+          "required": ["n"]
+      },
+      "returns": {
+          "type": "integer",
+          "description": "The n-th prime number."
+      }
+  }

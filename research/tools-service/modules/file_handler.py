@@ -38,25 +38,27 @@ class FileHandler:
             logger.error(f"Error listing files: {e}")
             raise HTTPException(status_code=500, detail=f"Error listing files: {str(e)}")
 
-    def read_file(self, filename: str):
+    def read_file(self, filename: str, raw_content: bool = False):
         """
         Read and return the contents of a file.
-
-        Args:
-            filename (str): The name of the file to read.
-
-        Returns:
-            FileResponse: The file content as a downloadable response.
-
-        Raises:
-            HTTPException: If the file does not exist.
         """
+
         file_path = os.path.join(self.directory_path, filename)
         if not os.path.exists(file_path):
             logger.warning(f"File not found: {file_path}")
             raise HTTPException(status_code=404, detail="File not found")
         logger.info(f"Reading file: {file_path}")
-        return FileResponse(file_path)
+
+        if raw_content:
+            try:
+                with open(file_path, "r") as file:
+                    content = file.read()
+            except Exception as e:
+                logger.error(f"Error reading file '{file.filename}': {e}")
+                raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
+            return content
+        else:
+            return FileResponse(file_path)
 
     def write_file(self, file: UploadFile) -> dict:
         """
@@ -80,30 +82,6 @@ class FileHandler:
         except Exception as e:
             logger.error(f"Error saving file '{file.filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
-
-    def write_text_file(self, filename: str, content: str) -> dict:
-        """
-        Write a text file with specified content.
-
-        Args:
-            filename (str): The name of the text file to create.
-            content (str): The content to write into the file.
-
-        Returns:
-            dict: A message confirming the file was created successfully.
-
-        Raises:
-            HTTPException: If there is an error writing the file.
-        """
-        file_path = os.path.join(self.directory_path, filename)
-        try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            logger.info(f"Text file created: {file_path}")
-            return {"message": f"File '{filename}' created successfully."}
-        except Exception as e:
-            logger.error(f"Error writing file '{filename}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error writing file: {str(e)}")
 
     def delete_file(self, filename: str) -> dict:
         """

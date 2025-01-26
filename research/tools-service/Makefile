@@ -34,7 +34,14 @@ run: install_requirements ## Run the application
 test: install_requirements ## Test the application
 	pytest
 
-clean: install_requirements ## Clean temporary files
+clean:  ## Clean temporary files
 	-rm -rf __pycache__ .pytest_cache
+
+##@ Develop
+load_tools:  ## Loading tools from the contrib directory to the service
+	./contrib/load_tools_into_service.sh
+
+delete_tools:  ## clean tool directories from /tmp
 	-rm -rf /tmp/files
 	-rm -rf /tmp/descriptions
+	-rm -rf /tmp/metadata
