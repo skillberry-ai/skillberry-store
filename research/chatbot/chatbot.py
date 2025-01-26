@@ -22,18 +22,23 @@ def connect_to_llm(_assistant:int =0):
         if "llm" not in st.session_state:
             st.session_state.llm = [None] * max_assistant_count
 
-        model = st.session_state.selected_model.split(
+        if _assistant == 0:
+            model_name = st.session_state.selected_model
+        else:
+            model_name = st.session_state.granite_model
+
+        model = model_name.split(
             '/')[1].replace('.', '-').lower()
         url = f"{rits_api_url}/{model}/v1"
 
         # If there are no changes in the llm, return existing one
         if ("llm" in st.session_state and
                 st.session_state.llm[_assistant] is not None and
-                st.session_state.llm[_assistant].model_name == st.session_state.selected_model):
+                st.session_state.llm[_assistant].model_name == model_name):
             return st.session_state.llm[_assistant]
 
         llm = ChatOpenAI(
-            model=f"{st.session_state.selected_model}",
+            model=f"{model_name}",
             temperature=st.session_state.temperature,
             max_retries=2,
             api_key='/',
@@ -46,7 +51,7 @@ def connect_to_llm(_assistant:int =0):
         logger.error(e)
         return
 
-    logger.info(f"Connected to LLM: {st.session_state.selected_model}")
+    logger.info(f"Connected to LLM: {model_name}")
     st.session_state.llm[_assistant] = llm
     return
 
@@ -79,6 +84,7 @@ with st.sidebar:
                            'meta-llama/llama-3-1-70b-instruct',
                            'meta-llama/llama-3-3-70b-instruct',
                            'ibm-granite/granite-3.1-8b-instruct'], key='selected_model')
+    st.session_state.granite_model = 'ibm-granite/granite-3.1-8b-instruct'
     temperature = st.sidebar.slider("temperature", key="temperature",
                                     min_value=0.01, max_value=1.0, value=0.9, step=0.01)
 
@@ -107,11 +113,11 @@ if "messages" not in st.session_state.keys():
 left_col, right_col = st.columns(2)
 
 # Display or clear chat messages
-st.sidebar.checkbox("dual assistant", key="dual_assistant", on_change=clear_chat_history)
+st.sidebar.checkbox("dual assistant (compare with granite)", key="dual_assistant", on_change=clear_chat_history)
 
 if st.session_state.dual_assistant:
-    left_col.header("left Assistant")
-    right_col.header("Right Assistant")
+    left_col.header("Chosen Assistant")
+    right_col.header("Granite")
 
 current_assistant_count = 1 if not st.session_state.dual_assistant else 2
 
