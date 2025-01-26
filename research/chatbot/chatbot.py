@@ -14,18 +14,23 @@ rits_api_url = os.environ["RITS_API_URL"]
 # App title
 st.set_page_config(page_title="💬 Blueberry Chatbot")
 
+# Maximum_assistant_count
+max_assistant_count = 2
 
-def connect_to_llm():
+def connect_to_llm(_assistant:int =0):
     try:
+        if "llm" not in st.session_state:
+            st.session_state.llm = [None] * max_assistant_count
+
         model = st.session_state.selected_model.split(
             '/')[1].replace('.', '-').lower()
         url = f"{rits_api_url}/{model}/v1"
 
         # If there are no changes in the llm, return existing one
         if ("llm" in st.session_state and
-                st.session_state.llm is not None and
-                st.session_state.llm.model_name == st.session_state.selected_model):
-            return st.session_state.llm
+                st.session_state.llm[_assistant] is not None and
+                st.session_state.llm[_assistant].model_name == st.session_state.selected_model):
+            return st.session_state.llm[_assistant]
 
         llm = ChatOpenAI(
             model=f"{st.session_state.selected_model}",
@@ -42,7 +47,7 @@ def connect_to_llm():
         return
 
     logger.info(f"Connected to LLM: {st.session_state.selected_model}")
-    st.session_state.llm = llm
+    st.session_state.llm[_assistant] = llm
     return
 
 
@@ -85,32 +90,48 @@ with st.sidebar:
     ''')
 
     if "rits_api_key" in st.session_state and st.session_state.rits_api_key is not None:
-        connect_to_llm()
+        for _assistant in range(max_assistant_count):
+            connect_to_llm(_assistant)
+
+def clear_chat_history():
+    st.session_state.messages=[None] * max_assistant_count
+    for _assistant in range(max_assistant_count):
+        st.session_state.messages[_assistant] = [
+            {"role": "assistant", "content": "How may I assist you today?"}]
+st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
 
 # Store LLM generated responses
 if "messages" not in st.session_state.keys():
-    st.session_state.messages = [
-        {"role": "assistant", "content": "How may I assist you today?"}]
+    clear_chat_history()
+
+left_col, right_col = st.columns(2)
 
 # Display or clear chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
+st.sidebar.checkbox("dual assistant", key="dual_assistant", on_change=clear_chat_history)
+
+if st.session_state.dual_assistant:
+    left_col.header("left Assistant")
+    right_col.header("Right Assistant")
+
+current_assistant_count = 1 if not st.session_state.dual_assistant else 2
+
+if not st.session_state.dual_assistant:
+    for message in st.session_state.messages[0]:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+else:
+    for assistant in range(max_assistant_count):
+        with left_col if assistant == 0 else right_col:
+            for message in st.session_state.messages[assistant]:
+                with st.chat_message(message["role"]):
+                    st.write(message["content"])
 
 
-def clear_chat_history():
-    st.session_state.messages = [
-        {"role": "assistant", "content": "How may I assist you today?"}]
-
-
-st.sidebar.button('Clear Chat History', on_click=clear_chat_history)
-
-
-def generate_response(prompt_input):
+def generate_response(prompt_input,_assistant:int = 0):
     string_dialogue = ("You are a helpful assistant."
                        "You do not respond as 'User' or pretend to be 'User'."
                        "You only respond once as 'Assistant'.")
-    for dict_message in st.session_state.messages:
+    for dict_message in st.session_state.messages[_assistant]:
         if dict_message["role"] == "user":
             string_dialogue += "User: " + dict_message["content"] + "\n\n"
         else:
@@ -118,7 +139,7 @@ def generate_response(prompt_input):
 
     try:
         # use openai API to call the LLM model
-        llm_response = st.session_state.llm.invoke(
+        llm_response = st.session_state.llm[_assistant].invoke(
             string_dialogue + prompt_input + "Assistant: ")
         output = llm_response.content
     except Exception as e1:
@@ -129,20 +150,43 @@ def generate_response(prompt_input):
 
 # User-provided prompt
 if prompt := st.chat_input(disabled=not ("rits_api_key" in st.session_state and st.session_state.rits_api_key is not None)):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.write(prompt)
+    if not st.session_state.dual_assistant:
+        st.session_state.messages[0].append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.write(prompt)
+    else:
+        for assistant in range(max_assistant_count):
+            st.session_state.messages[assistant].append({"role": "user", "content": prompt})
+            with left_col if assistant == 0 else right_col:
+                with st.chat_message("user"):
+                    st.write(prompt)
 
 # Generate a new response if the last message is not from assistant
-if st.session_state.messages[-1]["role"] != "assistant":
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response = generate_response(prompt)
-            placeholder = st.empty()
-            full_response = ''
-            for item in response:
-                full_response += item
+if not st.session_state.dual_assistant:
+     if st.session_state.messages[0][-1]["role"] != "assistant":
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+                response = generate_response(prompt)
+                placeholder = st.empty()
+                full_response = ''
+                for item in response:
+                    full_response += item
+                    placeholder.markdown(full_response)
                 placeholder.markdown(full_response)
-            placeholder.markdown(full_response)
-    message = {"role": "assistant", "content": full_response}
-    st.session_state.messages.append(message)
+        message = {"role": "assistant", "content": full_response}
+        st.session_state.messages[0].append(message)
+else:
+    for assistant in range(max_assistant_count):
+        if st.session_state.messages[assistant][-1]["role"] != "assistant":
+            with left_col if assistant == 0 else right_col:
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        response = generate_response(prompt, assistant)
+                        placeholder = st.empty()
+                        full_response = ''
+                        for item in response:
+                            full_response += item
+                            placeholder.markdown(full_response)
+                        placeholder.markdown(full_response)
+                message = {"role": "assistant", "content": full_response}
+                st.session_state.messages[assistant].append(message)
