@@ -50,6 +50,6 @@ The main research challenges:
 
 
 ## Conclusion :clipboard:
-The 'blueberry' project aims to reduce hallucinations in agentic workflows by increasing the proportion of deterministic tools used. 
+The **blueberry** project aims to reduce hallucinations in agentic workflows by increasing the proportion of deterministic tools used. 
 The system consists of various components that work together to achieve this goal.
 While there are challenges to be addressed, the system has the potential to provide more accurate and reliable results.
