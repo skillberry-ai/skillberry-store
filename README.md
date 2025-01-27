@@ -4,6 +4,8 @@
 The **blueberry** project is an AI system designed to automate gradual reprogramming of workflows with both existing and generated tools. 
 The goal is to increase the proportion of using high-quality deterministic tools, thereby reducing hallucinations in the workflows.
 
+> To quickly experiance with blueberry-chat use:  [blueberry-chat](https://pages.github.ibm.com/Blueberry/blueberry/)
+
 ## Problem Statement :mushroom:
 Hallucinations in agentic workflows can be reduced by increasing the proportion of deterministic tools. The system aims to achieve this by:
 
