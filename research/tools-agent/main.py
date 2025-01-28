@@ -4,7 +4,7 @@ from langchain.globals import set_verbose, set_debug
 from langchain.callbacks.tracers import ConsoleCallbackHandler
 
 from agents.find_useful_tools import find_useful_tools
-from agents.get_existing_tools import get_existing_tools
+from agents.find_existing_tools import find_existing_tools
 from agents.state import State
 from llm.common import llm, check_llm_communication
 
@@ -12,7 +12,7 @@ from tools.graph_visualization import graph_visualization
 
 logger = logging.getLogger(__name__)
 
-debug = False
+debug = True
 invoke_config = None
 
 if debug is True:
@@ -31,10 +31,11 @@ else:
 # Define the agentic graph
 graph_builder = StateGraph(State)
 graph_builder.add_node("find_useful_tools", find_useful_tools)
-graph_builder.add_node("get_existing_tools", get_existing_tools)
+graph_builder.add_node("find_existing_tools", find_existing_tools)
+graph_builder.add_edge("find_useful_tools", "find_existing_tools")
+
 graph_builder.add_edge(START, "find_useful_tools")
-graph_builder.add_edge("find_useful_tools", "get_existing_tools")
-graph_builder.add_edge("get_existing_tools", END)
+graph_builder.add_edge("find_existing_tools", END)
 
 # Compile the agentic graph
 tools_agentic_graph = graph_builder.compile()
@@ -45,9 +46,10 @@ logger.info("Tools agentic graph compiled")
 
 
 def stream_graph_updates(_user_input: str):
-    for event in tools_agentic_graph.stream({"messages": [{"role": "user", "content": _user_input}]}):
+    for event in tools_agentic_graph.stream({"original_user_prompt": _user_input,
+                                             "messages_history": []}):
         for value in event.values():
-            print("Assistant:", value["messages"][-1].content)
+            print("Assistant:", value)
 
 
 # main function
@@ -56,9 +58,7 @@ def main():
         logger.error("Can't communicate with the LLM, please check network, VPN, access keys etc.")
         exit(2)
 
-    user_input = "How much is (10*10)^77"
-    print("User: " + user_input)
-    tools_agentic_graph.
+    user_input = "What is the 4th prime number"
     stream_graph_updates(user_input)
 
 
