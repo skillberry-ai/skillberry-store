@@ -83,7 +83,9 @@ with st.sidebar:
         'Choose a model', ['meta-llama/Llama-3.1-8B-Instruct',
                            'meta-llama/llama-3-1-70b-instruct',
                            'meta-llama/llama-3-3-70b-instruct',
-                           'ibm-granite/granite-3.1-8b-instruct'], key='selected_model')
+                           'ibm-granite/granite-3.1-8b-instruct',
+                           'deepseek-ai/DeepSeek-R1',
+                           'deepseek-ai/DeepSeek-V3'], key='selected_model')
     st.session_state.granite_model = 'ibm-granite/granite-3.1-8b-instruct'
     temperature = st.sidebar.slider("temperature", key="temperature",
                                     min_value=0.01, max_value=1.0, value=0.9, step=0.01)
