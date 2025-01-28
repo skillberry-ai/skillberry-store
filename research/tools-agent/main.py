@@ -3,6 +3,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain.globals import set_verbose, set_debug
 from langchain.callbacks.tracers import ConsoleCallbackHandler
 
+from agents.code_missing_tools import code_missing_tools
 from agents.find_useful_tools import find_useful_tools
 from agents.find_existing_tools import find_existing_tools
 from agents.state import State
@@ -32,9 +33,11 @@ else:
 graph_builder = StateGraph(State)
 graph_builder.add_node("find_useful_tools", find_useful_tools)
 graph_builder.add_node("find_existing_tools", find_existing_tools)
-graph_builder.add_edge("find_useful_tools", "find_existing_tools")
+graph_builder.add_node("code_missing_tools", code_missing_tools)
 
 graph_builder.add_edge(START, "find_useful_tools")
+graph_builder.add_edge("find_useful_tools", "find_existing_tools")
+graph_builder.add_edge("find_existing_tools", "code_missing_tools")
 graph_builder.add_edge("find_existing_tools", END)
 
 # Compile the agentic graph

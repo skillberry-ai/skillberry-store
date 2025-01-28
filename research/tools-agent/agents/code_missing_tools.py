@@ -5,10 +5,13 @@ from llm.common import llm
 
 logger = logging.getLogger(__name__)
 
-# create missing tools using LLM ( based on name and description)
-# add the tools to the repo
+# (1) create missing tools using LLM-as-coder (based on names and descriptions)
+# (2) generalize and remove PII from the tools
+# (3) validate the function and make sure it is valid to be added to the repo
+# (4) add the tool to the tools repository
+
 
 def code_missing_tools(state: State):
-    return {"messages": [llm.invoke(state["messages"])]}
+    return {}
 
 
