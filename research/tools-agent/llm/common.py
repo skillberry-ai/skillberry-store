@@ -12,6 +12,7 @@ from langchain.agents.format_scratchpad import format_to_openai_function_message
 from pydantic import BaseModel, Field
 import json
 
+logger = logging.getLogger(__name__)
 
 if "RITS_API_KEY" not in os.environ:
     print("RITS_API_KEY environment variable not set")
@@ -53,8 +54,13 @@ llm = ChatOpenAI(
     default_headers={'RITS_API_KEY': RITS_API_KEY},
 )
 
-assistant_prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are an helpful assistant"),
-    ("system", "You are an expert in text analysis"),
-    ("user", "Answer the following question: {user_prompt}")
-])
+
+def check_llm_communication():
+    try:
+        llm.invoke("try to communicate with the llm")
+        logger.info("Communication with the LLM established.")
+        return True
+    except Exception as e:
+        logger.error(f"LLM is not working {e}")
+
+    return False

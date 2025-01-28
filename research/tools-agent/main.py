@@ -6,7 +6,7 @@ from langchain.callbacks.tracers import ConsoleCallbackHandler
 from agents.find_useful_tools import find_useful_tools
 from agents.get_existing_tools import get_existing_tools
 from agents.state import State
-from llm.common import llm
+from llm.common import llm, check_llm_communication
 
 from tools.graph_visualization import graph_visualization
 
@@ -37,42 +37,29 @@ graph_builder.add_edge("find_useful_tools", "get_existing_tools")
 graph_builder.add_edge("get_existing_tools", END)
 
 # Compile the agentic graph
-graph = graph_builder.compile()
-logger.info("Graph compiled")
+tools_agentic_graph = graph_builder.compile()
+logger.info("Tools agentic graph compiled")
 
 # Visualize the agentic graph
 # graph_visualization(graph)
 
-try:
-    llm.invoke("try to communicate with the llm")
-    logger.info("LLM is working")
-except Exception as e:
-    logger.error(f"LLM is not working {e}")
-    exit(2)
-
 
 def stream_graph_updates(_user_input: str):
-    for event in graph.stream({"messages": [{"role": "user", "content": _user_input}]}):
+    for event in tools_agentic_graph.stream({"messages": [{"role": "user", "content": _user_input}]}):
         for value in event.values():
             print("Assistant:", value["messages"][-1].content)
 
 
 # main function
 def main():
-    while True:
-        try:
-            user_input = input("User: ")
-            if user_input.lower() in ["quit", "exit", "q"]:
-                print("Goodbye!")
-                break
+    if not check_llm_communication():
+        logger.error("Can't communicate with the LLM, please check network, VPN, access keys etc.")
+        exit(2)
 
-            stream_graph_updates(user_input)
-
-        except:
-            user_input = "Why the user didn't ask a question?"
-            print("User: " + user_input)
-            stream_graph_updates(user_input)
-            break
+    user_input = "How much is (10*10)^77"
+    print("User: " + user_input)
+    tools_agentic_graph.
+    stream_graph_updates(user_input)
 
 
 if __name__ == "__main__":
