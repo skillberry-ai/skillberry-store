@@ -5,6 +5,7 @@ import logging
 import re
 
 import requests
+from huggingface_hub import metadata_load
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
@@ -103,7 +104,15 @@ def code_python_function_using_llm_as_a_coder(name: str, description) -> str:
     logger.info("code_python_function_using_llm_as_a_coder returned: %s", response)
 
     # Get the metadata of the function from the docstring
-    metadata = parse_docstring(name, response.code)
+    function_calling_api = parse_docstring(name, response.code)
+    metadata = {
+        "programming_language": "python",
+        "packaging_format": "code",
+        "name": name,
+        "description": description,
+        "parameters": function_calling_api,
+    }
+
     return response, metadata
 
 

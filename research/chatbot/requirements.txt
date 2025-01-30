@@ -2,5 +2,5 @@ streamlit
 openai
 langchain_openai
 httpx==0.27.2
-streamlit_cookies_controller
+streamlit_js_eval
 

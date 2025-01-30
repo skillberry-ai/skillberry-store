@@ -8,8 +8,10 @@ import os
 
 from cookies import set_cookie, get_cookie
 
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
 
 os.environ["RITS_API_URL"] = "https://inference-3scale-apicast-production.apps.rits.fmaas.res.ibm.com"
 rits_api_url = os.environ["RITS_API_URL"]
@@ -74,7 +76,7 @@ def connect_to_llm(_assistant: int = 0):
 
     logger.info(f"Connected to LLM: {model_name}")
     st.session_state.llm[_assistant] = llm
-    if st.session_state.rits_api_key is not None and st.session_state.rits_api_key is not "":
+    if st.session_state.rits_api_key is not None and st.session_state.rits_api_key != "":
         set_cookie("rits_api_key", st.session_state.rits_api_key)
     return
 
@@ -90,13 +92,13 @@ with st.sidebar:
             st.session_state.rits_api_key = os.environ['RITS_API_TOKEN']
             st.success('API provided using environment variable!', icon='✅')
         else:
-            saved_rits_api_key = get_cookie("rits_api_key")
-            if saved_rits_api_key is None:
-                saved_rits_api_key = ""
+            st.session_state.saved_rits_api_key = get_cookie("rits_api_key")
+            if st.session_state.saved_rits_api_key is None:
+                st.session_state.saved_rits_api_key = ""
             key = st.text_input(
                 'Enter RITS API token:',
                 type='password',
-                value=saved_rits_api_key)
+                value=st.session_state.saved_rits_api_key)
             if not (len(key) >= 32):
                 st.warning('Please enter your credentials!', icon='⚠️')
             else:
