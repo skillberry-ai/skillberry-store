@@ -14,7 +14,10 @@ logger.setLevel(logging.INFO)
 
 
 os.environ["RITS_API_URL"] = "https://inference-3scale-apicast-production.apps.rits.fmaas.res.ibm.com"
+os.environ["RITS_PROXY_API_URL"] = "http://blueberry.sl.cloud9.ibm.com:4000"
+
 rits_api_url = os.environ["RITS_API_URL"]
+rits_proxy_api_url = os.environ["RITS_PROXY_API_URL"]
 
 # App title
 st.set_page_config(page_title="💬 Blueberry Chatbot")
@@ -22,7 +25,7 @@ st.set_page_config(page_title="💬 Blueberry Chatbot")
 # Maximum_assistant_count
 max_assistant_count = 2
 
-if "dual_assistant" in st.session_state and st.session_state.dual_assistant:
+if "use_dual_assistant" in st.session_state and st.session_state.use_dual_assistant:
     left_col, right_col = st.columns(2)
     left_col.header("Selected model")
     right_col.header("IBM Granite")
@@ -50,9 +53,8 @@ def connect_to_llm(_assistant: int = 0):
         else:
             model_name = st.session_state.granite_model
 
-        model = model_name.split(
-            '/')[1].replace('.', '-').lower()
-        url = f"{rits_api_url}/{model}/v1"
+        if "use_rits_blueberry_proxy" in st.session_state and st.session_state.use_rits_blueberry_proxy is True:
+            model_name = f"rits/{model_name}"
 
         # If there are no changes in the llm, return existing one
         if ("llm" in st.session_state and
@@ -60,14 +62,27 @@ def connect_to_llm(_assistant: int = 0):
                 st.session_state.llm[_assistant].model_name == model_name):
             return st.session_state.llm[_assistant]
 
-        llm = ChatOpenAI(
-            model=f"{model_name}",
-            temperature=st.session_state.temperature,
-            max_retries=2,
-            api_key='/',
-            base_url=url,
-            default_headers={'RITS_API_KEY': st.session_state.rits_api_key},
-        )
+        if "use_rits_blueberry_proxy" in st.session_state and st.session_state.use_rits_blueberry_proxy is False:
+            model = model_name.split(
+                '/')[1].replace('.', '-').lower()
+            url = f"{rits_api_url}/{model}/v1"
+
+            llm = ChatOpenAI(
+                model=f"{model_name}",
+                temperature=st.session_state.temperature,
+                max_retries=2,
+                api_key='/',
+                base_url=url,
+                default_headers={'RITS_API_KEY': st.session_state.rits_api_key}
+            )
+        else:
+            llm = ChatOpenAI(
+                model=f"{model_name}",
+                temperature=st.session_state.temperature,
+                max_retries=2,
+                api_key=st.session_state.rits_api_key,
+                base_url=rits_proxy_api_url
+            )
     except Exception as e:
         st.session_state.llm = None
         st.warning("Can't connect to LLM, please fix the credentials!", icon='⚠️')
@@ -77,7 +92,10 @@ def connect_to_llm(_assistant: int = 0):
     logger.info(f"Connected to LLM: {model_name}")
     st.session_state.llm[_assistant] = llm
     if st.session_state.rits_api_key is not None and st.session_state.rits_api_key != "":
-        set_cookie("rits_api_key", st.session_state.rits_api_key)
+        try:
+            set_cookie("rits_api_key", st.session_state.rits_api_key)
+        except Exception as e:
+            logger.error(e)
     return
 
 
@@ -142,7 +160,8 @@ with st.sidebar:
         clear_chat_history()
 
     # Dual assistant checkbox
-    st.checkbox("dual assistant (compare with granite)", key="dual_assistant", on_change=clear_chat_history)
+    st.checkbox("Use rits blueberry proxy", key="use_rits_blueberry_proxy", value= False, on_change=clear_chat_history)
+    st.checkbox("dual assistant (compare with granite)", key="use_dual_assistant", on_change=clear_chat_history)
 
 def generate_response(prompt_input, _assistant: int = 0):
     string_dialogue = ("You are a helpful assistant."
