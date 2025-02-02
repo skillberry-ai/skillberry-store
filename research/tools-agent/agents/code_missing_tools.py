@@ -5,7 +5,6 @@ import logging
 import re
 
 import requests
-from huggingface_hub import metadata_load
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
@@ -57,6 +56,10 @@ def code_missing_tools(state: State):
         if not success:
             logger.error(f"add_tool_to_repo: tool {name} upload to repo failed")
             continue
+        else:
+            # the name of tools at this stage are added with the .py because we supprot creation of .py code files
+            # only. TODO fix this to support multiple languages and packaging --- later stage
+            need_to_generate_tool["name"] = f'{need_to_generate_tool["name"]}.py'
 
 
 def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> bool:
@@ -64,9 +67,11 @@ def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> 
 
     files = {'file': (f'{name}.py',
                       io.StringIO(code), 'text/plain')}
+
+
     response = requests.post(post_file_url,
                              headers=headers,
-                             params={"file_description": description, "file_metadata": metadata},
+                             params={"file_description": description, "file_metadata": json.dumps(metadata)},
                              files=files)
     if response.status_code == 200:
         logger.info(f"add_tool_to_repo: tool {name} uploaded successfully")
@@ -77,16 +82,35 @@ def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> 
 
 
 class CodePythonFunctionResponseJsonSchema(BaseModel):
-    docstring: str = Field(description="The Docstring of the function")
-    code: str = Field(description="The function code including the Docstring without examples or usage")
+    docstring: str = Field(description="The function docstring that includes input parameters, and the return value")
+    code: str = Field(description="The function code including the cocstring without examples or usage")
 
 
 code_python_function_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an expert in writing code in python"),
-    ("system", "Always add meaningful Docstrings and documentation to functions"
-               "The Docstrings will include the function description, input Parameters, and Return values"),
+    ("system", "Always add meaningful Docstrings and documentation to functions"),
+    ("system", "The Docstrings always include function description, input parameters with types, and the return value"),
     ("system", "Include the Docstrings as part of the function code"),
     ("system", "Do not add examples or usage, answer with only python code"),
+    ("system", """An example for a good function with docstring looks like this:
+def calculate_rectangle_area(length, width):
+    \"\"\"
+    Calculate the area of a rectangle.
+
+    Parameters:
+    length (float): The length of the rectangle.
+    width (float): The width of the rectangle.
+
+    Returns:
+    float: The area of the rectangle, calculated as length * width.
+    \"\"\"
+    if length <= 0 or width <= 0:
+        raise ValueError("Length and width must be positive values.")
+    
+    area = length * width
+    return area
+"""
+     ),
     ("user",
      "Use the following description: {function_description} to write python code for the {function_name} function:")
 ])
@@ -110,7 +134,7 @@ def code_python_function_using_llm_as_a_coder(name: str, description) -> str:
         "packaging_format": "code",
         "name": name,
         "description": description,
-        "parameters": function_calling_api,
+        "parameters": function_calling_api["parameters"],
     }
 
     return response, metadata

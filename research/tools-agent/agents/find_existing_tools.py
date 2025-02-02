@@ -2,6 +2,7 @@ import logging
 import requests
 
 from agents.state import State
+from agents.tools_service_api import search_tools, get_tool_description
 from llm.common import llm
 
 logger = logging.getLogger(__name__)
@@ -9,12 +10,10 @@ logger = logging.getLogger(__name__)
 # search for tools from the repository using API call (semantic search)
 base_url = "http://9.148.245.32:8000"
 search_url = f"{base_url}/description/search"
-get_description_url = f"{base_url}/description/"
 
 headers = {"Content-Type": "application/json"}
 max_numer_of_results = 5
 similarity_threshold = 1
-
 
 def find_existing_tools(state: State):
     existing_tools = []
@@ -23,25 +22,19 @@ def find_existing_tools(state: State):
         name = suggested_tool["name"]
         description = suggested_tool["description"]
         logger.info(f"find_existing_tools called for tool: {name}")
-        # issue get request against the url with `search_term` equals to the name of the suggested tool
 
-        response = requests.get(search_url, headers=headers, params={"search_term": f"{name}: {description}",
-                                                                     "max_numer_of_results": max_numer_of_results,
-                                                                     "similarity_threshold": similarity_threshold})
-        if response.status_code == 200 and len(response.json()) > 0:
-            logger.info("find_existing_tools returned: %s", response.json())
-            for found_tool in response.json():
+        # issue get request against the url with `search_term` equals to the name of the suggested tool
+        found_tools = search_tools(base_url, name, description, max_numer_of_results, similarity_threshold)
+        if found_tools is not None and len(found_tools) > 0:
+            logger.info("find_existing_tools returned: %s", found_tools)
+            for found_tool in found_tools:
                 logger.info(f"Found existing tool: {found_tool}")
                 found_tool["search_term_name"] = name
                 found_tool["search_term_description"] = description
                 found_tool["name"] = found_tool["filename"]
                 # append only if the tool is not already in the list of existing tools
                 if found_tool not in existing_tools:
-                    # get the description of the tool from the repository
-                    response = requests.get(get_description_url + found_tool["name"], headers=headers)
-                    if response.status_code == 200:
-                        found_tool["description"] = response.json()
-                        existing_tools.append(found_tool)
+                    existing_tools.append(found_tool)
         else:
             # Can't find the tools, adding the tools to the list of need_to_generate_tools tools
             logger.info(f"Can't find the suggested_tool {name}")
