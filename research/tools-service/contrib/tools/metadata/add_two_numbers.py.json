@@ -6,11 +6,11 @@
       "parameters": {
           "type": "object",
           "properties": {
-              "num1": {
+              "a": {
                   "type": "number",
                   "description": "The first number to add."
               },
-              "num2": {
+              "b": {
                   "type": "number",
                   "description": "The second number to add."
               }
