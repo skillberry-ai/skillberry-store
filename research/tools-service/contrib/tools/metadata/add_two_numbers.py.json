@@ -15,7 +15,7 @@
                   "description": "The second number to add."
               }
           },
-          "required": ["num1", "num2"]
+          "required": ["a", "b"]
       },
       "returns": {
           "type": "number",
