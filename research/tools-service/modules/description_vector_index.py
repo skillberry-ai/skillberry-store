@@ -24,7 +24,8 @@ class DescriptionVectorIndex:
         self.model = SentenceTransformer(model)
 
         # Initialize FAISS index
-        self.index = faiss.IndexFlatL2(self.dimension)  # L2 (Euclidean) distance-based index
+        # L2 (Euclidean) distance-based index
+        self.index = faiss.IndexFlatL2(self.dimension)
 
         # Initialize the files to FAISS index map
         self.files_to_faiss_index_map = []
@@ -40,12 +41,14 @@ class DescriptionVectorIndex:
             logger.info(f"Loading existing FAISS index from {self.index_file}")
             self.index = faiss.read_index(self.index_file)
         else:
-            logger.info("No existing FAISS index found. Starting with an empty index.")
+            logger.info(
+                "No existing FAISS index found. Starting with an empty index.")
 
         # Load the files to FAISS index map
         if os.path.exists(f"{self.index_file}.files_index.npy"):
             self.files_to_faiss_index_map = np.load(
                 f"{self.index_file}.files_index.npy", allow_pickle=True)
+            self.files_to_faiss_index_map = self.files_to_faiss_index_map.tolist()
             logger.info("Loaded files to FAISS index map.")
 
     def save_index(self):
@@ -92,7 +95,8 @@ class DescriptionVectorIndex:
         embedding = self.model.encode([new_description])[0]
 
         # FAISS does not support updating a single vector, so we rebuild the index after removal
-        embeddings = [embedding for embedding in self.index.reconstruct_n(0, self.index.ntotal)]
+        embeddings = [embedding for embedding in self.index.reconstruct_n(
+            0, self.index.ntotal)]
         embeddings[index] = embedding
 
         new_index = faiss.IndexFlatL2(self.dimension)
@@ -143,7 +147,8 @@ class DescriptionVectorIndex:
         if index == -1:
             raise ValueError(f"Filename '{filename}' not found in the index.")
 
-        embeddings = [embedding for embedding in self.index.reconstruct_n(0, self.index.ntotal)]
+        embeddings = [embedding for embedding in self.index.reconstruct_n(
+            0, self.index.ntotal)]
         del embeddings[index]
         del self.files_to_faiss_index_map[index]
 
