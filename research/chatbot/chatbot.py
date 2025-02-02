@@ -54,7 +54,7 @@ def connect_to_llm(_assistant: int = 0):
             model_name = st.session_state.granite_model
 
         if "use_rits_blueberry_proxy" in st.session_state and st.session_state.use_rits_blueberry_proxy is True:
-            model_name = f"rits/{model_name}"
+            model_name = f"rits/{model_name}".replace('.', '-').lower()
 
         # If there are no changes in the llm, return existing one
         if ("llm" in st.session_state and
@@ -128,15 +128,15 @@ with st.sidebar:
 
     st.subheader('Models and parameters')
     selected_model = st.sidebar.selectbox(
-        'Choose a model', ['meta-llama/Llama-3.1-8B-Instruct',
+        'Choose a model', ['meta-llama/llama-3-3-70b-instruct',
                            'meta-llama/llama-3-1-70b-instruct',
-                           'meta-llama/llama-3-3-70b-instruct',
-                           'ibm-granite/granite-3.1-8b-instruct',
+                           'meta-llama/Llama-3.1-8B-Instruct',
+                           'ibm/granite-20b-code-instruct',
                            'deepseek-ai/DeepSeek-R1',
                            'deepseek-ai/DeepSeek-V3'],
         key='selected_model',
         on_change=clear_chat_history)
-    st.session_state.granite_model = 'ibm-granite/granite-3.1-8b-instruct'
+    st.session_state.granite_model = 'ibm/granite-20b-code-instruct'
     temperature = st.sidebar.slider("temperature", key="temperature",
                                     min_value=0.01, max_value=1.0, value=0.9, step=0.01)
     timeout = st.sidebar.slider("timeout", key="timeout",
