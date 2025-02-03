@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 tools_agentic_graph = None
 
+
 def define_tools_agentic_graph():
     global tools_agentic_graph
     # Define the agentic graph
@@ -21,12 +22,14 @@ def define_tools_agentic_graph():
     graph_builder.add_node("find_useful_tools", find_useful_tools)
     graph_builder.add_node("find_existing_tools", find_existing_tools)
     graph_builder.add_node("code_missing_tools", code_missing_tools)
-    graph_builder.add_node("execute_tools_with_parameters", execute_tools_with_parameters)
+    graph_builder.add_node("execute_tools_with_parameters",
+                           execute_tools_with_parameters)
 
     graph_builder.add_edge(START, "find_useful_tools")
     graph_builder.add_edge("find_useful_tools", "find_existing_tools")
     graph_builder.add_edge("find_existing_tools", "code_missing_tools")
-    graph_builder.add_edge("code_missing_tools", "execute_tools_with_parameters")
+    graph_builder.add_edge("code_missing_tools",
+                           "execute_tools_with_parameters")
     graph_builder.add_edge("execute_tools_with_parameters", END)
 
     # Compile the agentic graph
@@ -34,17 +37,14 @@ def define_tools_agentic_graph():
     logger.info("Tools agentic graph compiled")
     return tools_agentic_graph
 
-    # Visualize the agentic graph
-    # graph_visualization(graph)
+# Visualize the agentic graph
+# graph_visualization(graph)
 
-def stream_graph_updates(_user_input: str):
-    for event in tools_agentic_graph.stream({"original_user_prompt": _user_input,
-                                             "messages_history": [
-                                                 {
-                                                     'role': 'human',
-                                                     'content': _user_input
-                                                 }
-                                             ]}):
+
+def stream_graph_updates(input_messages: str):
+
+    for event in tools_agentic_graph.stream({"original_user_prompt": input_messages,
+                                             "messages_history": input_messages}):
         for value in event.values():
-            print("==> Assistant:", value)
+            logging.info("==> stream_graph_updates: event.value: [%s]", value)
     return event.values()

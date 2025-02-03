@@ -14,8 +14,12 @@ find_useful_tools_chat_prompt_template = ChatPromptTemplate([
     ("system", "You are expert in finding functions and tools that are generated from code"),
     ("system", "For each tool and function that you suggest, "
                "you specify exactly the name of the tool in hungarian notation and a crisp description of the tool"),
+    ("system", "Do not suggest tools and functions that performs error handling"),
+    ("system", "Do not suggest tools and functions that requires keys or access to external services"),
+    ("system", "suggest simple tools and function. Do not suggest tools and functions that are complicated"),
     ("system", "Response only using json format"),
-    ("user", "List deterministic tools and functions that helps to response to the prompt: \"{user_prompt}\""),
+    ("user",
+     "List deterministic tools and functions that helps to response to the prompt: \"{user_prompt}\""),
 ])
 
 
@@ -29,14 +33,17 @@ class FindingToolsResponseJsonSchema(BaseModel):
 # plan what tools can help to resolve the user prompt
 # get for each of the tools the name and description
 def find_useful_tools(state: State):
+    logging.info(f"=======>>> find_useful_tools. started <<<=======")
     logger.info("find_useful_tools called")
     structured_llm = llm.with_structured_output(schema=FindingToolsResponseJsonSchema,
                                                 method="function_calling",
                                                 include_raw=False)
 
     find_useful_tools_chain = find_useful_tools_chat_prompt_template | structured_llm
-    response = find_useful_tools_chain.invoke({"user_prompt": state["original_user_prompt"]})
+    response = find_useful_tools_chain.invoke(
+        {"user_prompt": state["original_user_prompt"]})
     logger.info("find_useful_tools returned: %s", response)
+    logging.info(f"=======>>> find_useful_tools. ended <<<=======")
     return {"suggested_tools": response.suggested_tools}
 
 # the requirements

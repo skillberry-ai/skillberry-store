@@ -19,7 +19,7 @@ RITS_API_KEY = os.environ["RITS_API_KEY"]
 # MODEL = "granite-3.1-8b-instruct"
 
 MODEL_PROVIDER = "meta-llama"
-MODEL = "llama-3-1-70b-instruct"
+MODEL = "llama-3-3-70b-instruct"
 # MODEL = "Llama-3.1-8B-Instruct"
 
 # MODEL_PROVIDER = "mistralai"
@@ -28,12 +28,13 @@ MODEL = "llama-3-1-70b-instruct"
 BASE_URL = f"{RITS_API_URL}/{MODEL.replace('.', '-').lower()}/v1"
 TEMPERATURE = 0
 
-print(f"==> 0. Configuration:\n"
-      f"==> =================\n"
-      f"==> Using model: {MODEL_PROVIDER}/{MODEL}\n"
-      f"==> EndPoint: {BASE_URL}\n"
-      f"==> Temperature: {TEMPERATURE}\n"
-      f"==> =================\n\n")
+logger.info(f"\n\n"
+            f"==> 0. Configuration:\n"
+            f"==> =================\n"
+            f"==> Using model: {MODEL_PROVIDER}/{MODEL}\n"
+            f"==> EndPoint: {BASE_URL}\n"
+            f"==> Temperature: {TEMPERATURE}\n"
+            f"==> =================\n\n")
 
 llm = ChatOpenAI(
     model=f"{MODEL_PROVIDER}/{MODEL}",
