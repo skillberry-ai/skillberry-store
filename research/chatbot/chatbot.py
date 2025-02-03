@@ -1,17 +1,13 @@
-import os
 import logging
-import time
-
-from langchain_openai import ChatOpenAI
-import streamlit as st
 import os
+
+import streamlit as st
+from langchain_openai import ChatOpenAI
 
 from cookies import set_cookie, get_cookie
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 
 os.environ["RITS_API_URL"] = "https://inference-3scale-apicast-production.apps.rits.fmaas.res.ibm.com"
 os.environ["RITS_PROXY_API_URL"] = "http://blueberry.sl.cloud9.ibm.com:4000"
@@ -20,7 +16,16 @@ rits_api_url = os.environ["RITS_API_URL"]
 rits_proxy_api_url = os.environ["RITS_PROXY_API_URL"]
 
 # App title
-st.set_page_config(page_title="💬 Blueberry Chatbot")
+st.set_page_config(page_title="💬 Blueberry Chatbot",layout="wide",page_icon=":male_mage:",
+                   menu_items={
+                       'Get Help': 'https://github.ibm.com/Blueberry/blueberry',
+                       'Report a bug': "https://github.ibm.com/Blueberry/blueberry/issues",
+                       'About': "# Blueberry Chatbot\n "
+                                "The UI uses IBM Research rits backend.\n  "
+                                "The UI is in heavy development and\n  "
+                                "should not be used for any production workloads.\n  "
+                        }
+                   )
 
 # Maximum_assistant_count
 max_assistant_count = 2
@@ -129,11 +134,11 @@ with st.sidebar:
     st.subheader('Models and parameters')
     selected_model = st.sidebar.selectbox(
         'Choose a model', ['meta-llama/llama-3-3-70b-instruct',
+                           'ibm/granite-20b-code-instruct',
                            'meta-llama/llama-3-1-70b-instruct',
                            'meta-llama/Llama-3.1-8B-Instruct',
-                           'ibm/granite-20b-code-instruct',
-                           'deepseek-ai/DeepSeek-R1',
-                           'deepseek-ai/DeepSeek-V3'],
+                           'deepseek-ai/DeepSeek-V3',
+                           'deepseek-ai/DeepSeek-R1'],
         key='selected_model',
         on_change=clear_chat_history)
     st.session_state.granite_model = 'ibm/granite-20b-code-instruct'
@@ -160,8 +165,9 @@ with st.sidebar:
         clear_chat_history()
 
     # Dual assistant checkbox
-    st.checkbox("Use rits blueberry proxy", key="use_rits_blueberry_proxy", value= False, on_change=clear_chat_history)
+    st.checkbox("Use rits blueberry proxy", key="use_rits_blueberry_proxy", value=True, on_change=clear_chat_history)
     st.checkbox("dual assistant (compare with granite)", key="use_dual_assistant", on_change=clear_chat_history)
+
 
 def generate_response(prompt_input, _assistant: int = 0):
     string_dialogue = ("You are a helpful assistant."
@@ -184,14 +190,17 @@ def generate_response(prompt_input, _assistant: int = 0):
         output = f"I'm sorry can't get response from the model. {e1}\n Please try again later."
     return output
 
+
 # User-provided prompt
 if prompt := st.chat_input(
         disabled=not ("rits_api_key" in st.session_state and st.session_state.rits_api_key is not None)):
     for assistant in range(current_assistant_count):
         st.session_state.messages[assistant].append({"role": "user", "content": prompt})
 
-def styled_content(content:str) -> str:
+
+def styled_content(content: str) -> str:
     return content.replace("<think>", '<span style="color: gray; font-size: 12px;">').replace("</think>", "</span>")
+
 
 # display the trajectory
 for assistant in range(current_assistant_count):
