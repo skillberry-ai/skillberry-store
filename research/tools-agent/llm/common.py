@@ -19,7 +19,7 @@ RITS_API_KEY = os.environ["RITS_API_KEY"]
 # MODEL = "granite-3.1-8b-instruct"
 
 MODEL_PROVIDER = "meta-llama"
-MODEL = "llama-3-3-70b-instruct"
+MODEL = "llama-3-1-70b-instruct"
 # MODEL = "Llama-3.1-8B-Instruct"
 
 # MODEL_PROVIDER = "mistralai"
