@@ -15,16 +15,18 @@ headers = {"Content-Type": "application/json"}
 max_numer_of_results = 5
 similarity_threshold = 1
 
+
 def find_existing_tools(state: State):
+    logging.info(f"=======>>> find_existing_tools. started <<<=======")
     existing_tools = []
     need_to_generate_tools = []
     for suggested_tool in state["suggested_tools"]:
         name = suggested_tool["name"]
         description = suggested_tool["description"]
         logger.info(f"find_existing_tools called for tool: {name}")
-
         # issue get request against the url with `search_term` equals to the name of the suggested tool
-        found_tools = search_tools(base_url, name, description, max_numer_of_results, similarity_threshold)
+        found_tools = search_tools(
+            base_url, name, description, max_numer_of_results, similarity_threshold)
         if found_tools is not None and len(found_tools) > 0:
             logger.info("find_existing_tools returned: %s", found_tools)
             for found_tool in found_tools:
@@ -42,5 +44,6 @@ def find_existing_tools(state: State):
             need_to_generate_tools.append(suggested_tool)
             continue
 
+    logging.info(f"=======>>> find_existing_tools. ended <<<=======")
     return {"existing_tools": existing_tools,
             "need_to_generate_tools": need_to_generate_tools}

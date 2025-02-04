@@ -9,11 +9,13 @@ from cookies import set_cookie, get_cookie
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+os.environ["BLUEBERRY_TOOLS_AGENT_API_URL"] = "http://blueberry.sl.cloud9.ibm.com:7000"
 os.environ["RITS_API_URL"] = "https://inference-3scale-apicast-production.apps.rits.fmaas.res.ibm.com"
 os.environ["RITS_PROXY_API_URL"] = "http://blueberry.sl.cloud9.ibm.com:4000"
 
 rits_api_url = os.environ["RITS_API_URL"]
 rits_proxy_api_url = os.environ["RITS_PROXY_API_URL"]
+blueberry_tools_agent_api_url = os.environ["BLUEBERRY_TOOLS_AGENT_API_URL"]
 
 # App title
 st.set_page_config(page_title="💬 Blueberry Chatbot",layout="wide",page_icon=":male_mage:",
@@ -43,8 +45,8 @@ else:
 
 def clear_chat_history():
     st.session_state.messages = [None] * max_assistant_count
-    for _assistant in range(max_assistant_count):
-        st.session_state.messages[_assistant] = [
+    for __assistant in range(max_assistant_count):
+        st.session_state.messages[__assistant] = [
             {"role": "assistant", "content": "How may I assist you today?"}]
 
 
@@ -59,7 +61,8 @@ def connect_to_llm(_assistant: int = 0):
             model_name = st.session_state.granite_model
 
         if "use_rits_blueberry_proxy" in st.session_state and st.session_state.use_rits_blueberry_proxy is True:
-            model_name = f"rits/{model_name}".replace('.', '-').lower()
+            if model_name is not 'blueberry' :
+                model_name = f"rits/{model_name}".replace('.', '-').lower()
 
         # If there are no changes in the llm, return existing one
         if ("llm" in st.session_state and
@@ -67,7 +70,16 @@ def connect_to_llm(_assistant: int = 0):
                 st.session_state.llm[_assistant].model_name == model_name):
             return st.session_state.llm[_assistant]
 
-        if "use_rits_blueberry_proxy" in st.session_state and st.session_state.use_rits_blueberry_proxy is False:
+        if model_name is 'blueberry':
+            llm = ChatOpenAI(
+                model=f"{model_name}",
+                temperature=st.session_state.temperature,
+                max_retries=2,
+                api_key='/',
+                base_url=blueberry_tools_agent_api_url,
+                default_headers={'RITS_API_KEY': st.session_state.rits_api_key}
+            )
+        elif "use_rits_blueberry_proxy" in st.session_state and st.session_state.use_rits_blueberry_proxy is False:
             model = model_name.split(
                 '/')[1].replace('.', '-').lower()
             url = f"{rits_api_url}/{model}/v1"
@@ -138,7 +150,8 @@ with st.sidebar:
                            'meta-llama/llama-3-1-70b-instruct',
                            'meta-llama/Llama-3.1-8B-Instruct',
                            'deepseek-ai/DeepSeek-V3',
-                           'deepseek-ai/DeepSeek-R1'],
+                           'deepseek-ai/DeepSeek-R1',
+                           'blueberry'],
         key='selected_model',
         on_change=clear_chat_history)
     st.session_state.granite_model = 'ibm/granite-20b-code-instruct'

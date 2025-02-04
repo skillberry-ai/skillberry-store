@@ -21,27 +21,30 @@ base_url = "http://9.148.245.32:8000"
 post_file_url = f"{base_url}/file/"
 
 headers = {"Accept": "application/json"}
-max_numer_of_results = 5
-similarity_threshold = 1
 
 
 def code_missing_tools(state: State):
+    logging.info(f"=======>>> code_missing_tools. starts <<<=======")
     need_to_generate_tools = state["need_to_generate_tools"]
     for need_to_generate_tool in need_to_generate_tools:
-
+        name = need_to_generate_tool["name"]
+        logging.info(f"code_missing_tools: generating tool {name}")
         # (1) create missing tools using LLM-as-coder (based on names and descriptions)
         name = need_to_generate_tool["name"]
         description = need_to_generate_tool["description"]
-        tool_response, metadata = code_python_function_using_llm_as_a_coder(name, description)
+        tool_response, metadata = code_python_function_using_llm_as_a_coder(
+            name, description)
 
         # (2) generalize and remove PII from the tool
         # TODO: implement
+        logging.info(f"code_missing_tools: generalizing tool {name}")
         generalize_tool_response = tool_generalize_using_llm_as_a_coder(name=name,
                                                                         metadata=metadata,
                                                                         description=tool_response.docstring,
                                                                         code=tool_response.code)
 
         # (3) validate the function and make sure it is valid to be added to the repo
+        logging.info(f"code_missing_tools: validating tool {name}")
         success = validate_tool_using_llm_as_a_coder(name=generalize_tool_response["name"],
                                                      metadata=generalize_tool_response["metadata"],
                                                      description=generalize_tool_response["description"],
@@ -51,48 +54,55 @@ def code_missing_tools(state: State):
             continue
 
         # (4) add the tool to the tool repository
+        logging.info(f"code_missing_tools: adding tool {
+                     name} to the tool repository")
         success = add_tool_to_repo(name=generalize_tool_response["name"],
                                    metadata=generalize_tool_response["metadata"],
                                    description=generalize_tool_response["description"],
                                    code=generalize_tool_response["code"])
         if not success:
-            logger.error(f"add_tool_to_repo: tool {name} upload to repo failed")
+            logger.error(f"add_tool_to_repo: tool {
+                         name} upload to repo failed")
             continue
         else:
-            # the name of tools at this stage are added with the .py because we supprot creation of .py code files
+            # the name of tools at this stage are added with the .py because we support creation of .py code files
             # only. TODO fix this to support multiple languages and packaging --- later stage
-            need_to_generate_tool["name"] = f'{need_to_generate_tool["name"]}.py'
+            need_to_generate_tool["name"] = f'{
+                need_to_generate_tool["name"]}.py'
+    logging.info(f"=======>>> code_missing_tools. ended <<<=======")
 
 
 def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> bool:
     logger.info(f"add_tool_to_repo called for tool: {name}")
 
-    files = {'file': (f'{name}.py',
-                      io.StringIO(code), 'text/plain')}
-
+    files = {'file': (f'{name}.py', io.StringIO(code), 'text/plain')}
 
     response = requests.post(post_file_url,
                              headers=headers,
-                             params={"file_description": description, "file_metadata": json.dumps(metadata)},
+                             params={"file_description": description,
+                                     "file_metadata": json.dumps(metadata)},
                              files=files)
     if response.status_code == 200:
         logger.info(f"add_tool_to_repo: tool {name} uploaded successfully")
         return True
     else:
-        logger.error(f"add_tool_to_repo: tool {name} upload failed with status code {response.status_code}")
+        logger.error(f"add_tool_to_repo: tool {
+                     name} upload failed with status code {response.status_code}")
         return False
 
 
 class CodePythonFunctionResponseJsonSchema(BaseModel):
-    docstring: str = Field(description="The function docstring that includes input parameters, and the return value")
-    code: str = Field(description="The function code including the cocstring without examples or usage")
+    docstring: str = Field(
+        description="The function docstring that includes input parameters, and the return value")
+    code: str = Field(
+        description="The function code including the cocstring without examples or usage")
 
 
 code_python_function_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an expert in writing code in python"),
-    ("system", "Always add meaningful Docstrings and documentation to functions"),
-    ("system", "The Docstrings always include function description, input parameters with types, and the return value"),
-    ("system", "Include the Docstrings as part of the function code"),
+    ("system", "Always add meaningful docstrings and documentation to functions"),
+    ("system", "The docstrings always include function description, input parameters with types, and the return value"),
+    ("system", "Include the docstrings as part of the function code"),
     ("system", "Do not add examples or usage, answer with only python code"),
     ("system", """An example for a good function with docstring looks like this:
 def calculate_rectangle_area(length, width):
@@ -126,8 +136,10 @@ def code_python_function_using_llm_as_a_coder(name: str, description) -> str:
                                                 include_raw=False)
 
     code_missing_tools_chain = code_python_function_chat_prompt_template | structured_llm
-    response = code_missing_tools_chain.invoke({"function_description": description, "function_name": name})
-    logger.info("code_python_function_using_llm_as_a_coder returned: %s", response)
+    response = code_missing_tools_chain.invoke(
+        {"function_description": description, "function_name": name})
+    logger.info(
+        "code_python_function_using_llm_as_a_coder returned: %s", response)
 
     # Get the metadata of the function from the docstring
     function_calling_api = parse_docstring(name, response.code)
@@ -251,6 +263,27 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: s
     logger.info(f"description:\n{description}\n")
     logger.info(f"metadata:\n{metadata}\n")
 
+    unwanted_words = ["error", "manager", "handler", "api", "key"]
+    try:
+        description = description.lower() if isinstance(description, str) else ""
+        code = code.lower() if isinstance(code, str) else ""
+        metadata_text = " ".join(str(value).lower(
+        ) for value in metadata.values()) if isinstance(metadata, dict) else ""
+
+        for word in unwanted_words:
+            if word in description or word in metadata_text or word in code:
+                logger.warning(f"validate_tool_using_llm_as_a_coder: Tool '{
+                               name}' contains unwanted word '{word}'")
+                return False  # Stop validation if any unwanted word is found
+
+#         return True  # Passed validation
+
+    except Exception as e:
+        logger.error(
+            f"validate_tool_using_llm_as_a_coder: Unexpected error while validating tool '{name}': {e}")
+        return False  # Fail-safe return in case of an unexpected error
+
+    # TODO: implement more checks
     # Create a Docker client
     client = docker.from_env()
     logger.info("Validating the python code...")

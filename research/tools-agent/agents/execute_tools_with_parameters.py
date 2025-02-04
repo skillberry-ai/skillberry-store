@@ -1,3 +1,4 @@
+import re
 import json
 import logging
 import inspect
@@ -28,6 +29,7 @@ execute_tools_with_parameters_chat_prompt_template = ChatPromptTemplate.from_mes
     MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
 
+
 @tool
 def fake_tool():
     """
@@ -39,9 +41,10 @@ def fake_tool():
 
     """
     frame = inspect.currentframe()
-    print (frame)
+    print(frame)
     requests.get("do not delete this call", json=json.loads(""))
     return "fake_tool"
+
 
 def parse(output):
     # If no function was invoked, return to user
@@ -57,10 +60,12 @@ def parse(output):
         return AgentFinish(return_values=inputs, log=str(tool_call))
     # Otherwise, return an agent action
     else:
-        logging.info(f"=====> The agentic flow will now call the function {name} with args {inputs}")
+        logging.info(f"=====> The agentic flow will now call the function {
+                     name} with args {inputs}")
         message = AIMessageChunk(content="", tool_call_chunks=[ToolCallChunk(name=name,
                                                                              id="1",
-                                                                             args=json.dumps(inputs),
+                                                                             args=json.dumps(
+                                                                                 inputs),
                                                                              index=1)])
         return AgentActionMessageLog(tool=name, tool_input=inputs, log="", message_log=[message]
                                      )
@@ -98,12 +103,13 @@ def {tool_function_name} {arguments_string}:
     Arguments:
     {arguments_string}
     \"\"\"
-    
+
     frame = inspect.currentframe()
     args, _, _, values = inspect.getargvalues(frame)
     param_dict = {{arg: values[arg] for arg in args}}
     execute_tool_url = f"{_base_url}/execute/{tool_name}"
-    response = requests.post(execute_tool_url, headers=headers, json=param_dict)
+    response = requests.post(
+        execute_tool_url, headers=headers, json=param_dict)
     if response.status_code == 200:
         response_json = response.json()
         return response_json["return value"]
@@ -127,16 +133,26 @@ def generate_dynamic_tool(tool: dict, scope: dict, _base_url: str):
 
 # execute the tools with the parameters
 def execute_tools_with_parameters(state: State):
+    logging.info(
+        f"=======>>> execute_tools_with_parameters. started <<<=======")
     tools = []
     scope = {}
 
     for tool in state["existing_tools"]:
-        tool_func = generate_dynamic_tool(tool, scope, base_url)
-        tools.append(tool_func)
+        try:
+            tool_func = generate_dynamic_tool(tool, scope, base_url)
+            tools.append(tool_func)
+        except Exception as e:
+            logging.error(f"existing_tools: Error while generate_dynamic_tool {
+                          tool['name']}: {e}")
 
     for tool in state["need_to_generate_tools"]:
-        tool_func = generate_dynamic_tool(tool, scope, base_url)
-        tools.append(tool_func)
+        try:
+            tool_func = generate_dynamic_tool(tool, scope, base_url)
+            tools.append(tool_func)
+        except Exception as e:
+            logging.error(f"need_to_generate_tools: Error while generate_dynamic_tool {
+                          tool['name']}: {e}")
 
     llm_with_tools = llm.bind_tools(tools=tools,
                                     strict=True)
@@ -144,16 +160,16 @@ def execute_tools_with_parameters(state: State):
     original_user_prompt = state["original_user_prompt"]
 
     agent = (
-            {
-                "user_prompt": lambda x: x["user_prompt"],
-                # Format agent scratchpad from intermediate steps
-                "agent_scratchpad": lambda x: format_to_openai_function_messages(
-                    x["intermediate_steps"]
-                ),
-            }
-            | execute_tools_with_parameters_chat_prompt_template
-            | llm_with_tools
-            | parse
+        {
+            "user_prompt": lambda x: x["user_prompt"],
+            # Format agent scratchpad from intermediate steps
+            "agent_scratchpad": lambda x: format_to_openai_function_messages(
+                x["intermediate_steps"]
+            ),
+        }
+        | execute_tools_with_parameters_chat_prompt_template
+        | llm_with_tools
+        | parse
     )
 
     agent_executor = AgentExecutor(agent=agent,
@@ -164,17 +180,16 @@ def execute_tools_with_parameters(state: State):
     response = agent_executor.invoke({"user_prompt": f"{original_user_prompt}"},
                                      config=None)
 
-    logger.info(f"=====> The agentic flow has finished executing the tools with parameters")
+    logger.info(
+        f"=====> The agentic flow has finished executing the tools with parameters")
 
     print(json.dumps(response, indent=4))
 
+    logging.info(f"=======>>> execute_tools_with_parameters. ended <<<=======")
     return {"messages_history": [{
         'role': 'ai',
         'content': json.dumps(response, indent=4)
     }]}
-
-
-import re
 
 
 def json_schema_to_python_type(json_schema_type: str) -> str:
