@@ -157,6 +157,7 @@ class TestCases(BaseModel):
     test_cases: List[TestCase]
 
 def generate_test_cases(task: str) -> List[Dict]:
+    """Generate test cases using LLM with structured output."""
     prompt = f"""
     For this task: {task}
     Generate 2 test cases in JSON format. Include edge cases and normal cases.
@@ -176,7 +177,7 @@ def generate_test_cases(task: str) -> List[Dict]:
             for t in result.test_cases]
 
 def get_wrapped_code(code: str, func_name: str) -> str:
-    # Create a wrapper script that imports and runs the generated function
+    """Create a wrapper script for testing the generated function."""
     wrapper_script = f"""
 # Generated function
 {code}
@@ -203,8 +204,48 @@ if __name__ == "__main__":
 """
     return wrapper_script
 
+def build_image(client, dockerfile: str = "DockerfileCode", tag: str = "isolated-validation"):
+    """Build Docker image for validation."""
+    try:
+        image, logs = client.images.build(
+            path=".",
+            dockerfile=dockerfile,
+            tag=tag
+        )
+        return image
+    except Exception as e:
+        logger.error(f"Error building Docker image: {e}")
+        raise
+
+def run_test(client, image_tag: str, script_path: Path, test_case: Dict) -> bool:
+    """Run a single test case in Docker container."""
+    try:
+        container = client.containers.run(
+            image_tag,
+            volumes={
+                str(script_path.absolute()): {
+                    'bind': '/app/llm_code_generated.py',
+                    'mode': 'ro'
+                },
+            },
+            command=[
+                json.dumps(test_case["params"]),
+                json.dumps(test_case["expected"])
+            ],
+            detach=True,
+        )
+
+        result = container.wait()
+        container.remove()
+
+        return result["StatusCode"] == 0
+    except Exception as e:
+        logger.error(f"Error running test in container: {e}")
+        raise
+
 
 def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: str, code: str) -> str:
+    """Validate generated code using Docker isolation and LLM-generated tests."""
     logger.info(f"Validating function code:\n{name}\n")
     logger.info(f"code:\n{code}\n")
     logger.info(f"description:\n{description}\n")
@@ -225,45 +266,18 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: s
         save_python_file(formatted_code, "llm_code_generated.py")
         script_dir = Path(".")
         script_path = script_dir / "llm_code_generated.py"
-        # Build the Docker image for the workflow
-        image, build_logs = client.images.build(
-            path=".",
-            dockerfile="DockerfileCode",
-            tag="isolated-validation"
-        )
+        build_image(client=client)
 
         for test in tests:
-            logger.info(f"test = {test}")
-            # Run the container with mounted script
-            container = client.containers.run(
-                "isolated-validation",
-                volumes={
-                    str(script_path.absolute()): {
-                        'bind': '/app/llm_code_generated.py',
-                        'mode': 'ro'
-                    },
-                },
-                command=[
-                    json.dumps(test["params"]),
-                    json.dumps(test["expected"])
-                ],
-                detach=True,
-            )
-
-            # Wait for the container to complete and get logs
-            result = container.wait()
-
-            # Clean up
-            container.remove()
-            if result["StatusCode"] == 1:
-                logger.info("The tests failed")
+            logger.info(f"Running test = {test}")
+            if not run_test(client, "isolated-validation", script_path, test):
+                logger.info("Test failed")
                 return False
-        logger.info("The tests passed")
+        logger.info("All tests passed")
         return True
 
     except Exception as e:
-        logger.error(str(e))
-        logger.info("Error in running the code")
+        logger.error(f"Validation failed: {e}")
         return False
 
 def tool_generalize_using_llm_as_a_coder(name: str, metadata: json, description: str, code: str) -> str:
