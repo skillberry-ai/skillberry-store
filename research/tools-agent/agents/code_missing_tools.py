@@ -252,7 +252,7 @@ def run_test(client, image_tag: str, script_path: Path, test_case: Dict) -> bool
         raise
 
 
-def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: str, code: str) -> str:
+def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: str, code: str) -> str:
     """Validate generated code using Docker isolation and LLM-generated tests."""
     logger.info(f"Validating function code:\n{name}\n")
     logger.info(f"code:\n{code}\n")
