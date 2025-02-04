@@ -25,7 +25,7 @@ execute_tools_with_parameters_chat_prompt_template = ChatPromptTemplate.from_mes
     ("system", "You are an helpful assistant"),
     ("system", "You are an expert in text analysis"),
     ("system", "Response in json format"),
-    ("user", "Answer the following question: {user_prompt}"),
+    ("{original_user_prompt}"),
     MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
 
@@ -140,6 +140,8 @@ def execute_tools_with_parameters(state: State):
 
     for tool in state["existing_tools"]:
         try:
+            logging.info(f"existing_tools: Generating local tool stub {
+                         tool['name']}")
             tool_func = generate_dynamic_tool(tool, scope, base_url)
             tools.append(tool_func)
         except Exception as e:
@@ -148,20 +150,33 @@ def execute_tools_with_parameters(state: State):
 
     for tool in state["need_to_generate_tools"]:
         try:
+            logging.info(f"existing_tools: Generating local tool stub {
+                         tool['name']}")
             tool_func = generate_dynamic_tool(tool, scope, base_url)
             tools.append(tool_func)
         except Exception as e:
             logging.error(f"need_to_generate_tools: Error while generate_dynamic_tool {
                           tool['name']}: {e}")
 
-    llm_with_tools = llm.bind_tools(tools=tools,
-                                    strict=True)
+    try:
+        logging.info(f"=====> Binding tools: {tools}")
+        llm_with_tools = llm.bind_tools(tools=tools,
+                                        strict=True)
+    except Exception as e:
+        logging.error(f"Error while binding tools: {e}")
+        return {"messages_history": [{
+            'role': 'ai',
+            'content': json.dumps({"output": "Sorry, failed to answer using blueberry (tools binding)"}, indent=4)}]}
 
     original_user_prompt = state["original_user_prompt"]
 
+    # print("*****************************")
+    # print(f"{original_user_prompt}")
+    # print("*****************************")
+
     agent = (
         {
-            "user_prompt": lambda x: x["user_prompt"],
+            "original_user_prompt": lambda x: x["original_user_prompt"],
             # Format agent scratchpad from intermediate steps
             "agent_scratchpad": lambda x: format_to_openai_function_messages(
                 x["intermediate_steps"]
@@ -172,13 +187,27 @@ def execute_tools_with_parameters(state: State):
         | parse
     )
 
-    agent_executor = AgentExecutor(agent=agent,
-                                   tools=tools,
-                                   verbose=True,
-                                   handle_parsing_errors=True)
+    try:
+        logging.info(f"=====> Creating AgentExecutor")
+        agent_executor = AgentExecutor(agent=agent,
+                                       tools=tools,
+                                       verbose=True,
+                                       handle_parsing_errors=True)
+    except Exception as e:
+        logging.error(f"Error while AgentExecutor: {e}")
+        return {"messages_history": [{
+            'role': 'ai',
+            'content': json.dumps({"output": "Sorry, failed to answer using blueberry (AgentExecutor)"}, indent=4)}]}
 
-    response = agent_executor.invoke({"user_prompt": f"{original_user_prompt}"},
-                                     config=None)
+    try:
+        logging.info(f"=====> Invoking agent_executor")
+        response = agent_executor.invoke({"original_user_prompt": f"{original_user_prompt}"},
+                                         config=None)
+    except Exception as e:
+        logging.error(f"Error while agent_executor.invoke: {e}")
+        return {"messages_history": [{
+            'role': 'ai',
+            'content': json.dumps({"output": "Sorry, failed to answer using blueberry (invoke agent_executor)"}, indent=4)}]}
 
     logger.info(
         f"=====> The agentic flow has finished executing the tools with parameters")
@@ -206,6 +235,7 @@ def json_schema_to_python_type(json_schema_type: str) -> str:
         "object": "dict",
         "list": "list",
         "array": "list",
+        "datetime": "datetime",
         "null": "None",
         "any": "object",  # 'any' can be mapped to 'object' or 'str', depending on use case
     }

@@ -26,7 +26,7 @@ class ChatRequest(BaseModel):
 @chat_api_server.post("/chat/completions")
 def chat_completion(request: ChatRequest):
     try:
-        response = stream_graph_updates(request.messages)
+        response = stream_graph_updates([list(request.messages)[-1]])
         final_response = json.loads(
             list(response)[0]['messages_history'][0]['content'])['output']
         logging.info(f"The response to the user prompt is: {final_response}")
@@ -69,6 +69,7 @@ def chat_completion(request: ChatRequest):
         raise HTTPException(
             status_code=response.status_code, detail=response.text)
     except Exception as e:
+        logging.error(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Health check endpoint

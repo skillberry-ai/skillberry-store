@@ -43,8 +43,15 @@ def define_tools_agentic_graph():
 
 def stream_graph_updates(input_messages: str):
 
+    # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+    # print(f"{input_messages}")
+    # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
+
     for event in tools_agentic_graph.stream({"original_user_prompt": input_messages,
                                              "messages_history": input_messages}):
+        # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+        # print(f"{input_messages}")
+        # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         for value in event.values():
             logging.info("==> stream_graph_updates: event.value: [%s]", value)
     return event.values()

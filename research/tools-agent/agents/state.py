@@ -5,7 +5,8 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 
 class State(TypedDict):
-    original_user_prompt: str
+
+    original_user_prompt: list[HumanMessage | AIMessage]
 
     suggested_tools: List[Dict[str, str]]
 
@@ -13,9 +14,3 @@ class State(TypedDict):
     need_to_generate_tools: List[Dict[str, str]]
 
     messages_history: Annotated[list[HumanMessage | AIMessage], add_messages]
-
-
-
-
-
-
