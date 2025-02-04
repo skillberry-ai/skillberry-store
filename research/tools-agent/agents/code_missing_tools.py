@@ -1,10 +1,11 @@
+import docker
 import inspect
 import io
 import json
 import logging
 from pathlib import Path
 import re
-from typing import Dict, List
+from typing import Any, Dict, List
 
 import requests
 from langchain_core.prompts import ChatPromptTemplate
@@ -148,6 +149,13 @@ def save_python_file(code: str, filename: str):
     except Exception as e:
         logger.error(f"Error saving file: {e}")
 
+class TestCase(BaseModel):
+    params: List[Any]
+    expected: Any
+
+class TestCases(BaseModel):
+    test_cases: List[TestCase]
+
 def generate_test_cases(task: str) -> List[Dict]:
     prompt = f"""
     For this task: {task}
@@ -161,8 +169,11 @@ def generate_test_cases(task: str) -> List[Dict]:
         {{"params": [0, 0, 0], "expected": 0}}
     ]
     """
-    test_cases_str = llm.invoke(prompt)
-    return json.loads(test_cases_str.content)
+    structured_llm = llm.with_structured_output(TestCases)
+    result = structured_llm.invoke(prompt)
+
+    return [{"params": t.params, "expected": t.expected}
+            for t in result.test_cases]
 
 def get_wrapped_code(code: str, func_name: str) -> str:
     # Create a wrapper script that imports and runs the generated function
@@ -199,12 +210,13 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: s
     logger.info(f"description:\n{description}\n")
     logger.info(f"metadata:\n{metadata}\n")
 
-    import docker
     # Create a Docker client
     client = docker.from_env()
     logger.info("Validating the python code...")
     # Generate test according to the metadata
-    tests = generate_test_cases(description)
+    # tests = generate_test_cases(description)
+    tests = generate_test_cases(metadata["description"])
+    logger.info(f"Generated tests:\n{tests}\n")
     wrapper_script = get_wrapped_code(code, name)
     try:
         # format the content
@@ -221,7 +233,7 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: s
         )
 
         for test in tests:
-            logger.info(f"test = {test}, {json.dumps(test['params'])}")
+            logger.info(f"test = {test}")
             # Run the container with mounted script
             container = client.containers.run(
                 "isolated-validation",
@@ -243,20 +255,16 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: s
 
             # Clean up
             container.remove()
-            if result["StatusCode"] == 0:
-                logger.info("The tests passed")
-                return True
-            else:
+            if result["StatusCode"] == 1:
                 logger.info("The tests failed")
                 return False
+        logger.info("The tests passed")
+        return True
 
     except Exception as e:
         logger.error(str(e))
         logger.info("Error in running the code")
         return False
-
-    return True
-
 
 def tool_generalize_using_llm_as_a_coder(name: str, metadata: json, description: str, code: str) -> str:
     logger.info(f"Validating function code:\n{name}\n")
