@@ -54,21 +54,18 @@ def code_missing_tools(state: State):
             continue
 
         # (4) add the tool to the tool repository
-        logging.info(f"code_missing_tools: adding tool {
-                     name} to the tool repository")
+        logging.info(f"code_missing_tools: adding tool {name} to the tool repository")
         success = add_tool_to_repo(name=generalize_tool_response["name"],
                                    metadata=generalize_tool_response["metadata"],
                                    description=generalize_tool_response["description"],
                                    code=generalize_tool_response["code"])
         if not success:
-            logger.error(f"add_tool_to_repo: tool {
-                         name} upload to repo failed")
+            logger.error(f"add_tool_to_repo: tool {name} upload to repo failed")
             continue
         else:
             # the name of tools at this stage are added with the .py because we support creation of .py code files
             # only. TODO fix this to support multiple languages and packaging --- later stage
-            need_to_generate_tool["name"] = f'{
-                need_to_generate_tool["name"]}.py'
+            need_to_generate_tool["name"] = f'{need_to_generate_tool["name"]}.py'
     logging.info(f"=======>>> code_missing_tools. ended <<<=======")
 
 
@@ -86,8 +83,7 @@ def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> 
         logger.info(f"add_tool_to_repo: tool {name} uploaded successfully")
         return True
     else:
-        logger.error(f"add_tool_to_repo: tool {
-                     name} upload failed with status code {response.status_code}")
+        logger.error(f"add_tool_to_repo: tool {name} upload failed with status code {response.status_code}")
         return False
 
 
@@ -272,18 +268,14 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: s
 
         for word in unwanted_words:
             if word in description or word in metadata_text or word in code:
-                logger.warning(f"validate_tool_using_llm_as_a_coder: Tool '{
-                               name}' contains unwanted word '{word}'")
+                logger.warning(f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted word '{word}'")
                 return False  # Stop validation if any unwanted word is found
-
-#         return True  # Passed validation
 
     except Exception as e:
         logger.error(
             f"validate_tool_using_llm_as_a_coder: Unexpected error while validating tool '{name}': {e}")
         return False  # Fail-safe return in case of an unexpected error
 
-    # TODO: implement more checks
     # Create a Docker client
     client = docker.from_env()
     logger.info("Validating the python code...")
@@ -312,6 +304,8 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: s
     except Exception as e:
         logger.error(f"Validation failed: {e}")
         return False
+    
+    # TODO: implement more checks
 
 def tool_generalize_using_llm_as_a_coder(name: str, metadata: json, description: str, code: str) -> str:
     logger.info(f"Validating function code:\n{name}\n")
