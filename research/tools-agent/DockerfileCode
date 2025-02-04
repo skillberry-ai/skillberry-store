@@ -1,0 +1,14 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add llm_utils to Python path
+ENV PYTHONPATH="${PYTHONPATH}:/app"
+
+ENTRYPOINT ["python", "llm_code_generated.py"]

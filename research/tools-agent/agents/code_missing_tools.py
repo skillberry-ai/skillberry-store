@@ -2,7 +2,9 @@ import inspect
 import io
 import json
 import logging
+from pathlib import Path
 import re
+from typing import Dict, List
 
 import requests
 from langchain_core.prompts import ChatPromptTemplate
@@ -39,7 +41,6 @@ def code_missing_tools(state: State):
                                                                         code=tool_response.code)
 
         # (3) validate the function and make sure it is valid to be added to the repo
-        # TODO: implement
         success = validate_tool_using_llm_as_a_coder(name=generalize_tool_response["name"],
                                                      metadata=generalize_tool_response["metadata"],
                                                      description=generalize_tool_response["description"],
@@ -139,6 +140,58 @@ def code_python_function_using_llm_as_a_coder(name: str, description) -> str:
 
     return response, metadata
 
+def save_python_file(code: str, filename: str):
+    try:
+        with open(filename, 'w') as f:
+            f.write(code)
+        logger.info(f"Successfully saved code to {filename}")
+    except Exception as e:
+        logger.error(f"Error saving file: {e}")
+
+def generate_test_cases(task: str) -> List[Dict]:
+    prompt = f"""
+    For this task: {task}
+    Generate 2 test cases in JSON format. Include edge cases and normal cases.
+    Each test case should have 'params' (list of parameters) and 'expected' (expected output).
+    Return only the JSON array.
+
+    Example format:
+    [
+        {{"params": [1, 2, 3], "expected": 6}},
+        {{"params": [0, 0, 0], "expected": 0}}
+    ]
+    """
+    test_cases_str = llm.invoke(prompt)
+    return json.loads(test_cases_str.content)
+
+def get_wrapped_code(code: str, func_name: str) -> str:
+    # Create a wrapper script that imports and runs the generated function
+    wrapper_script = f"""
+# Generated function
+{code}
+
+# Get command line arguments and run function
+if __name__ == "__main__":
+    import sys
+    import json
+
+    # Read input parameters from command line
+    params = json.loads(sys.argv[1])
+    expected = json.loads(sys.argv[2])
+
+    # Run function with parameters
+    result = {func_name}(*params)
+
+    # Compare result
+    if result == expected:
+        print(json.dumps({{"success": True, "result": result}}))
+        sys.exit(0)
+    else:
+        print(json.dumps({{"success": False, "result": result, "expected": expected}}))
+        sys.exit(1)
+"""
+    return wrapper_script
+
 
 def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: str, code: str) -> str:
     logger.info(f"Validating function code:\n{name}\n")
@@ -146,7 +199,62 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: json, description: s
     logger.info(f"description:\n{description}\n")
     logger.info(f"metadata:\n{metadata}\n")
 
-    # TODO: implement
+    import docker
+    # Create a Docker client
+    client = docker.from_env()
+    logger.info("Validating the python code...")
+    # Generate test according to the metadata
+    tests = generate_test_cases(description)
+    wrapper_script = get_wrapped_code(code, name)
+    try:
+        # format the content
+        import black
+        formatted_code = black.format_str(wrapper_script, mode=black.FileMode())
+        save_python_file(formatted_code, "llm_code_generated.py")
+        script_dir = Path(".")
+        script_path = script_dir / "llm_code_generated.py"
+        # Build the Docker image for the workflow
+        image, build_logs = client.images.build(
+            path=".",
+            dockerfile="DockerfileCode",
+            tag="isolated-validation"
+        )
+
+        for test in tests:
+            logger.info(f"test = {test}, {json.dumps(test['params'])}")
+            # Run the container with mounted script
+            container = client.containers.run(
+                "isolated-validation",
+                volumes={
+                    str(script_path.absolute()): {
+                        'bind': '/app/llm_code_generated.py',
+                        'mode': 'ro'
+                    },
+                },
+                command=[
+                    json.dumps(test["params"]),
+                    json.dumps(test["expected"])
+                ],
+                detach=True,
+            )
+
+            # Wait for the container to complete and get logs
+            result = container.wait()
+
+            # Clean up
+            container.remove()
+            if result["StatusCode"] == 0:
+                logger.info("The tests passed")
+                return True
+            else:
+                logger.info("The tests failed")
+                return False
+
+    except Exception as e:
+        logger.error(str(e))
+        logger.info("Error in running the code")
+        return False
+
     return True
 
 
