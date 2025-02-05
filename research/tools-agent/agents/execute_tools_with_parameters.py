@@ -148,7 +148,7 @@ def execute_tools_with_parameters(state: State):
             logging.error(f"existing_tools: Error while generate_dynamic_tool {
                           tool['name']}: {e}")
 
-    for tool in state["need_to_generate_tools"]:
+    for tool in state["generated_tools"]:
         try:
             logging.info(f"existing_tools: Generating local tool stub {
                          tool['name']}")

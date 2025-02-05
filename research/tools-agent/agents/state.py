@@ -12,5 +12,6 @@ class State(TypedDict):
 
     existing_tools: List[Dict[str, str]]
     need_to_generate_tools: List[Dict[str, str]]
+    generated_tools: List[Dict[str, str]]
 
     messages_history: Annotated[list[HumanMessage | AIMessage], add_messages]

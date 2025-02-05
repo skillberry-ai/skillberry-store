@@ -2,12 +2,36 @@ import json
 import logging
 import re
 import tempfile
+import datetime
 from typing import Dict, Any, AnyStr
 
 import docker
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
+
+
+def arg_convert(arg):
+    arg_str = str(arg)  # Ensure the argument is treated as a string
+
+    if arg_str.isdigit():
+        return int(arg_str)
+
+    try:
+        return float(arg_str)
+    except ValueError:
+        pass
+
+    try:
+        parts = arg_str.split(':')
+        if len(parts) == 2:
+            return datetime.datetime.strptime(arg_str, '%H:%M').time()
+        elif len(parts) == 3:
+            return datetime.datetime.strptime(arg_str, '%H:%M:%S').time()
+    except ValueError:
+        pass
+
+    return f'"{arg_str}"'
 
 
 def extract_python_function_name_and_parameters(content: str) -> (str, str):
@@ -18,9 +42,11 @@ def extract_python_function_name_and_parameters(content: str) -> (str, str):
     if match:
         _name = match.group(1) if match else None
         param_string = match.group(2).strip()
-        _parameters = [param.split(":")[0].strip() for param in param_string.split(",") if param.strip()]
+        _parameters = [param.split(":")[0].strip()
+                       for param in param_string.split(",") if param.strip()]
 
     return _name, _parameters
+
 
 class FileExecutor:
     def __init__(self, filename: str, file_content: AnyStr, file_metadata: str):
@@ -34,10 +60,12 @@ class FileExecutor:
             self.metadata = json.loads(file_metadata)
         except Exception as e:
             logger.error(f"Error parsing metadata: {e}")
-            raise HTTPException(status_code=400, detail=f"Error parsing metadata: {e}")
+            raise HTTPException(
+                status_code=400, detail=f"Error parsing metadata: {e}")
 
         self.client = docker.from_env()
-        logger.info(f"Initialized file file executor for file: {self.filename}")
+        logger.info(f"Initialized file file executor for file: {
+                    self.filename}")
 
     def execute_file(self, parameters: Dict[str, Any]) -> dict:
         """
@@ -49,13 +77,15 @@ class FileExecutor:
         Returns:
             dict: A message with the execution result or error message.
         """
-        logger.info(f"Executing file: {self.filename} with parameters: {parameters}")
+        logger.info(f"Executing file: {
+                    self.filename} with parameters: {parameters}")
 
         try:
             return self.based_on_programming_language(parameters=parameters)
         except Exception as e:
             logger.error(f"Error executing file: {e.detail}")
-            raise HTTPException(status_code=500, detail=f"Error executing file: {e.detail}")
+            raise HTTPException(
+                status_code=500, detail=f"Error executing file: {e.detail}")
 
     def based_on_programming_language(self, parameters):
         """
@@ -66,7 +96,8 @@ class FileExecutor:
         elif self.metadata.get("programming_language") == "bash":
             return self.execute_bash_file(parameters=parameters)
         else:
-            raise HTTPException(status_code=400, detail="Unsupported programming language")
+            raise HTTPException(
+                status_code=400, detail="Unsupported programming language")
 
     def execute_bash_file(self, parameters):
         """
@@ -80,15 +111,18 @@ class FileExecutor:
         """
 
         if self.metadata.get("packaging_format") != "code":
-            raise HTTPException(status_code=400, detail="Unsupported packaging format")
+            raise HTTPException(
+                status_code=400, detail="Unsupported packaging format")
 
         logger.info(f"Executing python code inside a Docker container")
 
         try:
-            function_name, parameter_definitions = extract_python_function_name_and_parameters(self.content)
+            function_name, parameter_definitions = extract_python_function_name_and_parameters(
+                self.content)
             # format docker command from function name and parameters
             if function_name is None:
-                raise HTTPException(status_code=400, detail="No function definition found in the file")
+                raise HTTPException(
+                    status_code=400, detail="No function definition found in the file")
 
             with tempfile.NamedTemporaryFile(delete=False, mode='w') as temp_file:
                 temp_file.write(self.content + f"""
@@ -96,12 +130,27 @@ class FileExecutor:
 import json
 import argparse
 import sys
+import datetime
 
 parser = argparse.ArgumentParser(description="Run a function with arguments")
-parser.add_argument('args', nargs=argparse.REMAINDER, help="Arguments to pass to the function")
+parser.add_argument('args', nargs=argparse.REMAINDER,
+                    help="Arguments to pass to the function")
 args = parser.parse_args()
 def try_convert(arg):
-    return (int(arg) if arg.isdigit() else (float(arg) if arg.replace('.', '', 1).isdigit() else (datetime.datetime.strptime(arg, '%H:%M').time() if len(arg.split(':')) == 2 else (datetime.datetime.strptime(arg, '%H:%M:%S').time() if len(arg.split(':')) == 3 else arg))))
+    if arg.isdigit():
+        return int(arg)
+    try:
+        return float(arg)
+    except ValueError:
+        pass
+    try:
+        if len(arg.split(':')) == 2:
+            return datetime.datetime.strptime(arg, '%H:%M').time()
+        elif len(arg.split(':')) == 3:
+            return datetime.datetime.strptime(arg, '%H:%M:%S').time()
+    except ValueError:
+        pass
+    return f'{{arg}}'
 converted_args = [try_convert(arg) for arg in args.args]
 result = {function_name}(*converted_args)
 print(json.dumps(result))
@@ -112,14 +161,17 @@ print(json.dumps(result))
             command = f"python /tmp/function.py "
             for parameter_definition in parameter_definitions:
                 if parameters.get(parameter_definition) is None:
-                    raise HTTPException(status_code=400, detail=f"Missing parameter: {parameter_definition}")
-                command += f" {parameters[parameter_definition]}"
+                    raise HTTPException(status_code=400, detail=f"Missing parameter: {
+                                        parameter_definition}")
+                converted_arg = arg_convert(parameters[parameter_definition])
+                command += f"{converted_arg} "
 
             # Create and run a container to execute the Python file
             container = self.client.containers.run(
                 "python:3.9",  # Using the official Python 3.9 image
                 command=command,
-                volumes={temp_file_path: {'bind': f'/tmp/function.py', 'mode': 'ro'}},
+                volumes={temp_file_path: {
+                    'bind': f'/tmp/function.py', 'mode': 'ro'}},
                 remove=True,
                 detach=False,
                 stderr=True,
@@ -132,4 +184,5 @@ print(json.dumps(result))
             return {"return value": f"{return_value}"}
         except Exception as e:
             logger.error(f"Error executing Python file: {e.detail}")
-            raise HTTPException(status_code=500, detail=f"Error executing Python file: {e.detail}")
+            raise HTTPException(
+                status_code=500, detail=f"Error executing Python file: {e.detail}")
