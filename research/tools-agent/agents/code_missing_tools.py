@@ -93,15 +93,16 @@ class CodePythonFunctionResponseJsonSchema(BaseModel):
     docstring: str = Field(
         description="The function docstring that includes input parameters, and the return value")
     code: str = Field(
-        description="The function code including the cocstring without examples or usage")
+        description="The function code including the docstring without examples or usage")
 
 
 code_python_function_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an expert in writing code in python"),
-    ("system", "Always add meaningful docstrings and documentation to functions"),
-    ("system", "The docstrings always include function description, input parameters with types, and the return value"),
-    ("system", "Include the docstrings as part of the function code"),
+    ("system", "Always add meaningful docstring and elaborated documentation to functions"),
+    ("system", "The docstring always include function description, input parameters with types, and the return value"),
+    ("system", "Include the docstring as part of the function code"),
     ("system", "Do not add examples or usage, answer with only python code"),
+    ("system", "The return value of the functions should always be a string"),
     ("system", """An example for a good function with docstring looks like this:
 def calculate_rectangle_area(length, width):
     \"\"\"

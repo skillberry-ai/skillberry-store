@@ -60,6 +60,8 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
         file_handler.delete_file(filename)
         # Delete associated description as well
         descriptions.delete_description(filename)
+        # Delete associated metadata as well
+        metadata.delete_metadata(filename)
         return {"message": f"File and its description '{filename}' deleted successfully."}
 
     return file_handler
@@ -78,7 +80,8 @@ def descriptions_api(app, tags: str):
     @app.get("/description/search", response_model=list[dict[str, str | Any]], tags=tags)
     def search_description(search_term: str, max_numer_of_results: int = 5, similarity_threshold: float = 1):
         logger.info(f"Request to search descriptions for term: {search_term}")
-        search_results = descriptions.search_description(search_term=search_term, k=max_numer_of_results)
+        search_results = descriptions.search_description(
+            search_term=search_term, k=max_numer_of_results)
 
         search_results_filtered = [search_result for search_result in search_results if
                                    search_result["similarity_score"] <= similarity_threshold]
@@ -118,12 +121,14 @@ def metadata_api(app, tags: str):
 def execute_api(app, tags: str, file_handler: FileHandler, metadata: Metadata):
     @app.post("/execute/{filename}", tags=tags)
     def execute_file(filename: str, parameters: Optional[Dict[str, Any]] = None):
-        logger.info(f"Request to execute file: {filename} with parameters: {parameters}")
+        logger.info(f"Request to execute file: {
+                    filename} with parameters: {parameters}")
 
         file_content = file_handler.read_file(filename, raw_content=True)
         file_metadata = metadata.read_metadata(filename)
 
-        file_executor = FileExecutor(filename=filename, file_content=file_content, file_metadata=file_metadata)
+        file_executor = FileExecutor(
+            filename=filename, file_content=file_content, file_metadata=file_metadata)
         return file_executor.execute_file(parameters=parameters)
 
 
@@ -164,7 +169,9 @@ def create_app():
     )
     descriptions = descriptions_api(app=app, tags=["descriptions"])
     metadata = metadata_api(app=app, tags=["metadata"])
-    file_handler = file_api(app=app, descriptions=descriptions, metadata=metadata, tags=["files"])
-    execute_api(app=app, metadata=metadata, file_handler=file_handler, tags=["execution"])
+    file_handler = file_api(
+        app=app, descriptions=descriptions, metadata=metadata, tags=["files"])
+    execute_api(app=app, metadata=metadata,
+                file_handler=file_handler, tags=["execution"])
 
     return app

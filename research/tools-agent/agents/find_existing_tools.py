@@ -20,22 +20,27 @@ def find_existing_tools(state: State):
     logging.info(f"=======>>> find_existing_tools. started <<<=======")
     existing_tools = []
     need_to_generate_tools = []
+
     for suggested_tool in state["suggested_tools"]:
         name = suggested_tool["name"]
         description = suggested_tool["description"]
+
         logger.info(f"find_existing_tools called for tool: {name}")
         # issue get request against the url with `search_term` equals to the name of the suggested tool
         found_tools = search_tools(
             base_url, name, description, max_numer_of_results, similarity_threshold)
+
         if found_tools is not None and len(found_tools) > 0:
             logger.info("find_existing_tools returned: %s", found_tools)
+
             for found_tool in found_tools:
                 logger.info(f"Found existing tool: {found_tool}")
+
                 found_tool["search_term_name"] = name
                 found_tool["search_term_description"] = description
                 found_tool["name"] = found_tool["filename"]
                 # append only if the tool is not already in the list of existing tools
-                if found_tool not in existing_tools:
+                if not any(tool["name"] == found_tool["name"] for tool in existing_tools):
                     existing_tools.append(found_tool)
         else:
             # Can't find the tools, adding the tools to the list of need_to_generate_tools tools
