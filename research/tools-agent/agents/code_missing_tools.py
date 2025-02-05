@@ -23,6 +23,10 @@ headers = {"Accept": "application/json"}
 def code_missing_tools(state: State):
     logging.info(f"=======>>> code_missing_tools. starts <<<=======")
     need_to_generate_tools = state["need_to_generate_tools"]
+    generated_tools = []
+
+    logging.info(f"code_missing_tools: need_to_generate_tools: {
+                 need_to_generate_tools}")
     for need_to_generate_tool in need_to_generate_tools:
         name = need_to_generate_tool["name"]
         logging.info(f"code_missing_tools: generating tool {name}")
@@ -67,7 +71,13 @@ def code_missing_tools(state: State):
             # only. TODO fix this to support multiple languages and packaging --- later stage
             need_to_generate_tool["name"] = f'{
                 need_to_generate_tool["name"]}.py'
+
+        #  (5) add the tool to the generated tools list
+        generated_tools.append(need_to_generate_tool)
+
     logging.info(f"=======>>> code_missing_tools. ended <<<=======")
+    # (6) update the state with the generated tools
+    return {"generated_tools": generated_tools}
 
 
 def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> bool:
