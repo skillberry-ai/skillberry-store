@@ -1,3 +1,4 @@
+import sys
 import docker
 import inspect
 import io
@@ -12,6 +13,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from agents.state import State
+
+# TODO: Find better wat to import FileExecutor
+service_dir = Path(__file__).parent.parent.parent / 'tools-service'
+sys.path.append(str(service_dir))
+from modules.file_executor import FileExecutor
 from llm.common import llm
 
 logger = logging.getLogger(__name__)
@@ -149,14 +155,6 @@ def code_python_function_using_llm_as_a_coder(name: str, description) -> str:
 
     return response, metadata
 
-def save_python_file(code: str, filename: str):
-    try:
-        with open(filename, 'w') as f:
-            f.write(code)
-        logger.info(f"Successfully saved code to {filename}")
-    except Exception as e:
-        logger.error(f"Error saving file: {e}")
-
 class TestCase(BaseModel):
     params: List[Any]
     expected: Any
@@ -168,8 +166,9 @@ def generate_test_cases(task: str) -> List[Dict]:
     """Generate test cases using LLM with structured output."""
     prompt = f"""
     For this task: {task}
-    Generate 2 test cases in JSON format. Include edge cases and normal cases.
-    Each test case should have 'params' (list of parameters) and 'expected' (expected output).
+    Generate 2 test cases in JSON format. Include normal cases.
+    If the parameter is of type string it shouldn't have leading or trailing spaces. 
+    Each test case should have 'params' (list of values) and 'expected' (expected output).
     Return only the JSON array.
 
     Example format:
@@ -183,73 +182,6 @@ def generate_test_cases(task: str) -> List[Dict]:
 
     return [{"params": t.params, "expected": t.expected}
             for t in result.test_cases]
-
-def get_wrapped_code(code: str, func_name: str) -> str:
-    """Create a wrapper script for testing the generated function."""
-    wrapper_script = f"""
-# Generated function
-{code}
-
-# Get command line arguments and run function
-if __name__ == "__main__":
-    import sys
-    import json
-
-    # Read input parameters from command line
-    params = json.loads(sys.argv[1])
-    expected = json.loads(sys.argv[2])
-
-    # Run function with parameters
-    result = {func_name}(*params)
-
-    # Compare result
-    if result == expected:
-        print(json.dumps({{"success": True, "result": result}}))
-        sys.exit(0)
-    else:
-        print(json.dumps({{"success": False, "result": result, "expected": expected}}))
-        sys.exit(1)
-"""
-    return wrapper_script
-
-def build_image(client, dockerfile: str = "DockerfileCode", tag: str = "isolated-validation"):
-    """Build Docker image for validation."""
-    try:
-        image, logs = client.images.build(
-            path=".",
-            dockerfile=dockerfile,
-            tag=tag
-        )
-        return image
-    except Exception as e:
-        logger.error(f"Error building Docker image: {e}")
-        raise
-
-def run_test(client, image_tag: str, script_path: Path, test_case: Dict) -> bool:
-    """Run a single test case in Docker container."""
-    try:
-        container = client.containers.run(
-            image_tag,
-            volumes={
-                str(script_path.absolute()): {
-                    'bind': '/app/llm_code_generated.py',
-                    'mode': 'ro'
-                },
-            },
-            command=[
-                json.dumps(test_case["params"]),
-                json.dumps(test_case["expected"])
-            ],
-            detach=True,
-        )
-
-        result = container.wait()
-        container.remove()
-
-        return result["StatusCode"] == 0
-    except Exception as e:
-        logger.error(f"Error running test in container: {e}")
-        raise
 
 
 def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: str, code: str) -> str:
@@ -277,26 +209,17 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
         return False  # Fail-safe return in case of an unexpected error
 
     # Create a Docker client
-    client = docker.from_env()
     logger.info("Validating the python code...")
     # Generate test according to the metadata
-    # tests = generate_test_cases(description)
     tests = generate_test_cases(metadata["description"])
     logger.info(f"Generated tests:\n{tests}\n")
-    wrapper_script = get_wrapped_code(code, name)
     try:
-        # format the content
-        import black
-        formatted_code = black.format_str(wrapper_script, mode=black.FileMode())
-        save_python_file(formatted_code, "llm_code_generated.py")
-        script_dir = Path(".")
-        script_path = script_dir / "llm_code_generated.py"
-        build_image(client=client)
-
+        file_executor = FileExecutor(filename="llm_code_generated.py", file_content=code, file_metadata=json.dumps(metadata))
         for test in tests:
-            logger.info(f"Running test = {test}")
-            if not run_test(client, "isolated-validation", script_path, test):
-                logger.info("Test failed")
+            parameters = dict(zip(metadata['parameters']["required"], test["params"]))
+            res = file_executor.execute_file(parameters)
+            if res["return value"] != json.dumps(test['expected']):
+                logger.info("The following Test failed:\n{test}")
                 return False
         logger.info("All tests passed")
         return True
