@@ -32,6 +32,10 @@ headers = {"Accept": "application/json"}
 def code_missing_tools(state: State):
     logging.info(f"=======>>> code_missing_tools. starts <<<=======")
     need_to_generate_tools = state["need_to_generate_tools"]
+    generated_tools = []
+
+    logging.info(f"code_missing_tools: need_to_generate_tools: {
+                 need_to_generate_tools}")
     for need_to_generate_tool in need_to_generate_tools:
         name = need_to_generate_tool["name"]
         logging.info(f"code_missing_tools: generating tool {name}")
@@ -71,8 +75,15 @@ def code_missing_tools(state: State):
         else:
             # the name of tools at this stage are added with the .py because we support creation of .py code files
             # only. TODO fix this to support multiple languages and packaging --- later stage
-            need_to_generate_tool["name"] = f'{need_to_generate_tool["name"]}.py'
+            need_to_generate_tool["name"] = f'{
+                need_to_generate_tool["name"]}.py'
+
+        #  (5) add the tool to the generated tools list
+        generated_tools.append(need_to_generate_tool)
+
     logging.info(f"=======>>> code_missing_tools. ended <<<=======")
+    # (6) update the state with the generated tools
+    return {"generated_tools": generated_tools}
 
 
 def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> bool:
@@ -97,15 +108,16 @@ class CodePythonFunctionResponseJsonSchema(BaseModel):
     docstring: str = Field(
         description="The function docstring that includes input parameters, and the return value")
     code: str = Field(
-        description="The function code including the cocstring without examples or usage")
+        description="The function code including the docstring without examples or usage")
 
 
 code_python_function_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an expert in writing code in python"),
-    ("system", "Always add meaningful docstrings and documentation to functions"),
-    ("system", "The docstrings always include function description, input parameters with types, and the return value"),
-    ("system", "Include the docstrings as part of the function code"),
+    ("system", "Always add meaningful docstring and elaborated documentation to functions"),
+    ("system", "The docstring always include function description, input parameters with types, and the return value"),
+    ("system", "Include the docstring as part of the function code"),
     ("system", "Do not add examples or usage, answer with only python code"),
+    ("system", "The return value of the functions should always be a string"),
     ("system", """An example for a good function with docstring looks like this:
 def calculate_rectangle_area(length, width):
     \"\"\"

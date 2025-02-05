@@ -5,17 +5,13 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 
 class State(TypedDict):
-    original_user_prompt: str
+
+    original_user_prompt: list[HumanMessage | AIMessage]
 
     suggested_tools: List[Dict[str, str]]
 
     existing_tools: List[Dict[str, str]]
     need_to_generate_tools: List[Dict[str, str]]
+    generated_tools: List[Dict[str, str]]
 
     messages_history: Annotated[list[HumanMessage | AIMessage], add_messages]
-
-
-
-
-
-

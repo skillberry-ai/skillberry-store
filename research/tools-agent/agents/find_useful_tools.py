@@ -15,8 +15,10 @@ find_useful_tools_chat_prompt_template = ChatPromptTemplate([
     ("system", "For each tool and function that you suggest, "
                "you specify exactly the name of the tool in hungarian notation and a crisp description of the tool"),
     ("system", "Do not suggest tools and functions that performs error handling"),
+    ("system", "Do not suggest tools and functions that are general helper tools"),
     ("system", "Do not suggest tools and functions that requires keys or access to external services"),
-    ("system", "suggest simple tools and function. Do not suggest tools and functions that are complicated"),
+    ("system", "Suggest minimal amount of tools. Suggest simple tools and simple functions"),
+    ("system", "Do not suggest tools and functions that are complicated"),
     ("system", "Response only using json format"),
     ("user",
      "List deterministic tools and functions that helps to response to the prompt: \"{user_prompt}\""),
@@ -41,7 +43,7 @@ def find_useful_tools(state: State):
 
     find_useful_tools_chain = find_useful_tools_chat_prompt_template | structured_llm
     response = find_useful_tools_chain.invoke(
-        {"user_prompt": state["original_user_prompt"]})
+        {"user_prompt": state["original_user_prompt"][0]["content"]})
     logger.info("find_useful_tools returned: %s", response)
     logging.info(f"=======>>> find_useful_tools. ended <<<=======")
     return {"suggested_tools": response.suggested_tools}

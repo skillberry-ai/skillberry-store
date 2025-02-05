@@ -15,14 +15,14 @@ invoke_config = None
 
 if debug is True:
     logging.basicConfig(level=logging.DEBUG,
-                        format='%(asctime)s %(levelname)s %(name)s %(message)s')
+                        format="%(asctime)s %(levelname)s %(name)s [%(filename)s:%(lineno)d] %(message)s")
     set_debug(True)
     set_verbose(True)
     invoke_config = {'callbacks': [ConsoleCallbackHandler()]}
     print("Debug mode enabled")
 else:
     logging.basicConfig(level=logging.INFO,
-                        format='%(asctime)s %(levelname)s %(name)s %(message)s')
+                        format="%(asctime)s %(levelname)s %(name)s [%(filename)s:%(lineno)d] %(message)s")
     set_debug(False)
     set_verbose(False)
     invoke_config = None

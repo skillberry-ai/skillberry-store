@@ -88,7 +88,7 @@ class DescriptionVectorIndex:
         """
 
         # search for the filename index in the files_to_faiss_index_map
-        index = list(self.files_to_faiss_index_map.values()).index(filename)
+        index = list(self.files_to_faiss_index_map).index(filename)
         if index == -1:
             raise ValueError(f"Filename '{filename}' not found in the index.")
 
@@ -143,7 +143,7 @@ class DescriptionVectorIndex:
         """
 
         # search for the filename index in the files_to_faiss_index_map
-        index = list(self.files_to_faiss_index_map.values()).index(filename)
+        index = list(self.files_to_faiss_index_map).index(filename)
         if index == -1:
             raise ValueError(f"Filename '{filename}' not found in the index.")
 
