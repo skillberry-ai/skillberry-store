@@ -41,14 +41,15 @@ def define_tools_agentic_graph():
 # graph_visualization(graph)
 
 
-def stream_graph_updates(input_messages: str):
+def stream_graph_updates(chat_history: str, original_user_prompt: str):
 
     # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
     # print(f"{input_messages}")
     # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 
-    for event in tools_agentic_graph.stream({"original_user_prompt": input_messages,
-                                             "messages_history": input_messages}):
+    for event in tools_agentic_graph.stream({"original_user_prompt": original_user_prompt,
+                                             "chat_history": chat_history,
+                                             "messages_history": chat_history}):
         # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         # print(f"{input_messages}")
         # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")

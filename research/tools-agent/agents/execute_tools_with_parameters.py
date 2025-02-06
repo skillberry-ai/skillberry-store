@@ -25,7 +25,7 @@ execute_tools_with_parameters_chat_prompt_template = ChatPromptTemplate.from_mes
     ("system", "You are an helpful assistant"),
     ("system", "You are an expert in text analysis"),
     ("system", "Response in json format"),
-    ("{original_user_prompt}"),
+    ("{chat_history}"),
     MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
 
@@ -63,7 +63,8 @@ def parse(output):
         return AgentFinish(return_values=inputs, log=str(tool_call))
     # Otherwise, return an agent action
     else:
-        logging.info(f"=====> The agentic flow will now call the function {name} with args {inputs}")
+        logging.info(f"=====> The agentic flow will now call the function {
+                     name} with args {inputs}")
         message = AIMessageChunk(content="", tool_call_chunks=[ToolCallChunk(name=name,
                                                                              id="1",
                                                                              args=json.dumps(
@@ -142,19 +143,23 @@ def execute_tools_with_parameters(state: State):
 
     for _tool in state["existing_tools"]:
         try:
-            logging.info(f"existing_tools: Generating local tool stub {_tool['name']}")
+            logging.info(f"existing_tools: Generating local tool stub {
+                         _tool['name']}")
             tool_func = generate_dynamic_tool(_tool, scope, base_url)
             tools.append(tool_func)
         except Exception as e:
-            logging.error(f"existing_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
+            logging.error(f"existing_tools: Error while generate_dynamic_tool {
+                          _tool['name']}: {e}")
 
     for _tool in state["generated_tools"]:
         try:
-            logging.info(f"existing_tools: Generating local tool stub {_tool['name']}")
+            logging.info(f"existing_tools: Generating local tool stub {
+                         _tool['name']}")
             tool_func = generate_dynamic_tool(_tool, scope, base_url)
             tools.append(tool_func)
         except Exception as e:
-            logging.error(f"need_to_generate_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
+            logging.error(f"need_to_generate_tools: Error while generate_dynamic_tool {
+                          _tool['name']}: {e}")
 
     try:
         logging.info(f"=====> Binding tools: {tools}")
@@ -166,15 +171,15 @@ def execute_tools_with_parameters(state: State):
             'role': 'ai',
             'content': json.dumps({"output": "Sorry, failed to answer using blueberry (tools binding)"}, indent=4)}]}
 
-    original_user_prompt = state["original_user_prompt"]
+    chat_history = state["chat_history"]
 
     # print("*****************************")
-    # print(f"{original_user_prompt}")
+    # print(f"{chat_history}")
     # print("*****************************")
 
     agent = (
         {
-            "original_user_prompt": lambda x: x["original_user_prompt"],
+            "chat_history": lambda x: x["chat_history"],
             # Format agent scratchpad from intermediate steps
             "agent_scratchpad": lambda x: format_to_openai_function_messages(
                 x["intermediate_steps"]
@@ -199,7 +204,7 @@ def execute_tools_with_parameters(state: State):
 
     try:
         logging.info(f"=====> Invoking agent_executor")
-        response = agent_executor.invoke({"original_user_prompt": f"{original_user_prompt}"},
+        response = agent_executor.invoke({"chat_history": f"{chat_history}"},
                                          config=None)
     except Exception as e:
         logging.error(f"Error while agent_executor.invoke: {e}")

@@ -1,8 +1,10 @@
 import json
 import logging
 import time
+import re
 
 from fastapi import FastAPI, HTTPException
+from langchain.schema import HumanMessage
 from pydantic import BaseModel
 import requests
 
@@ -23,10 +25,17 @@ class ChatRequest(BaseModel):
 # Endpoint for chat completions
 
 
+def get_last_user_message(chat_log):
+    matches = re.findall(r'User: ([^\\n]+)', str(chat_log))
+    return {"content": matches[-1], "role": "user"} if matches else chat_log
+
+
 @chat_api_server.post("/chat/completions")
 def chat_completion(request: ChatRequest):
     try:
-        response = stream_graph_updates([list(request.messages)[-1]])
+        chat_log = request.messages
+        last_user_message = get_last_user_message(chat_log)
+        response = stream_graph_updates(chat_log, [last_user_message])
         final_response = json.loads(
             list(response)[0]['messages_history'][0]['content'])['output']
         logging.info(f"The response to the user prompt is: {final_response}")
