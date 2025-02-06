@@ -10,40 +10,50 @@ if "RITS_API_KEY" not in os.environ:
     print("Additional info can be found on #rits-community slack")
     exit(1)
 
+os.environ["BLUEBERRY_TOOLS_AGENT_API_URL"] = "http://9.148.245.32:7000"
 os.environ["RITS_API_URL"] = "https://inference-3scale-apicast-production.apps.rits.fmaas.res.ibm.com"
+os.environ["RITS_PROXY_API_URL"] = "http://9.148.245.32:4000"
 
-RITS_API_URL = os.environ["RITS_API_URL"]
-RITS_API_KEY = os.environ["RITS_API_KEY"]
+rits_api_url = os.environ["RITS_API_URL"]
+rits_proxy_api_url = os.environ["RITS_PROXY_API_URL"]
+rits_api_key = os.environ["RITS_API_KEY"]
 
-# MODEL_PROVIDER = "ibm-granite"
-# MODEL = "granite-3.1-8b-instruct"
+selected_model = "meta-llama/llama-3-3-70b-instruct"
 
-MODEL_PROVIDER = "meta-llama"
-MODEL = "llama-3-1-70b-instruct"
-# MODEL = "Llama-3.1-8B-Instruct"
-
-# MODEL_PROVIDER = "mistralai"
-# MODEL = "mistral-large-instruct-2407"
-
-BASE_URL = f"{RITS_API_URL}/{MODEL.replace('.', '-').lower()}/v1"
-TEMPERATURE = 0
+temperature = 0
+use_rits_proxy = True
 
 logger.info(f"\n\n"
             f"==> 0. Configuration:\n"
             f"==> =================\n"
-            f"==> Using model: {MODEL_PROVIDER}/{MODEL}\n"
-            f"==> EndPoint: {BASE_URL}\n"
-            f"==> Temperature: {TEMPERATURE}\n"
+            f"==> Using model: {selected_model}\n"
+            f"==> Temperature: {temperature}\n"
+            f"==> Using rits proxy: {use_rits_proxy}\n"
             f"==> =================\n\n")
 
-llm = ChatOpenAI(
-    model=f"{MODEL_PROVIDER}/{MODEL}",
-    temperature=TEMPERATURE,
-    max_retries=2,
-    api_key='/',
-    base_url=BASE_URL,
-    default_headers={'RITS_API_KEY': RITS_API_KEY},
-)
+if use_rits_proxy:
+    model_name = f"rits/{selected_model}".replace('.', '-').lower()
+
+    llm = ChatOpenAI(
+        model=f"{model_name}",
+        temperature=temperature,
+        max_retries=2,
+        api_key=rits_api_key,
+        base_url=rits_proxy_api_url
+    )
+else:
+    model = selected_model.split(
+        '/')[1].replace('.', '-').lower()
+    url = f"{rits_api_url}/{model}/v1"
+
+    llm = ChatOpenAI(
+        model=f"{model}",
+        temperature=temperature,
+        max_retries=2,
+        api_key='/',
+        base_url=url,
+        default_headers={'RITS_API_KEY': rits_api_key}
+    )
 
 
 def check_llm_communication():

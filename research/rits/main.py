@@ -16,21 +16,20 @@ import json
 
 logger = logging.getLogger(__name__)
 
-debug=False
-invoke_config=None
+debug = False
+invoke_config = None
 
 if debug is True:
     logging.basicConfig(level=logging.DEBUG)
     set_debug(True)
     set_verbose(True)
-    invoke_config={'callbacks': [ConsoleCallbackHandler()]}
+    invoke_config = {'callbacks': [ConsoleCallbackHandler()]}
     print("Debug mode enabled")
 else:
     logging.basicConfig(level=logging.ERROR)
     set_debug(False)
     set_verbose(False)
-    invoke_config=None
-
+    invoke_config = None
 
 if "RITS_API_KEY" not in os.environ:
     print("RITS_API_KEY environment variable not set")
@@ -75,7 +74,9 @@ llm = ChatOpenAI(
 ############## Asking the basic question ###############
 
 USER_QUESTION = "How many 'b' characters are in the text: 'This is the blablabla best big-blue blueberry project'?"
-#USER_PROMPT = "Is 1299709 a prime number?"
+
+
+# USER_PROMPT = "Is 1299709 a prime number?"
 
 
 class ResponseJsonSchema(BaseModel):
@@ -83,6 +84,7 @@ class ResponseJsonSchema(BaseModel):
     answer: str = Field(description="The answer to the question")
     suggested_functions: list = Field(description="Names of deterministic functions "
                                                   "that can be used to answer the question")
+
 
 structured_llm = llm.with_structured_output(schema=ResponseJsonSchema,
                                             method="function_calling",
@@ -97,28 +99,30 @@ prompt = ChatPromptTemplate.from_messages([
 
 chain = prompt | structured_llm
 
-print (f"==> 1. Asking the question:\n"
-       f"    {USER_QUESTION}\n"
-       f"    > Note: Using structured output, without tools\n"
-       f"    > Note: In addition, asking for supportive tools\n"
-       f"==> =============================================\n\n")
+print(f"==> 1. Asking the question:\n"
+      f"    {USER_QUESTION}\n"
+      f"    > Note: Using structured output, without tools\n"
+      f"    > Note: In addition, asking for supportive tools\n"
+      f"==> =============================================\n\n")
 
-print (f"==> Invoking chain\n")
+print(f"==> Invoking chain\n")
 response = chain.invoke({"user_prompt": f"{USER_QUESTION}"}, config=invoke_config)
-print (f"==> Chain completed\n")
-print (json.dumps(response.model_dump(), indent=4))
+print(f"==> Chain completed\n")
+print(json.dumps(response.model_dump(), indent=4))
 
 TOOL_NAME = response.suggested_functions[0]
 
-print (f"==> =============================================\n\n")
+print(f"==> =============================================\n\n")
 
 ############## Build the relevant tools  ###############
-BUILDING_TOOL_PROMPT = f"A generic python function called '{TOOL_NAME}' to assist in "\
-              f"answering the question: \"{USER_QUESTION}\""
+BUILDING_TOOL_PROMPT = f"A generic python function called '{TOOL_NAME}' to assist in " \
+                       f"answering the question: \"{USER_QUESTION}\""
+
 
 class ResponseJsonSchema(BaseModel):
     description: str = Field(description="The Docstrings of the function")
     code: str = Field(description="The function code including the Docstrings without examples or usage")
+
 
 structured_llm = llm.with_structured_output(schema=ResponseJsonSchema,
                                             method="function_calling",
@@ -137,15 +141,15 @@ prompt = ChatPromptTemplate.from_messages([
 
 chain = prompt | structured_llm
 
-print (f"==> 2. Write code for the following:\n"
-       f"    {BUILDING_TOOL_PROMPT}\n"
-       f"    > Note: Using structured output, without tools\n"
-       f"==> =============================================\n\n")
+print(f"==> 2. Write code for the following:\n"
+      f"    {BUILDING_TOOL_PROMPT}\n"
+      f"    > Note: Using structured output, without tools\n"
+      f"==> =============================================\n\n")
 
-print (f"==> Invoking chain\n")
+print(f"==> Invoking chain\n")
 response = chain.invoke({"user_prompt": f"{BUILDING_TOOL_PROMPT}"}, config=invoke_config)
-print (f"==> Chain completed\n")
-print (json.dumps(response.model_dump(), indent=4))
+print(f"==> Chain completed\n")
+print(json.dumps(response.model_dump(), indent=4))
 
 TOOL_DESCRIPTION = response.description
 TOOL_CODE = response.code
@@ -157,8 +161,8 @@ namespace = {}
 
 # Wrap the generated code with langchain @tool decorator
 TOOL_CODE_WITH_LANGCHAIN_DECORATOR = (f"from langchain_core.tools import tool\n\n"
-                            f"@tool\n\n"
-                            f"{TOOL_CODE}")
+                                      f"@tool\n\n"
+                                      f"{TOOL_CODE}")
 exec(TOOL_CODE_WITH_LANGCHAIN_DECORATOR, namespace)
 
 # Now extract the function from the namespace
@@ -169,16 +173,17 @@ generated_tool = namespace[TOOL_NAME]
 
 # Try to call the tool to make sure it is valid
 try:
-    return_value = generated_tool.invoke({"text":"This is the blablabla best big-blue blueberry project", "char":"b"})
+    return_value = generated_tool.invoke({"text": "This is the blablabla best big-blue blueberry project", "char": "b"})
     if return_value != 8:
         raise ValueError(f"Tool {TOOL_NAME} is not working as expected")
-    print (f"==> The function is valid\n")
+    print(f"==> The function is valid\n")
 except  Exception as e:
-    print (f"==> =============================================\n\n")
-    print (f"==> The function is invalid\n"
-           f"==> {e}\n"
-           f"==> =============================================\n\n")
+    print(f"==> =============================================\n\n")
+    print(f"==> The function is invalid\n"
+          f"==> {e}\n"
+          f"==> =============================================\n\n")
     exit(1)
+
 
 ############## USING THE FUNCTION TO ANSWER THE QUESTION ###############
 
@@ -196,14 +201,15 @@ def parse(output):
         return AgentFinish(return_values=inputs, log=str(tool_call))
     # Otherwise, return an agent action
     else:
-        print (f"=====> The agentic flow will now call the function {name} with args {inputs}")
-        message = AIMessageChunk(content="",tool_call_chunks=[ToolCallChunk(name=name,
-                                                                                      id="1",
-                                                                                      args=json.dumps(inputs),
-                                                                                      index=1)])
+        print(f"=====> The agentic flow will now call the function {name} with args {inputs}")
+        message = AIMessageChunk(content="", tool_call_chunks=[ToolCallChunk(name=name,
+                                                                             id="1",
+                                                                             args=json.dumps(inputs),
+                                                                             index=1)])
         return AgentActionMessageLog(
             tool=name, tool_input=inputs, log="", message_log=[message]
         )
+
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", "You are an helpful assistant"),
@@ -218,16 +224,16 @@ llm_with_tools = llm.bind_tools(tools=tools,
                                 strict=True)
 
 agent = (
-    {
-        "user_prompt": lambda x: x["user_prompt"],
-        # Format agent scratchpad from intermediate steps
-        "agent_scratchpad": lambda x: format_to_openai_function_messages(
-            x["intermediate_steps"]
-        ),
-    }
-    | prompt
-    | llm_with_tools
-    | parse
+        {
+            "user_prompt": lambda x: x["user_prompt"],
+            # Format agent scratchpad from intermediate steps
+            "agent_scratchpad": lambda x: format_to_openai_function_messages(
+                x["intermediate_steps"]
+            ),
+        }
+        | prompt
+        | llm_with_tools
+        | parse
 )
 
 agent_executor = AgentExecutor(agent=agent,
@@ -235,14 +241,14 @@ agent_executor = AgentExecutor(agent=agent,
                                verbose=debug,
                                handle_parsing_errors=True)
 
-print (f"==> 3. Asking the question using tools:\n"
-       f"    {USER_QUESTION}\n"
-       f"    > Note: Using function calling with generated tool: {TOOL_NAME}\n"
-       f"==> =============================================\n\n")
-print (f"==> Invoking agent\n")
+print(f"==> 3. Asking the question using tools:\n"
+      f"    {USER_QUESTION}\n"
+      f"    > Note: Using function calling with generated tool: {TOOL_NAME}\n"
+      f"==> =============================================\n\n")
+print(f"==> Invoking agent\n")
 response = agent_executor.invoke({"user_prompt": f"{USER_QUESTION}"},
                                  config=invoke_config)
-print (f"==> Agent completed\n")
-print (json.dumps(response, indent=4))
+print(f"==> Agent completed\n")
+print(json.dumps(response, indent=4))
 
-print (f"==> =============================================\n\n")
+print(f"==> =============================================\n\n")

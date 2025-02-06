@@ -3,6 +3,7 @@ from unittest.mock import patch, Mock
 import pytest
 import requests
 
+
 class TestToolsServiceApi:
 
     @patch('agents.tools_service_api.requests.post')
@@ -67,7 +68,6 @@ class TestToolsServiceApi:
         result = execute_tool("http://example.com", "tool_name", "invalid_params")
         assert result is None
 
-
     def test_execute_tool_with_large_parameters(self):
         """
         Test execute_tool with a very large parameters dictionary.
@@ -95,7 +95,7 @@ class TestToolsServiceApi:
         result = execute_tool("http://example.com", long_name, {"param": "value"})
         assert result is None
 
-    #def test_execute_tool_with_tools_repo(self):
+    # def test_execute_tool_with_tools_repo(self):
     #    """
     #    Test execute_tool with tools repo.
     #    """

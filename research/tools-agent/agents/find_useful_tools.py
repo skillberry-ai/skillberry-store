@@ -27,8 +27,8 @@ find_useful_tools_chat_prompt_template = ChatPromptTemplate([
 
 class FindingToolsResponseJsonSchema(BaseModel):
     suggested_tools: List[Dict[str, str]] = Field(
-        description="A list of dictionaries, each dictionary containing exactly two fields."
-                    "(1) The name of the function and (2) the description of the function"
+        description='List of dictionaries, each dictionary contains exactly two key-value pairs:\n'
+                    '"name" - the name of the function.\n "description" - the description of the function\n'
     )
 
 

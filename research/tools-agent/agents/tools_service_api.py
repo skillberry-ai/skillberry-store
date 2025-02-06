@@ -7,6 +7,7 @@ headers = {
     "Content-Type": "application/json"
 }
 
+
 def search_tools(_base_url: str,
                  tool_name: str,
                  tool_description: str,

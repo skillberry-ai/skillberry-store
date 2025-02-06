@@ -19,15 +19,22 @@ post_file_url = f"{base_url}/file/"
 
 headers = {"Accept": "application/json"}
 
+# A general variable that allows (or disallows) to generate tools dynamically by the agent
+generate_tools_dynamically = False
+
 
 def code_missing_tools(state: State):
     logging.info(f"=======>>> code_missing_tools. starts <<<=======")
     need_to_generate_tools = state["need_to_generate_tools"]
     generated_tools = []
 
-    logging.info(f"code_missing_tools: need_to_generate_tools: {
-                 need_to_generate_tools}")
+    logging.info(f"code_missing_tools: need_to_generate_tools: {need_to_generate_tools}")
     for need_to_generate_tool in need_to_generate_tools:
+
+        if not generate_tools_dynamically:
+            logger.info(f"!!! generate_tools_dynamically is False: tool {name} will not be generated !!!")
+            continue
+
         name = need_to_generate_tool["name"]
         logging.info(f"code_missing_tools: generating tool {name}")
         # (1) create missing tools using LLM-as-coder (based on names and descriptions)
@@ -56,21 +63,18 @@ def code_missing_tools(state: State):
             continue
 
         # (4) add the tool to the tool repository
-        logging.info(f"code_missing_tools: adding tool {
-                     name} to the tool repository")
+        logging.info(f"code_missing_tools: adding tool {name} to the tool repository")
         success = add_tool_to_repo(name=generalize_tool_response["name"],
                                    metadata=generalize_tool_response["metadata"],
                                    description=generalize_tool_response["description"],
                                    code=generalize_tool_response["code"])
         if not success:
-            logger.error(f"add_tool_to_repo: tool {
-                         name} upload to repo failed")
+            logger.error(f"add_tool_to_repo: tool {name} upload to repo failed")
             continue
         else:
             # the name of tools at this stage are added with the .py because we support creation of .py code files
             # only. TODO fix this to support multiple languages and packaging --- later stage
-            need_to_generate_tool["name"] = f'{
-                need_to_generate_tool["name"]}.py'
+            need_to_generate_tool["name"] = f'{need_to_generate_tool["name"]}.py'
 
         #  (5) add the tool to the generated tools list
         generated_tools.append(need_to_generate_tool)
@@ -94,8 +98,7 @@ def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> 
         logger.info(f"add_tool_to_repo: tool {name} uploaded successfully")
         return True
     else:
-        logger.error(f"add_tool_to_repo: tool {
-                     name} upload failed with status code {response.status_code}")
+        logger.error(f"add_tool_to_repo: tool {name} upload failed with status code {response.status_code}")
         return False
 
 
@@ -178,8 +181,7 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
 
         for word in unwanted_words:
             if word in description or word in metadata_text or word in code:
-                logger.warning(f"validate_tool_using_llm_as_a_coder: Tool '{
-                               name}' contains unwanted word '{word}'")
+                logger.warning(f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted word '{word}'")
                 return False  # Stop validation if any unwanted word is found
 
         return True  # Passed validation
