@@ -34,18 +34,30 @@ def arg_convert(arg):
     return f'"{arg_str}"'
 
 
-def extract_python_function_name_and_parameters(content: str) -> (str, str):
+def extract_python_function_name_and_parameters(content: str) -> tuple[str, list[str]]:
     """
-    Extracts the function name and parameters from python code content
-    """
-    match = re.match(r"def\s+([a-zA-Z_][a-zA-Z_0-9]*)\s*\((.*?)\)", content)
-    if match:
-        _name = match.group(1) if match else None
-        param_string = match.group(2).strip()
-        _parameters = [param.split(":")[0].strip()
-                       for param in param_string.split(",") if param.strip()]
+    Extracts the function name and parameters from a Python function definition.
 
-    return _name, _parameters
+    Args:
+        content (str): The function definition as a string.
+
+    Returns:
+        tuple[str, list[str]]: Function name and a list of parameter names.
+    """
+    match = re.search(
+        r"def\s+([a-zA-Z_][a-zA-Z_0-9]*)\s*\((.*?)\)\s*:", content, re.DOTALL)
+
+    if match:
+        _name = match.group(1)
+        param_string = match.group(2).strip()
+
+        # Handle empty parameters correctly
+        _parameters = ([param.split(":")[0].strip() for param in param_string.split(",") if param.strip()]
+                       if param_string else [])
+
+        return _name, _parameters
+
+    return None, []  # Return None and empty list if no match is found
 
 
 class FileExecutor:
@@ -183,6 +195,6 @@ print(json.dumps(result))
             logger.info(f"Python code executed successfully: {return_value}")
             return {"return value": f"{return_value}"}
         except Exception as e:
-            logger.error(f"Error executing Python file: {e.detail}")
+            logger.error(f"Error executing Python file: {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error executing Python file: {e.detail}")
+                status_code=500, detail=f"Error executing Python file: {e}")
