@@ -30,12 +30,11 @@ def code_missing_tools(state: State):
 
     logging.info(f"code_missing_tools: need_to_generate_tools: {need_to_generate_tools}")
     for need_to_generate_tool in need_to_generate_tools:
-
+        name = need_to_generate_tool["name"]
         if not generate_tools_dynamically:
             logger.info(f"!!! generate_tools_dynamically is False: tool {name} will not be generated !!!")
             continue
 
-        name = need_to_generate_tool["name"]
         logging.info(f"code_missing_tools: generating tool {name}")
         # (1) create missing tools using LLM-as-coder (based on names and descriptions)
         name = need_to_generate_tool["name"]
