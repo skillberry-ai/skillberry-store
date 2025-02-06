@@ -9,9 +9,9 @@ from cookies import set_cookie, get_cookie
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-os.environ["BLUEBERRY_TOOLS_AGENT_API_URL"] = "http://blueberry.sl.cloud9.ibm.com:7000"
+os.environ["BLUEBERRY_TOOLS_AGENT_API_URL"] = "http://9.148.245.32:7000"
 os.environ["RITS_API_URL"] = "https://inference-3scale-apicast-production.apps.rits.fmaas.res.ibm.com"
-os.environ["RITS_PROXY_API_URL"] = "http://blueberry.sl.cloud9.ibm.com:4000"
+os.environ["RITS_PROXY_API_URL"] = "http://9.148.245.32:4000"
 
 rits_api_url = os.environ["RITS_API_URL"]
 rits_proxy_api_url = os.environ["RITS_PROXY_API_URL"]
@@ -61,7 +61,7 @@ def connect_to_llm(_assistant: int = 0):
             model_name = st.session_state.granite_model
 
         if "use_rits_blueberry_proxy" in st.session_state and st.session_state.use_rits_blueberry_proxy is True:
-            if model_name is not 'blueberry' :
+            if model_name != 'blueberry' :
                 model_name = f"rits/{model_name}".replace('.', '-').lower()
 
         # If there are no changes in the llm, return existing one
@@ -70,7 +70,7 @@ def connect_to_llm(_assistant: int = 0):
                 st.session_state.llm[_assistant].model_name == model_name):
             return st.session_state.llm[_assistant]
 
-        if model_name is 'blueberry':
+        if model_name == 'blueberry':
             llm = ChatOpenAI(
                 model=f"{model_name}",
                 temperature=st.session_state.temperature,
