@@ -49,6 +49,8 @@ def fake_tool():
 def parse(output):
     # If no function was invoked, return to user
     if "tool_calls" not in output.additional_kwargs:
+        logging.info(
+            f"=====> The agentic flow will now return to the user (no tool_calls)")
         return AgentFinish(return_values={"output": output.content}, log=output.content)
 
     # Parse out the *first* tool to call
@@ -60,6 +62,7 @@ def parse(output):
         inputs = {}
     # If the Response function was invoked, return to the user with the function inputs
     if name == "Response":
+        logging.info(f"=====> Response function was invoked - AgentFinish")
         return AgentFinish(return_values=inputs, log=str(tool_call))
     # Otherwise, return an agent action
     else:
