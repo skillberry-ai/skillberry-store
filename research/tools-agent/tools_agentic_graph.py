@@ -55,4 +55,5 @@ def stream_graph_updates(chat_history: str, original_user_prompt: str):
         # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         for value in event.values():
             logging.info("==> stream_graph_updates: event.value: [%s]", value)
-    return event.values()
+    values = event.values()
+    return values

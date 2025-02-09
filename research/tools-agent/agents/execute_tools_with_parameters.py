@@ -2,6 +2,7 @@ import re
 import json
 import logging
 import inspect
+import time
 import requests
 
 from langchain.agents import AgentExecutor
@@ -24,8 +25,7 @@ headers = {"Accept": "application/json"}
 execute_tools_with_parameters_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an helpful assistant"),
     ("system", "You are an expert in text analysis"),
-    ("system", "Response in json format"),
-    ("{chat_history}"),
+    "{chat_history}",
     MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
 
@@ -68,11 +68,13 @@ def parse(output):
     else:
         logging.info(
             f"=====> The agentic flow will now call the function {name} with args {inputs}")
+        id = int(time.time())
         message = AIMessageChunk(content="", tool_call_chunks=[ToolCallChunk(name=name,
-                                                                             id="1",
+                                                                             id=str(
+                                                                                 id),
                                                                              args=json.dumps(
                                                                                  inputs),
-                                                                             index=1)])
+                                                                             index=id)])
         return AgentActionMessageLog(tool=name, tool_input=inputs, log="", message_log=[message])
 
 
@@ -171,9 +173,13 @@ def execute_tools_with_parameters(state: State):
                     f"need_to_generate_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
     try:
-        logging.info(f"=====> Binding tools: {tools}")
-        llm_with_tools = llm.bind_tools(tools=tools,
-                                        strict=True)
+        if tools == []:
+            logging.info(f"=====> No tools, not binding")
+            llm_with_tools = llm
+        else:
+            logging.info(f"=====> Binding tools: {tools}")
+            llm_with_tools = llm.bind_tools(tools=tools,
+                                            strict=True)
     except Exception as e:
         logging.error(f"Error while binding tools: {e}")
         return {"messages_history": [{
@@ -204,6 +210,7 @@ def execute_tools_with_parameters(state: State):
         agent_executor = AgentExecutor(agent=agent,
                                        tools=tools,
                                        verbose=True,
+                                       return_intermediate_steps=True,
                                        handle_parsing_errors=True)
     except Exception as e:
         logging.error(f"Error while AgentExecutor: {e}")
@@ -224,12 +231,18 @@ def execute_tools_with_parameters(state: State):
     logger.info(
         f"=====> The agentic flow has finished executing the tools with parameters")
 
-    print(json.dumps(response, indent=4))
+    try:
+        output_content = json.dumps(response["output"], indent=4)
+    except Exception as e:
+        logging.error(f"Error while json.dumps: {e}")
+        output_content = "Sorry, failed to answer using blueberry (json.dumps)"
+
+    logger.info(f"output_content: {output_content}")
 
     logging.info(f"=======>>> execute_tools_with_parameters. ended <<<=======")
     return {"messages_history": [{
         'role': 'ai',
-        'content': json.dumps(response, indent=4)
+        'content': output_content
     }]}
 
 
@@ -257,7 +270,7 @@ def json_schema_to_python_type(json_schema_type: str) -> str:
 
 
 def generate_function_arguments_from_metadata(metadata: str):
-    parsed_info = json.loads(metadata)
+    parsed_info = metadata
     function_arguments = f"("
     parameters = parsed_info['parameters']['properties']
     param_strs = []
