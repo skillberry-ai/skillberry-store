@@ -61,7 +61,7 @@ def extract_python_function_name_and_parameters(content: str) -> tuple[str, list
 
 
 class FileExecutor:
-    def __init__(self, filename: str, file_content: AnyStr, file_metadata: str):
+    def __init__(self, filename: str, file_content: AnyStr, file_metadata: dict):
         """
         Initialize the PythonExecutor with the directory path.
         """
@@ -69,14 +69,15 @@ class FileExecutor:
         self.content = file_content
 
         try:
-            self.metadata = json.loads(file_metadata)
+            self.metadata = file_metadata
         except Exception as e:
             logger.error(f"Error parsing metadata: {e}")
             raise HTTPException(
                 status_code=400, detail=f"Error parsing metadata: {e}")
 
         self.client = docker.from_env()
-        logger.info(f"Initialized file file executor for file: {self.filename}")
+        logger.info(
+            f"Initialized file file executor for file: {self.filename}")
 
     def execute_file(self, parameters: Dict[str, Any]) -> dict:
         """
@@ -88,14 +89,15 @@ class FileExecutor:
         Returns:
             dict: A message with the execution result or error message.
         """
-        logger.info(f"Executing file: {self.filename} with parameters: {parameters}")
+        logger.info(
+            f"Executing file: {self.filename} with parameters: {parameters}")
 
         try:
             return self.based_on_programming_language(parameters=parameters)
         except Exception as e:
-            logger.error(f"Error executing file: {e.detail}")
+            logger.error(f"Error executing file: {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error executing file: {e.detail}")
+                status_code=500, detail=f"Error executing file: {e}")
 
     def based_on_programming_language(self, parameters):
         """
@@ -171,7 +173,8 @@ print(json.dumps(result))
             command = f"python /tmp/function.py "
             for parameter_definition in parameter_definitions:
                 if parameters.get(parameter_definition) is None:
-                    raise HTTPException(status_code=400, detail=f"Missing parameter: {parameter_definition}")
+                    raise HTTPException(
+                        status_code=400, detail=f"Missing parameter: {parameter_definition}")
                 converted_arg = arg_convert(parameters[parameter_definition])
                 command += f"{converted_arg} "
 

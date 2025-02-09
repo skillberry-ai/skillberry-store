@@ -21,7 +21,7 @@ post_file_url = f"{base_url}/file/"
 headers = {"Accept": "application/json"}
 
 # A general variable that allows (or disallows) to generate tools dynamically by the agent
-generate_tools_dynamically = False
+generate_tools_dynamically = True
 
 
 def code_missing_tools(state: State):
@@ -29,11 +29,13 @@ def code_missing_tools(state: State):
     need_to_generate_tools = state["need_to_generate_tools"]
     generated_tools = []
 
-    logging.info(f"code_missing_tools: need_to_generate_tools: {need_to_generate_tools}")
+    logging.info(
+        f"code_missing_tools: need_to_generate_tools: {need_to_generate_tools}")
     for need_to_generate_tool in need_to_generate_tools:
         name = need_to_generate_tool["name"]
         if not generate_tools_dynamically:
-            logger.info(f"!!! generate_tools_dynamically is False: tool {name} will not be generated !!!")
+            logger.info(
+                f"!!! generate_tools_dynamically is False: tool {name} will not be generated !!!")
             continue
 
         success = generate_tool(need_to_generate_tool)
@@ -60,7 +62,8 @@ def generate_tool(need_to_generate_tool: dict) -> bool:
     logging.info(f"description: {description}")
 
     # (1) create tool using LLM-as-coder (based on the tool name and description)
-    tool_response, metadata = code_python_function_using_llm_as_a_coder(name, description)
+    tool_response, metadata = code_python_function_using_llm_as_a_coder(
+        name, description)
 
     # (2) generalize and remove PII from the tool
     # TODO: implement
@@ -87,7 +90,8 @@ def generate_tool(need_to_generate_tool: dict) -> bool:
                                description=generalize_tool_response["description"],
                                code=generalize_tool_response["code"])
     if not success:
-        logger.error(f"generate_tool: add_tool_to_repo: tool {name} upload to repo failed")
+        logger.error(
+            f"generate_tool: add_tool_to_repo: tool {name} upload to repo failed")
         return False
 
     return True
@@ -107,7 +111,8 @@ def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> 
         logger.info(f"add_tool_to_repo: tool {name} uploaded successfully")
         return True
     else:
-        logger.error(f"add_tool_to_repo: tool {name} upload failed with status code {response.status_code}")
+        logger.error(
+            f"add_tool_to_repo: tool {name} upload failed with status code {response.status_code}")
         return False
 
 
