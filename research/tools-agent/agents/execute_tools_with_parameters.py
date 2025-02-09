@@ -63,15 +63,13 @@ def parse(output):
         return AgentFinish(return_values=inputs, log=str(tool_call))
     # Otherwise, return an agent action
     else:
-        logging.info(f"=====> The agentic flow will now call the function {
-                     name} with args {inputs}")
+        logging.info(f"=====> The agentic flow will now call the function {name} with args {inputs}")
         message = AIMessageChunk(content="", tool_call_chunks=[ToolCallChunk(name=name,
                                                                              id="1",
                                                                              args=json.dumps(
                                                                                  inputs),
                                                                              index=1)])
-        return AgentActionMessageLog(tool=name, tool_input=inputs, log="", message_log=[message]
-                                     )
+        return AgentActionMessageLog(tool=name, tool_input=inputs, log="", message_log=[message])
 
 
 def create_function_from_string(code: str, func_name: str, scope: dict):
@@ -143,23 +141,19 @@ def execute_tools_with_parameters(state: State):
 
     for _tool in state["existing_tools"]:
         try:
-            logging.info(f"existing_tools: Generating local tool stub {
-                         _tool['name']}")
+            logging.info(f"existing_tools: Generating local tool stub {_tool['name']}")
             tool_func = generate_dynamic_tool(_tool, scope, base_url)
             tools.append(tool_func)
         except Exception as e:
-            logging.error(f"existing_tools: Error while generate_dynamic_tool {
-                          _tool['name']}: {e}")
+            logging.error(f"existing_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
     for _tool in state["generated_tools"]:
         try:
-            logging.info(f"existing_tools: Generating local tool stub {
-                         _tool['name']}")
+            logging.info(f"existing_tools: Generating local tool stub {_tool['name']}")
             tool_func = generate_dynamic_tool(_tool, scope, base_url)
             tools.append(tool_func)
         except Exception as e:
-            logging.error(f"need_to_generate_tools: Error while generate_dynamic_tool {
-                          _tool['name']}: {e}")
+            logging.error(f"need_to_generate_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
     try:
         logging.info(f"=====> Binding tools: {tools}")

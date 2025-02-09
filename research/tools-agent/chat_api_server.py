@@ -8,6 +8,7 @@ from langchain.schema import HumanMessage
 from pydantic import BaseModel
 import requests
 
+from agents.code_missing_tools import generate_tool
 from tools_agentic_graph import stream_graph_updates, tools_agentic_graph
 
 # Define the API
@@ -82,6 +83,21 @@ def chat_completion(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # Health check endpoint
+
+
+@chat_api_server.post("/generate_tool/{name}")
+def api_generate_tool(tool_name: str, tool_description: str):
+    try:
+        need_to_generate_tool = {
+            "name": tool_name,
+            "description": tool_description
+        }
+        success = generate_tool(need_to_generate_tool)
+        if success:
+            return {"message": f"Tool {tool_name} generated successfully"}
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @chat_api_server.get("/health")
