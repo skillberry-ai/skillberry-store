@@ -1,9 +1,11 @@
+import json
 import logging
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 
+from modules.lifecycle import LifecycleState, LifecycleManager
 from modules.metadata import Metadata
 from modules.description import Description
 from modules.description_vector_index import DescriptionVectorIndex
@@ -50,8 +52,9 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
         file_response = file_handler.write_file(file)
         if file_description:
             descriptions.write_description(file.filename, file_description)
-        if metadata:
-            metadata.write_metadata(file.filename, file_metadata)
+        if file_metadata:
+            metadata_as_dict = json.loads(file_metadata)
+            metadata.write_metadata(file.filename, metadata_as_dict)
         return file_response
 
     @app.delete("/file/{filename}", tags=tags)
@@ -67,7 +70,7 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
     return file_handler
 
 
-def descriptions_api(app, tags: str):
+def descriptions_api(app, metadata, tags: str):
     descriptions_directory = get_descriptions_directory()
     descriptions = Description(descriptions_directory=descriptions_directory,
                                vector_index=DescriptionVectorIndex)
@@ -78,14 +81,32 @@ def descriptions_api(app, tags: str):
         return descriptions.update_description(filename, new_description)
 
     @app.get("/description/search", response_model=list[dict[str, str | Any]], tags=tags)
-    def search_description(search_term: str, max_numer_of_results: int = 5, similarity_threshold: float = 1):
+    def search_description(search_term: str,
+                           max_numer_of_results: int = 5,
+                           similarity_threshold: float = 1,
+                           lifecycle_state: LifecycleState = LifecycleState.APPROVED):
         logger.info(f"Request to search descriptions for term: {search_term}")
-        search_results = descriptions.search_description(
-            search_term=search_term, k=max_numer_of_results)
+        matched_files = descriptions.search_description(
+            search_term=search_term,
+            k=max_numer_of_results)
 
-        search_results_filtered = [search_result for search_result in search_results if
-                                   search_result["similarity_score"] <= similarity_threshold]
-        return search_results_filtered
+        filtered_matched_files = [matched_file for matched_file in matched_files if
+                                  matched_file["similarity_score"] <= similarity_threshold]
+
+        # if we are requested to limit the search to a specific lifecycle state, we filter the results
+        if lifecycle_state is not LifecycleState.ANY:
+            lifecycle_filtered_matched_files = []
+            for matched_file in filtered_matched_files:
+                file_metadata = metadata.read_metadata(matched_file["filename"])
+                if file_metadata is None:
+                    continue
+                life_cycle_manager = LifecycleManager(file_metadata)
+                if life_cycle_manager.get_state() != lifecycle_state:
+                    continue
+                lifecycle_filtered_matched_files.append(matched_file)
+            return lifecycle_filtered_matched_files
+
+        return filtered_matched_files
 
     @app.get("/description/{filename}", tags=tags)
     def read_description(filename: str):
@@ -115,14 +136,46 @@ def metadata_api(app, tags: str):
             logger.info(f"Metadata for {filename}: {file_metadata}")
         return file_metadata
 
+    @app.get("/lifecycle_state/{filename}", tags=tags)
+    def read_lifecycle_state(filename: str) -> LifecycleState:
+        logger.info(f"Request to read lifecycle state for file: {filename}")
+        file_metadata = metadata.read_metadata(filename)
+        if file_metadata is None:
+            logger.info(f"Metadata for {filename}: {file_metadata}")
+            return LifecycleState.UNKNOWN
+
+        life_cycle_manager = LifecycleManager(file_metadata)
+        return life_cycle_manager.get_state()
+
+    @app.post("/lifecycle_state/update/{filename}", tags=tags)
+    def update_lifecycle_state(filename: str, state: LifecycleState):
+        logger.info(f"Request to update lifecycle state for file: {filename} into {state}")
+        file_metadata = read_metadata(filename)
+
+        if state is LifecycleState.ANY:
+            logger.info(f"Metadata for {filename} can't be updated to {state}")
+            return {"message": f"Metadata for {filename} can't be updated to {state}"}
+
+        if file_metadata is None:
+            logger.info(f"Metadata for {filename} Doesnt exist")
+            return {"message": f"Metadata for {filename} doesnt exist"}
+        try:
+            life_cycle_manager = LifecycleManager(file_metadata)
+            life_cycle_manager.set_state(state)
+            metadata.update_metadata(filename, life_cycle_manager.get_metadata())
+        except Exception as e:
+            logger.error(f"Error updating lifecycle state for file {filename}: {e}")
+            return {"message": f"Error updating lifecycle state for file {filename}: {e}"}
+
+        return {"message": f"Metadata for {filename} updated successfully."}
+
     return metadata
 
 
 def execute_api(app, tags: str, file_handler: FileHandler, metadata: Metadata):
     @app.post("/execute/{filename}", tags=tags)
     def execute_file(filename: str, parameters: Optional[Dict[str, Any]] = None):
-        logger.info(f"Request to execute file: {
-                    filename} with parameters: {parameters}")
+        logger.info(f"Request to execute file: {filename} with parameters: {parameters}")
 
         file_content = file_handler.read_file(filename, raw_content=True)
         file_metadata = metadata.read_metadata(filename)
@@ -167,8 +220,8 @@ def create_app():
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    descriptions = descriptions_api(app=app, tags=["descriptions"])
     metadata = metadata_api(app=app, tags=["metadata"])
+    descriptions = descriptions_api(app=app, metadata=metadata, tags=["descriptions"])
     file_handler = file_api(
         app=app, descriptions=descriptions, metadata=metadata, tags=["files"])
     execute_api(app=app, metadata=metadata,

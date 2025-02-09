@@ -4,6 +4,8 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import HTTPException
 from modules.description_vector_index import DescriptionVectorIndex
+from modules.lifecycle import LifecycleManager, LifecycleState
+from modules.metadata import Metadata
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +123,10 @@ class Description:
             raise HTTPException(
                 status_code=500, detail=f"Error deleting description: {str(e)}")
 
-    def search_description(self, search_term: str, k: int = EMBEDDING_MODEL_SEARCH_K) -> list[dict[str, str | Any]]:
+    def search_description(self,
+                           search_term: str,
+                           k: int = EMBEDDING_MODEL_SEARCH_K) -> list[dict[str, str | Any]]:
         matched_files = self.vector_index.search(search_term, k)
+
+        logger.info(f"Search results for term '{search_term}': {matched_files}")
         return matched_files

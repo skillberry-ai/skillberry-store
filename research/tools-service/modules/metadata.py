@@ -37,6 +37,8 @@ class Metadata:
         """
         Read the metadata for the given file.
         """
+        data = None
+
         metadata_file_path = self.get_metadata_file_path(filename)
         if os.path.exists(metadata_file_path):
             with open(metadata_file_path, "r", encoding="utf-8") as f:
@@ -70,7 +72,7 @@ class Metadata:
 
         try:
             with open(metadata_file_path, "w", encoding="utf-8") as f:
-                json.dump(new_metadata, f, indent=4)
+                json.dump(new_metadata, f, indent=4, default=str)
             logger.info(f"Metadata updated for file: {filename}")
             return {"message": f"Metadata updated for file '{filename}'."}
 
