@@ -2,6 +2,7 @@ import inspect
 import io
 import json
 import logging
+import os
 import re
 
 import requests
@@ -21,7 +22,7 @@ post_file_url = f"{base_url}/file/"
 headers = {"Accept": "application/json"}
 
 # A general variable that allows (or disallows) to generate tools dynamically by the agent
-generate_tools_dynamically = True
+generate_tools_dynamically = os.getenv('GENERATE_TOOLS_DYNAMICALLY', False)
 
 
 def code_missing_tools(state: State):
