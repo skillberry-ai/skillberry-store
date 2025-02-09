@@ -76,8 +76,7 @@ class FileExecutor:
                 status_code=400, detail=f"Error parsing metadata: {e}")
 
         self.client = docker.from_env()
-        logger.info(f"Initialized file file executor for file: {
-                    self.filename}")
+        logger.info(f"Initialized file file executor for file: {self.filename}")
 
     def execute_file(self, parameters: Dict[str, Any]) -> dict:
         """
@@ -89,8 +88,7 @@ class FileExecutor:
         Returns:
             dict: A message with the execution result or error message.
         """
-        logger.info(f"Executing file: {
-                    self.filename} with parameters: {parameters}")
+        logger.info(f"Executing file: {self.filename} with parameters: {parameters}")
 
         try:
             return self.based_on_programming_language(parameters=parameters)
@@ -173,8 +171,7 @@ print(json.dumps(result))
             command = f"python /tmp/function.py "
             for parameter_definition in parameter_definitions:
                 if parameters.get(parameter_definition) is None:
-                    raise HTTPException(status_code=400, detail=f"Missing parameter: {
-                                        parameter_definition}")
+                    raise HTTPException(status_code=400, detail=f"Missing parameter: {parameter_definition}")
                 converted_arg = arg_convert(parameters[parameter_definition])
                 command += f"{converted_arg} "
 
