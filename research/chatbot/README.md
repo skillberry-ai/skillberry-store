@@ -23,3 +23,11 @@ export RITS_API_KEY=********************************
 pip install -r requirements.txt
 streamlit run chatbot.py
 ```
+
+To rebuild the list of models ( selected in priority list), execute:
+
+```bash
+pip install -r requirements.txt
+python utils.py list_models --output=models.json --models_priority=models_priority.csv
+```
+

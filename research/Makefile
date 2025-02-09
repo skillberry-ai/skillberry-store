@@ -5,19 +5,18 @@ BASE_DIR=$(shell pwd)
 
 # Define commands for each of the four applications
 CHATBOT_CMD="cd $(BASE_DIR)/chatbot; \
-	pip install -r requierments; \
+	pip install -r requirements.txt; \
 	echo 'Running blueberry chatbot'; \
 	streamlit run chatbot.py;"
 TOOLS_SERVICE_CMD="cd $(BASE_DIR)/tools-service; \
-	pip install -r requierments; \
-	echo 'Running blueberry tools-service'; \
+	pip install -r requirements.txt; \
+	echo 'Running brueberry tools-service'; \
 	python main.py;"
 TOOLS_AGENT_CMD="cd $(BASE_DIR)/tools-agent; \
-	pip install -r requierments; \
+	pip install -r requirements.txt; \
 	echo 'Running blueberry tools-agent'; \
 	python main.py;"
 PROXY_CMD="cd $(BASE_DIR)/../../lite-rits/; \
-	pip install -r requierments; \
 	echo 'Running blueberry liteLLM proxy'; \
 	litellm --config config.yaml;"
 
