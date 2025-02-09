@@ -1,14 +1,23 @@
+import sys
+import docker
 import inspect
 import io
 import json
 import logging
+from pathlib import Path
 import re
+from typing import Any, Dict, List
 
 import requests
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
 from agents.state import State
+
+# TODO: Find better wat to import FileExecutor
+service_dir = Path(__file__).parent.parent.parent / 'tools-service'
+sys.path.append(str(service_dir))
+from modules.file_executor import FileExecutor
 from llm.common import llm
 
 logger = logging.getLogger(__name__)
@@ -51,7 +60,6 @@ def code_missing_tools(state: State):
                                                                         code=tool_response.code)
 
         # (3) validate the function and make sure it is valid to be added to the repo
-        # TODO: implement
         logging.info(f"code_missing_tools: validating tool {name}")
         success = validate_tool_using_llm_as_a_coder(name=generalize_tool_response["name"],
                                                      metadata=generalize_tool_response["metadata"],
@@ -164,8 +172,37 @@ def code_python_function_using_llm_as_a_coder(name: str, description) -> str:
 
     return response, metadata
 
+class TestCase(BaseModel):
+    params: List[Any]
+    expected: Any
+
+class TestCases(BaseModel):
+    test_cases: List[TestCase]
+
+def generate_test_cases(task: str) -> List[Dict]:
+    """Generate test cases using LLM with structured output."""
+    prompt = f"""
+    For this task: {task}
+    Generate 2 test cases in JSON format. Include normal cases.
+    If the parameter is of type string it shouldn't have leading or trailing spaces. 
+    Each test case should have 'params' (list of values) and 'expected' (expected output).
+    Return only the JSON array.
+
+    Example format:
+    [
+        {{"params": [1, 2, 3], "expected": 6}},
+        {{"params": [0, 0, 0], "expected": 0}}
+    ]
+    """
+    structured_llm = llm.with_structured_output(TestCases)
+    result = structured_llm.invoke(prompt)
+
+    return [{"params": t.params, "expected": t.expected}
+            for t in result.test_cases]
+
 
 def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: str, code: str) -> str:
+    """Validate generated code using Docker isolation and LLM-generated tests."""
     logger.info(f"Validating function code:\n{name}\n")
     logger.info(f"code:\n{code}\n")
     logger.info(f"description:\n{description}\n")
@@ -183,15 +220,32 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
                 logger.warning(f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted word '{word}'")
                 return False  # Stop validation if any unwanted word is found
 
-        return True  # Passed validation
-
     except Exception as e:
         logger.error(
             f"validate_tool_using_llm_as_a_coder: Unexpected error while validating tool '{name}': {e}")
         return False  # Fail-safe return in case of an unexpected error
 
-    # TODO: implement more checks
+    # Create a Docker client
+    logger.info("Validating the python code...")
+    # Generate test according to the metadata
+    tests = generate_test_cases(metadata["description"])
+    logger.info(f"Generated tests:\n{tests}\n")
+    try:
+        file_executor = FileExecutor(filename="llm_code_generated.py", file_content=code, file_metadata=json.dumps(metadata))
+        for test in tests:
+            parameters = dict(zip(metadata['parameters']["required"], test["params"]))
+            res = file_executor.execute_file(parameters)
+            if res["return value"] != json.dumps(test['expected']):
+                logger.info("The following Test failed:\n{test}")
+                return False
+        logger.info("All tests passed")
+        return True
 
+    except Exception as e:
+        logger.error(f"Validation failed: {e}")
+        return False
+    
+    # TODO: implement more checks
 
 def tool_generalize_using_llm_as_a_coder(name: str, metadata: json, description: str, code: str) -> str:
     logger.info(f"Validating function code:\n{name}\n")
