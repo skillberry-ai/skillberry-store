@@ -86,13 +86,14 @@ def chat_completion(request: ChatRequest):
 
 
 @chat_api_server.post("/generate_tool/{name}")
-def api_generate_tool(tool_name: str, tool_description: str):
+def api_generate_tool(tool_name: str, tool_description: str, skip_validation: bool = False):
     try:
         need_to_generate_tool = {
             "name": tool_name,
             "description": tool_description
         }
-        success = generate_tool(need_to_generate_tool)
+        success = generate_tool(need_to_generate_tool,
+                                skip_validation=skip_validation)
         if success:
             return {"message": f"Tool {tool_name} generated successfully"}
     except Exception as e:

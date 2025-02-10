@@ -1,16 +1,18 @@
-import sys
-import json
-import logging
-from pathlib import Path
-from typing import Any, Dict, List
-
 from pydantic import BaseModel, Field
+from typing import Any, Dict, List
+from pathlib import Path
+import logging
+import json
+import sys
+from llm.common import llm
 
-# TODO: Find better wat to import FileExecutor
 service_dir = Path(__file__).parent.parent.parent / 'tools-service'
 sys.path.append(str(service_dir))
+
 from modules.file_executor import FileExecutor
-from llm.common import llm
+
+# TODO: Find better wat to import FileExecutor
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +65,8 @@ def check_unwanted_words(name: str, metadata: dict, description: str, code: str)
 
         for word in unwanted_words:
             if word in description or word in metadata_text or word in code:
-                logger.warning(f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted word '{word}'")
+                logger.warning(
+                    f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted word '{word}'")
                 return True  # Stop validation if any unwanted word is found
 
     except Exception as e:
@@ -83,11 +86,9 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
 
     # check if there are unwanted wards in the tools
     if check_unwanted_words(name, metadata, description, code):
-        logger.error(f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted words")
+        logger.error(
+            f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted words")
         return False
-
-    # TODO: for now we skip the unittest process as this is quickly failing even for valid functions
-    return True
 
     # Create a Docker client
     logger.info("Validating the python code...")
@@ -99,7 +100,8 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
         file_executor = FileExecutor(filename="llm_code_generated.py", file_content=code,
                                      file_metadata=json.dumps(metadata))
         for test in tests:
-            parameters = dict(zip(metadata['parameters']["required"], test["params"]))
+            parameters = dict(
+                zip(metadata['parameters']["required"], test["params"]))
             res = file_executor.execute_file(parameters)
             if res["return value"] != json.dumps(test['expected']):
                 logger.info("The following Test failed:\n{test}")
@@ -112,4 +114,3 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
         return False
 
     # TODO: implement additional checks
-

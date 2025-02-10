@@ -56,7 +56,7 @@ def code_missing_tools(state: State):
     return {"generated_tools": generated_tools}
 
 
-def generate_tool(need_to_generate_tool: dict) -> bool:
+def generate_tool(need_to_generate_tool: dict, skip_validation=False) -> bool:
     name = need_to_generate_tool["name"]
     description = need_to_generate_tool["description"]
     logging.info(f"generate_tool: generating tool {name}")
@@ -76,13 +76,16 @@ def generate_tool(need_to_generate_tool: dict) -> bool:
 
     # (3) validate the function and make sure it is valid to be added to the repo
     logging.info(f"generate_tool: validating tool {name}")
-    success = validate_tool_using_llm_as_a_coder(name=generalize_tool_response["name"],
-                                                 metadata=generalize_tool_response["metadata"],
-                                                 description=generalize_tool_response["description"],
-                                                 code=generalize_tool_response["code"])
-    if not success:
-        logger.error(f"generate_tool: tool {name} validation failed")
-        return False
+    if skip_validation is True:
+        logging.info(f"generate_tool: skipping validating for tool {name}")
+    else:
+        success = validate_tool_using_llm_as_a_coder(name=generalize_tool_response["name"],
+                                                     metadata=generalize_tool_response["metadata"],
+                                                     description=generalize_tool_response["description"],
+                                                     code=generalize_tool_response["code"])
+        if not success:
+            logger.error(f"generate_tool: tool {name} validation failed")
+            return False
 
     # (4) add the tool to the tool repository
     logging.info(f"generate_tool: adding tool {name} to the tool repository")
