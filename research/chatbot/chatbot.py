@@ -218,7 +218,7 @@ with st.sidebar:
                 value=False, on_change=clear_chat_history)
     if st.session_state.use_rits_blueberry_proxy:
         st.markdown(
-            '<p style="font-size: 14px; margin-left: 20px; color: gray;"> ℹ️ User data might be collected by blueberry services.</p>', unsafe_allow_html=True)
+            '<p style="font-size: 14px; margin-left: 20px; color: gray;"> ℹ️ Anonymous prompt data might be collected for improving Blueberry.</p>', unsafe_allow_html=True)
 
     # Dual assistant checkbox
     st.checkbox("dual assistant (compare with granite)",
