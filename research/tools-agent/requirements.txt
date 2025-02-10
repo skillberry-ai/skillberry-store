@@ -1,6 +1,6 @@
 langchain==0.3.17
 langchain-core==0.3.33
-pydantic==2.7.4
+pydantic==2.9.0
 ipython==8.17.2
 typing_extensions==4.12.2
 langgraph==0.2.68
@@ -9,3 +9,7 @@ requests==2.32.3
 pytest==8.3.4
 fastapi==0.115.8
 uvicorn==0.16.0
+
+# agentic observability
+
+git+ssh://git@github.ibm.com/agent-analytics/sdk.git@release
