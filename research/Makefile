@@ -42,14 +42,10 @@ TOOLS_AGENT_CMD="cd $(BASE_DIR)/tools-agent; \
 	python main.py;"
 # When LiteLLM is used as a package, use the command below (and comment the next one)
 #PROXY_CMD="cd $(BASE_DIR)/../../lite-rits/; \
-#        echo 'Scraping RITS models'; \
-#        ./scrape_rits.sh;
 #	echo 'Running blueberry liteLLM proxy'; \
 #	litellm --config config.yaml;"
 # When LiteLLM is used from a git clone, use the command below (and comment the previous one)
 PROXY_CMD="cd $(BASE_DIR)/../../lite-rits/; \
-        echo 'Scraping RITS models'; \
-        ./scrape_rits.sh; \
 	cd $(BASE_DIR)/../../litellm/; \
         pip install poetry; \
         poetry install -E extra_proxy -E proxy; \
