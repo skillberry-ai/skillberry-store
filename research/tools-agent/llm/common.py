@@ -2,6 +2,8 @@ import os
 import logging
 from langchain_openai import ChatOpenAI
 
+from config.config_ui import config
+
 logger = logging.getLogger(__name__)
 
 if "RITS_API_KEY" not in os.environ:
@@ -18,10 +20,9 @@ rits_api_url = os.environ["RITS_API_URL"]
 rits_proxy_api_url = os.environ["RITS_PROXY_API_URL"]
 rits_api_key = os.environ["RITS_API_KEY"]
 
-selected_model = "meta-llama/llama-3-3-70b-instruct"
-
-temperature = 0
-use_rits_proxy = True
+selected_model = config.get("selected_model")
+use_rits_proxy = config.get("use_rits_proxy")
+temperature = config.get("temperature")
 
 logger.info(f"\n\n"
             f"==> 0. Configuration:\n"

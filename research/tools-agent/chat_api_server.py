@@ -3,7 +3,7 @@ import logging
 import time
 import re
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Body, HTTPException
 from langchain.schema import HumanMessage
 from pydantic import BaseModel
 import requests
@@ -86,7 +86,11 @@ def chat_completion(request: ChatRequest):
 
 
 @chat_api_server.post("/generate_tool/{name}")
-def api_generate_tool(tool_name: str, tool_description: str, skip_validation: bool = False):
+def api_generate_tool(
+    tool_name: str,
+    tool_description: str = Body(..., title="Description", description="Description of the tool, including examples"),
+    skip_validation: bool = False
+):
     try:
         need_to_generate_tool = {
             "name": tool_name,
