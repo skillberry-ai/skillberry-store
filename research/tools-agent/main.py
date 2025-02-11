@@ -1,14 +1,17 @@
 import logging
 import uvicorn
+import threading
 
 from langchain.globals import set_verbose, set_debug
 from langchain.callbacks.tracers import ConsoleCallbackHandler
 
-from chat_api_server import chat_api_server
-from llm.common import llm, check_llm_communication
+from config.config_structure import CONFIG_STRUCTURE
+from llm.common import check_llm_communication
 from tools_agentic_graph import define_tools_agentic_graph
 from agent_analytics.instrumentation import agent_analytics_sdk 
 
+from chat_api_server import chat_api_server
+from config.config_ui import config_ui_app
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -40,6 +43,8 @@ agent_analytics_sdk.initialize_logging(
     # log_filename="tools-agent",
 )
 
+def run_config_ui():
+    config_ui_app.run_server(debug=True, use_reloader=False, host="0.0.0.0", port=7001)
 
 def main():
     # make sure we can communicate with the LLM
@@ -54,6 +59,11 @@ def main():
     # user_input = "What is the 1294th prime number?"
     # user_input = "How much is 2+2?"
     # stream_graph_updates(tools_agentic_graph, user_input)
+    
+    
+    # Run the configuration UI
+    config_ui_thread = threading.Thread(target=run_config_ui)
+    config_ui_thread.start()
 
     # Run the API server
     uvicorn.run(chat_api_server, host="0.0.0.0", port=7000)

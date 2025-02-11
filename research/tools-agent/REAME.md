@@ -11,10 +11,11 @@ The service interfaces with LLMs to plan, code and complete responses for user p
 The service performs an agentic workflow that advocates usage of tools 
 to help in reduction hallucinations and increase the accuracy of LLMs. 
 
+> Use the Makefile for additional details 
+
 ## how to execute
 ```bash
-pip install -r requirements.txt
-python main.py
+make start
 ```
 
 ## 
