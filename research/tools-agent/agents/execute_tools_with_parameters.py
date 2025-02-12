@@ -34,7 +34,7 @@ execute_tools_with_parameters_chat_prompt_template = ChatPromptTemplate.from_mes
 def fake_tool():
     """
     This is a fake tool that does nothing.
-    If is used so that the file will import the needed libraries from:
+    If is used so that the file will import the necessary libraries from:
         import inspect
         import requests
         from langchain.tools import tool
@@ -83,7 +83,7 @@ def create_function_from_string(code: str, func_name: str, scope: dict):
     return scope.get(func_name)
 
 
-def define_tool_dynamically(tool_name: str, arguments_string: str, scope: dict, _base_url: str):
+def define_tool_dynamically(tool_name: str, tool_docstring: str, arguments_string: str, scope: dict, _base_url: str):
     """
     Invoke a local tool based on OpenAI parameters definition to be used by the agentic workflow
     """
@@ -105,10 +105,7 @@ headers = {{
 @tool
 def {tool_function_name} {arguments_string}:
     \"\"\"
-    This function executes {tool_function_name} with the following arguments:
-
-    Arguments:
-    {arguments_string}
+    {tool_docstring}
     \"\"\"
 
     frame = inspect.currentframe()
@@ -119,8 +116,10 @@ def {tool_function_name} {arguments_string}:
         execute_tool_url, headers=headers, json=param_dict)
     if response.status_code == 200:
         response_json = response.json()
-        print(f"====> returning response from the function: {{response_json["return value"]}}")
-        return response_json["return value"]
+        return_value = response_json["return value"]
+        cleaned_return_value = return_value.strip().replace('"', '')
+        print(f'====> returning response from the function: {{cleaned_return_value}}')
+        return cleaned_return_value
     else:
         return None
 """
@@ -128,11 +127,13 @@ def {tool_function_name} {arguments_string}:
     return _tool
 
 
-def generate_dynamic_tool(tool: dict, scope: dict, _base_url: str):
-    name = tool["name"]
+def generate_dynamic_tool(_tool: dict, scope: dict, _base_url: str):
+    name = _tool["name"]
     metadata = get_tool_metadata(base_url, name)
     arguments_string = generate_function_arguments_from_metadata(metadata)
+    tool_docstring = generate_function_docstring_from_metadata(metadata)
     tool_func = define_tool_dynamically(tool_name=name,
+                                        tool_docstring=tool_docstring,
                                         arguments_string=arguments_string,
                                         scope=scope,
                                         _base_url=base_url)
@@ -156,25 +157,18 @@ def execute_tools_with_parameters(state: State):
             logging.error(
                 f"existing_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
-    # At this stage, generated tools are not being added to the
-    # repo as "useful" immediately, hence we can't use them for the
-    # current prompt.
-    # TODO: once we improve the validation process we will add them and use them
-    # to response to current prompt!
-    use_generated_tools = False
-    if use_generated_tools:
-        for _tool in state["generated_tools"]:
-            try:
-                logging.info(
-                    f"existing_tools: Generating local tool stub {_tool['name']}")
-                tool_func = generate_dynamic_tool(_tool, scope, base_url)
-                tools.append(tool_func)
-            except Exception as e:
-                logging.error(
-                    f"need_to_generate_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
+    for _tool in state["generated_tools"]:
+        try:
+            logging.info(
+                f"existing_tools: Generating local tool stub {_tool['name']}")
+            tool_func = generate_dynamic_tool(_tool, scope, base_url)
+            tools.append(tool_func)
+        except Exception as e:
+            logging.error(
+                f"need_to_generate_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
     try:
-        if tools == []:
+        if not tools:
             logging.info(f"=====> No tools, not binding")
             llm_with_tools = llm
         else:
@@ -211,7 +205,6 @@ def execute_tools_with_parameters(state: State):
         agent_executor = AgentExecutor(agent=agent,
                                        tools=tools,
                                        verbose=True,
-                                       return_intermediate_steps=True,
                                        handle_parsing_errors=True)
     except Exception as e:
         logging.error(f"Error while AgentExecutor: {e}")
@@ -289,3 +282,21 @@ def generate_function_arguments_from_metadata(metadata: str):
     function_arguments += ", ".join(param_strs) + f") -> {returns_type}"
 
     return function_arguments
+
+
+def generate_function_docstring_from_metadata(metadata: dict) -> str:
+    """Generates a Google-style docstring from a parsed function metadata dictionary."""
+    parsed_data = metadata
+    description = parsed_data.get("description", "")
+    params = parsed_data.get("parameters", {}).get("properties", {})
+
+    docstring_lines = [description, ""] if description else []
+
+    if params:
+        docstring_lines.append("Args:")
+        for param, details in params.items():
+            dtype = details.get("type", "unknown").capitalize()
+            desc = details.get("description", "")
+            docstring_lines.append(f"    {param} ({dtype}): {desc}")
+
+    return "\n".join(docstring_lines)

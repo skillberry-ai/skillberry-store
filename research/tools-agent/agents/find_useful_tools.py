@@ -25,10 +25,19 @@ find_useful_tools_chat_prompt_template = ChatPromptTemplate([
 ])
 
 
+class SuggestedTool(BaseModel):
+    name: str = Field(description='the name of the tool')
+    description: str = Field(description='the description of the tool')
+    examples: str = Field(description='Usage examples of the tool')
+
+
 class FindingToolsResponseJsonSchema(BaseModel):
-    suggested_tools: List[Dict[str, str]] = Field(
-        description='List of dictionaries, each dictionary contains exactly two key-value pairs:\n'
-                    '"name" - the name of the function.\n "description" - the description of the function\n'
+    suggested_tools: List[SuggestedTool] = Field(
+        description='A list of suggested tools.\n'
+                    'Each suggested tool includes a dictionary with exactly three key and values:\n'
+                    '"name" - the name of the tool.\n '
+                    '"description" - the description of the tool\n'
+                    '"examples" - Usage examples of the tool\n'
     )
 
 
@@ -43,7 +52,7 @@ def find_useful_tools(state: State):
 
     find_useful_tools_chain = find_useful_tools_chat_prompt_template | structured_llm
     response = find_useful_tools_chain.invoke(
-        {"user_prompt": state["original_user_prompt"][0]["content"]})
+        {"user_prompt": state["original_user_prompt"]["content"]})
     logger.info("find_useful_tools returned: %s", response)
     logging.info(f"=======>>> find_useful_tools. ended <<<=======")
     return {"suggested_tools": response.suggested_tools}

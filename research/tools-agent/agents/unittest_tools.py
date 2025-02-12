@@ -1,9 +1,12 @@
+from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List
 from pathlib import Path
 import logging
 import json
 import sys
+
+from config.config_ui import config
 from llm.common import llm
 
 service_dir = Path(__file__).parent.parent.parent / 'tools-service'
@@ -21,37 +24,66 @@ base_url = "http://9.148.245.32:8000"
 post_file_url = f"{base_url}/file/"
 
 headers = {"Accept": "application/json"}
+base_unittests_directory = "/tmp"
 
 
 class TestCase(BaseModel):
-    params: List[Any]
-    expected: Any
+    params: List[Any] = Field(description='list of values for the function input parameters')
+    expected: Any = Field(description='the expected return value of the function')
 
 
-class TestCases(BaseModel):
-    test_cases: List[TestCase]
+class TestCasesJsonSchema(BaseModel):
+    test_cases: List[TestCase] = Field(
+        description='A list of testcases for the function. Each testcase includes '
+                    'a dictionary with exactly two key and values:\n'
+                    '"params" - the parameters of the function.\n '
+                    '"expected" - the expected output of the function\n')
 
 
-def generate_test_cases(task: str) -> List[Dict]:
-    """Generate test cases using LLM with structured output."""
-    prompt = f"""
-    For this task: {task}
-    Generate 2 test cases in JSON format. Include normal cases.
-    If the parameter is of type string it shouldn't have leading or trailing spaces. 
-    Each test case should have 'params' (list of values) and 'expected' (expected output).
-    Return only the JSON array.
+unittests_count = config.get("advanced__unittests_count")
 
-    Example format:
+unittest_function_chat_prompt_template = ChatPromptTemplate.from_messages([
+    ("system", "You are an expert in testing and providing test cases for unit testing of python functions"),
+    ("system", "Do not add examples, usage or code. "
+               "For each test case answer with list of input parameter values and an expected return value"),
+    ("system", "Each test case will include two fields: 'params' with a list of input values "
+               "and 'expected' with a value of the expected output."),
+    ("system", """ for  this is a valid output format of two use-cases:
     [
         {{"params": [1, 2, 3], "expected": 6}},
         {{"params": [0, 0, 0], "expected": 0}}
     ]
-    """
-    structured_llm = llm.with_structured_output(TestCases)
-    result = structured_llm.invoke(prompt)
+     """),
+    ("system", "If the parameter is of type string it shouldn't have leading or trailing spaces."),
+    ("system", "Include at least one normal use-case"),
+    ("system", "Response only the JSON structure"),
+    ("user",
+     "to test the function {function_name} with description {function_description} "
+     "generate {unittests_count} test cases in JSON format.")
+])
 
-    return [{"params": t.params, "expected": t.expected}
-            for t in result.test_cases]
+
+def generate_test_cases(function_name: str, function_description: str) -> List[Dict]:
+    """Generate test cases using LLM with structured output."""
+
+    structured_llm = llm.with_structured_output(schema=TestCasesJsonSchema,
+                                                method="function_calling",
+                                                include_raw=False)
+
+    try:
+        code_unittests_chain = unittest_function_chat_prompt_template | structured_llm
+        response = code_unittests_chain.invoke(
+            {"function_name": function_name,
+             "function_description": function_description,
+             "unittests_count": unittests_count})
+        logger.info(
+            "generate_test_cases returned: %s", response)
+    except Exception as e:
+        logger.error(
+            f"generate_test_cases: Unexpected error while generating test cases: {e}")
+        return False, []
+
+    return True, [{"params": testcase.params, "expected": testcase.expected} for testcase in response.test_cases]
 
 
 def check_unwanted_words(name: str, metadata: dict, description: str, code: str) -> bool:
@@ -94,17 +126,22 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
     logger.info("Validating the python code...")
 
     # Generate test according to the metadata
-    tests = generate_test_cases(metadata["description"])
-    logger.info(f"Generated tests:\n{tests}\n")
+    success, unittests = generate_test_cases(name, description)
+    if not success:
+        logger.error("Failed to generate test cases")
+        return False
+
+    logger.info(f"Generated unittests:\n{unittests}\n")
     try:
-        file_executor = FileExecutor(filename="llm_code_generated.py", file_content=code,
-                                     file_metadata=json.dumps(metadata))
-        for test in tests:
+        file_executor = FileExecutor(filename=f"{base_unittests_directory}/{name}_unittest_generated.py",
+                                     file_content=code,
+                                     file_metadata=metadata)
+        for unittest in unittests:
             parameters = dict(
-                zip(metadata['parameters']["required"], test["params"]))
+                zip(metadata['parameters']["required"], unittest["params"]))
             res = file_executor.execute_file(parameters)
-            if res["return value"] != json.dumps(test['expected']):
-                logger.info("The following Test failed:\n{test}")
+            if res["return value"] != json.dumps(unittest['expected']):
+                logger.error(f"!!!! The following Test failed:\n{unittest}\n!!!!!\n")
                 return False
         logger.info("All tests passed")
         return True
