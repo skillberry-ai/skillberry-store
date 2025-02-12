@@ -119,6 +119,7 @@ def {tool_function_name} {arguments_string}:
         execute_tool_url, headers=headers, json=param_dict)
     if response.status_code == 200:
         response_json = response.json()
+        print(f"====> returning response from the function: {{response_json["return value"]}}")
         return response_json["return value"]
     else:
         return None
@@ -279,6 +280,12 @@ def generate_function_arguments_from_metadata(metadata: str):
         param_type = json_schema_to_python_type(param_info['type'])
         param_strs.append(f"{param_name}: {param_type}")
 
-    function_arguments += ", ".join(param_strs) + ")"
+    try:    
+        returns =  parsed_info['returns']['properties']
+        returns_type = json_schema_to_python_type(returns['type'])
+    except Exception as e:
+        returns_type = "str"
+        
+    function_arguments += ", ".join(param_strs) + f") -> {returns_type}"
 
     return function_arguments
