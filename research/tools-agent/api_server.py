@@ -9,10 +9,11 @@ from pydantic import BaseModel
 import requests
 
 from agents.code_missing_tools import generate_tool
-from tools_agentic_graph import stream_graph_updates, tools_agentic_graph
+from tools_agentic_graph import stream_graph_updates
 
 # Define the API
-chat_api_server = FastAPI()
+api_server = FastAPI()
+
 
 # Request data model
 
@@ -23,20 +24,35 @@ class ChatRequest(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 100
 
+
 # Endpoint for chat completions
 
 
-def get_last_user_message(chat_log):
-    matches = re.findall(r'User: ([^\\n]+)', str(chat_log))
-    return {"content": matches[-1], "role": "user"} if matches else chat_log
+def get_last_user_prompt(chat_history):
+    matches = re.findall(r'User: ([^\\n]+)', str(chat_history))
+    return {"content": matches[-1], "role": "user"} if matches else chat_history[-1]
 
 
-@chat_api_server.post("/chat/completions")
-def chat_completion(request: ChatRequest):
+@api_server.post("/prompt", tags=["chat"])
+def api_prompt(
+        user_prompt: str,
+):
     try:
-        chat_log = request.messages
-        last_user_message = get_last_user_message(chat_log)
-        response = stream_graph_updates(chat_log, [last_user_message])
+        chat_request = ChatRequest(model="API_CALL",
+                                   messages=[f"User: {user_prompt}"])
+        response = api_chat_completion(chat_request)
+        return response
+    except Exception as e:
+        logging.error(f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_server.post("/chat/completions", tags=["chat"])
+def api_chat_completion(request: ChatRequest):
+    try:
+        chat_history = request.messages
+        last_user_prompt = get_last_user_prompt(chat_history)
+        response = stream_graph_updates(chat_history=chat_history, original_user_prompt=last_user_prompt)
         final_response = json.loads(
             list(response)[0]['messages_history'][-1]['content'])
         logging.info(f"The response to the user prompt is: {final_response}")
@@ -82,19 +98,23 @@ def chat_completion(request: ChatRequest):
         logging.error(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # Health check endpoint
 
 
-@chat_api_server.post("/generate_tool/{name}")
+@api_server.post("/generate_tool/{name}", tags=["api"])
 def api_generate_tool(
-    tool_name: str,
-    tool_description: str = Body(..., title="Description", description="Description of the tool, including examples"),
-    skip_validation: bool = False
+        tool_name: str,
+        tool_description: str,
+        tool_examples: str = Body(..., title="Examples",
+                                  description="Examples of usage for the tool"),
+        skip_validation: bool = False
 ):
     try:
         need_to_generate_tool = {
             "name": tool_name,
-            "description": tool_description
+            "description": tool_description,
+            "examples": tool_examples
         }
         success = generate_tool(need_to_generate_tool,
                                 skip_validation=skip_validation)
@@ -105,6 +125,6 @@ def api_generate_tool(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@chat_api_server.get("/health")
+@api_server.get("/health")
 def health_check():
     return {"status": "ok"}

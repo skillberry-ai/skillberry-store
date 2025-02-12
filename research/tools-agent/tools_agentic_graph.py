@@ -1,5 +1,6 @@
 import logging
 
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START, END
 
 from agents.code_missing_tools import code_missing_tools
@@ -41,7 +42,7 @@ def define_tools_agentic_graph():
 # graph_visualization(graph)
 
 
-def stream_graph_updates(chat_history: str, original_user_prompt: str):
+def stream_graph_updates(chat_history: list[HumanMessage | AIMessage], original_user_prompt: HumanMessage):
 
     # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
     # print(f"{input_messages}")

@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 class State(TypedDict):
 
-    original_user_prompt: list[HumanMessage | AIMessage]
+    original_user_prompt: HumanMessage
     chat_history: list[HumanMessage | AIMessage]
 
     suggested_tools: List[Dict[str, str]]

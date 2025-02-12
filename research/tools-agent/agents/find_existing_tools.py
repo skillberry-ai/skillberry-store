@@ -1,9 +1,8 @@
 import logging
-import requests
 
 from agents.state import State
-from agents.tools_service_api import search_tools, get_tool_description
-from llm.common import llm
+from agents.tools_service_api import search_tools
+from config.config_ui import config
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +11,8 @@ base_url = "http://9.148.245.32:8000"
 search_url = f"{base_url}/description/search"
 
 headers = {"Content-Type": "application/json"}
-max_numer_of_results = 5
-similarity_threshold = 1
+max_tools_count = config.get("advanced__max_tools_count")
+similarity_threshold = config.get("advanced__similarity_threshold")
 
 
 def find_existing_tools(state: State):
@@ -23,13 +22,14 @@ def find_existing_tools(state: State):
 
     try:
         for suggested_tool in state["suggested_tools"]:
-            name = suggested_tool["name"]
-            description = suggested_tool["description"]
+            name = suggested_tool.name
+            description = suggested_tool.description
+            examples = suggested_tool.examples
 
             logger.info(f"find_existing_tools called for tool: {name}")
             # issue get request against the url with `search_term` equals to the name of the suggested tool
             found_tools = search_tools(
-                base_url, name, description, max_numer_of_results, similarity_threshold)
+                base_url, name, description, max_tools_count, similarity_threshold)
 
             if found_tools is not None and len(found_tools) > 0:
                 logger.info("find_existing_tools returned: %s", found_tools)
@@ -39,7 +39,10 @@ def find_existing_tools(state: State):
 
                     found_tool["search_term_name"] = name
                     found_tool["search_term_description"] = description
+                    found_tool["search_term_examples"] = examples
+
                     found_tool["name"] = found_tool["filename"]
+
                     # append only if the tool is not already in the list of existing tools
                     if not any(tool["name"] == found_tool["name"] for tool in existing_tools):
                         existing_tools.append(found_tool)
