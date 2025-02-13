@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, File, UploadFile, Form
@@ -21,9 +22,24 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
     file_handler = FileHandler(files_directory_path)
 
     @app.get("/files", response_model=List[str], tags=tags)
-    def list_files():
+    def list_files(lifecycle_state: LifecycleState = LifecycleState.ANY):
         logger.info("Request to list files")
-        return file_handler.list_files()
+        files = file_handler.list_files()
+
+        # if we are requested to limit the view to a specific lifecycle state, we filter the results
+        if lifecycle_state is not LifecycleState.ANY:
+            lifecycle_filtered_matched_files = []
+            for file_name in files:
+                file_metadata = metadata.read_metadata(file_name)
+                if file_metadata is None:
+                    continue
+                life_cycle_manager = LifecycleManager(file_metadata)
+                if life_cycle_manager.get_state() != lifecycle_state:
+                    continue
+                lifecycle_filtered_matched_files.append(file_name)
+            files = lifecycle_filtered_matched_files
+
+        return files
 
     @app.get("/file/json/{filename}", tags=tags)
     def read_file_json(filename: str):
@@ -57,6 +73,21 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
             metadata.write_metadata(file.filename, metadata_as_dict)
         return file_response
 
+    @app.post("/file/json/{filename}", tags=tags)
+    def write_file_json(file_name: str, file_json: dict):
+        logger.info(f"Request to write file (from json): {file_name}")
+        file_content = file_json.get("content", "")
+        file_description = file_json.get("description", "")
+        file_metadata = file_json.get("metadata", {})
+
+        file_response = file_handler.write_file_content(file_name, file_content)
+        if file_description:
+            descriptions.write_description(file_name, file_description)
+        if file_metadata:
+            metadata.write_metadata(file_name, file_metadata)
+
+        return file_response
+
     @app.delete("/file/{filename}", tags=tags)
     def delete_file(filename: str):
         logger.info(f"Request to delete file: {filename}")
@@ -66,6 +97,35 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
         # Delete associated metadata as well
         metadata.delete_metadata(filename)
         return {"message": f"File and its description '{filename}' deleted successfully."}
+
+    @app.delete("/files", tags=tags)
+    def delete_files(regex: str = ".", lifecycle_state: LifecycleState = LifecycleState.UNKNOWN):
+        logger.info("Request to delete files")
+        files = file_handler.list_files()
+
+        # if we are requested to limit the view to a specific lifecycle state,
+        # and regex, we filter the results
+        if lifecycle_state is not LifecycleState.ANY:
+            lifecycle_filtered_matched_files = []
+            for file_name in files:
+                file_metadata = metadata.read_metadata(file_name)
+                if file_metadata is None:
+                    continue
+                life_cycle_manager = LifecycleManager(file_metadata)
+                if life_cycle_manager.get_state() != lifecycle_state:
+                    continue
+
+                if not re.match(regex, file_name):
+                    continue
+                lifecycle_filtered_matched_files.append(file_name)
+            files = lifecycle_filtered_matched_files
+
+        # delete the files after filtering
+        for file_name in files:
+            delete_file(file_name)
+            logger.info(f"File {file_name} Deleted.")
+
+        return f"Files {files} Deleted."
 
     return file_handler
 
