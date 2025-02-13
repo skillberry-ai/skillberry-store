@@ -50,7 +50,8 @@ def stream_graph_updates(chat_history: list[HumanMessage | AIMessage], original_
 
     for event in tools_agentic_graph.stream({"original_user_prompt": original_user_prompt,
                                              "chat_history": chat_history,
-                                             "messages_history": chat_history}):
+                                             "messages_history": chat_history,
+                                             "thinking_log": []}):
         # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         # print(f"{input_messages}")
         # print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
