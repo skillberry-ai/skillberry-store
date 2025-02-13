@@ -20,8 +20,8 @@ from modules.file_executor import FileExecutor
 logger = logging.getLogger(__name__)
 
 # search for tools from the repository using API call (semantic search)
-base_url = "http://9.148.245.32:8000"
-post_file_url = f"{base_url}/file/"
+tools_repo_base_url = config.get("tools_repo_base_url")
+post_file_url = f"{tools_repo_base_url}/file/"
 
 headers = {"Accept": "application/json"}
 base_unittests_directory = "/tmp"

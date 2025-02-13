@@ -7,8 +7,7 @@ from config.config_ui import config
 logger = logging.getLogger(__name__)
 
 # search for tools from the repository using API call (semantic search)
-base_url = "http://9.148.245.32:8000"
-search_url = f"{base_url}/description/search"
+tools_repo_base_url = config.get("tools_repo_base_url")
 
 headers = {"Content-Type": "application/json"}
 max_tools_count = config.get("advanced__max_tools_count")
@@ -29,8 +28,7 @@ def find_existing_tools(state: State):
 
             logger.info(f"find_existing_tools called for tool: {name}")
             # issue get request against the url with `search_term` equals to the name of the suggested tool
-            found_tools = search_tools(
-                base_url, name, description, max_tools_count, similarity_threshold)
+            found_tools = search_tools(tools_repo_base_url, name, description, max_tools_count, similarity_threshold)
 
             if found_tools is not None and len(found_tools) > 0:
                 logger.info("find_existing_tools returned: %s", found_tools)

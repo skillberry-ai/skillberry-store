@@ -1,7 +1,7 @@
 from typing_extensions import TypedDict
-from typing import Annotated, List, Dict
+from typing import Annotated, List, Dict, Sequence
 from langgraph.graph import add_messages
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
 
 class State(TypedDict):
@@ -16,4 +16,4 @@ class State(TypedDict):
     need_to_generate_tools: List[Dict[str, str]]
     generated_tools: List[Dict[str, str]]
 
-    messages_history: Annotated[list[HumanMessage | AIMessage], add_messages]
+    messages: Annotated[Sequence[BaseMessage], add_messages]
