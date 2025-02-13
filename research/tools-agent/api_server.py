@@ -2,8 +2,9 @@ import json
 import logging
 import time
 import re
+from types import SimpleNamespace
 
-from fastapi import FastAPI, Body, HTTPException
+from fastapi import FastAPI, Body, HTTPException, Form
 from langchain.schema import HumanMessage
 from pydantic import BaseModel
 import requests
@@ -101,20 +102,19 @@ def api_chat_completion(request: ChatRequest):
 # Health check endpoint
 
 
-@api_server.post("/generate_tool/{name}", tags=["api"])
+@api_server.post("/generate_tool/{tool_name}", tags=["api"])
 def api_generate_tool(
         tool_name: str,
         tool_description: str,
-        tool_examples: str = Body(..., title="Examples",
-                                  description="Examples of usage for the tool"),
+        tool_examples: str = Form(..., description="Enter usage examples for the tool:"),
         skip_validation: bool = False
 ):
     try:
-        need_to_generate_tool = {
-            "name": tool_name,
-            "description": tool_description,
-            "examples": tool_examples
-        }
+        need_to_generate_tool = SimpleNamespace(
+            name=tool_name,
+            description=tool_description,
+            examples=tool_examples
+        )
         success = generate_tool(need_to_generate_tool,
                                 skip_validation=skip_validation)
         if success:
