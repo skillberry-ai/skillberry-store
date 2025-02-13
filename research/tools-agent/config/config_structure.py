@@ -8,6 +8,11 @@ CONFIG_STRUCTURE = {
         "default": "meta-llama/llama-3-3-70b-instruct",
         "label": "LLM rits model to be used by the agent: ",
     },
+    "tools_repo_base_url": {
+        "type": "str",
+        "default": "http://9.148.245.32:8000",
+        "label": "The tools repository url: ",
+    },
     "use_rits_proxy": {
         "type": "bool",
         "default": True,

@@ -99,7 +99,7 @@ class TestToolsServiceApi:
     #    """
     #    Test execute_tool with tools repo.
     #    """
-    #    base_url = "http://9.148.245.32:8000"
+    #    tools_repo_base_url = config.get("tools_repo_base_url")
     #    tool_name = "add_two_numbers.py"
-    #    result = execute_tool(base_url, tool_name, {"a": "1","b":2})
+    #    result = execute_tool(tools_repo_base_url, tool_name, {"a": "1","b":2})
     #    assert result is "3"

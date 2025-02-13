@@ -18,8 +18,8 @@ from llm.common import llm
 logger = logging.getLogger(__name__)
 
 # search for tools from the repository using API call (semantic search)
-base_url = "http://9.148.245.32:8000"
-post_file_url = f"{base_url}/file/"
+tools_repo_base_url = config.get("tools_repo_base_url")
+post_file_url = f"{tools_repo_base_url}/file/"
 
 headers = {"Accept": "application/json"}
 
@@ -54,7 +54,7 @@ def code_missing_tools(state: State):
         success = generate_tool(need_to_generate_tool)
         if not success:
             logger.error(f"code_missing_tools: tool {name} generation failed")
-            thinking_log.append("I failed to code the tool {name}. ")
+            thinking_log.append(f"I failed to code the tool {name}. ")
             continue
 
         # the name of tool at this stage is added with the .py because we support creation of .py code files
