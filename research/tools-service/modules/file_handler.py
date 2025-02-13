@@ -83,6 +83,31 @@ class FileHandler:
             logger.error(f"Error saving file '{file.filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
+    def write_file_content(self, file_name: str, file_content: str) -> dict:
+        """
+        Write a file to the directory by content.
+
+        Args:
+            file_name: The file name.
+            file_content: The file content to save.
+
+        Returns:
+            dict: A message confirming the file was saved successfully.
+
+        Raises:
+            HTTPException: If there is an error saving the file.
+        """
+        file_path = os.path.join(self.directory_path, file_name)
+        try:
+            with open(file_path, "wb") as f:
+                binary_file_content = file_content.encode('utf-8')
+                f.write(binary_file_content)
+            logger.info(f"File saved: {file_path}")
+            return {"message": f"File '{file_name}' saved successfully."}
+        except Exception as e:
+            logger.error(f"Error saving file '{file_name}': {e}")
+            raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
+
     def delete_file(self, filename: str) -> dict:
         """
         Delete a file from the directory.
