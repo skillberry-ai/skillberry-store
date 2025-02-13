@@ -33,12 +33,12 @@ def code_missing_tools(state: State):
     need_to_generate_tools = state["need_to_generate_tools"]
     generated_tools = []
 
-    logging.info(
-        f"code_missing_tools: need_to_generate_tools: {need_to_generate_tools}")
+    logging.info(f"code_missing_tools: need_to_generate_tools: {need_to_generate_tools}")
     for need_to_generate_tool in need_to_generate_tools:
         name = need_to_generate_tool.name
 
         if not generate_tools_dynamically:
+            thinking_log.append("I am not allowed to code new tools. ")
             logger.info(
                 f"!!! generate_tools_dynamically is False: tool {name} will not be generated !!!")
             continue
@@ -54,6 +54,7 @@ def code_missing_tools(state: State):
         success = generate_tool(need_to_generate_tool)
         if not success:
             logger.error(f"code_missing_tools: tool {name} generation failed")
+            thinking_log.append("I failed to code the tool {name}. ")
             continue
 
         # the name of tool at this stage is added with the .py because we support creation of .py code files

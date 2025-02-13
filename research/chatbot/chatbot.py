@@ -256,7 +256,8 @@ if prompt := st.chat_input(
 
 
 def styled_content(content: str) -> str:
-    return content.replace("<think>", '<span style="color: gray; font-size: 12px;">').replace("</think>", "</span>")
+    return (content.replace("<think>", '<span style="color: gray; font-size: 12px;">')
+            .replace("</think>", "</span><br>"))
 
 
 # display the trajectory

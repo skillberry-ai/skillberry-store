@@ -225,7 +225,7 @@ def execute_tools_with_parameters(state: State):
 
     logger.info(f"=====> The agentic flow has finished executing the tools with parameters")
     try:
-        user_response = json.dumps(response["output"], indent=4)
+        user_response = response["output"]
 
         thinking_log += f"I am done. Returning a response to the user."
         session_thinking_log_as_str = ""
