@@ -142,8 +142,8 @@ def generate_dynamic_tool(_tool: dict, scope: dict, _base_url: str):
 
 # execute the tools with the parameters
 def execute_tools_with_parameters(state: State):
-    logging.info(
-        f"=======>>> execute_tools_with_parameters. started <<<=======")
+    thinking_log = ""
+    logging.info(f"=======>>> execute_tools_with_parameters. started <<<=======")
     tools = []
     scope = {}
 
@@ -154,24 +154,23 @@ def execute_tools_with_parameters(state: State):
             tool_func = generate_dynamic_tool(_tool, scope, base_url)
             tools.append(tool_func)
         except Exception as e:
-            logging.error(
-                f"existing_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
+            logging.error(f"existing_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
     for _tool in state["generated_tools"]:
         try:
-            logging.info(
-                f"existing_tools: Generating local tool stub {_tool['name']}")
+            logging.info(f"existing_tools: Generating local tool stub {_tool['name']}")
             tool_func = generate_dynamic_tool(_tool, scope, base_url)
             tools.append(tool_func)
         except Exception as e:
-            logging.error(
-                f"need_to_generate_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
+            logging.error(f"need_to_generate_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
     try:
         if not tools:
+            thinking_log += "I don't have any tools to use. using the LLM model as-is to response. "
             logging.info(f"=====> No tools, not binding")
             llm_with_tools = llm
         else:
+            thinking_log += "I will now use the tools and the LLM model to response. "
             logging.info(f"=====> Binding tools: {tools}")
             llm_with_tools = llm.bind_tools(tools=tools,
                                             strict=True)
@@ -188,16 +187,16 @@ def execute_tools_with_parameters(state: State):
     # print("*****************************")
 
     agent = (
-        {
-            "chat_history": lambda x: x["chat_history"],
-            # Format agent scratchpad from intermediate steps
-            "agent_scratchpad": lambda x: format_to_openai_function_messages(
-                x["intermediate_steps"]
-            ),
-        }
-        | execute_tools_with_parameters_chat_prompt_template
-        | llm_with_tools
-        | parse
+            {
+                "chat_history": lambda x: x["chat_history"],
+                # Format agent scratchpad from intermediate steps
+                "agent_scratchpad": lambda x: format_to_openai_function_messages(
+                    x["intermediate_steps"]
+                ),
+            }
+            | execute_tools_with_parameters_chat_prompt_template
+            | llm_with_tools
+            | parse
     )
 
     try:
@@ -208,9 +207,10 @@ def execute_tools_with_parameters(state: State):
                                        handle_parsing_errors=True)
     except Exception as e:
         logging.error(f"Error while AgentExecutor: {e}")
-        return {"messages_history": [{
-            'role': 'ai',
-            'content': json.dumps({"output": "Sorry, failed to answer using blueberry (AgentExecutor)"}, indent=4)}]}
+        return {"messages_history": [{'role': 'ai',
+                                      'content': json.dumps(
+                                          {"output": "Sorry, failed to answer using blueberry (AgentExecutor)"},
+                                          indent=4)}]}
 
     try:
         logging.info(f"=====> Invoking agent_executor")
@@ -220,24 +220,33 @@ def execute_tools_with_parameters(state: State):
         logging.error(f"Error while agent_executor.invoke: {e}")
         return {"messages_history": [{
             'role': 'ai',
-            'content': json.dumps({"output": "Sorry, failed to answer using blueberry (invoke agent_executor)"}, indent=4)}]}
+            'content': json.dumps({"output": "Sorry, failed to answer using blueberry (invoke agent_executor)"},
+                                  indent=4)}]}
 
-    logger.info(
-        f"=====> The agentic flow has finished executing the tools with parameters")
-
+    logger.info(f"=====> The agentic flow has finished executing the tools with parameters")
     try:
-        output_content = json.dumps(response["output"], indent=4)
+        user_response = json.dumps(response["output"], indent=4)
+
+        thinking_log += f"I am done. Returning a response to the user."
+        session_thinking_log_as_str = ""
+        for state_thinking_log in state["thinking_log"]:
+            session_thinking_log_as_str = " ".join([session_thinking_log_as_str, state_thinking_log.content])
+        session_thinking_log_as_str = " ".join([session_thinking_log_as_str, thinking_log])
+
+        output_content = f"<think>{session_thinking_log_as_str}</think>\n{user_response}"
     except Exception as e:
         logging.error(f"Error while json.dumps: {e}")
         output_content = "Sorry, failed to answer using blueberry (json.dumps)"
 
     logger.info(f"output_content: {output_content}")
 
-    logging.info(f"=======>>> execute_tools_with_parameters. ended <<<=======")
-    return {"messages_history": [{
+    messages_history = [{
         'role': 'ai',
         'content': output_content
-    }]}
+    }]
+    logging.info(f"=======>>> execute_tools_with_parameters. ended <<<=======")
+    return {"messages_history": messages_history,
+            "thinking_log": thinking_log}
 
 
 def json_schema_to_python_type(json_schema_type: str) -> str:
@@ -273,12 +282,12 @@ def generate_function_arguments_from_metadata(metadata: str):
         param_type = json_schema_to_python_type(param_info['type'])
         param_strs.append(f"{param_name}: {param_type}")
 
-    try:    
-        returns =  parsed_info['returns']['properties']
+    try:
+        returns = parsed_info['returns']['properties']
         returns_type = json_schema_to_python_type(returns['type'])
     except Exception as e:
         returns_type = "str"
-        
+
     function_arguments += ", ".join(param_strs) + f") -> {returns_type}"
 
     return function_arguments

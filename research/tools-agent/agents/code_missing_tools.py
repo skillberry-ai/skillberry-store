@@ -28,6 +28,7 @@ generate_tools_dynamically = config.get("advanced__generate_tools_dynamically")
 
 
 def code_missing_tools(state: State):
+    thinking_log = []
     logging.info(f"=======>>> code_missing_tools. starts <<<=======")
     need_to_generate_tools = state["need_to_generate_tools"]
     generated_tools = []
@@ -65,9 +66,23 @@ def code_missing_tools(state: State):
             "description": need_to_generate_tool.description,
         })
 
+    if len(generated_tools) > 0:
+        thinking_log.append("I just coded ephemeral tools that I will use.")
+        tool_descriptions = ""
+        for i, tool in enumerate(generated_tools):
+            tool_description = tool["description"]
+            tool_descriptions += f"{tool_description} "
+            if i < len(generated_tools) - 1:
+                tool_descriptions += ", and a tool that "
+            else:
+                tool_descriptions += "."
+
+        thinking_log.append(f"a tool that {tool_descriptions}")
+
     logging.info(f"=======>>> code_missing_tools. ended <<<=======")
     # (6) update the state with the generated tools
-    return {"generated_tools": generated_tools}
+    return {"generated_tools": generated_tools,
+            "thinking_log": thinking_log}
 
 
 def generate_tool(need_to_generate_tool: dict, skip_validation=False) -> bool:

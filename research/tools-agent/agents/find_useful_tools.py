@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict
+from typing import List
 
 from pydantic import BaseModel, Field
 
@@ -44,6 +44,7 @@ class FindingToolsResponseJsonSchema(BaseModel):
 # plan what tools can help to resolve the user prompt
 # get for each of the tools the name and description
 def find_useful_tools(state: State):
+    thinking_log = []
     logging.info(f"=======>>> find_useful_tools. started <<<=======")
     logger.info("find_useful_tools called")
     structured_llm = llm.with_structured_output(schema=FindingToolsResponseJsonSchema,
@@ -54,7 +55,22 @@ def find_useful_tools(state: State):
     response = find_useful_tools_chain.invoke(
         {"user_prompt": state["original_user_prompt"]["content"]})
     logger.info("find_useful_tools returned: %s", response)
+
+    if response.suggested_tools is not None:
+        thinking_log.append("I think that there are tools that "
+                            "can help me to reduce hallucinations and be more accurate.")
+        tool_descriptions = ""
+        for i, tool in enumerate(response.suggested_tools):
+            tool_descriptions += f"{tool.description}"
+            if i < len(response.suggested_tools) - 1:
+                tool_descriptions += ", and a tool that "
+            else:
+                tool_descriptions += "."
+
+        thinking_log.append(f"I think that the tools are: a tool that {tool_descriptions}")
+
     logging.info(f"=======>>> find_useful_tools. ended <<<=======")
-    return {"suggested_tools": response.suggested_tools}
+    return {"suggested_tools": response.suggested_tools,
+            "thinking_log": thinking_log}
 
 # the requirements

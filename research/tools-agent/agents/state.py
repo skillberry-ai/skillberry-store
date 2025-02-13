@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 class State(TypedDict):
 
+    thinking_log: Annotated[list[AIMessage], add_messages]
     original_user_prompt: HumanMessage
     chat_history: list[HumanMessage | AIMessage]
 

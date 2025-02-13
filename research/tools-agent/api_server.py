@@ -53,8 +53,7 @@ def api_chat_completion(request: ChatRequest):
         chat_history = request.messages
         last_user_prompt = get_last_user_prompt(chat_history)
         response = stream_graph_updates(chat_history=chat_history, original_user_prompt=last_user_prompt)
-        final_response = json.loads(
-            list(response)[0]['messages_history'][-1]['content'])
+        final_response = list(response)[0]['messages_history'][-1]['content']
         logging.info(f"The response to the user prompt is: {final_response}")
 
         response = {

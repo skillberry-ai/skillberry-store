@@ -16,6 +16,7 @@ similarity_threshold = config.get("advanced__similarity_threshold")
 
 
 def find_existing_tools(state: State):
+    thinking_log = []
     logging.info(f"=======>>> find_existing_tools. started <<<=======")
     existing_tools = []
     need_to_generate_tools = []
@@ -55,6 +56,20 @@ def find_existing_tools(state: State):
     except Exception as e:
         logging.error(f"Error while find_existing_tools: {e}")
 
+    if len(existing_tools) > 0:
+        thinking_log.append("I found existing approved tools that I will use.")
+        tool_names = ""
+        for i, tool in enumerate(existing_tools):
+            tool_name = tool["name"].split('.py')[0] if '.py' in tool["name"] else tool["name"]
+            tool_names += f"{tool_name}"
+            if i < len(existing_tools) - 1:
+                tool_names += ", and a tool named "
+            else:
+                tool_names += "."
+
+        thinking_log.append(f"A tool named {tool_names}")
+
     logging.info(f"=======>>> find_existing_tools. ended <<<=======")
     return {"existing_tools": existing_tools,
-            "need_to_generate_tools": need_to_generate_tools}
+            "need_to_generate_tools": need_to_generate_tools,
+            "thinking_log": thinking_log}
