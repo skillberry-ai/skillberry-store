@@ -20,5 +20,6 @@
       "returns": {
           "type": "number",
           "description": "The sum of the two input numbers."
-      }
+      },
+      "state": "approved"
 }
