@@ -15,10 +15,9 @@ from tools_agentic_graph import stream_graph_updates
 # Define the API
 api_server = FastAPI()
 
+logger = logging.getLogger(__name__)
 
-# Request data model
-
-
+# Prompt request data model
 class ChatRequest(BaseModel):
     model: str
     messages: list
@@ -31,7 +30,11 @@ class ChatRequest(BaseModel):
 
 def get_last_user_prompt(chat_history):
     matches = re.findall(r'User: ([^\n]+)', str(chat_history))
-    return {"content": matches[-1], "role": "user"} if matches else chat_history[-1]
+    if matches:
+        return {"content": matches[-1], "role": "user"}
+    else:
+        logger.info("using last message from the chat_history:")
+        return chat_history[-1]
 
 
 @api_server.post("/prompt", tags=["chat"])
