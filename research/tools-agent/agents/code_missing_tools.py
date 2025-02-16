@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from agents.state import State
 from agents.unittest_tools import validate_tool_using_llm_as_a_coder
 from config.config_ui import config
-from llm.common import llm
+from llm.common import coder_llm
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ post_file_url = f"{tools_repo_base_url}/file/"
 headers = {"Accept": "application/json"}
 
 # A general variable that allows (or disallows) to generate tools dynamically by the agent
-generate_tools_dynamically = config.get("advanced__generate_tools_dynamically")
+generate_tools_dynamically = config.get("llm_as_coder__generate_tools_dynamically")
 
 
 def code_missing_tools(state: State):
@@ -209,7 +209,7 @@ def code_python_function_using_llm_as_a_coder(name: str, description: str, examp
                 f" with description:\n{description}\n"
                 f" with examples:\n{examples}\n")
 
-    structured_llm = llm.with_structured_output(schema=CodePythonFunctionResponseJsonSchema,
+    structured_llm = coder_llm.with_structured_output(schema=CodePythonFunctionResponseJsonSchema,
                                                 method="function_calling",
                                                 include_raw=False)
 

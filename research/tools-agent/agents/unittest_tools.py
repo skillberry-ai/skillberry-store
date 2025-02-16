@@ -7,7 +7,7 @@ import json
 import sys
 
 from config.config_ui import config
-from llm.common import llm
+from llm.common import coder_llm
 
 service_dir = Path(__file__).parent.parent.parent / 'tools-service'
 sys.path.append(str(service_dir))
@@ -40,7 +40,7 @@ class TestCasesJsonSchema(BaseModel):
                     '"expected" - the expected output of the function\n')
 
 
-unittests_count = config.get("advanced__unittests_count")
+unittests_count = config.get("llm_as_coder__unittests_count")
 
 unittest_function_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an expert in testing and providing test cases for unit testing of python functions"),
@@ -66,7 +66,7 @@ unittest_function_chat_prompt_template = ChatPromptTemplate.from_messages([
 def generate_test_cases(function_name: str, function_description: str) -> List[Dict]:
     """Generate test cases using LLM with structured output."""
 
-    structured_llm = llm.with_structured_output(schema=TestCasesJsonSchema,
+    structured_llm = coder_llm.with_structured_output(schema=TestCasesJsonSchema,
                                                 method="function_calling",
                                                 include_raw=False)
 
