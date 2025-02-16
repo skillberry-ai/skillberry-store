@@ -96,7 +96,7 @@ def generate_tool(need_to_generate_tool: dict, skip_validation=False) -> bool:
     logging.info(f"examples: {examples}")
 
     # (1) create tool using LLM-as-coder (based on the tool name and description)
-    success, tool_response, metadata = code_python_function_using_llm_as_a_coder(
+    success, code, docstring, metadata = code_python_function_using_llm_as_a_coder(
         name=name,
         description=description,
         examples=examples)
@@ -110,8 +110,8 @@ def generate_tool(need_to_generate_tool: dict, skip_validation=False) -> bool:
     logging.info(f"generate_tool: generalizing tool {name}")
     generalize_tool_response = tool_generalize_using_llm_as_a_coder(name=name,
                                                                     metadata=metadata,
-                                                                    description=tool_response.docstring,
-                                                                    code=tool_response.code)
+                                                                    description=docstring,
+                                                                    code=code)
 
     # (3) validate the function and make sure it is valid to be added to the repo
     logging.info(f"generate_tool: validating tool {name}")
@@ -161,23 +161,20 @@ def add_tool_to_repo(name: str, metadata: json, description: str, code: str) -> 
 
 
 class CodePythonFunctionResponseJsonSchema(BaseModel):
-    docstring: str = Field(
-        description="The function docstring (Google style) including all input parameters, and the return value")
     code: str = Field(
-        description="The function code including the docstring without examples or usage")
+        description="The function code including a complete (Google style) docstring")
 
 
 code_python_function_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an expert in writing code in python"),
     ("system", "Always add meaningful docstring (Google style) to functions and tools that you generate"),
+    ("system", "Always include a complete docstring as part of the generated code"),
+    ("system", "Make sure to provide elaborated description as part of the docstring"),
     ("system", "The docstring should always include description, the input parameters including types, "
                "and the return value including the type"),
-    ("system", "Make sure to provide elaborated description as part of the docstring"),
-    ("system", "Include the complete docstring also as part of the code that you generate"),
     ("system", "Do not add examples or usage, answer with only the python code itself"),
-    ("system", "The return value of the functions should always be a string"),
-    ("system", "An example of a function with valid docstring that includes Parameters and"
-               "Return value looks like this:"),
+    ("system", "An example of a function with valid docstring that includes parameters and"
+               "return value looks like this:"),
     ("system", """
 def calculate_rectangle_area(length, width):
     \"\"\"
@@ -210,18 +207,23 @@ def code_python_function_using_llm_as_a_coder(name: str, description: str, examp
                 f" with examples:\n{examples}\n")
 
     structured_llm = coder_llm.with_structured_output(schema=CodePythonFunctionResponseJsonSchema,
-                                                method="function_calling",
-                                                include_raw=False)
+                                                      method="function_calling",
+                                                      include_raw=False)
 
     try:
         code_missing_tools_chain = code_python_function_chat_prompt_template | structured_llm
         response = code_missing_tools_chain.invoke(
             {"function_description": description, "function_name": name, "function_examples": examples})
-        logger.info(
-            "code_python_function_using_llm_as_a_coder returned: %s", response)
+        code = response.code
+        print(f"The code:\n\n {code}\n")
+    except Exception as e:
+        logger.error(
+            "code_python_function_using_llm_as_a_coder failed with error: %s", e)
+        return False, {}, {}, {}
 
+    try:
         # Get the metadata of the function from the docstring
-        function_calling_api = parse_docstring(name, response.code)
+        docstring, function_calling_api = parse_docstring(name, code)
         metadata = {
             "programming_language": "python",
             "packaging_format": "code",
@@ -230,11 +232,11 @@ def code_python_function_using_llm_as_a_coder(name: str, description: str, examp
             "parameters": function_calling_api["parameters"],
         }
 
-        return True, response, metadata
+        return True, response.code, docstring, metadata
     except Exception as e:
         logger.error(
-            "code_python_function_using_llm_as_a_coder failed with error: %s", e)
-        return False, {}, {}
+            "docstring parsing failed with error: %s", e)
+        return False, {}, {}, {}
 
 
 def tool_generalize_using_llm_as_a_coder(name: str, metadata: json, description: str, code: str) -> str:
@@ -251,16 +253,16 @@ def tool_generalize_using_llm_as_a_coder(name: str, metadata: json, description:
     return generalized_tool_response
 
 
-def parse_docstring(name: str, code: str):
+def parse_docstring(name: str, code: str) -> (str, dict):
     local_dict = {}
     exec(code, {}, local_dict)
     func = local_dict[name]
 
-    doc = inspect.getdoc(func)
+    docstring = inspect.getdoc(func)
     signature = inspect.signature(func)
 
-    description = doc.split("\n\n")[0] if doc else ""
-    param_docs = re.findall(r"(\w+) \((\w+)\): (.+)", doc)  # For Google style
+    description = docstring.split("\n\n")[0] if docstring else ""
+    param_docs = re.findall(r"(\w+) \((\w+)\): (.+)", docstring)  # For Google style
     properties = {}
     required = []
 
@@ -273,7 +275,7 @@ def parse_docstring(name: str, code: str):
             }
             required.append(name)
 
-    return {
+    return docstring, {
         "name": name,
         "description": description,
         "parameters": {

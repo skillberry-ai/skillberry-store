@@ -188,7 +188,7 @@ def execute_tools_with_parameters(state: State):
         logging.error(f"Error while streaming to the react agent: {e}")
         return {"messages": [{
             'role': 'ai',
-            'content': json.dumps({"output": f"Sorry, failed to answer using blueberry (invoke react agent)"},
+            'content': json.dumps(f"Sorry, failed to answer using blueberry (invoke react agent)",
                                   indent=4)}]}
 
     logger.info(f"=====> The agentic flow has finished executing the tools with parameters")

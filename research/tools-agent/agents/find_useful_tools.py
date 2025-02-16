@@ -52,8 +52,9 @@ def find_useful_tools(state: State):
                                                 include_raw=False)
 
     find_useful_tools_chain = find_useful_tools_chat_prompt_template | structured_llm
-    response = find_useful_tools_chain.invoke(
-        {"user_prompt": state["original_user_prompt"]["content"]})
+    user_content = state["original_user_prompt"]["content"]
+    logger.info(f"finding useful tools for the user content: {user_content}")
+    response = find_useful_tools_chain.invoke({"user_prompt": user_content})
     logger.info("find_useful_tools returned: %s", response)
 
     if response.suggested_tools is not None:
@@ -72,5 +73,3 @@ def find_useful_tools(state: State):
     logging.info(f"=======>>> find_useful_tools. ended <<<=======")
     return {"suggested_tools": response.suggested_tools,
             "thinking_log": thinking_log}
-
-# the requirements
