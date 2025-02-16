@@ -14,8 +14,20 @@ logger = logging.getLogger(__name__)
 def arg_convert(arg):
     arg_str = str(arg)  # Ensure the argument is treated as a string
 
-    if arg_str.isdigit():
-        return int(arg_str)
+    try:
+        int_val = int(arg_str)
+        # Check if the string representation matches to avoid float->int conversion
+        if str(int_val) == arg_str:
+            return int_val
+    except ValueError:
+        pass
+
+    # Try to convert to float
+    try:
+        float_val = float(arg)
+        return float_val
+    except ValueError:
+        pass
 
     try:
         return float(arg_str)
@@ -149,10 +161,18 @@ parser.add_argument('args', nargs=argparse.REMAINDER,
                     help="Arguments to pass to the function")
 args = parser.parse_args()
 def try_convert(arg):
-    if arg.isdigit():
-        return int(arg)
     try:
-        return float(arg)
+        int_val = int(arg)
+        # Check if the string representation matches to avoid float->int conversion
+        if str(int_val) == arg:
+            return int_val
+    except ValueError:
+        pass
+
+    # Try to convert to float
+    try:
+        float_val = float(arg)
+        return float_val
     except ValueError:
         pass
     try:
