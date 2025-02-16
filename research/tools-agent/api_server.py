@@ -17,6 +17,7 @@ api_server = FastAPI()
 
 logger = logging.getLogger(__name__)
 
+
 # Prompt request data model
 class ChatRequest(BaseModel):
     model: str
@@ -32,9 +33,9 @@ def get_last_user_prompt(chat_history):
     matches = re.findall(r'(?<=User: )(.*?)(?=\\n)', str(chat_history), re.IGNORECASE)
     if matches:
         return {"content": matches[-1], "role": "user"}
-    else:
-        logger.info("using last message from the chat_history:")
-        return chat_history[-1]
+
+    logger.info("using last message from the chat_history:")
+    return {"content": chat_history[-1], "role": "user"}
 
 
 @api_server.post("/prompt", tags=["chat"])
