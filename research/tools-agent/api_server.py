@@ -29,7 +29,7 @@ class ChatRequest(BaseModel):
 
 
 def get_last_user_prompt(chat_history):
-    matches = re.findall(r'(?<=User: )(.*?)(?=\\n)', chat_history, re.IGNORECASE)
+    matches = re.findall(r'(?<=User: )(.*?)(?=\\n)', str(chat_history), re.IGNORECASE)
     if matches:
         return {"content": matches[-1], "role": "user"}
     else:
