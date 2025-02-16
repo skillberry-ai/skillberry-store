@@ -24,13 +24,20 @@ selected_model = config.get("selected_model")
 use_rits_proxy = config.get("use_rits_proxy")
 temperature = config.get("temperature")
 
+llm_coder_model = config.get("llm_as_coder__model")
+llm_coder_temperature = config.get("llm_as_coder__temperature")
+
 logger.info(f"\n\n"
             f"==> 0. Configuration:\n"
             f"==> =================\n"
             f"==> Using model: {selected_model}\n"
             f"==> Temperature: {temperature}\n"
             f"==> Using rits proxy: {use_rits_proxy}\n"
-            f"==> =================\n\n")
+            f"==> =================\n\n"
+            f"==> Using coder model: {llm_coder_model}\n"
+            f"==> Coder Temperature: {llm_coder_temperature}\n"
+            f"==> =================\n\n"
+            )
 
 if use_rits_proxy:
     model_name = f"rits/{selected_model}".replace('.', '-').lower()
@@ -38,6 +45,15 @@ if use_rits_proxy:
     llm = ChatOpenAI(
         model=f"{model_name}",
         temperature=temperature,
+        max_retries=2,
+        api_key=rits_api_key,
+        base_url=rits_proxy_api_url
+    )
+
+    model_name = f"rits/{llm_coder_model}".replace('.', '-').lower()
+    coder_llm = ChatOpenAI(
+        model=f"{model_name}",
+        temperature=llm_coder_temperature,
         max_retries=2,
         api_key=rits_api_key,
         base_url=rits_proxy_api_url
@@ -56,13 +72,33 @@ else:
         default_headers={'RITS_API_KEY': rits_api_key}
     )
 
+    model = llm_coder_model.split(
+        '/')[1].replace('.', '-').lower()
+    url = f"{rits_api_url}/{model}/v1"
+
+    coder_llm = ChatOpenAI(
+        model=f"{model}",
+        temperature=llm_coder_temperature,
+        max_retries=2,
+        api_key='/',
+        base_url=url,
+        default_headers={'RITS_API_KEY': rits_api_key}
+    )
+
 
 def check_llm_communication():
     try:
         llm.invoke("try to communicate with the llm")
         logger.info("Communication with the LLM established.")
-        return True
     except Exception as e:
         logger.error(f"LLM is not working {e}")
+        return False
 
-    return False
+    try:
+        coder_llm.invoke("try to communicate with the coder llm")
+        logger.info("Communication with the coder LLM established.")
+    except Exception as e:
+        logger.error(f"Coder LLM is not working {e}")
+        return False
+
+    return True

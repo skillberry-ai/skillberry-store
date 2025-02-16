@@ -1,77 +1,102 @@
 import json
 import logging
-import time
 
-from langchain.agents import AgentExecutor
-from langchain.agents.format_scratchpad import format_to_openai_function_messages
-from langchain_core.agents import AgentFinish, AgentActionMessageLog
-from langchain_core.messages import AIMessageChunk, ToolCallChunk
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.tools import BaseTool
 
 from agents.remote_tools_wrapper import generate_dynamic_tool
 from agents.state import State
-from config.config_ui import config
+from config.config_ui import config as _config
 from llm.common import llm
+
+from typing import Annotated, Sequence, TypedDict, Union, Dict, Any, Type, Callable
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
+from langchain_core.messages import ToolMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph import StateGraph, END
 
 logger = logging.getLogger(__name__)
 
-tools_repo_base_url = config.get("tools_repo_base_url")
+tools_repo_base_url = _config.get("tools_repo_base_url")
+recursion_limit = _config.get("tools_react_agent__recursion_limit")
 
 headers = {"Accept": "application/json"}
 
 execute_tools_with_parameters_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an helpful assistant"),
-    ("system", "You are an expert in text analysis"),
+    ("system", "You are an expert in invocation function and tools"),
+    ("system", "You use the observations from function and tools to provide accurate responses"),
+    ("system", "Your final response does not provide names and descriptions of invoked functions and tools"),
+    ("system", "Your final response does not include explanations about the invocation process"),
     "{chat_history}",
-    MessagesPlaceholder(variable_name="agent_scratchpad"),
 ])
 
 
-def parse(output):
-    # If no function was invoked, return to user
-    if "tool_calls" not in output.additional_kwargs:
-        logging.info(
-            f"=====> The agentic flow will now return to the user (no tool_calls)")
-        return AgentFinish(return_values={"output": output.content}, log=output.content)
+class ReactToolsCallingAgentState(TypedDict):
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    _tools: Sequence[Union[Dict[str, Any], Type, Callable, BaseTool]]
+    _llm: LanguageModelInput
 
-    # Parse out the *first* tool to call
-    tool_call = output.additional_kwargs["tool_calls"][0]["function"]
-    name = tool_call["name"]
-    if tool_call["arguments"] != "":
-        inputs = json.loads(tool_call["arguments"])
+
+def tool_node(state: ReactToolsCallingAgentState):
+    def get_tool(_tool_name: str):
+        for _tool in state["_tools"]:
+            if _tool.name == _tool_name:
+                return _tool
+        return None
+
+    outputs = []
+    for tool_call in state["messages"][-1].tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        logging.info(f"=====> The agentic flow will now call the function {tool_name} with args {tool_args}")
+        tool_function = get_tool(tool_name)
+        if tool_function is None:
+            raise ValueError(f"tool_node: The Tool {tool_name} was not found")
+
+        tool_result = tool_function.invoke(tool_args)
+        outputs.append(
+            ToolMessage(
+                content=json.dumps(tool_result),
+                name=tool_call["name"],
+                tool_call_id=tool_call["id"],
+            )
+        )
+    return {"messages": outputs}
+
+
+def call_llm_model_node(
+        state: ReactToolsCallingAgentState,
+        config: RunnableConfig):
+    last_message = state["messages"][-1]
+    logging.info(f"=====> Calling LLM to response.)")
+    logging.info(f"Latest message is: {last_message}")
+    response = state["_llm"].invoke(state["messages"], config)
+    return {"messages": [response]}
+
+
+def should_continue(state: ReactToolsCallingAgentState):
+    messages = state["messages"]
+    last_message = messages[-1]
+    if not last_message.tool_calls:
+        logging.info(f"=====> The agentic flow will now return to the user (no more tool_calls)")
+        return "end"
     else:
-        inputs = {}
-    # If the Response function was invoked, return to the user with the function inputs
-    if name == "Response":
-        logging.info(f"=====> Response function was invoked - AgentFinish")
-        return AgentFinish(return_values=inputs, log=str(tool_call))
-    # Otherwise, return an agent action
-    else:
-        logging.info(
-            f"=====> The agentic flow will now call the function {name} with args {inputs}")
-        id = int(time.time())
-        message = AIMessageChunk(content="", tool_call_chunks=[ToolCallChunk(name=name,
-                                                                             id=str(
-                                                                                 id),
-                                                                             args=json.dumps(
-                                                                                 inputs),
-                                                                             index=id)])
-        return AgentActionMessageLog(tool=name, tool_input=inputs, log="", message_log=[message])
+        logging.info(f"=====> The agentic flow will continue, calling additional tools")
+        return "continue_call_tools"
 
 
-# execute the tools with the parameters
-def execute_tools_with_parameters(state: State):
-    thinking_log = ""
-    logging.info(f"=======>>> execute_tools_with_parameters. started <<<=======")
-    tools = []
+def generate_list_of_tools(state: State):
+    _tools = []
     scope = {}
 
     for _tool in state["existing_tools"]:
         try:
-            logging.info(
-                f"existing_tools: Generating local tool stub {_tool['name']}")
+            logging.info(f"existing_tools: Generating local tool stub {_tool['name']}")
             tool_func = generate_dynamic_tool(_tool, scope, tools_repo_base_url)
-            tools.append(tool_func)
+            _tools.append(tool_func)
         except Exception as e:
             logging.error(f"existing_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
@@ -79,72 +104,96 @@ def execute_tools_with_parameters(state: State):
         try:
             logging.info(f"existing_tools: Generating local tool stub {_tool['name']}")
             tool_func = generate_dynamic_tool(_tool, scope, tools_repo_base_url)
-            tools.append(tool_func)
+            _tools.append(tool_func)
         except Exception as e:
             logging.error(f"need_to_generate_tools: Error while generate_dynamic_tool {_tool['name']}: {e}")
 
+    return _tools
+
+
+# execute the tools with the parameters
+def execute_tools_with_parameters(state: State):
+    thinking_log = ""
+    logging.info(f"=======>>> execute_tools_with_parameters. started <<<=======")
+
+    # get the original chat history from the state
+    chat_history = state["chat_history"]
+
+    # Generate the list of tools
+    _tools = generate_list_of_tools(state)
+
+    # bind the tools to the LLM
     try:
-        if not tools:
+        if not _tools:
             thinking_log += "I don't have any tools to use. using the LLM model as-is to response. "
             logging.info(f"=====> No tools, not binding")
-            llm_with_tools = llm
+            _llm_with_tools = llm
         else:
             thinking_log += "I will now use the tools and the LLM model to response. "
-            logging.info(f"=====> Binding tools: {tools}")
-            llm_with_tools = llm.bind_tools(tools=tools,
-                                            strict=True)
+            logging.info(f"=====> Binding tools: {_tools}")
+            _llm_with_tools = llm.bind_tools(tools=_tools,
+                                             strict=True)
     except Exception as e:
         logging.error(f"Error while binding tools: {e}")
         return {"messages": [{
             'role': 'ai',
             'content': json.dumps({"output": "Sorry, failed to answer using blueberry (tools binding)"}, indent=4)}]}
 
-    chat_history = state["chat_history"]
+    # Use a React tool calling agent
+    # Define a new graph
+    workflow = StateGraph(ReactToolsCallingAgentState)
 
-    # print("*****************************")
-    # print(f"{chat_history}")
-    # print("*****************************")
+    # Define the nodes
+    workflow.add_node("llm", call_llm_model_node)
+    workflow.add_node("tools", tool_node)
 
-    agent = (
-            {
-                "chat_history": lambda x: x["chat_history"],
-                # Format agent scratchpad from intermediate steps
-                "agent_scratchpad": lambda x: format_to_openai_function_messages(
-                    x["intermediate_steps"]
-                ),
-            }
-            | execute_tools_with_parameters_chat_prompt_template
-            | llm_with_tools
-            | parse
+    # Set the entrypoint as `llm`
+    workflow.set_entry_point("llm")
+
+    # Add edges
+    workflow.add_edge("tools", "llm")
+    workflow.add_conditional_edges(
+        "llm",
+        should_continue,
+        {
+            "continue_call_tools": "tools",
+            "end": END,
+        },
     )
 
-    try:
-        logging.info(f"=====> Creating AgentExecutor")
-        agent_executor = AgentExecutor(agent=agent,
-                                       tools=tools,
-                                       verbose=True,
-                                       handle_parsing_errors=True)
-    except Exception as e:
-        logging.error(f"Error while AgentExecutor: {e}")
-        return {"messages": [{'role': 'ai',
-                              'content': json.dumps(
-                                  {"output": "Sorry, failed to answer using blueberry (AgentExecutor)"},
-                                  indent=4)}]}
+    # compile the graph
+    react_tools_graph = workflow.compile()
+
+    # Helper function for formatting the stream nicely
+    def trace_stream(stream):
+        _final_message = None
+
+        for s in stream:
+            message = s["messages"][-1]
+            logging.info(message)
+            _final_message = message
+        return _final_message
+
+    # Building the basic prompt for the React tools agent
+    original_chat_messages = execute_tools_with_parameters_chat_prompt_template.invoke(chat_history)
 
     try:
-        logging.info(f"=====> Invoking agent_executor")
-        response = agent_executor.invoke({"chat_history": f"{chat_history}"},
-                                         config=None)
+        logging.info(f"=====> Invoking the tools react agent")
+        final_message = trace_stream(react_tools_graph.stream({"messages": original_chat_messages.to_messages(),
+                                                               "_tools": _tools,
+                                                               "_llm": _llm_with_tools},
+                                                              {"recursion_limit": recursion_limit},
+                                                              stream_mode="values"))
     except Exception as e:
-        logging.error(f"Error while agent_executor.invoke: {e}")
+        logging.error(f"Error while streaming to the react agent: {e}")
         return {"messages": [{
             'role': 'ai',
-            'content': json.dumps({"output": "Sorry, failed to answer using blueberry (invoke agent_executor)"},
+            'content': json.dumps({"output": f"Sorry, failed to answer using blueberry (invoke react agent)"},
                                   indent=4)}]}
 
     logger.info(f"=====> The agentic flow has finished executing the tools with parameters")
     try:
-        user_response = response["output"]
+        ai_response = final_message.content
 
         thinking_log += f"I am done. Returning a response to the user."
         session_thinking_log_as_str = ""
@@ -152,7 +201,7 @@ def execute_tools_with_parameters(state: State):
             session_thinking_log_as_str = " ".join([session_thinking_log_as_str, state_thinking_log.content])
         session_thinking_log_as_str = " ".join([session_thinking_log_as_str, thinking_log])
 
-        output_content = f"<think>{session_thinking_log_as_str}</think>\n{user_response}"
+        output_content = f"<think>{session_thinking_log_as_str}</think>\n{ai_response}"
     except Exception as e:
         logging.error(f"Error while json.dumps: {e}")
         output_content = "Sorry, failed to answer using blueberry (json.dumps)"
