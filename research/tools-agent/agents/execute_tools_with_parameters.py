@@ -28,8 +28,8 @@ execute_tools_with_parameters_chat_prompt_template = ChatPromptTemplate.from_mes
     ("system", "You are an helpful assistant"),
     ("system", "You are an expert in invocation function and tools"),
     ("system", "You use the observations from function and tools to provide accurate responses"),
-    ("system", "Your final response does not provide names and descriptions of invoked functions and tools"),
-    ("system", "Your final response does not include explanations about the invocation process"),
+    ("system", "The response should not provide any names or descriptions of used functions and tools"),
+    ("system", "The response should not include explanations about the tool calling process"),
     "{chat_history}",
 ])
 
