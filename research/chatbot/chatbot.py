@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import sys
 
 import streamlit as st
 from langchain_openai import ChatOpenAI
@@ -52,8 +51,8 @@ def get_model_endpoint(model_name):
         for model in st.session_state.models:
             if model["name"] == model_name:
                 return model["endpoint"]
-    except Exception as e:
-        logging.error(f"Error getting model endpoint: {e}", file=sys.stderr)
+    except Exception as _e:
+        logging.error(f"Error getting model endpoint: {_e}")
     return None
 
 
@@ -62,15 +61,14 @@ def load_models(models_file_path):
         with open(models_file_path, 'r') as file:
             models = json.load(file)
             if not isinstance(models, list):
-                logging.error(
-                    "Invalid file format: Expected a list of models.")
+                logging.error("Invalid file format: Expected a list of models.")
                 return []
             # statically add blueberry model (agent endpoint)
             models.append(
                 {"name": "blueberry", "endpoint": blueberry_tools_agent_api_url})
             return models
-    except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
-        logging.error(f"Error loading models: {e}", file=sys.stderr)
+    except (FileNotFoundError, json.JSONDecodeError, ValueError) as _e:
+        logging.error(f"Error loading models: {_e}")
         return []
 
 
@@ -114,7 +112,7 @@ def connect_to_llm(_assistant: int = 0):
             url = get_model_endpoint(model_name)
             if url is None:
                 logging.info(
-                    f"Fallback to calculation of url from the modelname {model} and {rits_api_url}")
+                    f"Fallback to calculation of url from the model name {model_name} and {rits_api_url}")
                 model = model_name.split(
                     '/')[1].replace('.', '-').lower()
                 url = f"{rits_api_url}/{model}/v1"
@@ -137,10 +135,10 @@ def connect_to_llm(_assistant: int = 0):
                 api_key=st.session_state.rits_api_key,
                 base_url=rits_proxy_api_url
             )
-    except Exception as e:
+    except Exception as _e:
         st.session_state.llm = None
         st.warning("Can't connect to LLM, please fix the credentials!", icon='⚠️')
-        logger.error(e)
+        logger.error(_e)
         return
 
     logger.info(f"Connected to LLM: {model_name}")
@@ -148,8 +146,8 @@ def connect_to_llm(_assistant: int = 0):
     if st.session_state.rits_api_key is not None and st.session_state.rits_api_key != "":
         try:
             set_cookie("rits_api_key", st.session_state.rits_api_key)
-        except Exception as e:
-            logger.error(e)
+        except Exception as _e:
+            logger.error(_e)
     return
 
 
@@ -199,9 +197,11 @@ with st.sidebar:
     st.markdown(
         '''
     👉 For additional details contact: eranra@il.ibm.com  
-    🛠️ For feedback and issues :[Blueberry github](https://github.ibm.com/Blueberry/blueberry/issues)
+    🛠️ For feedback and issues :[Blueberry github]
+    (https://github.ibm.com/Blueberry/blueberry/issues)
      
-    📄 RITS API token instructions [RITS docs](https://github.ibm.com/rits/rits/?tab=readme-ov-file#important-information)      
+    📄 RITS API token instructions [RITS docs]
+    (https://github.ibm.com/rits/rits/?tab=readme-ov-file#important-information)      
     ''')
 
     if "rits_api_key" in st.session_state and st.session_state.rits_api_key is not None:
@@ -215,10 +215,11 @@ with st.sidebar:
 
     # Blueberry proxy checkbox
     st.checkbox("Use rits blueberry proxy", key="use_rits_blueberry_proxy",
-                value=False, on_change=clear_chat_history)
+                value=True, on_change=clear_chat_history)
     if st.session_state.use_rits_blueberry_proxy:
         st.markdown(
-            '<p style="font-size: 14px; margin-left: 20px; color: gray;"> ℹ️ Anonymous prompt data might be collected for improving Blueberry.</p>', unsafe_allow_html=True)
+            '<p style="font-size: 14px; margin-left: 20px; color: gray;"> ℹ️ Anonymous prompt data might be collected '
+            'for improving Blueberry.</p>', unsafe_allow_html=True)
 
     # Dual assistant checkbox
     st.checkbox("dual assistant (compare with granite)",
@@ -255,9 +256,11 @@ if prompt := st.chat_input(
             {"role": "user", "content": prompt})
 
 
-def styled_content(content: str) -> str:
-    return (content.replace("<think>", '<span style="color: gray; font-size: 12px;">')
-            .replace("</think>", "</span><br>"))
+def get_styled_content(content: str) -> str:
+    styled_content = (content.replace("<think>", '<span style="color: gray; font-size: 12px;">')
+                      .replace("</think>", "</span><br>"))
+    styled_content = styled_content.replace("$", "\\$")
+    return styled_content
 
 
 # display the trajectory
@@ -265,7 +268,7 @@ for assistant in range(current_assistant_count):
     with (panels[assistant]):
         for message in st.session_state.messages[assistant]:
             with st.chat_message(message["role"]):
-                st.markdown(styled_content(
+                st.markdown(get_styled_content(
                     message["content"]), unsafe_allow_html=True)
 
 # Generate a new response if the last message is not from assistant
@@ -279,9 +282,9 @@ for assistant in range(current_assistant_count):
                     full_response = ''
                     for item in response:
                         full_response += item
-                        placeholder.markdown(styled_content(
+                        placeholder.markdown(get_styled_content(
                             full_response), unsafe_allow_html=True)
-                    placeholder.markdown(styled_content(
+                    placeholder.markdown(get_styled_content(
                         full_response), unsafe_allow_html=True)
             message = {"role": "assistant", "content": full_response}
             st.session_state.messages[assistant].append(message)
