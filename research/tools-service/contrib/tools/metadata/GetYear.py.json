@@ -2,7 +2,7 @@
     "programming_language": "python",
     "packaging_format": "code",
     "name": "GetYear",
-    "description": "Returns the year for a given string. For example: for the string \"Deal closed: 2Q 2024\" the function will return 2024",
+    "description": "Returns the year for a given string. For example: for the string 'Deal closed: 2Q 2024' the function will return 2024",
     "parameters": {
         "type": "object",
         "properties": {
