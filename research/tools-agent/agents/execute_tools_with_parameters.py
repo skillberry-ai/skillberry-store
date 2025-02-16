@@ -57,6 +57,8 @@ def tool_node(state: ReactToolsCallingAgentState):
             raise ValueError(f"tool_node: The Tool {tool_name} was not found")
 
         tool_result = tool_function.invoke(tool_args)
+        if not isinstance(tool_result, dict):
+            tool_result = {"result": tool_result}
         outputs.append(
             ToolMessage(
                 content=json.dumps(tool_result),
