@@ -17,5 +17,6 @@
       "returns": {
           "type": "integer",
           "description": "The n-th prime number."
-      }
+      },
+      "state": "approved"
   }
