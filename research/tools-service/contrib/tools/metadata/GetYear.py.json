@@ -1,0 +1,19 @@
+{
+    "programming_language": "python",
+    "packaging_format": "code",
+    "name": "GetYear",
+    "description": "Returns the year for a given string. For example: for the string \"Deal closed: 2Q 2024\" the function will return 2024",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "date_string": {
+                "type": "str",
+                "description": "The input string containing the year."
+            }
+        },
+        "required": [
+            "date_string"
+        ]
+    },
+    "state": "approved"
+}

@@ -1,0 +1,1 @@
+Returns the quarter of the year for a given string.
