@@ -58,23 +58,24 @@ unittest_function_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "Include at least one normal use-case"),
     ("system", "Response only the JSON structure"),
     ("user",
-     "to test the function {function_name} with description {function_description} "
+     "to test the function {function_name} with description {function_description} and the code ```{function_code}``` "
      "generate {unittests_count} test cases in JSON format.")
 ])
 
 
-def generate_test_cases(function_name: str, function_description: str) -> List[Dict]:
+def generate_test_cases(function_name: str, function_description: str, function_code: str) -> List[Dict]:
     """Generate test cases using LLM with structured output."""
 
     structured_llm = coder_llm.with_structured_output(schema=TestCasesJsonSchema,
-                                                method="function_calling",
-                                                include_raw=False)
+                                                      method="function_calling",
+                                                      include_raw=False)
 
     try:
         code_unittests_chain = unittest_function_chat_prompt_template | structured_llm
         response = code_unittests_chain.invoke(
             {"function_name": function_name,
              "function_description": function_description,
+             "function_code": function_code,
              "unittests_count": unittests_count})
         logger.info(
             "generate_test_cases returned: %s", response)
@@ -126,7 +127,7 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
     logger.info("Validating the python code...")
 
     # Generate test according to the metadata
-    success, unittests = generate_test_cases(name, description)
+    success, unittests = generate_test_cases(name, description, code)
     if not success:
         logger.error("Failed to generate test cases")
         return False
