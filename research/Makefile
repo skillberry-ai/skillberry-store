@@ -41,17 +41,18 @@ TOOLS_AGENT_CMD="cd $(BASE_DIR)/tools-agent; \
 	echo 'Running blueberry tools-agent'; \
 	python main.py;"
 # When LiteLLM is used as a package, use the command below (and comment the next one)
-#PROXY_CMD="cd $(BASE_DIR)/../../lite-rits/; \
-#	echo 'Running blueberry liteLLM proxy'; \
-#	litellm --config config.yaml;"
-# When LiteLLM is used from a git clone, use the command below (and comment the previous one)
 PROXY_CMD="cd $(BASE_DIR)/../../lite-rits/; \
-	cd $(BASE_DIR)/../../litellm/; \
-        pip install poetry; \
-        poetry install -E extra_proxy -E proxy; \
+        pip install litellm[proxy]; \
 	echo 'Running blueberry liteLLM proxy'; \
-        cd litellm/proxy; \
-        python proxy_cli.py --config $(BASE_DIR)/../../lite-rits/config.yaml;"
+	litellm --config config.yaml;"
+# When LiteLLM is used from a git clone, use the command below (and comment the previous one)
+#PROXY_CMD="cd $(BASE_DIR)/../../lite-rits/; \
+#	cd $(BASE_DIR)/../../litellm/; \
+#       pip install poetry; \
+#       poetry install -E extra_proxy -E proxy; \
+#	echo 'Running blueberry liteLLM proxy'; \
+#       cd litellm/proxy; \
+#       python proxy_cli.py --config $(BASE_DIR)/../../lite-rits/config.yaml;"
 JAEGER_CMD="docker run --rm --name jaeger \
   -e COLLECTOR_ZIPKIN_HOST_PORT=:9411 \
   -p 16686:16686 \
