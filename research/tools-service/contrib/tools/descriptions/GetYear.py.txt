@@ -1,0 +1,1 @@
+Returns the year for a given string.
