@@ -25,11 +25,12 @@ recursion_limit = _config.get("tools_react_agent__recursion_limit")
 headers = {"Accept": "application/json"}
 
 execute_tools_with_parameters_chat_prompt_template = ChatPromptTemplate.from_messages([
-    ("system", "You are an helpful assistant"),
     ("system", "You are an expert in invocation function and tools"),
-    ("system", "You use the observations from function and tools to provide accurate responses"),
-    ("system", "The response should not provide any names or descriptions of used functions and tools"),
-    ("system", "The response should not include explanations about the tool calling process"),
+    ("system", "If a tool returns no results or fails,consider using a different tool or approach"),
+    ("system", "Provide a final response only when you're confident you have sufficient information"),
+    ("system", "You use the observations from the tools to provide accurate responses"),
+    ("system", "The final response should not provide any names or descriptions of used functions and tools"),
+    ("system", "The final response should not include explanations about the tool calling process"),
     "{chat_history}",
 ])
 
@@ -56,12 +57,18 @@ def tool_node(state: ReactToolsCallingAgentState):
         if tool_function is None:
             raise ValueError(f"tool_node: The Tool {tool_name} was not found")
 
-        tool_result = tool_function.invoke(tool_args)
-        if not isinstance(tool_result, dict):
-            tool_result = {"result": tool_result}
+        tool_invocation_status = "success"
+        try:
+            tool_result = tool_function.invoke(tool_args)
+            logging.info(f"=====> The agentic flow called the function {tool_name} with args {tool_args} and got result {tool_result}")
+        except Exception as e:
+            logging.error(f"tool_node: Error while calling tool {tool_name}: {e}")
+            tool_invocation_status = "error"
+
         outputs.append(
             ToolMessage(
-                content=json.dumps(tool_result),
+                status=tool_invocation_status,
+                content=tool_result,
                 name=tool_call["name"],
                 tool_call_id=tool_call["id"],
             )
@@ -83,6 +90,12 @@ def should_continue(state: ReactToolsCallingAgentState):
     messages = state["messages"]
     last_message = messages[-1]
     if not last_message.tool_calls:
+        # if one of the tool names is found inside the message, skip
+        for tool in state["_tools"]:
+            if tool.name in str(last_message.content):
+                logging.info(f"=====> Tool name was found in the content")
+                return "continue_call_tools"
+
         logging.info(f"=====> The agentic flow will now return to the user (no more tool_calls)")
         return "end"
     else:
@@ -134,6 +147,7 @@ def execute_tools_with_parameters(state: State):
             thinking_log += "I will now use the tools and the LLM model to response. "
             logging.info(f"=====> Binding tools: {_tools}")
             _llm_with_tools = llm.bind_tools(tools=_tools,
+                                             tool_choice='auto',
                                              strict=True)
     except Exception as e:
         logging.error(f"Error while binding tools: {e}")
