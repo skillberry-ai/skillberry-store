@@ -197,11 +197,11 @@ with st.sidebar:
     st.markdown(
         '''
     👉 For additional details contact: eranra@il.ibm.com  
-    🛠️ For feedback and issues :[Blueberry github]
-    (https://github.ibm.com/Blueberry/blueberry/issues)
+    🛠️ For feedback and issues 
+    [Blueberry github](https://github.ibm.com/Blueberry/blueberry/issues)
      
-    📄 RITS API token instructions [RITS docs]
-    (https://github.ibm.com/rits/rits/?tab=readme-ov-file#important-information)      
+    📄 RITS API token instructions 
+    [RITS docs](https://github.ibm.com/rits/rits/?tab=readme-ov-file#important-information)      
     ''')
 
     if "rits_api_key" in st.session_state and st.session_state.rits_api_key is not None:
