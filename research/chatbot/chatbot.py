@@ -226,14 +226,14 @@ with st.sidebar:
 
 
 def generate_response(prompt_input, _assistant: int = 0):
-    string_dialogue = ("You are a helpful assistant."
-                       "You do not respond as 'User' or pretend to be 'User'."
-                       "You only respond once as 'Assistant'.")
+    string_dialogue = ("System: You are a helpful assistant.\n"
+                       "System: You do not respond as 'User' or pretend to be 'User'.\n"
+                       "System: You only respond once as 'Assistant'.\n")
     for dict_message in st.session_state.messages[_assistant]:
         if dict_message["role"] == "user":
-            string_dialogue += "User: " + dict_message["content"] + "\n\n"
+            string_dialogue += "User: " + dict_message["content"] + "\n"
         else:
-            string_dialogue += "Assistant: " + dict_message["content"] + "\n\n"
+            string_dialogue += "Assistant: " + dict_message["content"] + "\n"
 
     try:
         # use openai API to call the LLM model
