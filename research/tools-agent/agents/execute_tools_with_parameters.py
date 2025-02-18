@@ -20,7 +20,6 @@ from langgraph.graph import StateGraph, END
 logger = logging.getLogger(__name__)
 
 tools_repo_base_url = _config.get("tools_repo_base_url")
-recursion_limit = _config.get("tools_react_agent__recursion_limit")
 
 headers = {"Accept": "application/json"}
 
@@ -195,6 +194,7 @@ def execute_tools_with_parameters(state: State):
 
     try:
         logging.info(f"=====> Invoking the tools react agent")
+        recursion_limit = _config.get("tools_react_agent__recursion_limit")
         final_message = trace_stream(react_tools_graph.stream({"messages": original_chat_messages.to_messages(),
                                                                "_tools": _tools,
                                                                "_llm": _llm_with_tools},

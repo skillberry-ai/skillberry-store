@@ -10,8 +10,6 @@ logger = logging.getLogger(__name__)
 tools_repo_base_url = config.get("tools_repo_base_url")
 
 headers = {"Content-Type": "application/json"}
-max_tools_count = config.get("advanced__max_tools_count")
-similarity_threshold = config.get("advanced__similarity_threshold")
 
 
 def find_existing_tools(state: State):
@@ -28,6 +26,8 @@ def find_existing_tools(state: State):
 
             logger.info(f"find_existing_tools called for tool: {name}")
             # issue get request against the url with `search_term` equals to the name of the suggested tool
+            similarity_threshold = config.get("advanced__similarity_threshold")
+            max_tools_count = config.get("advanced__max_tools_count")
             found_tools = search_tools(tools_repo_base_url, name, description, max_tools_count, similarity_threshold)
 
             if found_tools is not None and len(found_tools) > 0:

@@ -119,10 +119,10 @@ def api_generate_tool(
             description=tool_description,
             examples=tool_examples
         )
-        success = generate_tool(need_to_generate_tool,
-                                skip_validation=skip_validation)
+        success, name, description = generate_tool(need_to_generate_tool,
+                                                   skip_validation=skip_validation)
         if success:
-            return {"message": f"Tool {tool_name} generated successfully"}
+            return {"message": f"Tool {name} with description {description} generated successfully"}
     except Exception as e:
         logging.error(f"An error occurred: {e}")
         raise HTTPException(status_code=500, detail=str(e))
