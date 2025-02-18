@@ -40,8 +40,6 @@ class TestCasesJsonSchema(BaseModel):
                     '"expected" - the expected output of the function\n')
 
 
-unittests_count = config.get("llm_as_coder__unittests_count")
-
 unittest_function_chat_prompt_template = ChatPromptTemplate.from_messages([
     ("system", "You are an expert in testing and providing test cases for unit testing of python functions"),
     ("system", "Do not add examples, usage or code. "
@@ -71,6 +69,7 @@ def generate_test_cases(function_name: str, function_description: str, function_
                                                       include_raw=False)
 
     try:
+        unittests_count = config.get("llm_as_coder__unittests_count")
         code_unittests_chain = unittest_function_chat_prompt_template | structured_llm
         response = code_unittests_chain.invoke(
             {"function_name": function_name,
@@ -87,7 +86,7 @@ def generate_test_cases(function_name: str, function_description: str, function_
     return True, [{"params": testcase.params, "expected": testcase.expected} for testcase in response.test_cases]
 
 
-def check_unwanted_words(name: str, metadata: dict, description: str, code: str) -> bool:
+def check_unwanted_words(name: str, description: str, metadata: dict,  code: str) -> bool:
     """Check if the tool's description, metadata, and code use unwanted words."""
     unwanted_words = ["error", "manager", "handler", "api", "key"]
     try:
@@ -110,15 +109,15 @@ def check_unwanted_words(name: str, metadata: dict, description: str, code: str)
     return False
 
 
-def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: str, code: str) -> str:
+def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: dict, code: str) -> str:
     """Validate generated code using Docker isolation and LLM-generated tests."""
     logger.info(f"Validating function code:\n{name}\n")
-    logger.info(f"code:\n{code}\n")
     logger.info(f"description:\n{description}\n")
     logger.info(f"metadata:\n{metadata}\n")
+    logger.info(f"code:\n{code}\n")
 
     # check if there are unwanted wards in the tools
-    if check_unwanted_words(name, metadata, description, code):
+    if check_unwanted_words(name, description, metadata, code):
         logger.error(
             f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted words")
         return False
@@ -141,8 +140,13 @@ def validate_tool_using_llm_as_a_coder(name: str, metadata: dict, description: s
             parameters = dict(
                 zip(metadata['parameters']["required"], unittest["params"]))
             res = file_executor.execute_file(parameters)
-            if res["return value"] != json.dumps(unittest['expected']):
-                logger.error(f"!!!! The following Test failed:\n{unittest}\n!!!!!\n")
+            return_value = res["return value"]
+            expected_value = json.dumps(unittest['expected'])
+            params = unittest["params"]
+            if return_value != expected_value:
+                logger.error(f"!!!! The following unittest failed !!!!\nparams:{params}, "
+                             f"expected:{expected_value}, "
+                             f"got:{return_value} \n!!!!!!!!!!!!!!!!!!!!!!!\n")
                 return False
         logger.info("All tests passed")
         return True

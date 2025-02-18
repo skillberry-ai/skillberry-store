@@ -15,7 +15,7 @@ CONFIG_STRUCTURE = {
     },
     "selected_model": {
         "type": "str",
-        "default": "meta-llama/llama-3-3-70b-instruct",
+        "default": "meta-llama/llama-3-1-70b-instruct",
         "label": "LLM rits model to be used by the agent: ",
     },
     "temperature": {
