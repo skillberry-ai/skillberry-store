@@ -38,7 +38,9 @@ def code_missing_tools(state: State):
                 f"!!! generate_tools_dynamically is False: tool {name} will not be generated !!!")
             continue
 
-        success, generate_tool_name, generate_tool_description = generate_tool(need_to_generate_tool)
+        success, generate_tool_name, generate_tool_description = (
+            generate_tool(need_to_generate_tool=need_to_generate_tool,
+                          original_prompt=state["original_user_prompt"]))
         if not success:
             logger.error(f"code_missing_tools: tool {name} generation failed")
             thinking_log.append(f"I failed to code the tool {name}. ")
@@ -69,7 +71,7 @@ def code_missing_tools(state: State):
             "thinking_log": thinking_log}
 
 
-def generate_tool(need_to_generate_tool: dict, skip_validation=False) -> (bool, str, str):
+def generate_tool(need_to_generate_tool: dict, original_prompt: str = "", skip_validation=False) -> (bool, str, str):
     name = need_to_generate_tool.name
     description = need_to_generate_tool.description
     examples = need_to_generate_tool.examples
@@ -95,7 +97,8 @@ def generate_tool(need_to_generate_tool: dict, skip_validation=False) -> (bool, 
         base_function_name=name,
         base_function_description=description,
         base_function_metadata=metadata,
-        base_function_code=code)
+        base_function_code=code,
+        original_prompt=original_prompt)
 
     if not success:
         logger.error(f"generate_tool: tool {name} code generalization failed")
