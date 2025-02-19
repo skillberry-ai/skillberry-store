@@ -120,6 +120,7 @@ def api_generate_tool(
             examples=tool_examples
         )
         success, name, description = generate_tool(need_to_generate_tool,
+                                                   original_prompt="",
                                                    skip_validation=skip_validation)
         if success:
             return {"message": f"Tool {name} with description {description} generated successfully"}
