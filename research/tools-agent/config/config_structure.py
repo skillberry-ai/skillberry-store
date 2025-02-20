@@ -69,6 +69,11 @@ CONFIG_STRUCTURE = {
                 "default": False,
                 "label": "Enable debug mode: "
             },
+            "log_file": {
+                "type": "str",
+                "default": "/tmp/tools-agent.log",
+                "label": "log file name"
+            },
             "otel_logging": {
                 "type": "bool",
                 "default": False,

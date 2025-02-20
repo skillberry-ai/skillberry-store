@@ -1,6 +1,7 @@
 import logging
 import uvicorn
 import threading
+import colorlog
 
 from langchain.globals import set_verbose, set_debug
 from langchain.callbacks.tracers import ConsoleCallbackHandler
@@ -21,9 +22,9 @@ debug = config.get("advanced__debug")
 otel_logging = config.get("advanced__otel_logging")
 invoke_config = None
 
+log_level = logging.INFO
 if debug is True:
-    logging.basicConfig(level=logging.DEBUG,
-                        format="%(asctime)s %(levelname)s %(name)s [%(filename)s:%(lineno)d] %(message)s")
+    log_level = logging.DEBUG
     set_debug(True)
     set_verbose(True)
     invoke_config = {'callbacks': [ConsoleCallbackHandler()]}
@@ -32,6 +33,7 @@ if debug is True:
         # Initialize logging with agent_analytics_sdk
         from agent_analytics.instrumentation.configs import OTLPCollectorConfig
 
+        print("otel_logging mode enabled")
         agent_analytics_sdk.initialize_logging(
             tracer_type=agent_analytics_sdk.SUPPORTED_TRACER_TYPES.REMOTE,
             config=OTLPCollectorConfig(endpoint="http://localhost:4318/v1/traces"),
@@ -41,11 +43,36 @@ if debug is True:
 
     print("Debug mode enabled")
 else:
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s [%(filename)s:%(lineno)d] %(message)s")
     set_debug(False)
     set_verbose(False)
     invoke_config = None
+
+log_file = config.get("advanced__log_file")
+
+
+# Define log format for colors (Console)
+console_formatter = colorlog.ColoredFormatter(
+    "%(log_color)s%(asctime)s %(levelname)s %(name)s [%(filename)s:%(lineno)d] %(message)s",
+    log_colors={
+        "DEBUG": "cyan",
+        "INFO": "green",
+        "WARNING": "yellow",
+        "ERROR": "red",
+        "CRITICAL": "bold_red",
+    }
+)
+
+# Define log format for file (No colors)
+file_formatter = logging.Formatter(
+    "%(asctime)s %(levelname)s %(name)s [%(filename)s:%(lineno)d] %(message)s"
+)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(console_formatter)
+file_handler = logging.FileHandler(log_file)
+file_handler.setFormatter(file_formatter)
+
+# Configure logger
+logging.basicConfig(level=log_level, handlers=[console_handler, file_handler])
 
 
 def run_config_ui():
