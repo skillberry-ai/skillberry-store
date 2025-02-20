@@ -116,11 +116,14 @@ def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: di
     logger.info(f"metadata:\n{metadata}\n")
     logger.info(f"code:\n{code}\n")
 
+    skip_unwanted_words_validation = config.get("llm_as_coder__skip_unwanted_words_validation")
+
     # check if there are unwanted wards in the tools
-    if check_unwanted_words(name, description, metadata, code):
-        logger.error(
-            f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted words")
-        return False
+    if not skip_unwanted_words_validation:
+        if check_unwanted_words(name, description, metadata, code):
+            logger.error(
+                f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted words")
+            return False
 
     # Create a Docker client
     logger.info("Validating the python code...")

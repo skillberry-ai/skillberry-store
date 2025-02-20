@@ -47,6 +47,11 @@ CONFIG_STRUCTURE = {
                 "default": 3,
                 "label": "The number of unittests to generate: "
             },
+            "skip_unwanted_words_validation": {
+                "type": "bool",
+                "default": False,
+                "label": "Should skip unwanted words validation: "
+            },
         },
     },
     "tools_react_agent": {
