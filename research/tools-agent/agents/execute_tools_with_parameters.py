@@ -143,7 +143,7 @@ def execute_tools_with_parameters(state: State):
             logging.info(f"=====> No tools, not binding")
             _llm_with_tools = llm
         else:
-            thinking_log += "I will now use the tools and the LLM model to response. "
+            thinking_log += "I will now use the tools and the LLM model to respond. "
             logging.info(f"=====> Binding tools: {_tools}")
             _llm_with_tools = llm.bind_tools(tools=_tools,
                                              tool_choice='auto',
