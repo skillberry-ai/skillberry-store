@@ -24,6 +24,7 @@ selected_model = config.get("selected_model")
 use_rits_proxy = config.get("use_rits_proxy")
 temperature = config.get("temperature")
 
+llm_validator_model = config.get("llm_validator_model")
 llm_coder_model = config.get("llm_as_coder__model")
 llm_coder_temperature = config.get("llm_as_coder__temperature")
 
@@ -58,6 +59,15 @@ if use_rits_proxy:
         api_key=rits_api_key,
         base_url=rits_proxy_api_url
     )
+
+    model_name = f"rits/{llm_validator_model}".replace('.', '-').lower()
+    validator_llm = ChatOpenAI(
+        model=f"{model_name}",
+        temperature=llm_coder_temperature,
+        max_retries=2,
+        api_key=rits_api_key,
+        base_url=rits_proxy_api_url
+    )
 else:
     model = selected_model.split(
         '/')[1].replace('.', '-').lower()
@@ -75,8 +85,18 @@ else:
     model = llm_coder_model.split(
         '/')[1].replace('.', '-').lower()
     url = f"{rits_api_url}/{model}/v1"
-
     coder_llm = ChatOpenAI(
+        model=f"{model}",
+        temperature=llm_coder_temperature,
+        max_retries=2,
+        api_key='/',
+        base_url=url,
+        default_headers={'RITS_API_KEY': rits_api_key}
+    )
+    model = llm_validator_model.split(
+        '/')[1].replace('.', '-').lower()
+    url = f"{rits_api_url}/{model}/v1"
+    validator_llm = ChatOpenAI(
         model=f"{model}",
         temperature=llm_coder_temperature,
         max_retries=2,
