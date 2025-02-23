@@ -76,16 +76,17 @@ def code_python_function_using_llm_as_a_coder(name: str, description: str, examp
 
     try:
         # Get the metadata of the function from the docstring
-        docstring, function_calling_api = parse_docstring(name, code)
+        description, function_calling_api = parse_docstring(name, code)
         metadata = {
             "programming_language": "python",
             "packaging_format": "code",
             "name": name,
             "description": description,
+            "examples": examples,
             "parameters": function_calling_api["parameters"],
         }
 
-        return True, docstring, metadata, response.code
+        return True, description, metadata, response.code
     except Exception as e:
         logger.error(
             "docstring parsing failed with error: %s", e)
@@ -114,7 +115,7 @@ def parse_docstring(name: str, code: str) -> (str, dict):
             }
             required.append(name)
 
-    return docstring, {
+    return description, {
         "name": name,
         "description": description,
         "parameters": {

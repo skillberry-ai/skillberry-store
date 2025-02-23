@@ -12,12 +12,16 @@ logger = logging.getLogger(__name__)
 find_useful_tools_chat_prompt_template = ChatPromptTemplate([
     ("system", "You are a helpful assistant"),
     ("system", "You are expert in finding functions and tools that are generated from code"),
+    ("system", "For each possible responses to the user, "
+               "suggest a different set of tools, "
+               "with relevant names and for each, provide a list of usage examples"),
     ("system", "For each tool and function that you suggest, "
                "you specify exactly the name of the tool in hungarian notation and a crisp description of the tool"),
+    ("system", "Suggest simple tools and simple functions"),
+    ("system", "Suggest minimal amount of tools"),
     ("system", "Do not suggest tools and functions that performs error handling"),
     ("system", "Do not suggest tools and functions that are general helper tools"),
-    ("system", "Do not suggest tools and functions that requires keys or access to external services"),
-    ("system", "Suggest minimal amount of tools. Suggest simple tools and simple functions"),
+    ("system", "Do not suggest tools and functions that requires access to external services"),
     ("system", "Do not suggest tools and functions that are complicated"),
     ("system", "Response only using json format"),
     ("user",

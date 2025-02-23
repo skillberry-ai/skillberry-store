@@ -91,7 +91,6 @@ def generate_tool(need_to_generate_tool: dict, original_prompt: str = "", skip_v
         return False, "", ""
 
     # (2) generalize and remove PII from the tool
-    # TODO: implement
     logging.info(f"generate_tool: generalizing tool {name}")
     success, name, description, metadata, code = generalize_python_function_using_llm_as_a_coder(
         base_function_name=name,
@@ -109,17 +108,18 @@ def generate_tool(need_to_generate_tool: dict, original_prompt: str = "", skip_v
     if skip_validation is True:
         logging.info(f"generate_tool: skipping validating for tool {name}")
     else:
-        success = validate_tool_using_llm_as_a_coder(name=name,
-                                                     description=description,
-                                                     metadata=metadata,
-                                                     code=code)
+        success, validation_metadata = validate_tool_using_llm_as_a_coder(name=name,
+                                                                          description=description,
+                                                                          metadata=metadata,
+                                                                          code=code)
         if not success:
-            logger.error(f"generate_tool: tool {name} validation failed")
+            logger.error(f"generate_tool: tool {name} validation failed "
+                         f"with validation_metadata {validation_metadata}")
             return False, "", ""
+        metadata["validation"] = validation_metadata
 
     # The tool will be uploaded to the repo with a "private" name, and
     # used privately until it will be approved.
-    # TODO: make sure that this is the accepted design
     timestamp = int(time.time())
     private_tool_name = f"{name}_at_{timestamp}.py"
 
