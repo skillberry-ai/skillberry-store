@@ -1,7 +1,5 @@
 import ast
-import json
 import logging
-import re
 import tempfile
 import datetime
 from typing import Dict, Any, AnyStr
@@ -26,7 +24,6 @@ def arg_convert(arg_name, arg_type):
             except Exception as e:
                 raise ValueError(f"Cannot convert '{arg_str}' to int {e}")
 
-
     try:
         int_val = int(arg_str)
         # Check if the string representation matches to avoid float->int conversion
@@ -37,7 +34,7 @@ def arg_convert(arg_name, arg_type):
 
     # Try to convert to float
     try:
-        float_val = float(arg)
+        float_val = float(arg_str)
         return float_val
     except ValueError:
         pass
@@ -59,7 +56,7 @@ def arg_convert(arg_name, arg_type):
     return f'"{arg_str}"'
 
 
-def extract_function_and_imports(content: str) -> tuple[str, list[str], list[str]]:
+def extract_function_and_imports(content: str) -> tuple[str | None, list[tuple[str, str]], list[str | Any]]:
     """
     Extracts the function name, parameters, and imported modules from Python code.
     """
@@ -90,8 +87,6 @@ def extract_function_and_imports(content: str) -> tuple[str, list[str], list[str
 
     except SyntaxError:
         return None, [], []
-
-    return None, [], []
 
 
 class FileExecutor:
