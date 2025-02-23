@@ -113,6 +113,7 @@ def generalize_python_function_using_llm_as_a_coder(base_function_name: str,
             "name": generalized_function_name,
             "description": generalize_description,
             "parameters": generalize_function_calling_api["parameters"],
+            "base_function_metadata": base_function_metadata,
         }
 
         return True, generalized_function_name, generalize_description, generalize_metadata, generalized_code
