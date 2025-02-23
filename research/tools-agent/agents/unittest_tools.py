@@ -88,7 +88,7 @@ def generate_test_cases(function_name: str, function_description: str, function_
     return True, [{"params": testcase.params, "expected": testcase.expected} for testcase in response.test_cases]
 
 
-def check_unwanted_words(name: str, description: str, metadata: dict,  code: str) -> bool:
+def check_unwanted_words(name: str, description: str, metadata: dict, code: str) -> bool:
     """Check if the tool's description, metadata, and code use unwanted words."""
     unwanted_words = ["error", "manager", "handler", "api", "key"]
     try:
@@ -173,6 +173,8 @@ def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: di
     logger.info(f"metadata:\n{metadata}\n")
     logger.info(f"code:\n{code}\n")
 
+    validation_metadata = {}
+
     skip_unwanted_words_validation = config.get("llm_as_coder__skip_unwanted_words_validation")
     skip_security_check = config.get("llm_as_coder__skip_security_check", False)
 
@@ -188,7 +190,9 @@ def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: di
         if check_unwanted_words(name, description, metadata, code):
             logger.error(
                 f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted words")
-            return False
+            return False, validation_metadata
+
+    validation_metadata["unwanted_words"] = "passed"
 
     if not skip_security_check:
         logger.info("check security issues")
@@ -203,7 +207,7 @@ def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: di
     success, unittests = generate_test_cases(name, description, code)
     if not success:
         logger.error("Failed to generate test cases")
-        return False
+        return False, validation_metadata
 
     logger.info(f"Generated unittests:\n{unittests}\n")
     try:
@@ -221,12 +225,16 @@ def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: di
                 logger.error(f"!!!! The following unittest failed !!!!\nparams:{params}, "
                              f"expected:{expected_value}, "
                              f"got:{return_value} \n!!!!!!!!!!!!!!!!!!!!!!!\n")
-                return False
-        logger.info("All tests passed")
-        return True
+                return False, validation_metadata
 
     except Exception as e:
         logger.error(f"Validation failed: {e}")
-        return False
+        return False, validation_metadata
 
+    validation_metadata["unittests"] = "passed"
+    validation_metadata["unittests_details"] = unittests
+
+    # all tests passed !!!
+    logger.info("All tests passed")
+    return True, validation_metadata
     # TODO: implement additional checks

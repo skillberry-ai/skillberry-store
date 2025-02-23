@@ -1,4 +1,6 @@
 import logging
+from logging.handlers import RotatingFileHandler
+
 import uvicorn
 import threading
 import colorlog
@@ -68,7 +70,8 @@ file_formatter = logging.Formatter(
 )
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(console_formatter)
-file_handler = logging.FileHandler(log_file)
+
+file_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=10)
 file_handler.setFormatter(file_formatter)
 
 # Configure logger

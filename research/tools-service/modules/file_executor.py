@@ -1,3 +1,4 @@
+import ast
 import json
 import logging
 import re
@@ -11,8 +12,20 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 
-def arg_convert(arg):
-    arg_str = str(arg)  # Ensure the argument is treated as a string
+def arg_convert(arg_name, arg_type):
+    arg_str = str(arg_name)  # Ensure the argument is treated as a string
+    if arg_type is not None:
+        if arg_type == "str":
+            return f'"{arg_str}"'
+        elif arg_type == "int":
+            try:
+                int_val = int(arg_str)
+                # Check if the string representation matches to avoid float->int conversion
+                if str(int_val) == arg_str:
+                    return int_val
+            except Exception as e:
+                raise ValueError(f"Cannot convert '{arg_str}' to int {e}")
+
 
     try:
         int_val = int(arg_str)
@@ -46,30 +59,39 @@ def arg_convert(arg):
     return f'"{arg_str}"'
 
 
-def extract_python_function_name_and_parameters(content: str) -> tuple[str, list[str]]:
+def extract_function_and_imports(content: str) -> tuple[str, list[str], list[str]]:
     """
-    Extracts the function name and parameters from a Python function definition.
-
-    Args:
-        content (str): The function definition as a string.
-
-    Returns:
-        tuple[str, list[str]]: Function name and a list of parameter names.
+    Extracts the function name, parameters, and imported modules from Python code.
     """
-    match = re.search(
-        r"def\s+([a-zA-Z_][a-zA-Z_0-9]*)\s*\((.*?)\)\s*:", content, re.DOTALL)
+    try:
+        tree = ast.parse(content)
+        function_name = None
+        parameters = []
+        imports = []
 
-    if match:
-        _name = match.group(1)
-        param_string = match.group(2).strip()
+        for node in ast.walk(tree):
+            # Extract function name and parameters
+            if isinstance(node, ast.FunctionDef):
+                function_name = node.name
+                parameters = []
+                for arg in node.args.args:
+                    param_name = arg.arg
+                    param_type = None
+                    # Check if there is a type annotation
+                    if arg.annotation:
+                        param_type = ast.unparse(arg.annotation)
+                    parameters.append((param_name, param_type or "None"))
+            elif isinstance(node, ast.Import):
+                imports.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imports.extend(alias.name for alias in node.names)
 
-        # Handle empty parameters correctly
-        _parameters = ([param.split(":")[0].strip() for param in param_string.split(",") if param.strip()]
-                       if param_string else [])
+        return function_name, parameters, imports
 
-        return _name, _parameters
+    except SyntaxError:
+        return None, [], []
 
-    return None, []  # Return None and empty list if no match is found
+    return None, [], []
 
 
 class FileExecutor:
@@ -141,8 +163,7 @@ class FileExecutor:
         logger.info(f"Executing python code inside a Docker container")
 
         try:
-            function_name, parameter_definitions = extract_python_function_name_and_parameters(
-                self.content)
+            function_name, parameter_definitions, function_imports = extract_function_and_imports(self.content)
             # format docker command from function name and parameters
             if function_name is None:
                 raise HTTPException(
@@ -155,53 +176,73 @@ import json
 import argparse
 import sys
 import datetime
+import inspect
 
-parser = argparse.ArgumentParser(description="Run a function with arguments")
-parser.add_argument('args', nargs=argparse.REMAINDER,
-                    help="Arguments to pass to the function")
-args = parser.parse_args()
-def try_convert(arg):
-    try:
-        int_val = int(arg)
-        # Check if the string representation matches to avoid float->int conversion
-        if str(int_val) == arg:
-            return int_val
-    except ValueError:
-        pass
+def parse_arguments(func):
+    # Get the signature of the function
+    sig = inspect.signature(func)
+    parser = argparse.ArgumentParser(description="Wrap any function and pass arguments to it.")
 
-    # Try to convert to float
-    try:
-        float_val = float(arg)
-        return float_val
-    except ValueError:
-        pass
-    try:
-        if len(arg.split(':')) == 2:
-            return datetime.datetime.strptime(arg, '%H:%M').time()
-        elif len(arg.split(':')) == 3:
-            return datetime.datetime.strptime(arg, '%H:%M:%S').time()
-    except ValueError:
-        pass
-    return f'{{arg}}'
-converted_args = [try_convert(arg) for arg in args.args]
-result = {function_name}(*converted_args)
-print(json.dumps(result))
+    # Iterate over the parameters in the function signature
+    for param in sig.parameters.values():
+        if param.default == inspect.Parameter.empty:
+            # Required parameter, add it to argparse
+            parser.add_argument(param.name, type=str, help=f"Argument for {{param.name}}")
+        else:
+            # Optional parameter with default, add it to argparse with default value
+            parser.add_argument(f"--{{param.name}}", type=str, default=str(param.default),
+                                help=f"Argument for {{param.name}} (default: {{param.default}})")
+    
+    return parser
+
+
+def main():
+    parser = parse_arguments({function_name})
+    args = parser.parse_args()
+
+    # Convert string arguments to their appropriate types (int, float, etc.)
+    func_params = inspect.signature({function_name}).parameters
+    parsed_args = []
+    for param, value in vars(args).items():
+        # Convert the argument to the correct type if possible
+        if func_params[param].annotation != inspect.Parameter.empty:
+            try:
+                parsed_args.append(func_params[param].annotation(value))
+            except ValueError:
+                parsed_args.append(value)
+        else:
+            parsed_args.append(value)
+    
+    # Call the function with the parsed arguments
+    result = {function_name}(*parsed_args)
+    print(json.dumps(result))
+    
+if __name__ == "__main__":
+    main()
+        
 """)
                 temp_file_path = temp_file.name
-                logger.info(f"tmp container file name {temp_file_path}")
+                logger.info(f"tmp container python file name {temp_file_path}")
 
-            command = f"python /tmp/function.py "
+            if function_imports:
+                command = f"pip install -q --no-cache-dir {' '.join(function_imports)} > /dev/null 2>&1 && "
+            else:
+                command = ""
+            command += f"python /tmp/function.py "
             for parameter_definition in parameter_definitions:
-                if parameters.get(parameter_definition) is None:
+                parameter_definition_name = parameter_definition[0]
+                parameter_definition_type = parameter_definition[1]
+                if parameters.get(parameter_definition_name) is None:
                     raise HTTPException(
                         status_code=400, detail=f"Missing parameter: {parameter_definition}")
-                converted_arg = arg_convert(parameters[parameter_definition])
+                converted_arg = arg_convert(parameters.get(parameter_definition_name),
+                                            parameter_definition_type)
                 command += f"{converted_arg} "
 
             # Create and run a container to execute the Python file
             container = self.client.containers.run(
-                "python:3.9",  # Using the official Python 3.9 image
-                command=command,
+                "python:3.10",  # Using the official Python 3.9 image
+                command=f"/bin/bash -c '{command}'",
                 volumes={temp_file_path: {
                     'bind': f'/tmp/function.py', 'mode': 'ro'}},
                 remove=True,

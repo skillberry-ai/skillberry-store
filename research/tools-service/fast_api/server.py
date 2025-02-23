@@ -1,9 +1,10 @@
 import json
 import logging
+import os
 import re
 from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Path, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from modules.lifecycle import LifecycleState, LifecycleManager
@@ -98,27 +99,25 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
         metadata.delete_metadata(filename)
         return {"message": f"File and its description '{filename}' deleted successfully."}
 
+    @app.post("/rename/file/{filename}", tags=tags)
+    def rename_file(src_filename: str, dest_filename: str):
+        logger.info(f"Request to rename file: {src_filename} to {dest_filename}")
+        try:
+            file_json = read_file_json(src_filename)
+            write_file_json(dest_filename, file_json)
+        except Exception as e:
+            logger.error(f"Error renaming file '{src_filename}': {e}")
+            raise HTTPException(status_code=500, detail=f"Error renaming file: {str(e)}")
+        delete_file(src_filename)
+        return {"message": f"File: {src_filename} renamed to {dest_filename} successfully."}
+
     @app.delete("/files", tags=tags)
     def delete_files(regex: str = ".", lifecycle_state: LifecycleState = LifecycleState.UNKNOWN):
         logger.info("Request to delete files")
-        files = file_handler.list_files()
-
-        # if we are requested to limit the view to a specific lifecycle state,
-        # and regex, we filter the results
-        if lifecycle_state is not LifecycleState.ANY:
-            lifecycle_filtered_matched_files = []
-            for file_name in files:
-                file_metadata = metadata.read_metadata(file_name)
-                if file_metadata is None:
-                    continue
-                life_cycle_manager = LifecycleManager(file_metadata)
-                if life_cycle_manager.get_state() != lifecycle_state:
-                    continue
-
-                if not re.match(regex, file_name):
-                    continue
-                lifecycle_filtered_matched_files.append(file_name)
-            files = lifecycle_filtered_matched_files
+        files = get_filtered_matched_files(file_handler.list_files(),
+                                           metadata,
+                                           regex,
+                                           lifecycle_state)
 
         # delete the files after filtering
         for file_name in files:
@@ -127,7 +126,60 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
 
         return f"Files {files} Deleted."
 
+    @app.post("/export/files", tags=tags)
+    def export_files(path: str,
+                     regex: str = ".",
+                     lifecycle_state: LifecycleState = LifecycleState.UNKNOWN):
+        logger.info("Request to export files")
+        files = get_filtered_matched_files(file_handler.list_files(),
+                                           metadata,
+                                           regex,
+                                           lifecycle_state)
+        # export the files to the destination folder
+        for file_name in files:
+            file_json = read_file_json(file_name)
+            with open(f"{path}/{file_name}", "w") as file:
+                json.dump(file_json, file, indent=4)
+
+        return f"Files {files} exported to {path}."
+
+    @app.post("/import/files", tags=tags)
+    def import_files(path: str):
+        logger.info("Request to import files")
+
+        # for each file in the path, read and import
+        files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
+        for file in files:
+            with open(f"{path}/{file}", "r") as f:
+                file_json = json.load(f)
+                _ = write_file_json(file_name=file, file_json=file_json)
+
+        return f"Files {files} imported from {path}."
+
     return file_handler
+
+
+def get_filtered_matched_files(files: List[str],
+                               metadata: Metadata,
+                               regex: str = ".",
+                               lifecycle_state: LifecycleState = LifecycleState.UNKNOWN) -> List[str]:
+    lifecycle_filtered_matched_files = []
+    for file_name in files:
+        file_metadata = metadata.read_metadata(file_name)
+        if file_metadata is None:
+            continue
+        life_cycle_manager = LifecycleManager(file_metadata)
+
+        # Skip comparing to lifecycle_state if it is ANY
+        if lifecycle_state is not LifecycleState.ANY:
+            if life_cycle_manager.get_state() != lifecycle_state:
+                continue
+
+        if not re.match(regex, file_name):
+            continue
+        lifecycle_filtered_matched_files.append(file_name)
+    files = lifecycle_filtered_matched_files
+    return files
 
 
 def descriptions_api(app, metadata, tags: str):
