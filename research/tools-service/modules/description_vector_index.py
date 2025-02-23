@@ -72,11 +72,16 @@ class DescriptionVectorIndex:
             description (str): The description text to be added.
             filename (str): the filename of the description
         """
-        embedding = self.model.encode([description])[0]
-        self.index.add(np.array([embedding], dtype=np.float32))
-        self.files_to_faiss_index_map.append(filename)
-        self.save_index()
-        logger.info("Description embedding added and index saved.")
+
+        if filename in self.files_to_faiss_index_map:
+            # if  filename exists in the index, update instead of adding
+            self.update_description(description, filename)
+        else:
+            embedding = self.model.encode([description])[0]
+            self.index.add(np.array([embedding], dtype=np.float32))
+            self.files_to_faiss_index_map.append(filename)
+            self.save_index()
+            logger.info("Description embedding added and index saved.")
 
     def update_description(self, new_description: str, filename: str):
         """
