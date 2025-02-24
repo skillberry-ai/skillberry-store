@@ -220,7 +220,7 @@ if __name__ == "__main__":
                 logger.info(f"tmp container python file name {temp_file_path}")
 
             if function_imports:
-                command = f"pip install -q --no-cache-dir {' '.join(function_imports)} > /dev/null 2>&1 && "
+                command = f"pip install -q --no-cache-dir {' '.join(function_imports)} > /dev/null 2>&1 ; "
             else:
                 command = ""
             command += f"python /tmp/function.py "
