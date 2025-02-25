@@ -1,3 +1,5 @@
+import ast
+import re
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List
@@ -7,7 +9,7 @@ import json
 import sys
 
 from config.config_ui import config
-from llm.common import coder_llm
+from llm.common import validator_llm
 
 service_dir = Path(__file__).parent.parent.parent / 'tools-service'
 sys.path.append(str(service_dir))
@@ -64,7 +66,7 @@ unittest_function_chat_prompt_template = ChatPromptTemplate.from_messages([
 def generate_test_cases(function_name: str, function_description: str, function_code: str) -> List[Dict]:
     """Generate test cases using LLM with structured output."""
 
-    structured_llm = coder_llm.with_structured_output(schema=TestCasesJsonSchema,
+    structured_llm = validator_llm.with_structured_output(schema=TestCasesJsonSchema,
                                                       method="function_calling",
                                                       include_raw=False)
 
@@ -109,6 +111,61 @@ def check_unwanted_words(name: str, description: str, metadata: dict, code: str)
     return False
 
 
+def check_security(code: str) -> List[str]:
+    """Check if the code has security issues."""
+    issues = []
+    # Dangerous built-in functions
+    dangerous_functions = {
+        'eval': 'Code execution risk',
+        'exec': 'Code execution risk',
+        'os.system': 'Command injection risk',
+        'subprocess.call': 'Command injection risk',
+        'subprocess.Popen': 'Command injection risk',
+        'pickle.loads': 'Unsafe deserialization',
+        'yaml.load': 'Unsafe deserialization',
+        'input(': 'Unsafe input',
+        '__import__': 'Dynamic import risk'
+    }
+    for func, risk in dangerous_functions.items():
+        if func in code:
+            issues.append(f"Security risk - {func}: {risk}")
+
+    # Check for potential SQL injection
+    sql_patterns = [
+        r".*execute\s*\(\s*['\"].*?\%.*?['\"].*?\)",
+        r".*execute\s*\(\s*['\"].*?\+.*?\)",
+        r".*execute\s*\(\s*f['\"].*?{.*?}.*?['\"].*?\)"
+    ]
+    for pattern in sql_patterns:
+        if re.search(pattern, code):
+            issues.append("Security risk: Potential SQL injection vulnerability detected")
+
+    # Check for hardcoded credentials
+    credential_patterns = [
+        r"password\s*=\s*['\"].*?['\"]",
+        r"secret\s*=\s*['\"].*?['\"]",
+        r"api_key\s*=\s*['\"].*?['\"]",
+        r"token\s*=\s*['\"].*?['\"]"
+    ]
+    for pattern in credential_patterns:
+        if re.search(pattern, code, re.IGNORECASE):
+            issues.append("Security risk: Hardcoded credentials detected")
+
+    # Analyze imports for security risks
+    unsafe_imports = {
+        'telnetlib': 'Insecure protocol',
+        'ftplib': 'Insecure protocol',
+        'xmlrpc': 'Potentially dangerous XML processing',
+        'marshal': 'Unsafe deserialization'
+    }
+    import_pattern = r"^import\s+(\w+)|^from\s+(\w+)"
+    for match in re.finditer(import_pattern, code, re.MULTILINE):
+        imported_module = match.group(1) or match.group(2)
+        if imported_module in unsafe_imports:
+            issues.append(f"Security risk - unsafe import {imported_module}: {unsafe_imports[imported_module]}")
+
+    return issues
+
 def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: dict, code: str) -> str:
     """Validate generated code using Docker isolation and LLM-generated tests."""
     logger.info(f"Validating function code:\n{name}\n")
@@ -119,9 +176,17 @@ def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: di
     validation_metadata = {}
 
     skip_unwanted_words_validation = config.get("llm_as_coder__skip_unwanted_words_validation")
+    skip_security_check = config.get("llm_as_coder__skip_security_check", False)
 
-    # check if there are unwanted wards in the tools
+    # check syntax
+    try:
+        ast.parse(code)
+    except SyntaxError as e:
+        logger.error("Syntax error!!!")
+        return False
+    # check if there are unwanted words in the tools
     if not skip_unwanted_words_validation:
+        logger.info("check unwanted words")
         if check_unwanted_words(name, description, metadata, code):
             logger.error(
                 f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains unwanted words")
@@ -129,9 +194,15 @@ def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: di
 
     validation_metadata["unwanted_words"] = "passed"
 
-    # Create a Docker client
-    logger.info("unitest python code...")
+    if not skip_security_check:
+        logger.info("check security issues")
+        security_issues = check_security(code=code)
+        if len(security_issues) > 1:
+            logger.error(
+                f"validate_tool_using_llm_as_a_coder: Tool '{name}' contains security issues:\n{security_issues}")
+            return False
 
+    logger.info("Validating the python code...")
     # Generate test according to the metadata
     success, unittests = generate_test_cases(name, description, code)
     if not success:

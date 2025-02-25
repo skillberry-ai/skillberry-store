@@ -23,6 +23,11 @@ CONFIG_STRUCTURE = {
         "default": 0,
         "label": "The LLM model temperature: "
     },
+    "llm_validator_model": {
+        "type": "str",
+        "default": "meta-llama/llama-3-3-70b-instruct",
+        "label": "LLM rits model to be used by the agent: ",
+    },
     "llm_as_coder": {
         "type": "group",
         "label": "LLM as a coder",
@@ -51,6 +56,11 @@ CONFIG_STRUCTURE = {
                 "type": "bool",
                 "default": False,
                 "label": "Should skip unwanted words validation: "
+            },
+            "skip_security_check": {
+                "type": "bool",
+                "default": False,
+                "label": "Should skip security issues check: "
             },
         },
     },
