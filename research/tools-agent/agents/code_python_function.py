@@ -22,6 +22,8 @@ base_python_coding_prompt_messages = [
     ("system", "Make sure to provide elaborated description as part of the docstring"),
     ("system", "The docstring should always include description, the input parameters including types, "
                "and the return value including the type"),
+    ("system", "Write the code using defensive programming techniques, "
+               "such as checking for None values, validating input parameters, and handling potential exceptions.")
     ("system", "Do not add examples or usage, answer with only the python code itself"),
     ("system", "An example of a function with valid docstring that includes parameters and"
                "return value looks like this:"),

@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 
 from fastapi import FastAPI, File, UploadFile, Path, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from modules.lifecycle import LifecycleState, LifecycleManager
 from modules.metadata import Metadata
@@ -297,6 +298,57 @@ def execute_api(app, tags: str, file_handler: FileHandler, metadata: Metadata):
         return file_executor.execute_file(parameters=parameters)
 
 
+def custom_openapi(app: FastAPI, openapi_tags):
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title="blueberry",
+        summary="Towards hallucination-less AI systems",
+        version="0.0.1",
+        tags=openapi_tags,
+        contact={
+            "name": "Eran Raichstein",
+            "email": "eranra@il.ibm.com",
+        },
+        routes=app.routes,
+    )
+
+    for path, methods in openapi_schema["paths"].items():
+        for method in methods.keys():  # e.g., "get", "post"
+            if method in ["get", "post", "put", "delete", "patch"]:  # Only HTTP methods
+                url = f"http://127.0.0.1:8000{path}"
+
+                python_example_requests = f"""import requests
+
+response = requests.{method}("{url}")
+print(response.json())"""
+
+                curl_example = f"""curl -X {method.upper()} "{url}" """
+
+                example_obj = {
+                    "python_requests": {
+                        "summary": "Python (requests)",
+                        "value": python_example_requests
+                    },
+                    "curl": {
+                        "summary": "cURL example",
+                        "value": curl_example
+                    }
+                }
+
+                # Add examples to the responses
+                if "responses" in methods[method]:
+                    methods[method]["responses"]["200"]["content"] = {
+                        "text/plain": {
+                            "examples": example_obj
+                        }
+                    }
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
 def create_app():
     openapi_tags = [
         {
@@ -317,13 +369,8 @@ def create_app():
             "description": "Execution operations (tools execution) ",
         },
     ]
-    app = FastAPI(title="blueberry",
-                  summary="Towards hallucination-less AI systems",
-                  openapi_tags=openapi_tags,
-                  contact={
-                      "name": "Eran Raichstein",
-                      "email": "eranra@il.ibm.com",
-                  })
+
+    app = FastAPI()
 
     app.add_middleware(
         CORSMiddleware,
@@ -339,4 +386,5 @@ def create_app():
     execute_api(app=app, metadata=metadata,
                 file_handler=file_handler, tags=["execution"])
 
+    app.openapi = lambda: custom_openapi(app, openapi_tags)
     return app
