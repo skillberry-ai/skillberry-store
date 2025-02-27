@@ -2,7 +2,7 @@ import ast
 import logging
 import tempfile
 import datetime
-from typing import Dict, Any, AnyStr
+from typing import Dict, List, Any, Tuple, AnyStr, Optional
 
 import docker
 from fastapi import HTTPException
@@ -56,35 +56,43 @@ def arg_convert(arg_name, arg_type):
     return f'"{arg_str}"'
 
 
-def extract_function_and_imports(content: str) -> tuple[str | None, list[tuple[str, str]], list[str | Any]]:
+def extract_function_and_imports(content: str) -> Tuple[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
     """
-    Extracts the function name, parameters, and imported modules from Python code.
+    Extracts the first function's name, its parameters with type annotations and whether they are positional or optional,
+    and imported modules from Python code.
+
+    Returns:
+    - Function name or None
+    - List of (parameter name, parameter type, "positional" or "optional") tuples
+    - List of (imported name, source module) tuples
     """
     try:
         tree = ast.parse(content)
-        function_name = None
-        parameters = []
-        imports = []
+        function_name: Optional[str] = None
+        parameters: List[Tuple[str, str, str]] = []  # (param_name, param_type, "positional"/"optional")
+        imports: List[Tuple[str, str]] = []
 
         for node in ast.walk(tree):
-            # Extract function name and parameters
-            if isinstance(node, ast.FunctionDef):
+            if isinstance(node, ast.FunctionDef) and function_name is None:
                 function_name = node.name
-                parameters = []
-                for arg in node.args.args:
+                defaults_count = len(node.args.defaults)
+                positional_count = len(node.args.args) - defaults_count
+
+                for i, arg in enumerate(node.args.args):
                     param_name = arg.arg
-                    param_type = None
-                    # Check if there is a type annotation
-                    if arg.annotation:
-                        param_type = ast.unparse(arg.annotation)
-                    parameters.append((param_name, param_type or "None"))
+                    param_type = ast.unparse(arg.annotation) if arg.annotation else "None"
+                    param_kind = "positional" if i < positional_count else "optional"
+                    parameters.append((param_name, param_type, param_kind))
+
             elif isinstance(node, ast.Import):
-                imports.extend(alias.name for alias in node.names)
+                imports.extend((alias.name, "") for alias in node.names)
             elif isinstance(node, ast.ImportFrom):
-                imports.extend(alias.name for alias in node.names)
+                imports.extend((alias.name, node.module or "") for alias in node.names)
 
         return function_name, parameters, imports
 
+    except SyntaxError:
+        return None, [], []
     except SyntaxError:
         return None, [], []
 
@@ -164,6 +172,10 @@ class FileExecutor:
                 raise HTTPException(
                     status_code=400, detail="No function definition found in the file")
 
+            logging.info(f"=== executing function with imports === \n"
+                         f"function_name: {function_name}\n"
+                         f"parameter_definitions:{parameter_definitions}\n"
+                         f"function_imports:{function_imports}\n")
             with tempfile.NamedTemporaryFile(delete=False, mode='w') as temp_file:
                 temp_file.write(self.content + f"""
 
@@ -176,7 +188,7 @@ import inspect
 def parse_arguments(func):
     # Get the signature of the function
     sig = inspect.signature(func)
-    parser = argparse.ArgumentParser(description="Wrap any function and pass arguments to it.")
+    parser = argparse.ArgumentParser(description="Use the following parameters to work with {function_name}.")
 
     # Iterate over the parameters in the function signature
     for param in sig.parameters.values():
@@ -227,12 +239,16 @@ if __name__ == "__main__":
             for parameter_definition in parameter_definitions:
                 parameter_definition_name = parameter_definition[0]
                 parameter_definition_type = parameter_definition[1]
+                parameter_definition_kind = parameter_definition[2]
                 if parameters.get(parameter_definition_name) is None:
                     raise HTTPException(
                         status_code=400, detail=f"Missing parameter: {parameter_definition}")
                 converted_arg = arg_convert(parameters.get(parameter_definition_name),
                                             parameter_definition_type)
-                command += f"{converted_arg} "
+                if parameter_definition_kind == "positional":
+                    command += f"{converted_arg} "
+                else:
+                    command += f"--{parameter_definition_name}={converted_arg} "
 
             # Create and run a container to execute the Python file
             container = self.client.containers.run(

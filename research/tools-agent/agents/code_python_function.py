@@ -18,6 +18,7 @@ class CodePythonFunctionResponseJsonSchema(BaseModel):
 base_python_coding_prompt_messages = [
     ("system", "You are an expert in writing code in python"),
     ("system", "Always add meaningful docstring (Google style) to functions and tools that you generate"),
+    ("system", "always include explicit types for input and output parameters in function signatures"),
     ("system", "Always include a complete docstring as part of the generated code"),
     ("system", "Make sure to provide elaborated description as part of the docstring"),
     ("system", "The docstring should always include description, the input parameters including types, "
