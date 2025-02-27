@@ -241,8 +241,14 @@ if __name__ == "__main__":
                 parameter_definition_type = parameter_definition[1]
                 parameter_definition_kind = parameter_definition[2]
                 if parameters.get(parameter_definition_name) is None:
-                    raise HTTPException(
-                        status_code=400, detail=f"Missing parameter: {parameter_definition}")
+                    if parameter_definition_kind == "positional":
+                        raise HTTPException(
+                            status_code=400, detail=f"Missing parameter: "
+                                                    f"name:{parameter_definition_name}, "
+                                                    f"type:{parameter_definition_type}")
+                    else:
+                        continue
+                        
                 converted_arg = arg_convert(parameters.get(parameter_definition_name),
                                             parameter_definition_type)
                 if parameter_definition_kind == "positional":
