@@ -8,6 +8,7 @@ from fastapi import FastAPI, File, UploadFile, Path, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from modules.dictionary_checker import DictionaryChecker
 from modules.lifecycle import LifecycleState, LifecycleManager
 from modules.metadata import Metadata
 from modules.description import Description
@@ -169,6 +170,7 @@ def get_filtered_matched_files(files: List[str],
         file_metadata = metadata.read_metadata(file_name)
         if file_metadata is None:
             continue
+
         life_cycle_manager = LifecycleManager(file_metadata)
 
         # Skip comparing to lifecycle_state if it is ANY
@@ -197,6 +199,7 @@ def descriptions_api(app, metadata, tags: str):
     def search_description(search_term: str,
                            max_numer_of_results: int = 5,
                            similarity_threshold: float = 1,
+                           metadata_filter: str = ".",
                            lifecycle_state: LifecycleState = LifecycleState.APPROVED):
         logger.info(f"Request to search descriptions for term: {search_term}")
         matched_files = descriptions.search_description(
@@ -217,7 +220,19 @@ def descriptions_api(app, metadata, tags: str):
                 if life_cycle_manager.get_state() != lifecycle_state:
                     continue
                 lifecycle_filtered_matched_files.append(matched_file)
-            return lifecycle_filtered_matched_files
+            filtered_matched_files = lifecycle_filtered_matched_files
+
+        if metadata_filter != "" and metadata_filter != ".":
+            metadata_filtered_matched_files = []
+            for matched_file in filtered_matched_files:
+                file_metadata = metadata.read_metadata(matched_file["filename"])
+                if file_metadata is None:
+                    continue
+                dictionary_checker = DictionaryChecker(file_metadata)
+                if not dictionary_checker.check_key_value_exists(metadata_filter):
+                    continue
+                metadata_filtered_matched_files.append(matched_file)
+            filtered_matched_files = metadata_filtered_matched_files
 
         return filtered_matched_files
 
