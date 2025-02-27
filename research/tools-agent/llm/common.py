@@ -24,7 +24,7 @@ selected_model = config.get("selected_model")
 use_rits_proxy = config.get("use_rits_proxy")
 temperature = config.get("temperature")
 
-llm_validator_model = config.get("llm_validator_model")
+llm_validator_model = config.get("llm_as_coder__validator_model")
 llm_coder_model = config.get("llm_as_coder__model")
 llm_coder_temperature = config.get("llm_as_coder__temperature")
 

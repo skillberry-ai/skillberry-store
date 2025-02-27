@@ -67,8 +67,8 @@ def generate_test_cases(function_name: str, function_description: str, function_
     """Generate test cases using LLM with structured output."""
 
     structured_llm = validator_llm.with_structured_output(schema=TestCasesJsonSchema,
-                                                      method="function_calling",
-                                                      include_raw=False)
+                                                          method="function_calling",
+                                                          include_raw=False)
 
     try:
         unittests_count = config.get("llm_as_coder__unittests_count")
@@ -90,7 +90,7 @@ def generate_test_cases(function_name: str, function_description: str, function_
 
 def check_unwanted_words(name: str, description: str, metadata: dict, code: str) -> bool:
     """Check if the tool's description, metadata, and code use unwanted words."""
-    unwanted_words = ["error", "manager", "handler", "api", "key"]
+    unwanted_words = ["username", "secret", "api", "key"]
     try:
         description = description.lower() if isinstance(description, str) else ""
         code = code.lower() if isinstance(code, str) else ""
@@ -165,6 +165,7 @@ def check_security(code: str) -> List[str]:
             issues.append(f"Security risk - unsafe import {imported_module}: {unsafe_imports[imported_module]}")
 
     return issues
+
 
 def validate_tool_using_llm_as_a_coder(name: str, description: str, metadata: dict, code: str) -> str:
     """Validate generated code using Docker isolation and LLM-generated tests."""
