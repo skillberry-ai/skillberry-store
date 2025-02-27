@@ -85,9 +85,9 @@ def extract_function_and_imports(content: str) -> Tuple[Optional[str], List[Tupl
                     parameters.append((param_name, param_type, param_kind))
 
             elif isinstance(node, ast.Import):
-                imports.extend((alias.name, "") for alias in node.names)
+                imports.extend(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom):
-                imports.extend((alias.name, node.module or "") for alias in node.names)
+                imports.extend(alias.name for alias in node.names)
 
         return function_name, parameters, imports
 
@@ -248,7 +248,7 @@ if __name__ == "__main__":
                                                     f"type:{parameter_definition_type}")
                     else:
                         continue
-                        
+
                 converted_arg = arg_convert(parameters.get(parameter_definition_name),
                                             parameter_definition_type)
                 if parameter_definition_kind == "positional":
