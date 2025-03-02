@@ -66,5 +66,3 @@ The manifest includes:
 ### As Consumer, I wish to delete all tools in the service 
 
 ### As Tool Maintainer, I wish to set status of a tool artifact in the artifact's manifest for a tool with the specified UID
-
-
