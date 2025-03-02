@@ -1,0 +1,33 @@
+{
+    "programming_language": "python",
+    "packaging_format": "code",
+    "uid": "GetQuarter",
+    "description": "Returns the quarter of the year for a given string. For example: for the string 'Deal closed: 2Q 2024' the function will return 2Q",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "input_string": {
+                "type": "str",
+                "description": "The input string containing the quarter information."
+            }
+        },
+        "required": [
+            "input_string"
+        ]
+    },
+    "returns": {
+        "type": "str",
+        "description": "The quarter of the year."
+    },
+    "code_entry":"__main__",
+    "code_path": "GetQuarter.py",
+    "state": "approved",
+    "version": "0.1.0",
+    "history": [
+        {
+            "version": "0.1.0",
+            "description": "Initial version.",
+            "state": "approved"
+        }
+    ]
+}

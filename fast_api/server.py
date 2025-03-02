@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, File, UploadFile, Path, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi_versioning import VersionedFastAPI, version
 
 from modules.dictionary_checker import DictionaryChecker
 from modules.lifecycle import LifecycleState, LifecycleManager
@@ -17,13 +18,61 @@ from modules.file_handler import FileHandler
 from modules.file_executor import FileExecutor
 from tools.configure import get_files_directory_path, get_descriptions_directory, get_metadata_directory
 
+#this environment variable is used to enable the latest API version
+ENABLE_API_VERSION = os.environ.get('ENABLE_API_VERSION', 'latest') 
+
 logger = logging.getLogger(__name__)
 
+#this function is used to create the tools API
+def tools_api(app, tags: str):
+    #retrieves the tool artifact whose description is passed as a parameter and matches the descrion in the tool artifact manifest
+    #every tool has a manifest (a json file) and the manifest name is the UID of the tool
+    @app.get("/artifacts/manifests/{uid}", tags=tags)
+    @version(2)
+    async def get_artifact(uid: str):
+        #the name of the manist file is <uid>.json inide the mannifest folder path
+        #if the manifest file does not exist return an error code
+        #if the manifest file exists, return the json object in the body of the return message
+        
+    #this function searches tool artifacts' manifests by semantic proximity
+    @app.get("/artifacts/manifests/search", tags=tags)
+    @version(2)
+    async def get_artifact_by_descriptio_and_state(search_term: str, 
+                           max_numer_of_results: int = 5,
+                           similarity_threshold: float = 1,
+                           manifest_filter: str = ".",
+                           lifecycle_state: LifecycleState = LifecycleState.APPROVED): 
+        #seach should be done within the manifets directory on the json files of the manifests
+        #where each time the search term is tested for semantic similarity to the description of the tool
+        #as specified in the manifest file
+        #The function returns a list of manifests (json objects) whose description is similar
+        #to the search term below the similarity threshold and also match the lifecycle state.
+    
+
+    @app.post("/artifacts/manifests/search", tags=tags)
+    @version(2)
+    async def post_artifact(manifest: str): 
+    
+    @app.post("/artifacts/manifests/add", tags=tags)
+    @version(2)
+    
+    app.post("/artifacts/manifests/execute", tags=tags)
+    @version(2)
+
+    app.post("/artifacts/manifests/delete", tags=tags)
+    @version(2)
+
+    app.get("/artifacts/manifests/list", tags=tags)
+    @version(2)
+
+    app.post("/artifacts/manifests/update", tags=tags)
+    @version(2)
 
 def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
     files_directory_path = get_files_directory_path()
     file_handler = FileHandler(files_directory_path)
 
+    @version(1)
     @app.get("/files", response_model=List[str], tags=tags)
     def list_files(lifecycle_state: LifecycleState = LifecycleState.ANY):
         logger.info("Request to list files")
@@ -385,7 +434,10 @@ def create_app():
         },
     ]
 
-    app = FastAPI()
+    #app = FastAPI()
+    #replacing non-versioned FastAPI with versioned FastAPI
+    app = FastAPI("tools-service")
+    app = VersionedFastAPI(app, version="1", prefix_format="/v{major}", version=ENABLE_API_VERSION)
 
     app.add_middleware(
         CORSMiddleware,
