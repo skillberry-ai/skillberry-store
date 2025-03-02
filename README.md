@@ -59,7 +59,11 @@ The manifest includes:
 
 ### As Consumer, I wish to find a tool artifact whose manifest's UID matches a UID specified as input
 
-### As consumer, I wish to list all tool artifacts
+### As Consumer, I wish to list all tool artifacts in the tool service
+
+### As Consumer, I wish to delete a tool artifact with the specified manifest
+
+### As Consumer, I wish to delete all tools in the service 
 
 ### As Tool Maintainer, I wish to set status of a tool artifact in the artifact's manifest for a tool with the specified UID
 
