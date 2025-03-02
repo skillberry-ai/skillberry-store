@@ -1,55 +1,66 @@
-# **Project blueberry**
+# Blueberry-tools-service
+The service implementing tools repository for agentic workflows.
 
-## Introduction :sun_with_face:
-The **blueberry** project is an AI system designed to automate gradual reprogramming of workflows with both existing and generated tools. 
-The goal is to increase the proportion of using high-quality deterministic tools, thereby reducing hallucinations in the workflows.
+## Personas
+- Consumer: a human or AI user who can 
+    - Search for a _tool artifact_ by semantic description or UID
+    - List tool artifacts
+    - Fetch tool artifact
+    - Execute tool artifact
+    - Contributor: a human or AI user who can
+    - Contribute a tool artifact
+    - Delete a tool artifact
+    - **A Note**: a tool artifact added to the service is pending QA assurance process by the Tool Maintainer persona, before it becomes available for execution 
+- Repo Admin: a user with special priviliges who configures the Blueberry Tools Service via a specialized admin interface: 
+    - Manages permissions for clients 
+    - Manages configuration parameters 
+- Tool Maintainer: a human or AI user who approves
+    - Quality a tool artifact
+    - Removal of a tool artifact
+**A Note:** the same user can act in any combination of the roles thereof.
 
-> To quickly experiance with blueberry-chat use:  [blueberry-chat](https://pages.github.ibm.com/Blueberry/blueberry/)
+## Tool Artifact
+A tool artifact is fully defined by a manifest. 
+The manifest includes:
+- The artifact UID
+- Tool semantic description:
+    - name, arguments, type of the arguments, return type(s), admissible range of arguments, admissible range of return values, error codes, examples, provenance, license
+    - **Note**: the tool semantic description is provided as semi-structured (e.g., JSON) or unstructured data (free form textual description, or standardized docstring, e.g., [Google Style Python docstring](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html))  
+    - Tool artifact status:
+    - Submitted
+    - Tested
+    - Approved
+    - Deprecated
+    - Archived
+    - etc.
+- Entry point to the tool code
+- Telemetric information:
+    - Logs
+    - Metrics
+    - Usage
+    - Cost 
+    - etc.
+    - Test automation code entry point
+    - Test data
+- History
+    - First submission date
+    - Versions
+    - Status changes
+- Build automation
+- Run automation
+- **Note:**: not all attributes of the manifest will be supported in the first version.
 
-## Problem Statement :mushroom:
-Hallucinations in agentic workflows can be reduced by increasing the proportion of deterministic tools. The system aims to achieve this by:
+## Usage Stories
+### As Contributor, I wish to insert a new tool artifact into the Blueberry tools service
 
-1. Using deterministic functional tools instead of internal LLM capabilities.
-1. Dynamically building missing tools and functions using LLM-as-a-Coder.
-1. Generalizing and publishing tools to reuse them in future tasks and activities.
+### As Contributor, I wish to upgrade an existing tool to a new version 
 
-## Buisness value :clock1:
+### As Consumer, I wish to find a tool artifact with a specified status and whose manifest's semantic description matches the specified semantic description specified as input with required precision
 
-- Improve AI accuracy and correctness (a.k.a performance)
-- Reducing AI systems TCO by offloading part of the relevant functionality to CPUs
-- Use-case centric diffrentiation for IBM AI
+### As Consumer, I wish to find a tool artifact whose manifest's UID matches a UID specified as input
 
-## Architecture :house:
-The system consists of the following components:
+### As consumer, I wish to list all tool artifacts
 
-- Inferencing Runtime System: The core component that executes the agentic workflows.
-- API: Handles incoming requests and provides a standardized interface for the system.
-- Router: Directs incoming requests to the appropriate component.
-- LLM (Intrinsic): The large language model used to reason, orchestrate, generate content, and plan for the usage of deterministic tools.
-- Deterministic Tools: A catalog of curated tools that can be used to assist in answering user questions.
-- Tools Execution Service: Executes the selected tools and provides the results to the LLM.
-
-## Workflow :arrow_heading_up:
-The workflow of the system is as follows:
-
-- User Prompt: The user submits a question or prompt to the system.
-- Planner: The planner determines the stages required to answer the user question and identifies the deterministic tools that can assist in answering the question.
-- Tools Generator: Generates a list of potential tools that can be used to answer the question.
-- Tools Short-Lister: Shortlists the most relevant tools based on the user prompt and the planner's output.
-- Tools Execution Service: Executes the selected tools and provides the results to the LLM.
-- LLM: Uses the results from the tools to generate a response to the user prompt.
-
-## Research Challenges :eyes:
-The main research challenges:
-
-- Code-based AI tools/functions repository: Developing a runtime and repository for code-based (python) tools that provides strong searchability, NL meta-data, and indexing capabilities.
-- Tools shortlisting: Building a system that chooses the most relevant subset of available AI tools for a specific task.
-- Tools usage: Convincing and encouraging LLMs to use deterministic tools instead of internal capabilities.
-- Automatic tools generation: Using LLM-as-a-Coder to build functional tools that can be used for multiple tasks.
-- Continuous improvement with Fine-tuned LLMs: Continuously fine-tuning LLMs to provide less hallucinations and more accurate results.
+### As Tool Maintainer, I wish to set status of a tool artifact in the artifact's manifest for a tool with the specified UID
 
 
-## Conclusion :clipboard:
-The **blueberry** project aims to reduce hallucinations in agentic workflows by increasing the proportion of deterministic tools used. 
-The system consists of various components that work together to achieve this goal.
-While there are challenges to be addressed, the system has the potential to provide more accurate and reliable results.
