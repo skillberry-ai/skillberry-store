@@ -1,5 +1,6 @@
 # Main dependencies
 fastapi==0.115.8
+fastapi-versioning==0.10.0
 uvicorn==0.16.0
 requests==2.32.3
 python-multipart==0.0.6
