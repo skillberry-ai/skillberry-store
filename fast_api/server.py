@@ -33,6 +33,7 @@ def tools_api(app, tags: str):
         #the name of the manist file is <uid>.json inide the mannifest folder path
         #if the manifest file does not exist return an error code
         #if the manifest file exists, return the json object in the body of the return message
+        return
         
     #this function searches tool artifacts' manifests by semantic proximity
     @app.get("/artifacts/manifests/search", tags=tags)
@@ -42,31 +43,45 @@ def tools_api(app, tags: str):
                            similarity_threshold: float = 1,
                            manifest_filter: str = ".",
                            lifecycle_state: LifecycleState = LifecycleState.APPROVED): 
-        #seach should be done within the manifets directory on the json files of the manifests
-        #where each time the search term is tested for semantic similarity to the description of the tool
-        #as specified in the manifest file
         #The function returns a list of manifests (json objects) whose description is similar
         #to the search term below the similarity threshold and also match the lifecycle state.
+        return
     
-
-    @app.post("/artifacts/manifests/search", tags=tags)
-    @version(2)
-    async def post_artifact(manifest: str): 
     
     @app.post("/artifacts/manifests/add", tags=tags)
     @version(2)
+    async def add_artifact(manifest: str, code: UploadFile = File(...)):
+        #this function adds a new tool artifact manifest to the manifest folder
+        #the manifest is passed as a string representing a json format in the body of the request
+        #the second parameter is an executable file that is stored in the backend file system (e.g. folder)
+        return
     
     app.post("/artifacts/manifests/execute", tags=tags)
     @version(2)
+    async def execute_artifact(manifest: str, parameters: Optional[Dict[str, Any]] = None):
+        #this function executes a tool artifact based on the manifest file and the parameters passed
+        #Executes in a containerized environment
+        return
 
-    app.post("/artifacts/manifests/delete", tags=tags)
+    app.delete("/artifacts/manifests/delete/{uid}", tags=tags)
     @version(2)
+    async def delete_artifact(uidt: str):
+        #this function deletes a tool artifact based on the manifest file
+        return
 
     app.get("/artifacts/manifests/list", tags=tags)
     @version(2)
+    async def list_artifacts(lifecycle_state: LifecycleState = LifecycleState.ANY):
+        #this function lists all the tool artifacts based on the lifecycle state
+        return
 
-    app.post("/artifacts/manifests/update", tags=tags)
+    app.put("/artifacts/manifests/update/{uid}", tags=tags)
     @version(2)
+    async def update_artifact(uid: str, state: LifecycleState):
+        #this function updates the lifecycle state of a tool artifact
+        return
+    
+    #The reminder is v1 of the API
 
 def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
     files_directory_path = get_files_directory_path()
