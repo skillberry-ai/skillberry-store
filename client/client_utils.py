@@ -47,6 +47,34 @@ def list_functions_in_folder(folder_path: str):
 
 
 
+def init_manifest(uid: str, prog_lang: str, pack_fmt="code"):
+    """
+    This utility function initializes and returns an empty tool manifest with 
+    a specific uid (tool unique identifier), programming language and packaging format
+
+    Args:
+        uid (str): Unique identifier of the tool
+        prog_lang (str): programming language
+        pack_fmt (str): packaging format of the tool, default "code"
+
+    Returns:
+        dict:   Initialized manifest with programming_language, packaging and 
+                history with initial "0.0.1" version with status "approved"
+    """
+    manifest = dict()
+    manifest["programming_language"] = prog_lang
+    manifest["packaging_format"] = pack_fmt
+    manifest["version"] = "0.0.1"
+    manifest["params"] = {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "optional": []
+    }
+    return manifest
+
+
+
 def extract_docstring(module_path, function_name):
     """
     Extracts the docstring of a function from a Python file without importing it.
@@ -76,101 +104,36 @@ def extract_docstring(module_path, function_name):
 
 
 
-def docstring_to_dict(docstring_obj):
+def docstring_to_manifest(docstring_obj, mft):
     """
-    Convert a Docstring object into a dictionary.
+    Convert a Docstring object into a manifest dictionary.
 
     Args:
         docstring_obj: A parsed Docstring object from docstring_parser.parse()
+        mft (dict): the target manifest dictionary to update
     
     Returns:
-        dict: A dictionary containing the docstring's metadata.
+        None
     """
-    a = {}
 
-    # Store short and long descriptions
-    a["short_description"] = docstring_obj.short_description
-    a["long_description"] = docstring_obj.long_description
+    # Descriptions
+    mft["description"] = docstring_obj.short_description
 
-    # Store parameters as a list of dictionaries
-    a["params"] = [
-        {"name": param.arg_name, "type": param.type_name, "description": param.description}
-        for param in docstring_obj.params
-    ]
+    # Not using docstring_obj.long_description
 
+    # Store parameters as a dictionary: name -> {type, description}
+    mft["params"]["properties"] = {param.arg_name: {"type": param.type_name, "description": param.description}
+        for param in docstring_obj.params}
+
+    # All parameters are "required" - so "optional" remains empty
+    mft["params"]["required"] = [param.arg_name for param in docstring_obj.params]
+
+    # Exceptions are not stored
     # Store return type and description
-    a["returns"] = {
+    mft["returns"] = {
         "type": docstring_obj.returns.type_name if docstring_obj.returns else None,
         "description": docstring_obj.returns.description if docstring_obj.returns else None,
     }
-
-    # Store exceptions as a list of dictionaries
-    a["raises"] = [
-        {"type": exc.type_name, "description": exc.description}
-        for exc in docstring_obj.raises
-    ]
-
-    return a
-
-
-
-def ds_dict_to_manifest(docstring_dict: dict):
-    """
-    Convert a Docstring dictionary into a manifest dictionary.
-
-    Args:
-        docstring_dict (dict): A dictionary of a parsed doc string
-    
-    Returns:
-        dict: A dictionary in a tool manifest format.
-    """
-    mft = {}
-
-    # Descriptions
-    mft["description"] = docstring_dict["short_description"]
-
-    # Store parameters as a dictionary: name -> {type, description}
-    mft["parameters"] = {param["name"]: {"type": param["type"], "description": param["description"]} for param in docstring_dict["params"]}
-
-    # Order of invocation
-    mft["order"] = [param["name"] for param in docstring_dict["params"]]
-
-    # Store return type and description
-    mft["returns"] = docstring_dict["returns"]
-
-    # no exceptions are stored
-
-    return mft
-
-
-
-def init_manifest(uid: str, prog_lang: str, pack_fmt="code"):
-    """
-    This utility function initializes and returns an empty tool manifest with 
-    a specific uid (tool unique identifier), programming language and packaging format
-
-    Args:
-        uid (str): Unique identifier of the tool
-        prog_lang (str): programming language
-        pack_fmt (str): packaging format of the tool, default "code"
-
-    Returns:
-        dict:   Initialized manifest with programming_language, packaging and 
-                history with initial "0.0.1" version with status "approved"
-    """
-    manifest = dict()
-    manifest["programming_language"] = prog_lang
-    manifest["packaging_format"] = pack_fmt
-    manifest["uid"] = uid
-    manifest["history"] = [
-        {
-            "version": "0.0.1",
-            "description": "Initial version.",
-            "state": "approved"
-        }
-    ]
-    manifest["version"] = manifest["history"][0]["version"]
-    return manifest
 
 
 
@@ -188,9 +151,9 @@ def python_manifest_from_function_docstring(module_path: str, func_name: str, do
         dict or None:   the manifest if available, or None if no 
                         valid docstring could be extracted and parsed
     """
-    manifest = init_manifest(func_name, "Python")
-    manifest["code_entry"] = func_name
-    manifest["code_path"] = os.path.basename(module_path)
+    manifest = init_manifest(func_name, "python")
+    manifest["name"] = func_name
+    manifest["module_name"] = os.path.basename(module_path)
     manifest["state"] = "approved"
 
     if not docstring:
@@ -198,9 +161,7 @@ def python_manifest_from_function_docstring(module_path: str, func_name: str, do
     
     try:
         func_ds = parse(docstring)
-        func_ds_dict = docstring_to_dict(func_ds)   # docstring object -> docstring dict
-        mft_func_fs = ds_dict_to_manifest(func_ds_dict) # docstring dict -> manifest function dict
-        manifest.update(mft_func_fs)    
+        docstring_to_manifest(func_ds, manifest)   # docstring object -> manifest
     except ParseError:
         return None
 
@@ -222,12 +183,13 @@ def python_manifest_from_lh_json_record(lh_json: dict, module_path: str):
     """
     func_name = lh_json["name"]
     manifest = init_manifest(func_name, "Python")
-    manifest["code_entry"] = func_name
-    manifest["code_path"] = os.path.basename(module_path)
+    manifest["module_name"] = os.path.basename(module_path)
     manifest["state"] = "approved"
     manifest["description"] = lh_json["description"]
-    manifest["parameters"] = lh_json["arguments"]
-    manifest["order"] = lh_json["required"]
+    manifest["params"]["properties"] = lh_json["arguments"]
+    manifest["params"]["required"] = lh_json["required"]
+    if "optional" in lh_json:
+        manifest["params"]["optional"] = lh_json["optional"]
 
     return manifest
 
