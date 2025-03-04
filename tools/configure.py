@@ -5,15 +5,33 @@ import sys
 logger = logging.getLogger(__name__)
 
 
-def configure_logging():
+def configure_logging(lvl=logging.INFO):
     """
     Configure logging for the application.
     """
     logging.basicConfig(
-        level=logging.INFO,
+        level=lvl,
         format="%(asctime)s - %(levelname)s - %(message)s",
     )
     logger.info("Configuring logging")
+
+
+def configure_logger(logger_name, log_file=None):
+    """Configures a logger with a custom format."""
+
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)  # Set the desired logging level
+
+    if log_file:
+        handler = logging.FileHandler(log_file)
+    else:
+        handler = logging.StreamHandler()  # Console output
+
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s - %(filename)s:%(lineno)d')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    return logger
 
 
 def get_files_directory_path():
