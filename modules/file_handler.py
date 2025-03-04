@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List
+from typing import List, Optional
 
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -41,6 +41,9 @@ class FileHandler:
     def read_file(self, filename: str, raw_content: bool = False):
         """
         Read and return the contents of a file.
+
+        Raises:
+            HTTPException: If there is an error reading the file.
         """
 
         file_path = os.path.join(self.directory_path, filename)
@@ -60,12 +63,14 @@ class FileHandler:
         else:
             return FileResponse(file_path)
 
-    def write_file(self, file: UploadFile) -> dict:
+    def write_file(self, file: UploadFile, filename: Optional[str]) -> dict:
         """
         Write a file to the directory.
 
         Args:
             file (UploadFile): The file to save.
+            filename (str): The name of the file. If not provided
+                            file.filename being used
 
         Returns:
             dict: A message confirming the file was saved successfully.
@@ -73,14 +78,15 @@ class FileHandler:
         Raises:
             HTTPException: If there is an error saving the file.
         """
-        file_path = os.path.join(self.directory_path, file.filename)
+        name = filename if filename else file.filename
+        file_path = os.path.join(self.directory_path, name)
         try:
             with open(file_path, "wb") as f:
                 f.write(file.file.read())
             logger.info(f"File saved: {file_path}")
-            return {"message": f"File '{file.filename}' saved successfully."}
+            return {"message": f"File '{name}' saved successfully."}
         except Exception as e:
-            logger.error(f"Error saving file '{file.filename}': {e}")
+            logger.error(f"Error saving file '{name}': {e}")
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
     def write_file_content(self, file_name: str, file_content: str) -> dict:

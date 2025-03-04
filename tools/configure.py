@@ -82,3 +82,16 @@ def get_metadata_directory():
     default_path = "/tmp/metadata"
     logger.info(f"Using default metadata directory: {default_path}")
     return default_path
+
+
+def get_manifest_directory():
+    """
+    Get the directory path for manifest.
+    """
+    env_path = os.getenv("MANIFEST_DIRECTORY")
+    if env_path:
+        logger.info(f"Using manifest directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/manifest"
+    logger.info(f"Using default manifest directory: {default_path}")
+    return default_path

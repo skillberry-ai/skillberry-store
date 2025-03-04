@@ -7,87 +7,178 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, File, UploadFile, Path, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi_versioning import VersionedFastAPI, version
 
 from modules.dictionary_checker import DictionaryChecker
 from modules.lifecycle import LifecycleState, LifecycleManager
 from modules.metadata import Metadata
+from modules.manifest import Manifest
 from modules.description import Description
 from modules.description_vector_index import DescriptionVectorIndex
 from modules.file_handler import FileHandler
 from modules.file_executor import FileExecutor
-from tools.configure import get_files_directory_path, get_descriptions_directory, get_metadata_directory
+from tools.configure import get_files_directory_path, get_descriptions_directory, get_metadata_directory, \
+    get_manifest_directory
 
 #this environment variable is used to enable the latest API version
 ENABLE_API_VERSION = os.environ.get('ENABLE_API_VERSION', 'latest') 
 
 logger = logging.getLogger(__name__)
 
-#this function is used to create the tools API
-def tools_api(app, tags: str):
-    #retrieves the tool artifact whose description is passed as a parameter and matches the descrion in the tool artifact manifest
+def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags: str):
+    manifest_directory = get_manifest_directory()
+    manifest = Manifest(manifest_directory=manifest_directory)
+
+    #retrieves the tool artifact whose description is passed as a parameter and matches the description in the tool artifact manifest
     #every tool has a manifest (a json file) and the manifest name is the UID of the tool
-    @app.get("/artifacts/manifests/{uid}", tags=tags)
-    @version(2)
-    async def get_artifact(uid: str):
-        #the name of the manist file is <uid>.json inide the mannifest folder path
-        #if the manifest file does not exist return an error code
-        #if the manifest file exists, return the json object in the body of the return message
-        return
-        
+
+    @app.get("/manifests/{uid}", tags=tags)
+    def get_manifest(uid: str):
+        """
+        Retrieve manifest for the given uid.
+
+        Parameters:
+            uid (str): The uid of the manifest
+        """
+        logger.info(f"Request to read manifest for uid: {uid}")
+        file_manifest = manifest.read_manifest(uid)
+        if file_manifest:
+            logger.info(f"Manifest for {uid}: {file_manifest}")
+        return file_manifest
+
     #this function searches tool artifacts' manifests by semantic proximity
-    @app.get("/artifacts/manifests/search", tags=tags)
-    @version(2)
-    async def get_artifact_by_descriptio_and_state(search_term: str, 
-                           max_numer_of_results: int = 5,
-                           similarity_threshold: float = 1,
-                           manifest_filter: str = ".",
-                           lifecycle_state: LifecycleState = LifecycleState.APPROVED): 
+    @app.get("/search/manifests", tags=tags)
+    def search_manifest(search_term: str,
+                        max_number_of_results: int = 5,
+                        similarity_threshold: float = 1,
+                        manifest_filter: str = ".",
+                        lifecycle_state: LifecycleState = LifecycleState.APPROVED):
+        """
+        Return a list of manifests that are similar to the given search term
+
+        Parameters:
+            search_term (str): search term
+            max_number_of_results (int): number of results to return
+            similarity_threshold (float): threshold to be used
+            manifest_filter (str): unused
+            lifecycle_state (LifecycleState): state to filter
+        """
+        #search should be done within the manifests directory on the json files of the manifests
+        #where each time the search term is tested for semantic similarity to the description of the tool
+        #as specified in the manifest file
         #The function returns a list of manifests (json objects) whose description is similar
         #to the search term below the similarity threshold and also match the lifecycle state.
-        return
-    
-    
-    @app.post("/artifacts/manifests/add", tags=tags)
-    @version(2)
-    async def add_artifact(manifest: str, code: UploadFile = File(...)):
-        #this function adds a new tool artifact manifest to the manifest folder
-        #the manifest is passed as a string representing a json format in the body of the request
-        #the second parameter is an executable file that is stored in the backend file system (e.g. folder)
-        return
-    
-    app.post("/artifacts/manifests/execute", tags=tags)
-    @version(2)
-    async def execute_artifact(manifest: str, parameters: Optional[Dict[str, Any]] = None):
-        #this function executes a tool artifact based on the manifest file and the parameters passed
-        #Executes in a containerized environment
-        return
+        logger.info(f"Request to search descriptions for term: {search_term}")
+        matched_entities = descriptions.search_description(
+            search_term=search_term,
+            k=max_number_of_results)
+
+        filtered_matched_entities = [matched_entity for matched_entity in matched_entities if
+                                  matched_entity["similarity_score"] <= similarity_threshold]
+
+        # if we are requested to limit the search to a specific lifecycle state, we filter the results
+        if lifecycle_state is not LifecycleState.ANY:
+            lifecycle_filtered_matched_entities = []
+            for matched_entity in filtered_matched_entities:
+                # description_vector_index uses filename term TODO: rename
+                manifest_as_dict = manifest.read_manifest(matched_entity["filename"])
+                if manifest_as_dict is None:
+                    continue
+                life_cycle_manager = LifecycleManager(manifest_as_dict)
+                if life_cycle_manager.get_state() != lifecycle_state:
+                    continue
+                lifecycle_filtered_matched_entities.append(manifest_as_dict)
+            filtered_matched_entities = lifecycle_filtered_matched_entities
+
+        # TODO: comment out for now
+        # if manifest_filter != "" and metadatmanifest_filtera_filter != ".":
+        #     metadata_filtered_matched_files = []
+        #     for matched_file in filtered_matched_files:
+        #         file_metadata = metadata.read_metadata(matched_file["filename"])
+        #         if file_metadata is None:
+        #             continue
+        #         dictionary_checker = DictionaryChecker(file_metadata)
+        #         if not dictionary_checker.check_key_value_exists(metadata_filter):
+        #             continue
+        #         metadata_filtered_matched_files.append(matched_file)
+        #     filtered_matched_files = metadata_filtered_matched_files
+
+        return filtered_matched_entities
+
+
+    @app.post("/manifests/add", tags=tags)
+    def add_manifest(file: UploadFile = File(...),
+                     file_manifest: Optional[str] = None):
+        """
+        Adds manifest along with its invocation code. As part of the addition,
+        the description of the manifest is embedded and stored in vector db.
+
+        Parameters:
+            file (UploadFile): The file containing invocation code.
+            file_manifest (str): The manifest of the file (json format).
+        """
+        logger.info(f"Request to add manifest")
+        if file_manifest:
+            manifest_as_dict = json.loads(file_manifest)
+            uid = manifest_as_dict['uid']
+            programming_language = manifest_as_dict['programming_language']
+            filename = f'{uid}.py' if programming_language and programming_language == 'python' else uid
+            file_response = file_handler.write_file(file, filename=filename)
+
+            manifest.write_manifest(manifest_as_dict['uid'], manifest_as_dict)
+            descriptions.write_description(manifest_as_dict['uid'], manifest_as_dict['description'])
+            return file_response
+        else:
+            raise HTTPException(status_code=404, detail="Manifest/file not found") 
+
+    @app.post("/manifests/execute/{uid}", tags=tags)
+    def execute_manifest(uid: str, parameters: Optional[Dict[str, Any]] = None):
+        logger.info(f"Request to execute manifest: {uid} with parameters: {parameters}")
+        manifest_as_dict = manifest.read_manifest(uid)
+        if not manifest_as_dict:
+            raise HTTPException(status_code=404, detail="Manifest/file not found")
+
+        uid = manifest_as_dict['uid']
+        programming_language = manifest_as_dict['programming_language']
+        filename = f'{uid}.py' if programming_language and programming_language == 'python' else uid
+
+        file_content = file_handler.read_file(filename, raw_content=True)
+        if not file_content:
+            raise HTTPException(status_code=404, detail="Manifest/file not found")
+
+        file_executor = FileExecutor(
+            filename=uid, file_content=file_content, file_metadata=manifest_as_dict)
+
+        return file_executor.execute_file(parameters=parameters)
+
+    @app.delete("/manifests/delete/{uid}", tags=tags)
+    def delete_manifest(uid: str):
+        """
+        Delete the manifest and its file removing its description from vector db
+        """
+        pass
 
     app.delete("/artifacts/manifests/delete/{uid}", tags=tags)
-    @version(2)
+    #@version(2)
     async def delete_artifact(uidt: str):
         #this function deletes a tool artifact based on the manifest file
         return
 
     app.get("/artifacts/manifests/list", tags=tags)
-    @version(2)
+    #@version(2)
     async def list_artifacts(lifecycle_state: LifecycleState = LifecycleState.ANY):
         #this function lists all the tool artifacts based on the lifecycle state
         return
 
     app.put("/artifacts/manifests/update/{uid}", tags=tags)
-    @version(2)
+    #@version(2)
     async def update_artifact(uid: str, state: LifecycleState):
         #this function updates the lifecycle state of a tool artifact
         return
     
-    #The reminder is v1 of the API
-
 def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
     files_directory_path = get_files_directory_path()
     file_handler = FileHandler(files_directory_path)
 
-    @version(1)
     @app.get("/files", response_model=List[str], tags=tags)
     def list_files(lifecycle_state: LifecycleState = LifecycleState.ANY):
         logger.info("Request to list files")
@@ -447,12 +538,16 @@ def create_app():
             "name": "execution",
             "description": "Execution operations (tools execution) ",
         },
+        {
+            "name": "manifest",
+            "description": "Operations for manifest (tools manifest, programming language, packaging format, "
+                           "security, etc.)",
+        },
     ]
 
     #app = FastAPI()
     #replacing non-versioned FastAPI with versioned FastAPI
-    app = FastAPI("tools-service")
-    app = VersionedFastAPI(app, version="1", prefix_format="/v{major}", version=ENABLE_API_VERSION)
+    app = FastAPI()
 
     app.add_middleware(
         CORSMiddleware,
@@ -468,5 +563,6 @@ def create_app():
     execute_api(app=app, metadata=metadata,
                 file_handler=file_handler, tags=["execution"])
 
+    manifest_handler = manifest_api(app=app, file_handler=file_handler, descriptions=descriptions, tags=["manifest"])
     app.openapi = lambda: custom_openapi(app, openapi_tags)
     return app

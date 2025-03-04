@@ -61,3 +61,4 @@ delete_tools:  ## clean tool directories from /tmp
 	-rm -rf /tmp/files
 	-rm -rf /tmp/descriptions
 	-rm -rf /tmp/metadata
+	-rm -rf /tmp/manifest
