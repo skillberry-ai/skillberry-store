@@ -1,6 +1,5 @@
 {
     "name": "GetQuarter",
-    "uid": "GetQuarter",
     "description": "Returns the quarter of the year for a given string. For example: for the string 'Deal closed: 2Q 2024' the function will return 2Q",
     "programming_language": "python",
     "packaging_format": "code",

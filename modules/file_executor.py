@@ -56,9 +56,9 @@ def arg_convert(arg_name, arg_type):
     return f'"{arg_str}"'
 
 
-def extract_function_and_imports(content: str) -> Tuple[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
+def extract_function_and_imports(content, function_name: str) -> Tuple[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
     """
-    Extracts the first function's name, its parameters with type annotations and whether they are positional or optional,
+    Extracts the function's name, its parameters with type annotations and whether they are positional or optional,
     and imported modules from Python code.
 
     Returns:
@@ -68,13 +68,14 @@ def extract_function_and_imports(content: str) -> Tuple[Optional[str], List[Tupl
     """
     try:
         tree = ast.parse(content)
-        function_name: Optional[str] = None
+        fname: Optional[str] = None
         parameters: List[Tuple[str, str, str]] = []  # (param_name, param_type, "positional"/"optional")
         imports: List[Tuple[str, str]] = []
 
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and function_name is None:
-                function_name = node.name
+            if isinstance(node, ast.FunctionDef) and fname is None and \
+                    node.name == function_name:
+                fname = node.name
                 defaults_count = len(node.args.defaults)
                 positional_count = len(node.args.args) - defaults_count
 
@@ -89,7 +90,7 @@ def extract_function_and_imports(content: str) -> Tuple[Optional[str], List[Tupl
             elif isinstance(node, ast.ImportFrom):
                 imports.extend(alias.name for alias in node.names)
 
-        return function_name, parameters, imports
+        return fname, parameters, imports
 
     except SyntaxError:
         return None, [], []
@@ -166,7 +167,9 @@ class FileExecutor:
         logger.info(f"Executing python code inside a Docker container")
 
         try:
-            function_name, parameter_definitions, function_imports = extract_function_and_imports(self.content)
+            function_name, parameter_definitions, function_imports = extract_function_and_imports(
+                # NOTE: code will not break: manifest/metadata 'name'  mapped to function_name
+                self.content, function_name=self.metadata['name'])
             # format docker command from function name and parameters
             if function_name is None:
                 raise HTTPException(

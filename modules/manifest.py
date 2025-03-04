@@ -24,13 +24,17 @@ class Manifest:
         """
         return os.path.join(self.manifest_directory, f"{filename}")
 
-    def read_manifest(self, uid: str) -> Optional[str]:
+    def read_manifest(self, filename: str) -> Optional[str]:
         """
-        Read the manifest for the given file.
+        Read the manifest for the given filename.
+
+        Returns:
+            str: The manifest, or None if not found.
+
         """
         data = None
 
-        manifest_file_path = self.get_manifest_file_path(f'{uid}.json')
+        manifest_file_path = self.get_manifest_file_path(filename)
         if os.path.exists(manifest_file_path):
             with open(manifest_file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -40,7 +44,7 @@ class Manifest:
         """
         Write a manifest for the given file.
         """
-        manifest_file_path = self.get_manifest_file_path(f'{filename}.json')
+        manifest_file_path = self.get_manifest_file_path(filename)
         try:
             with open(manifest_file_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=4)

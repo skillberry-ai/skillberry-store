@@ -39,13 +39,15 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         Parameters:
             uid (str): The uid of the manifest
         """
+        # TODO: try/catch/raise
         logger.info(f"Request to read manifest for uid: {uid}")
-        file_manifest = manifest.read_manifest(uid)
+        file_manifest = manifest.read_manifest(f'{uid}.json')
         if file_manifest:
             logger.info(f"Manifest for {uid}: {file_manifest}")
+        else:
+            raise HTTPException(status_code=404, detail="Manifest not found")
         return file_manifest
 
-    #this function searches tool artifacts' manifests by semantic proximity
     @app.get("/search/manifests", tags=tags)
     def search_manifest(search_term: str,
                         max_number_of_results: int = 5,
@@ -59,7 +61,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             search_term (str): search term
             max_number_of_results (int): number of results to return
             similarity_threshold (float): threshold to be used
-            manifest_filter (str): unused
+            manifest_filter (str): not used
             lifecycle_state (LifecycleState): state to filter
         """
         #search should be done within the manifests directory on the json files of the manifests
@@ -67,6 +69,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         #as specified in the manifest file
         #The function returns a list of manifests (json objects) whose description is similar
         #to the search term below the similarity threshold and also match the lifecycle state.
+        # TODO: try/catch/raise
         logger.info(f"Request to search descriptions for term: {search_term}")
         matched_entities = descriptions.search_description(
             search_term=search_term,
@@ -80,7 +83,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             lifecycle_filtered_matched_entities = []
             for matched_entity in filtered_matched_entities:
                 # description_vector_index uses filename term TODO: rename
-                manifest_as_dict = manifest.read_manifest(matched_entity["filename"])
+                manifest_as_dict = manifest.read_manifest(f'{matched_entity["filename"]}.json')
                 if manifest_as_dict is None:
                     continue
                 life_cycle_manager = LifecycleManager(manifest_as_dict)
@@ -106,47 +109,66 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
 
 
     @app.post("/manifests/add", tags=tags)
-    def add_manifest(file: UploadFile = File(...),
-                     file_manifest: Optional[str] = None):
+    def add_manifest(file_manifest: str, file: UploadFile = File(...)):
         """
         Adds manifest along with its invocation code. As part of the addition,
         the description of the manifest is embedded and stored in vector db.
 
+        The manifest is assigned with a unique identifier.
+
         Parameters:
-            file (UploadFile): The file containing invocation code.
             file_manifest (str): The manifest of the file (json format).
+            file (UploadFile): The file containing invocation code.
+        
+        Returns:
+            uid (dict): The unique identifier of the manifest
         """
         logger.info(f"Request to add manifest")
-        if file_manifest:
-            manifest_as_dict = json.loads(file_manifest)
-            uid = manifest_as_dict['uid']
-            programming_language = manifest_as_dict['programming_language']
-            filename = f'{uid}.py' if programming_language and programming_language == 'python' else uid
-            file_response = file_handler.write_file(file, filename=filename)
 
-            manifest.write_manifest(manifest_as_dict['uid'], manifest_as_dict)
-            descriptions.write_description(manifest_as_dict['uid'], manifest_as_dict['description'])
-            return file_response
-        else:
-            raise HTTPException(status_code=404, detail="Manifest/file not found") 
+        manifest_as_dict = json.loads(file_manifest)
+        name = manifest_as_dict['name']
+
+        # TODO: generate UID
+        uid = name
+        manifest_as_dict['uid'] = uid
+        module_name = manifest_as_dict['module_name']
+
+        # persist the artifacts
+        file_handler.write_file(file, filename=module_name)
+        manifest.write_manifest(f'{uid}.json', manifest_as_dict)
+        # TODO: name of uid? in current version name == uid
+        descriptions.write_description(name, manifest_as_dict['description'])
+
+        return {'uid': manifest_as_dict['uid']}
 
     @app.post("/manifests/execute/{uid}", tags=tags)
     def execute_manifest(uid: str, parameters: Optional[Dict[str, Any]] = None):
+        """
+        Invoke manifest function given its uid.
+
+        Parameters:
+            uid (str): The unique identifier of the manifest.
+            parameters (dict): List of key/val pair to be passed to method invocation. Optional 
+
+        Returns:
+            dictionary key 'return value' with function output. E.g
+            {
+                "return value": "\"2Q\""
+            }
+
+        """
         logger.info(f"Request to execute manifest: {uid} with parameters: {parameters}")
-        manifest_as_dict = manifest.read_manifest(uid)
+        manifest_as_dict = manifest.read_manifest(f'{uid}.json')
         if not manifest_as_dict:
             raise HTTPException(status_code=404, detail="Manifest/file not found")
 
-        uid = manifest_as_dict['uid']
-        programming_language = manifest_as_dict['programming_language']
-        filename = f'{uid}.py' if programming_language and programming_language == 'python' else uid
-
-        file_content = file_handler.read_file(filename, raw_content=True)
+        module_name = manifest_as_dict['module_name']
+        file_content = file_handler.read_file(module_name, raw_content=True)
         if not file_content:
             raise HTTPException(status_code=404, detail="Manifest/file not found")
 
         file_executor = FileExecutor(
-            filename=uid, file_content=file_content, file_metadata=manifest_as_dict)
+            filename=module_name, file_content=file_content, file_metadata=manifest_as_dict)
 
         return file_executor.execute_file(parameters=parameters)
 
