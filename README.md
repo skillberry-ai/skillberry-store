@@ -1,6 +1,38 @@
 # Blueberry-tools-service
 The service implementing tools repository for agentic workflows.
 
+# Quickstart
+
+## 1. Prerequisites
+
+```
+sudo apt-get update
+sudo apt-get upgrade
+sudo apt install python3-venv python3-pip
+
+python3 -m pip install --user --upgrade pip
+
+# set virtual environment
+python3 -m venv ~/virtual/Blueberry-tools-service
+```
+
+## 2. Installation
+
+```
+cd ~
+git clone -b api_design_v2 git@github.ibm.com:Blueberry/Blueberry-tools-service.git
+cd Blueberry-tools-service
+source ~/virtual/Blueberry-tools-service/bin/activate
+make install_requirements
+```
+
+## 3. Run the service
+
+```
+cd ~/Blueberry-tools-service
+make run
+```
+
 ## Personas
 - Consumer: a human or AI user who can 
     - Search for a _tool artifact_ by semantic description or UID
