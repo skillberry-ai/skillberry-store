@@ -33,6 +33,13 @@ cd ~/Blueberry-tools-service
 make run
 ```
 
+## Examples
+
+### 1. Generate manifests, add, invoke and search
+
+This [example](contrib/gen_manifests-add-search-get.sh) demonstrates creating manifests out from python module that contains doc srtings, adding, invoking and searching.
+
+
 ## Personas
 - Consumer: a human or AI user who can 
     - Search for a _tool artifact_ by semantic description or UID
