@@ -38,8 +38,14 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
 
         Parameters:
             uid (str): The uid of the manifest
+
+        Returns:
+            dict: The manifest in json format
+
+        Raises:
+            HTTPException (404): If manifest not found
+
         """
-        # TODO: try/catch/raise
         logger.info(f"Request to read manifest for uid: {uid}")
         file_manifest = manifest.read_manifest(f'{uid}.json')
         if file_manifest:
@@ -55,7 +61,8 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
                         manifest_filter: str = ".",
                         lifecycle_state: LifecycleState = LifecycleState.APPROVED):
         """
-        Return a list of manifests that are similar to the given search term
+        Return a list of manifests that are similar to the given search term and are below the
+        similarity threshold matching the given lifecycle state.
 
         Parameters:
             search_term (str): search term
@@ -63,13 +70,11 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             similarity_threshold (float): threshold to be used
             manifest_filter (str): not used
             lifecycle_state (LifecycleState): state to filter
+
+        Returns:
+            list (dict): A list of matched manifests in json format
+
         """
-        #search should be done within the manifests directory on the json files of the manifests
-        #where each time the search term is tested for semantic similarity to the description of the tool
-        #as specified in the manifest file
-        #The function returns a list of manifests (json objects) whose description is similar
-        #to the search term below the similarity threshold and also match the lifecycle state.
-        # TODO: try/catch/raise
         logger.info(f"Request to search descriptions for term: {search_term}")
         matched_entities = descriptions.search_description(
             search_term=search_term,
@@ -92,21 +97,19 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
                 lifecycle_filtered_matched_entities.append(manifest_as_dict)
             filtered_matched_entities = lifecycle_filtered_matched_entities
 
-        # TODO: comment out for now
-        # if manifest_filter != "" and metadatmanifest_filtera_filter != ".":
-        #     metadata_filtered_matched_files = []
-        #     for matched_file in filtered_matched_files:
-        #         file_metadata = metadata.read_metadata(matched_file["filename"])
-        #         if file_metadata is None:
-        #             continue
-        #         dictionary_checker = DictionaryChecker(file_metadata)
-        #         if not dictionary_checker.check_key_value_exists(metadata_filter):
-        #             continue
-        #         metadata_filtered_matched_files.append(matched_file)
-        #     filtered_matched_files = metadata_filtered_matched_files
+        if manifest_filter != "" and manifest_filter != ".":
+            metadata_filtered_matched_files = []
+            for matched_file in filtered_matched_files:
+                file_manifest = manifest.read_manifest(matched_file["filename"])
+                if file_manifest is None:
+                    continue
+                dictionary_checker = DictionaryChecker(file_manifest)
+                if not dictionary_checker.check_key_value_exists(manifest_filter):
+                    continue
+                metadata_filtered_matched_files.append(matched_file)
+            filtered_matched_files = metadata_filtered_matched_files
 
         return filtered_matched_entities
-
 
     @app.post("/manifests/add", tags=tags)
     def add_manifest(file_manifest: str, file: UploadFile = File(...)):
@@ -119,9 +122,9 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         Parameters:
             file_manifest (str): The manifest of the file (json format).
             file (UploadFile): The file containing invocation code.
-        
+
         Returns:
-            uid (dict): The unique identifier of the manifest
+            dict: The unique identifier of the manifest
         """
         logger.info(f"Request to add manifest")
 
@@ -136,7 +139,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         # persist the artifacts
         file_handler.write_file(file, filename=module_name)
         manifest.write_manifest(f'{uid}.json', manifest_as_dict)
-        # TODO: name of uid? in current version name == uid
+        # TODO: in current version name == uid
         descriptions.write_description(name, manifest_as_dict['description'])
 
         return {'uid': manifest_as_dict['uid']}
@@ -147,14 +150,14 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         Invoke manifest function given its uid.
 
         Parameters:
-            uid (str): The unique identifier of the manifest.
-            parameters (dict): List of key/val pair to be passed to method invocation. Optional 
+            uid (str): The unique identifier of the manifest
+            parameters (dict): List of key/val pair to be passed to method invocation (Optional) 
 
         Returns:
-            dictionary key 'return value' with function output. E.g
-            {
-                "return value": "\"2Q\""
-            }
+            dict: function output
+
+        Raises:
+            HTTPException (404): If manifest not found
 
         """
         logger.info(f"Request to execute manifest: {uid} with parameters: {parameters}")
@@ -172,18 +175,36 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
 
         return file_executor.execute_file(parameters=parameters)
 
-    @app.delete("/manifests/delete/{uid}", tags=tags)
+    @app.delete("/manifests/{uid}", tags=tags)
     def delete_manifest(uid: str):
         """
-        Delete the manifest and its file removing its description from vector db
-        """
-        pass
+        Delete the manifest removing its description from vector db.
 
-    app.delete("/artifacts/manifests/delete/{uid}", tags=tags)
-    #@version(2)
-    async def delete_artifact(uidt: str):
-        #this function deletes a tool artifact based on the manifest file
-        return
+        Parameters:
+            dict: manifest deletion message
+
+        Raises:
+            HTTPException (404): If manifest not found
+
+        """
+        logger.info(f"Request to delete manifest: {uid}")
+        manifest_as_dict = manifest.read_manifest(f'{uid}.json')
+        if not manifest_as_dict:
+            raise HTTPException(status_code=404, detail="Manifest not found")
+
+        name = manifest_as_dict['name']
+        try:
+            descriptions.delete_description(name)
+        except Exception as e:
+            # just log and continue
+            logger.warning(f"Failed to delete description: {e}")
+        try:
+           manifest.delete_manifest(f'{uid}.json')
+        except Exception as e:
+            # just log and continue
+            logger.warning(f"Failed to delete manifest: {e}")
+
+        return {"message": f"Manifest '{uid}' deleted."}
 
     app.get("/artifacts/manifests/list", tags=tags)
     #@version(2)

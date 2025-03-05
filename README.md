@@ -91,6 +91,13 @@ curl -X GET -H 'accept: application/json' -H 'Content-Type: application/json' "h
 
 ```
 
+## 6. Delete manifest
+
+```
+curl -X DELETE -H 'accept: application/json' -H 'Content-Type: application/json' "http://localhost:8000/manifests/GetQuarter" | jq .
+
+```
+
 For more examples please refer to [this](contrib/gen_manifests-add-search-get.sh) script
 
 
