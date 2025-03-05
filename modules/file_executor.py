@@ -1,11 +1,18 @@
 import ast
+import asyncio
 import logging
+import os
 import tempfile
 import datetime
 from typing import Dict, List, Any, Tuple, AnyStr, Optional
 
 import docker
 from fastapi import HTTPException
+
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+
+mcp_server_url = os.getenv('MCP_SERVER_URL', "http://localhost:8080/sse")
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +63,8 @@ def arg_convert(arg_name, arg_type):
     return f'"{arg_str}"'
 
 
-def extract_function_and_imports(content, function_name: str) -> Tuple[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
+def extract_function_and_imports(content: str, function_name: str) -> (
+        Tuple)[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
     """
     Extracts the function's name, its parameters with type annotations and whether they are positional or optional,
     and imported modules from Python code.
@@ -68,14 +76,14 @@ def extract_function_and_imports(content, function_name: str) -> Tuple[Optional[
     """
     try:
         tree = ast.parse(content)
-        fname: Optional[str] = None
+        first_found_function_name: Optional[str] = None
         parameters: List[Tuple[str, str, str]] = []  # (param_name, param_type, "positional"/"optional")
         imports: List[Tuple[str, str]] = []
 
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and fname is None and \
+            if isinstance(node, ast.FunctionDef) and first_found_function_name is None and \
                     node.name == function_name:
-                fname = node.name
+                first_found_function_name = node.name
                 defaults_count = len(node.args.defaults)
                 positional_count = len(node.args.args) - defaults_count
 
@@ -90,7 +98,7 @@ def extract_function_and_imports(content, function_name: str) -> Tuple[Optional[
             elif isinstance(node, ast.ImportFrom):
                 imports.extend(alias.name for alias in node.names)
 
-        return fname, parameters, imports
+        return function_name, parameters, imports
 
     except SyntaxError:
         return None, [], []
@@ -156,20 +164,104 @@ class FileExecutor:
         raise HTTPException(status_code=400, detail="Not implemented")
 
     def execute_python_file(self, parameters):
-        """
-        Executes a Python file
-        """
 
-        if self.metadata.get("packaging_format") != "code":
+        if self.metadata.get("packaging_format") == "code":
+            return_value = self.execute_python_file_using_docker(parameters)
+        elif self.metadata.get("packaging_format") == "mcp":
+            return_value = self.execute_python_file_in_mcp_server(parameters)
+        else:
             raise HTTPException(
                 status_code=400, detail="Unsupported packaging format")
 
-        logger.info(f"Executing python code inside a Docker container")
+        return return_value
+
+    def execute_python_file_in_mcp_server(self, parameters):
+        """
+        Executes a Python file using MCP server
+        """
+
+        # to experience with the MCP server, you should:
+        # 1. Start the demo MCP server under `contrib/mcp/server` by executing: `uv run server.py`
+        # 2. Upload a demo MCP tool from `contrib/mcp/demo_tool/demo_add_tool.json`
+        # using the POST /file/json/ API (use the tool name `add_mcp.py`)
+        # 3. execute the tool with parameters, for example `{"a":5, "b":5}`
+        # to configure a different MCP server location use env. variable for `mcp_server_url`
+
+        async def execute_mcp_tool(_url: str, _function_name: str, _mcp_args_dict: dict):
+            async with sse_client(_url) as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+
+                    tools = await session.list_tools()
+
+                    for tool in tools.tools:
+                        logging.info(f"tool: {tool.name}")
+                        if _function_name == tool.name:
+                            logging.info(f"tool found: {tool.name}")
+                            _return_value = await session.call_tool(tool.name, arguments=_mcp_args_dict)
+                            return _return_value.content[0].text
+
+                    return None
+
+        logger.info(f"Executing python code using a MCP server")
+
+        try:
+            function_name, parameter_definitions, function_imports = (
+                extract_function_and_imports(content=self.content, function_name=self.metadata["name"]))
+            if function_name is None:
+                raise HTTPException(
+                    status_code=400, detail="No function definition found in the file")
+
+            logging.info(f"=== executing function with imports === \n"
+                         f"function_name: {function_name}\n"
+                         f"parameter_definitions:{parameter_definitions}\n"
+                         f"function_imports:{function_imports}\n")
+
+            mcp_args_dict = {}
+            for parameter_definition in parameter_definitions:
+                parameter_definition_name = parameter_definition[0]
+                parameter_definition_type = parameter_definition[1]
+                parameter_definition_kind = parameter_definition[2]
+                if parameters.get(parameter_definition_name) is None:
+                    if parameter_definition_kind == "positional":
+                        raise HTTPException(
+                            status_code=400, detail=f"Missing parameter: "
+                                                    f"name:{parameter_definition_name}, "
+                                                    f"type:{parameter_definition_type}")
+                    else:
+                        continue
+
+                converted_arg = arg_convert(parameters.get(parameter_definition_name),
+                                            parameter_definition_type)
+                if parameter_definition_kind == "positional":
+                    mcp_args_dict[parameter_definition_name] = converted_arg
+                else:
+                    mcp_args_dict[parameter_definition_name] = converted_arg
+
+            return_value = asyncio.run(execute_mcp_tool(mcp_server_url, function_name, mcp_args_dict))
+
+            if return_value is None:
+                raise HTTPException(
+                    status_code=400, detail="No return value from the function")
+
+            logger.info(f"Python code executed successfully: {return_value}")
+            return {"return value": f"{return_value}"}
+        except Exception as e:
+            logger.error(f"Error executing Python file: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error executing Python file: {e}")
+
+    def execute_python_file_using_docker(self, parameters):
+        """
+        Executes a Python file using docker
+        """
+
+        logger.info(f"Executing python code using a Docker container")
 
         try:
             function_name, parameter_definitions, function_imports = extract_function_and_imports(
-                # NOTE: code will not break: manifest/metadata 'name'  mapped to function_name
-                self.content, function_name=self.metadata['name'])
+                # NOTE: code will not break: manifest/metadata 'name' is mapped to function_name
+                content=self.content, function_name=self.metadata['name'])
             # format docker command from function name and parameters
             if function_name is None:
                 raise HTTPException(
