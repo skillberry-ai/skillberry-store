@@ -33,11 +33,65 @@ cd ~/Blueberry-tools-service
 make run
 ```
 
-## Examples
+# Quick usage
 
-### 1. Generate manifests, add, invoke and search
+Follow these steps to add, execute and search for tools
 
-This [example](contrib/gen_manifests-add-search-get.sh) demonstrates creating manifests out from python module that contains doc srtings, adding, invoking and searching.
+As a pre-requisite clone genai lakehouse repository
+
+```
+cd ~
+git clone git@github.ibm.com:mc-connectors/genai-lakehouse-mapping.git
+cd genai-lakehouse-mapping
+git checkout 7ff12d99f4533c294a0d978c4a075adda485f02
+```
+
+```
+source ~/virtual/Blueberry-tools-service/bin/activate
+```
+
+## 1. Generate manifest
+
+```
+cd ~/Blueberry-tools-service
+python client/mft_ds.py ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
+
+```
+
+## 2. Add manifest
+
+```
+# this is the module that contains the function of the manifest
+file=~/genai-lakehouse-mapping/transformations/client-win-functions.py
+
+file_manifest="./manifest-GetQuarter.json"
+manifest=$(cat "$file_manifest")
+file_manifest_url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$manifest'''))")
+curl -X POST -H 'accept: application/json' -H 'Content-Type: multipart/form-data' -F "file=@$file" "http://localhost:8000/manifests/add?file_manifest=${file_manifest_url}" | jq .
+
+```
+
+## 3. Get manifest
+
+```
+curl -X GET -H 'accept: application/json' -H 'Content-Type: application/json' "http://localhost:8000/manifests/GetQuarter" | jq .
+```
+
+## 4. Invoke manifest
+
+```
+curl -X POST -H 'accept: application/json' -H 'Content-Type: application/json' --data "{\"input_string\":\"2Q2056\"}" "http://localhost:8000/manifests/execute/GetQuarter" | jq .
+
+```
+
+## 5. Search for manifest
+
+```
+curl -X GET -H 'accept: application/json' -H 'Content-Type: application/json' "http://localhost:8000/search/manifests?search_term=quarter+of+the+year" | jq .
+
+```
+
+For more examples please refer to [this](contrib/gen_manifests-add-search-get.sh) script
 
 
 ## Personas
