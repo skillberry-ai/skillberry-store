@@ -11,7 +11,7 @@ normal=$(tput sgr0)
 file=$BLUEBERRY_TOOLS_SERVICE_ROOT/contrib/tools/files/functions-module.py
 
 echo "${bold}Creating the manifests...${normal}"
-declare -a values=("GetYear" "GetQuarter" "GetCurrencySymbol" "ParseDealSize" "GetTime" "add_two_numbers" "nth_prime")
+declare -a values=("GetYear" "GetQuarter" "GetCurrencySymbol" "ParseDealSize" "GetTime" "add_two_numbers")
 for value in "${values[@]}"; do
     #echo "$value"
     python ${BASE_PATH}/../client/mft_ds.py ${file} ${value} > manifest-${value}.json
