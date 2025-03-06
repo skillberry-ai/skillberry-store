@@ -3,12 +3,10 @@ BASE_PATH=$(dirname "$0")
 
 SLEEP_TIME=1
 
-BLUEBERRY_TOOLS_SERVICE_ROOT=~/Blueberry-tools-service
-
 bold=$(tput bold)
 normal=$(tput sgr0)
 
-file=$BLUEBERRY_TOOLS_SERVICE_ROOT/contrib/tools/files/functions-module.py
+file=tools/files/functions-module.py
 
 echo "${bold}Creating the manifests...${normal}"
 declare -a values=("GetYear" "GetQuarter" "GetCurrencySymbol" "ParseDealSize" "GetTime" "add_two_numbers")

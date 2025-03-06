@@ -83,7 +83,6 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
 
         filtered_matched_entities = [matched_entity for matched_entity in matched_entities if
                                   matched_entity["similarity_score"] <= similarity_threshold]
-        # REMOVE logger.info(f"filtered_matched_entities: {filtered_matched_entities}")
 
         # if we are requested to limit the search to a specific lifecycle state, we filter the results
         if lifecycle_state is not LifecycleState.ANY:
@@ -92,11 +91,9 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
                 # description_vector_index uses filename term
                 manifest_as_dict = manifest.read_manifest(f'{matched_entity["filename"]}.json')
                 if manifest_as_dict is None:
-                    # REMOVE logger.info("** manifest is none **")
                     continue
                 life_cycle_manager = LifecycleManager(manifest_as_dict)
                 if life_cycle_manager.get_state() != lifecycle_state:
-                    # REMOVE logger.info("lf mismatch")
                     continue
                 lifecycle_filtered_matched_entities.append(matched_entity)
             filtered_matched_entities = lifecycle_filtered_matched_entities
