@@ -6,10 +6,10 @@ def GetQuarter(input_string):
     Returns the quarter of the year for a given string. For example: for the string 'Deal closed: 2Q 2024' the function will return 2Q.
     
     Parameters:
-    input_string (str): The input string containing the quarter information.
+        input_string (str): The input string containing the quarter information.
     
     Returns:
-    str: The quarter of the year, e.g., 1Q, 2Q, 3Q, or 4Q.
+        str: The quarter of the year, e.g., 1Q, 2Q, 3Q, or 4Q.
     '''
     # Split the string into parts based on spaces
     pattern = r'(\dQ)'
@@ -25,10 +25,10 @@ def GetYear(date_string):
     Returns the year for a given string. For example: for the string 'Deal closed: 2Q 2024' the function will return 2024.
     
     Parameters:
-    date_string (str): The input string containing the year.
+        date_string (str): The input string containing the year.
     
     Returns:
-    str: The year extracted from the input string.
+        str: The year extracted from the input string.
     '''
     import re
     year = re.search(r'\b\d{4}\b', date_string)
