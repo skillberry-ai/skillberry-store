@@ -7,9 +7,6 @@ from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
-EMBEDDING_MODEL_DIMENSION = 384
-EMBEDDING_MODEL_SEARCH_K = 5
 
 INDEX_RELATIVE_DIRECTORY = "/index/"
 INDEX_FILE_NAME = "metadatas_index.faiss"

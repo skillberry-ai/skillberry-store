@@ -19,17 +19,18 @@ from modules.file_executor import FileExecutor
 from tools.configure import get_files_directory_path, get_descriptions_directory, get_metadata_directory, \
     get_manifest_directory
 
-#this environment variable is used to enable the latest API version
-ENABLE_API_VERSION = os.environ.get('ENABLE_API_VERSION', 'latest') 
+# this environment variable is used to enable the latest API version
+ENABLE_API_VERSION = os.environ.get('ENABLE_API_VERSION', 'latest')
 
 logger = logging.getLogger(__name__)
+
 
 def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags: str):
     manifest_directory = get_manifest_directory()
     manifest = Manifest(manifest_directory=manifest_directory)
 
-    #retrieves the tool artifact whose description is passed as a parameter and matches the description in the tool artifact manifest
-    #every tool has a manifest (a json file) and the manifest name is the UID of the tool
+    # retrieves the tool artifact whose description is passed as a parameter and matches the description in the tool artifact manifest
+    # every tool has a manifest (a json file) and the manifest name is the UID of the tool
 
     @app.get("/manifests/{uid}", tags=tags)
     def get_manifest(uid: str):
@@ -82,7 +83,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             k=max_number_of_results)
 
         filtered_matched_entities = [matched_entity for matched_entity in matched_entities if
-                                  matched_entity["similarity_score"] <= similarity_threshold]
+                                     matched_entity["similarity_score"] <= similarity_threshold]
 
         # if we are requested to limit the search to a specific lifecycle state, we filter the results
         if lifecycle_state is not LifecycleState.ANY:
@@ -200,7 +201,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             # just log and continue
             logger.warning(f"Failed to delete description: {e}")
         try:
-           manifest.delete_manifest(f'{uid}.json')
+            manifest.delete_manifest(f'{uid}.json')
         except Exception as e:
             # just log and continue
             logger.warning(f"Failed to delete manifest: {e}")
@@ -208,17 +209,20 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         return {"message": f"Manifest '{uid}' deleted."}
 
     app.get("/artifacts/manifests/list", tags=tags)
-    #@version(2)
+
+    # @version(2)
     async def list_artifacts(lifecycle_state: LifecycleState = LifecycleState.ANY):
-        #this function lists all the tool artifacts based on the lifecycle state
+        # this function lists all the tool artifacts based on the lifecycle state
         return
 
     app.put("/artifacts/manifests/update/{uid}", tags=tags)
-    #@version(2)
+
+    # @version(2)
     async def update_artifact(uid: str, state: LifecycleState):
-        #this function updates the lifecycle state of a tool artifact
+        # this function updates the lifecycle state of a tool artifact
         return
-    
+
+
 def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
     files_directory_path = get_files_directory_path()
     file_handler = FileHandler(files_directory_path)
@@ -589,8 +593,8 @@ def create_app():
         },
     ]
 
-    #app = FastAPI()
-    #replacing non-versioned FastAPI with versioned FastAPI
+    # app = FastAPI()
+    # replacing non-versioned FastAPI with versioned FastAPI
     app = FastAPI()
 
     app.add_middleware(
