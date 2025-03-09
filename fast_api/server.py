@@ -100,14 +100,14 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
 
         if manifest_filter != "" and manifest_filter != ".":
             manifest_filtered_matched_files = []
-            for matched_file in filtered_matched_entities:
-                manifest_as_dict = manifest.read_manifest(matched_file["filename"])
+            for matched_entity in filtered_matched_entities:
+                manifest_as_dict = manifest.read_manifest(f'{matched_entity["filename"]}.json')
                 if manifest_as_dict is None:
                     continue
                 dictionary_checker = DictionaryChecker(manifest_as_dict)
                 if not dictionary_checker.check_key_value_exists(manifest_filter):
                     continue
-                manifest_filtered_matched_files.append(matched_file)
+                manifest_filtered_matched_files.append(matched_entity)
             filtered_matched_entities = manifest_filtered_matched_files
 
         return filtered_matched_entities
