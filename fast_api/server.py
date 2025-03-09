@@ -72,7 +72,8 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             lifecycle_state (LifecycleState): state to filter
 
         Returns:
-            list (dict): A list of matched manifests in json format
+            list (dict): A list of matched description_vector keys and
+                         similarity score
 
         """
         logger.info(f"Request to search descriptions for term: {search_term}")
@@ -87,27 +88,27 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         if lifecycle_state is not LifecycleState.ANY:
             lifecycle_filtered_matched_entities = []
             for matched_entity in filtered_matched_entities:
-                # description_vector_index uses filename term TODO: rename
+                # description_vector_index uses filename term
                 manifest_as_dict = manifest.read_manifest(f'{matched_entity["filename"]}.json')
                 if manifest_as_dict is None:
                     continue
                 life_cycle_manager = LifecycleManager(manifest_as_dict)
                 if life_cycle_manager.get_state() != lifecycle_state:
                     continue
-                lifecycle_filtered_matched_entities.append(manifest_as_dict)
+                lifecycle_filtered_matched_entities.append(matched_entity)
             filtered_matched_entities = lifecycle_filtered_matched_entities
 
         if manifest_filter != "" and manifest_filter != ".":
-            metadata_filtered_matched_files = []
-            for matched_file in filtered_matched_files:
-                file_manifest = manifest.read_manifest(matched_file["filename"])
-                if file_manifest is None:
+            manifest_filtered_matched_files = []
+            for matched_entity in filtered_matched_entities:
+                manifest_as_dict = manifest.read_manifest(f'{matched_entity["filename"]}.json')
+                if manifest_as_dict is None:
                     continue
-                dictionary_checker = DictionaryChecker(file_manifest)
+                dictionary_checker = DictionaryChecker(manifest_as_dict)
                 if not dictionary_checker.check_key_value_exists(manifest_filter):
                     continue
-                metadata_filtered_matched_files.append(matched_file)
-            filtered_matched_files = metadata_filtered_matched_files
+                manifest_filtered_matched_files.append(matched_entity)
+            filtered_matched_entities = manifest_filtered_matched_files
 
         return filtered_matched_entities
 
