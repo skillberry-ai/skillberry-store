@@ -1,17 +1,20 @@
 import logging
 import os
-from typing import List, Optional, Dict, Any
+from typing import Optional, Any
 
 from fastapi import HTTPException
 from modules.description_vector_index import DescriptionVectorIndex
-from modules.lifecycle import LifecycleManager, LifecycleState
-from modules.metadata import Metadata
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
-EMBEDDING_MODEL_DIMENSION = 384
-EMBEDDING_MODEL_SEARCH_K = 5
+# default_model = 'sentence-transformers/all-MiniLM-L6-v2'
+default_model = "modules/description_vector_index_models/slate30_improved"
+default_dimension = 384
+default_model_search_k = 5
+
+_embedding_model = os.getenv("EMBEDDING_MODEL", default_model)
+_dimension = os.getenv("EMBEDDING_MODEL_DIMENSION", default_dimension)
+_embedding_model_search_k = os.getenv("EMBEDDING_MODEL_SEARCH_K", default_model_search_k)
 
 INDEX_RELATIVE_DIRECTORY = "/index/"
 INDEX_FILE_NAME = "descriptions_index.faiss"
@@ -29,8 +32,8 @@ class Description:
         index_directory = descriptions_directory + INDEX_RELATIVE_DIRECTORY
         os.makedirs(index_directory, exist_ok=True)
         self.vector_index = vector_index(index_file=index_directory + INDEX_FILE_NAME,
-                                         dimension=EMBEDDING_MODEL_DIMENSION,
-                                         model=EMBEDDING_MODEL)
+                                         dimension=_dimension,
+                                         model=_embedding_model)
 
         logger.info(
             f"Initialized Descriptions with directory: {self.descriptions_directory}")
@@ -125,7 +128,7 @@ class Description:
 
     def search_description(self,
                            search_term: str,
-                           k: int = EMBEDDING_MODEL_SEARCH_K) -> list[dict[str, str | Any]]:
+                           k: int = _embedding_model_search_k) -> list[dict[str, str | Any]]:
         matched_files = self.vector_index.search(search_term, k)
 
         logger.info(f"Search results for term '{search_term}': {matched_files}")
