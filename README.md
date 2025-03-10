@@ -5,6 +5,16 @@ The service implementing tools repository for agentic workflows.
 
 ## 1. Prerequisites
 
+Prior to installing, make sure that:
+1. Your machine has Docker installed
+2. Your user has Docker permissions (i.e., is a member of the `docker` group)
+3. Docker logging driver must be set to either `json-file` or `journald`. You can check which logging is enabled by running the following command:
+```bash
+docker info --format '{{.LoggingDriver}}'
+```
+If the response is not `json-file` or `journald`, fix your Docker logging as documented [here](https://docs.docker.com/engine/logging/configure/#configure-the-default-logging-driver)
+
+Next, install prereqs as listed below:   
 ```
 sudo apt-get update
 sudo apt-get upgrade
