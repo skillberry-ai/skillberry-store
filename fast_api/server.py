@@ -29,8 +29,45 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
     manifest_directory = get_manifest_directory()
     manifest = Manifest(manifest_directory=manifest_directory)
 
-    # retrieves the tool artifact whose description is passed as a parameter and matches the description in the tool artifact manifest
-    # every tool has a manifest (a json file) and the manifest name is the UID of the tool
+    @app.get("/manifests", tags=tags)
+    def get_manifests(manifest_filter: str = ".",
+                      lifecycle_state: LifecycleState = LifecycleState.ANY):
+        """
+        Return a list of manifests matching the given lifecycle state. An optional filter
+        can be passed.
+
+        Parameters:
+            manifest_filter (str): manifest properties to filter (Optional)
+            lifecycle_state (LifecycleState): state to filter (Optional)
+
+        Returns:
+            list (dict): A list of matched manifests in json format
+
+        """
+        manifest_as_dict_entities = manifest.list_manifests()
+
+        # if we are requested to limit the search to a specific lifecycle state, we filter the results
+        if lifecycle_state is not LifecycleState.ANY:
+            matched_manifest_as_dict_entities = []
+            for manifest_as_dict in manifest_as_dict_entities:
+                life_cycle_manager = LifecycleManager(manifest_as_dict)
+                if life_cycle_manager.get_state() != lifecycle_state:
+                    continue
+                matched_manifest_as_dict_entities.append(manifest_as_dict)
+            # update list to only ones matching state
+            manifest_as_dict_entities = matched_manifest_as_dict_entities
+
+        if manifest_filter != "" and manifest_filter != ".":
+            matched_manifest_as_dict_entities = []
+            for manifest_as_dict in manifest_as_dict_entities:
+                dictionary_checker = DictionaryChecker(manifest_as_dict)
+                if not dictionary_checker.check_key_value_exists(manifest_filter):
+                    continue
+                matched_manifest_as_dict_entities.append(manifest_as_dict)
+            # update list to only ones matching filter attributes
+            manifest_as_dict_entities = matched_manifest_as_dict_entities
+
+            return manifest_as_dict_entities
 
     @app.get("/manifests/{uid}", tags=tags)
     def get_manifest(uid: str):
@@ -69,7 +106,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             search_term (str): search term
             max_number_of_results (int): number of results to return
             similarity_threshold (float): threshold to be used
-            manifest_filter (str): not used
+            manifest_filter (str): manifest properties to filter
             lifecycle_state (LifecycleState): state to filter
 
         Returns:
@@ -207,13 +244,6 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             logger.warning(f"Failed to delete manifest: {e}")
 
         return {"message": f"Manifest '{uid}' deleted."}
-
-    app.get("/artifacts/manifests/list", tags=tags)
-
-    # @version(2)
-    async def list_artifacts(lifecycle_state: LifecycleState = LifecycleState.ANY):
-        # this function lists all the tool artifacts based on the lifecycle state
-        return
 
     app.put("/artifacts/manifests/update/{uid}", tags=tags)
 

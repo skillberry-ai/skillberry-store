@@ -77,6 +77,24 @@ class Manifest:
             raise HTTPException(
                 status_code=500, detail=f"Error updating manifest: {str(e)}")
 
+    def list_manifests(self) -> List[str]:
+        """
+        List all manifests in the directory.
+
+        Returns:
+            List[Dict]: A list of manifests (json) present in the directory.
+
+        Raises:
+            HTTPException: If there is an error accessing the directory.
+        """
+        try:
+            manifest_files = os.listdir(self.manifest_directory)
+            return [self.read_manifest(f) for f in manifest_files
+                        if self.read_manifest(f) is not None]
+        except Exception as e:
+            logger.error(f"Error listing files: {e}")
+            raise HTTPException(status_code=500, detail=f"Error listing manifests: {str(e)}")
+
     def delete_manifest(self, filename: str) -> dict:
         """
         Delete the manifest for a given file.
