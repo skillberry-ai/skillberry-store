@@ -67,38 +67,55 @@ file=~/genai-lakehouse-mapping/transformations/client-win-functions.py
 file_manifest="./manifest-GetQuarter.json"
 manifest=$(cat "$file_manifest")
 file_manifest_url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$manifest'''))")
-curl -X POST -H 'accept: application/json' -H 'Content-Type: multipart/form-data' -F "file=@$file" "http://localhost:8000/manifests/add?file_manifest=${file_manifest_url}" | jq .
+curl -X POST \
+    -H 'accept: application/json' \
+    -H 'Content-Type: multipart/form-data' \
+    -F "file=@$file" \
+    "http://localhost:8000/manifests/add?file_manifest=${file_manifest_url}" | jq .
 
 ```
 
 ## 3. Get manifest
 
 ```
-curl -X GET -H 'accept: application/json' -H 'Content-Type: application/json' "http://localhost:8000/manifests/GetQuarter" | jq .
+curl -X GET \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    "http://localhost:8000/manifests/GetQuarter" | jq .
+
 ```
 
 ## 4. Invoke manifest
 
 ```
-curl -X POST -H 'accept: application/json' -H 'Content-Type: application/json' --data "{\"input_string\":\"2Q2056\"}" "http://localhost:8000/manifests/execute/GetQuarter" | jq .
+curl -X POST \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    --data "{\"input_string\":\"2Q2056\"}" "http://localhost:8000/manifests/execute/GetQuarter" | jq .
 
 ```
 
 ## 5. Search for manifest
 
 ```
-curl -X GET -H 'accept: application/json' -H 'Content-Type: application/json' "http://localhost:8000/search/manifests?search_term=quarter+of+the+year" | jq .
+curl -X GET \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    "http://localhost:8000/search/manifests?search_term=quarter+of+the+year" | jq .
 
 ```
 
 ## 6. Delete manifest
 
 ```
-curl -X DELETE -H 'accept: application/json' -H 'Content-Type: application/json' "http://localhost:8000/manifests/GetQuarter" | jq .
+curl -X DELETE \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    "http://localhost:8000/manifests/GetQuarter" | jq .
 
 ```
 
-For more examples please refer to [this](contrib/gen_manifests-add-search-get.sh) script
+For additional examples refer to [this](contrib/load_lakehouse_manifests_into_service.sh) script.
 
 
 ## Personas
