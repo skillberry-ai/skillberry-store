@@ -4,6 +4,37 @@ import json
 from typing import List, Dict
 import ast
 
+def list_functions_in_module(module_path: str):
+    """
+    Parses a Python module in the given path and extracts function names and docstrings
+    without executing the code
+
+    Args:
+        module_path (str): Path to the Python module to be processed
+
+    Returns:
+        list of tuple: A list of tuples where each tuple contains:
+            - str: the base module file name (e.g., "example.py").
+            - str: Function name.
+            - str or None: Function docstring, or None if not present.
+
+    Raises:
+        SyntaxError: if module contains invalid Python code
+    """
+    function_list = []
+    module_name = os.path.basename(module_path)
+
+    # Read the file and parse it using AST
+    with open(module_path, "r", encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=module_name)
+        # Extract functions
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):  # Check for function definitions
+                function_list.append((module_name, node.name, ast.get_docstring(node)))
+    
+    return function_list
+
+
 def list_functions_in_folder(folder_path: str):
     """
     Parses all Python modules in a folder and extracts function names and docstrings 
@@ -20,6 +51,7 @@ def list_functions_in_folder(folder_path: str):
 
     Raises:
         NotADirectoryError: If the provided folder path is not a directory.
+        SyntaxError: if module contains invalid Python code
     """
     if not os.path.isdir(folder_path):
         raise NotADirectoryError(f"Folder not found: {folder_path}")
@@ -30,18 +62,8 @@ def list_functions_in_folder(folder_path: str):
         if filename.endswith(".py") and not filename.startswith("__"):  # Ignore __init__.py
             module_path = os.path.join(folder_path, filename)
 
-            # Read the file and parse it using AST
-            with open(module_path, "r", encoding="utf-8") as f:
-                try:
-                    tree = ast.parse(f.read(), filename=filename)
-                except SyntaxError as e:
-                    print(f"Syntax error in {filename}: {e}")
-                    continue  # Skip files with syntax errors
-
-            # Extract functions
-            for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):  # Check for function definitions
-                    function_list.append((filename, node.name, ast.get_docstring(node)))
+            mod_func_list = list_functions_in_module(module_path)
+            function_list.extend(mod_func_list)
 
     return function_list
 
@@ -168,86 +190,6 @@ def python_manifest_from_function_docstring(module_path: str, func_name: str, do
     return manifest
 
 
-
-def python_manifest_from_lh_json_record(lh_json: dict, module_path: str):
-    """
-    Generate a Python manifest for a function whose description is 
-    in a JSON record of the LakeHouse project. 
-
-    Args:
-        lh_json (dict): a JSON record extracted from the LakeHouse project descriptions
-        module_path (str): the path to the Python module containing the function
-
-    Returns:
-        dict:   the manifest 
-    """
-    func_name = lh_json["name"]
-    manifest = init_manifest(func_name, "Python")
-    manifest["module_name"] = os.path.basename(module_path)
-    manifest["state"] = "approved"
-    manifest["description"] = lh_json["description"]
-    manifest["params"]["properties"] = lh_json["arguments"]
-    manifest["params"]["required"] = lh_json["required"]
-    if "optional" in lh_json:
-        manifest["params"]["optional"] = lh_json["optional"]
-
-    return manifest
-
-
-
-def python_manifest_from_lh_json_base(lh_json_base: List[List[Dict]], module_path: str, func_name: str):
-    """
-    Generate a Python manifest for a function whose description is 
-    in a JSON record inside a JSON base of the LakeHouse project. 
-
-    Args:
-        lh_json_base (List[Dict]): a JSON base of LakeHouse project function descriptions
-        module_path (str): the path to the Python module containing the function
-        func_name (str): the name of the function to generate a manifest for
-
-    Returns:
-        dict or None:   the manifest, if the function has a record in the JSON base
-    """
-    for json_file in lh_json_base:
-        for json_record in json_file:
-            if json_record["name"] == func_name:
-                return python_manifest_from_lh_json_record(json_record, module_path)
-    return None
-
-
-
-def load_lh_json_base(lh_json_path: str):
-    """
-    Load a JSON base of the LakeHouse project
-
-    Args:
-        lh_json_path (str): a path to a folder containing the JSON files
-    
-    Returns:
-        list:   the JSON base as a list of JSON data from the folder,
-                each loaded from a different file
-    """
-    json_base = []
-    try:
-        for filename in os.listdir(lh_json_path):
-            if filename.endswith(".json"):
-                file_path = os.path.join(lh_json_path, filename)
-                with open(file_path, "r") as f:
-                    try:
-                        data = json.load(f)
-                        json_base.append(data)
-                    except json.JSONDecodeError:
-                        raise Exception(f"Could not decode JSON in file: {filename}")
-                    except Exception as e:
-                        raise Exception(f"An error occurred while processing file: {filename} - {e}")
-    except FileNotFoundError:
-        raise Exception(f"Error: Folder not found: {lh_json_path}")
-    except Exception as e:
-        raise e
-
-    return json_base
-
-
 def json_pretty_print(d: dict):
     """
     Generate a pretty-print string of a dictionary in JSON notation.
@@ -259,4 +201,25 @@ def json_pretty_print(d: dict):
         str: the JSON-formatted pretty-print string of the dictionary
     """
 
-    return json.dumps(d, indent=4)
+    return json.dumps(d, indent=4) + "\n"
+
+
+def read_file_to_bytes(file_path):
+    """
+    Reads a file into a bytes buffer.
+
+    Args:
+        file_path (str): The path to the file.
+
+    Returns:
+        bytes or None: The file content as a bytes object, or None if an error occurs.
+
+    Raises:
+        FileNotFoundError - if the file does not exist in the given path
+        IOError - if any I/O error happens when reading the file
+        Exception - any other failure
+    """
+    with open(file_path, 'rb') as file:  # 'rb' mode for reading in binary
+        file_bytes = file.read()
+        return file_bytes
+
