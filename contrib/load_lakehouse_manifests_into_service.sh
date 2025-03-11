@@ -2,7 +2,7 @@
 
 #
 # Script to load lakehouse tools into tools-service to be used by Blueberry.
-# 
+#
 # Pre-requisite:
 #
 # clone genai-lakehouse-mapping repository:
@@ -20,23 +20,27 @@
 # define the base path
 BASE_PATH=$(dirname "$0")
 
+# move one level up for python -m client.manifest_ds to work
+cd ${BASE_PATH}/..
+
 SLEEP_TIME=1
 
 bold=$(tput bold)
 normal=$(tput sgr0)
 
-GENAI_PROJECT_ROOT="/home/ubuntu/genai-lakehouse-mapping"
+GENAI_PROJECT_ROOT="/home/weit/genai-lakehouse-mapping"
 GENAI_TRANSFORMATION_FILE=${GENAI_PROJECT_ROOT}/transformations/client-win-functions.py
 
 echo "${bold}Creating the manifests...${normal}"
 declare -a values=("GetYear" "GetQuarter" "GetCurrencySymbol" "ParseDealSize")
 for value in "${values[@]}"; do
     echo "${bold}Generating manifest: '$value' file...${normal}"
-    python ${BASE_PATH}/../client/mft_ds.py ${GENAI_TRANSFORMATION_FILE} ${value} > manifest-${value}.json
+    file_manifest="${BASE_PATH}/manifest-${value}.json"
+
+    python -m client.manifest_ds ${GENAI_TRANSFORMATION_FILE} ${value} > $file_manifest
     sleep $SLEEP_TIME
 
     echo "${bold}Adding manifest: '$value'...${normal}"
-    file_manifest="./manifest-${value}.json"
     manifest=$(cat "$file_manifest")
     file_manifest_url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$manifest'''))")
     curl -X POST \
@@ -46,5 +50,5 @@ for value in "${values[@]}"; do
         "http://localhost:8000/manifests/add?file_manifest=${file_manifest_url}" | jq .
 
     echo "${bold}Deleting local manifest: '$value' file...${normal}"
-    rm -Rf manifest-${value}.json
+    rm -f $file_manifest
 done
