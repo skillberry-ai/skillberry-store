@@ -66,7 +66,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             # update list to only ones matching filter attributes
             manifest_as_dict_entities = matched_manifest_as_dict_entities
 
-            return manifest_as_dict_entities
+        return manifest_as_dict_entities
 
     @app.get("/manifests/{uid}", tags=tags)
     def get_manifest(uid: str):
