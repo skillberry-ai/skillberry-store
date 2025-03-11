@@ -91,6 +91,35 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             raise HTTPException(status_code=404, detail="Manifest not found")
         return file_manifest
 
+    @app.get("/code/manifests/{uid}", tags=tags)
+    def get_code_manifest(uid: str):
+        """
+        Retrieve manifest code for the given uid.
+
+        Parameters:
+            uid (str): The uid of the manifest
+
+        Returns:
+            str: The manifest code
+
+        Raises:
+            HTTPException (404): If manifest or code not found
+
+        """
+        logger.info(f"Request to read manifest code for uid: {uid}")
+        manifest_as_dict = manifest.read_manifest(f'{uid}.json')
+        if manifest_as_dict:
+            logger.info(f"Manifest for {uid}: {manifest_as_dict}")
+        else:
+            raise HTTPException(status_code=404, detail="Manifest not found")
+        # mandatory to exist
+        module_name = manifest_as_dict['module_name']
+        file_content = file_handler.read_file(module_name, raw_content=True)
+        if not file_content:
+            raise HTTPException(status_code=404, detail="Code not found")
+
+        return {'module_code': file_content}
+
     @app.get("/search/manifests", tags=tags)
     def search_manifest(search_term: str,
                         max_number_of_results: int = 5,
