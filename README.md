@@ -64,7 +64,7 @@ source ~/virtual/Blueberry-tools-service/bin/activate
 
 ```
 cd ~/Blueberry-tools-service
-python client/mft_ds.py ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
+python -m client.manifest_ds ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
 
 ```
 
@@ -95,7 +95,17 @@ curl -X GET \
 
 ```
 
-## 4. Invoke manifest
+## 4. List manifests
+
+```
+curl -X GET \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    http://localhost:8000/manifests?manifest_filter="name:GetQuarter" | jq .
+
+```
+
+## 5. Invoke manifest
 
 ```
 curl -X POST \
@@ -105,7 +115,7 @@ curl -X POST \
 
 ```
 
-## 5. Search for manifest
+## 6. Search for manifest
 
 ```
 curl -X GET \
@@ -115,7 +125,7 @@ curl -X GET \
 
 ```
 
-## 6. Delete manifest
+## 7. Delete manifest
 
 ```
 curl -X DELETE \
