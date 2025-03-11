@@ -77,12 +77,12 @@ class Manifest:
             raise HTTPException(
                 status_code=500, detail=f"Error updating manifest: {str(e)}")
 
-    def list_manifests(self) -> List[str]:
+    def list_manifests(self) -> List[Dict[str, str]]:
         """
         List all manifests in the directory.
 
         Returns:
-            List[Dict]: A list of manifests (json) present in the directory.
+            list (dict): A list of manifests (json) present in the directory.
 
         Raises:
             HTTPException: If there is an error accessing the directory.

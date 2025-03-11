@@ -33,8 +33,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
     def get_manifests(manifest_filter: str = ".",
                       lifecycle_state: LifecycleState = LifecycleState.ANY):
         """
-        Return a list of manifests matching the given lifecycle state. An optional filter
-        can be passed.
+        Return a list of manifests matching the given lifecycle state and properties filter.
 
         Parameters:
             manifest_filter (str): manifest properties to filter (Optional)
