@@ -7,6 +7,8 @@ BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
 DOCKER_NAME = blueberry-tools-service
 DOCKER_VERSION = $(BUILD_VERSION)
 
+TOOLS_SERVICE_SENTINEL=/tmp/tools-service.pid
+
 AWK := awk
 ifeq ($(OS),Windows_NT)
 		AWK = gawk
@@ -29,15 +31,32 @@ help: ## Display this help.
 install_requirements: # Install dependencies
 	@pip install -q -r requirements.txt
 
-##@ Execute
+##@ Setup & teardown
 
-run: install_requirements ## Run the application
-	python main.py
+run: install_requirements ## Launch the tools service
+	@if [ -f $(TOOLS_SERVICE_SENTINEL) ]; then \
+		echo "Blueberry Tools Service is already running"; \
+	else \
+		echo "Starting Blueberry Tools Service"; \
+		contrib/scripts/start-service.sh /tmp/tools-service.log $(TOOLS_SERVICE_SENTINEL) python main.py; \
+	fi	
 
 test: install_requirements ## Test the application
 	pytest
 
-clean:  ## Clean temporary files
+## Use only when absolutely needed! (e.g., initial setup or when service API changed)
+gen_client: $(TOOLS_SERVICE_SENTINEL)
+	@mkdir -p client/gen
+	@rm -fr client/gen/*
+	@openapi-generator-cli generate -i http://0.0.0.0:8000/openapi.json -g python -o client/gen --skip-validate-spec
+	@pip install --upgrade client/gen
+
+stop: $(TOOLS_SERVICE_SENTINEL)
+	@echo "Stopping Blueberry Tools Service"
+	@contrib/scripts/stop-service.sh $(TOOLS_SERVICE_SENTINEL)
+
+clean:  stop ## Clean temporary files
+	@rm -f $(TOOLS_SERVICE_SENTINEL)
 	-rm -rf __pycache__ .pytest_cache
 
 ##@ Docker
@@ -55,7 +74,7 @@ docker_run: docker_stop ## run the docker image
 
 ##@ Develop
 load_tools:  ## Loading tools from the contrib directory to the service
-	./contrib/load_tools_into_service.sh
+	./contrib/scripts/load_tools_into_service.sh
 
 delete_tools:  ## clean tool directories from /tmp
 	-rm -rf /tmp/files
