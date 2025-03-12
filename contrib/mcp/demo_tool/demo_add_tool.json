@@ -4,6 +4,7 @@
   "metadata": {
     "programming_language": "python",
     "packaging_format": "mcp",
+    "url": "http://localhost:8080/sse",
     "name": "add",
     "description": "Adds two numbers and returns the result.",
     "parameters": {

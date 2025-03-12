@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
-mcp_server_url = os.getenv('MCP_SERVER_URL', "http://localhost:8080/sse")
+default_mcp_server_url = os.getenv('MCP_SERVER_URL', "http://localhost:8080/sse")
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +185,8 @@ class FileExecutor:
         # 2. Upload a demo MCP tool from `contrib/mcp/demo_tool/demo_add_tool.json`
         # using the POST /file/json/ API (use the tool name `add_mcp.py`)
         # 3. execute the tool with parameters, for example `{"a":5, "b":5}`
-        # to configure a different MCP server location use env. variable for `mcp_server_url`
+        # The MCP server URL is taken from the 'url' field in the JSON;
+        # if not provided, it falls back to the environment variable `MCP_SERVER_URL`.
 
         async def execute_mcp_tool(_url: str, _function_name: str, _mcp_args_dict: dict):
             async with sse_client(_url) as (read, write):
@@ -237,7 +238,7 @@ class FileExecutor:
                     mcp_args_dict[parameter_definition_name] = converted_arg
                 else:
                     mcp_args_dict[parameter_definition_name] = converted_arg
-
+            mcp_server_url = self.metadata.get("url") or default_mcp_server_url
             return_value = asyncio.run(execute_mcp_tool(mcp_server_url, function_name, mcp_args_dict))
 
             if return_value is None:
