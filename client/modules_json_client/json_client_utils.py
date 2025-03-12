@@ -55,13 +55,13 @@ def python_manifest_from_json_base(json_base: List[List[Dict]], module_path: str
 
 
 
-def python_manifest_from_docstring_or_json(lh_json_base: List[List[Dict]], module_path: str, func_name: str):
+def python_manifest_from_docstring_or_json(json_base: List[List[Dict]], module_path: str, func_name: str):
     """
     Generate a Python manifest for a function whose description is 
-    either in the function's docstring or in an accompanying JSON base (DOT).
+    either in the function's docstring or in an accompanying JSON base (GIN).
 
     Args:
-        lh_json_base (List[List[Dict]]): a JSON base of DOT project function descriptions
+        json_base (List[List[Dict]]): a JSON base of DOT project function descriptions
         module_path (str): the path to the Python module containing the function
         func_name (str): the name of the function to generate a manifest for
 
@@ -72,15 +72,15 @@ def python_manifest_from_docstring_or_json(lh_json_base: List[List[Dict]], modul
     manifest = None
     if docstring != None:
         manifest = python_manifest_from_function_docstring(module_path, func_name, docstring)
-    if manifest == None and lh_json_base != None:
-        manifest = python_manifest_from_json_base(lh_json_base, module_path, func_name)
+    if manifest == None and json_base != None:
+        manifest = python_manifest_from_json_base(json_base, module_path, func_name)
     return manifest
 
 
 
 def load_json_base(json_path: str):
     """
-    Load a JSON base of the DOT project
+    Load a JSON base of the LakeHouse project
 
     Args:
         json_path (str): a path to a folder containing the JSON files

@@ -11,6 +11,12 @@ from urllib.parse import quote
 from modules.lifecycle import LifecycleState
 import inspect
 
+# Generator-specific imports
+import openapi_client
+import openapi_client.models.lifecycle_state as lcs
+from openapi_client.rest import ApiException
+
+
 class ToolsClientBase:
 
     def __init__(self, name="MyToolsClient", log_level=logging.DEBUG, url="http://0.0.0.0:8000"):
@@ -28,58 +34,38 @@ class ToolsClientBase:
         self.name = name
         self.logger = configure_logger(self.name, log_level=log_level)
         self.url = url
+        self.configuration = openapi_client.Configuration(
+            host = "http://0.0.0.0:8000"
+        )
 
         self.logger.debug(f"Base tools client: {self.name} initialized.")
 
 
-    def _build_url(self, url_path: str, params: dict = {}):
-        """
-        Builds a full URL starting with the base URL of the client, then the URL path, 
-        then the parameters properly encoded using quote()
-
-        Args:
-            url_path (str): the path beyond the base URL
-            params (dict): parameters that need to be encoded and appended to the URL
-
-        Returns:
-            str: the full URL
-        """
-        url = f"{self.url}{url_path}"
-        if params:
-            separator = "?"
-            for key, value in params.items():
-                url = url + f"{separator}{key}=" + quote(value)
-                separator = "&"    
-        return url
-
-
-    def _verify_success(self, response: httpx.Response):
-        """
-        Evaluates the status code returned in the Response object 
-        and raises exception if it's not 2XX (success)
-
-        Args:
-            response (https.Response): the Response to evaluate
-
-        Returns:
-            None
-
-        Raises:
-            HTTPStatusError - if the response status code is not success
-        """
-        if not response.is_success:
-            frame = inspect.currentframe().f_back  # Get the caller's frame
-            filename = os.path.basename(frame.f_code.co_filename)
-            line_number = frame.f_lineno
-
-            self.logger.error(f"HTTP Failure Response: {response.text}\n\tVerification called at line {line_number} in {filename}")
-            raise httpx.HTTPStatusError(f"HTTP {response.status_code} Error: {response.text}", request=response.request, response=response)
-
-
     # ------- BEGIN 1-1 Server API mapping (internal) ----------
 
+    # @app.get("/manifests", tags=tags)
+    def get_manifests(self, manifest_filter: str = ".",
+                      lifecycle_state: LifecycleState = LifecycleState.ANY) -> List[Dict]:
+        """
+        Return a list of manifests matching the given lifecycle state and properties filter.
+
+        Parameters:
+            manifest_filter (str): manifest properties to filter (Optional)
+            lifecycle_state (LifecycleState): state to filter (Optional)
+
+        Returns:
+            list (dict): A list of matched manifests in json format
+
+        """
+        response = None
+        with openapi_client.ApiClient(self.configuration) as api_client:
+            api_instance = openapi_client.ManifestApi(api_client)
+            response = api_instance.get_manifests_manifests_get_with_http_info(manifest_filter, lcs.LifecycleState(lifecycle_state))
+        return json.loads(response.raw_data)
+
+
     # @app.get("/manifests/{uid}", tags=tags)
-    def _get_manifest(self, uid: str):
+    def get_manifest(self, uid: str) -> Dict:
         """
         Retrieve manifest for the given uid.
 
@@ -87,30 +73,47 @@ class ToolsClientBase:
             uid (str): The uid of the manifest
 
         Returns:
-            dict: The manifest in json format
+            dict: The manifest 
 
         Raises:
-            HTTPException (404): If manifest not found
+            Exception: If call error or manifest not found
 
         """
-        url_obj = self._build_url(url_path="/manifests/" + uid)    
+        response = None
+        with openapi_client.ApiClient(self.configuration) as api_client:
+            api_instance = openapi_client.ManifestApi(api_client)
+            response = api_instance.get_manifest_manifests_uid_get_with_http_info(uid)
+        return json.loads(response.raw_data)
 
-        with httpx.Client() as client:
-            response = client.get(
-                url_obj,
-                headers={"accept": "application/json"}
-            )
-            self._verify_success(response)
-            return response.json()
+
+    # @app.get("/code/manifests/{uid}", tags=tags)
+    def get_code_manifest(self, uid: str):
+        """
+        Retrieve manifest code for the given uid.
+
+        Parameters:
+            uid (str): The uid of the manifest
+
+        Returns:
+            str: The manifest code
+
+        Raises:
+            Exception: If manifest or code not found
+        """
+        response = None
+        with openapi_client.ApiClient(self.configuration) as api_client:
+            api_instance = openapi_client.ManifestApi(api_client)
+            response = api_instance.get_code_manifest_code_manifests_uid_get_with_http_info(uid)
+        return json.loads(response.raw_data)
 
 
     # @app.get("/search/manifests", tags=tags)
-    def _search_manifest(self,
+    def search_manifest(self,
                         search_term: str,
                         max_number_of_results: int = 5,
                         similarity_threshold: float = 1,
                         manifest_filter: str = ".",
-                        lifecycle_state: LifecycleState = LifecycleState.APPROVED):
+                        lifecycle_state: LifecycleState = LifecycleState.APPROVED) -> List[Dict]:
         """
         Return a list of manifests that are similar to the given search term and are below the
         similarity threshold matching the given lifecycle state.
@@ -123,28 +126,23 @@ class ToolsClientBase:
             lifecycle_state (LifecycleState): state to filter
 
         Returns:
-            list (dict): A list of matched manifests in json format
+            List[Dict]: A list of matched manifests
         """
-        params = {
-            "search_term": search_term,
-            "max_number_of_results": str(max_number_of_results),
-            "similarity_threshold": str(similarity_threshold),
-            "manifest_filter": manifest_filter,
-            "lifecycle_state": lifecycle_state
-        }
-        url_obj = self._build_url(url_path="/search/manifests", params=params)
-
-        with httpx.Client() as client:
-            response = client.get(
-                url_obj,
-                headers={"accept": "application/json"}
+        response = None
+        with openapi_client.ApiClient(self.configuration) as api_client:
+            api_instance = openapi_client.ManifestApi(api_client)
+            response = api_instance.search_manifest_search_manifests_get_with_http_info(
+                search_term,
+                max_number_of_results,
+                similarity_threshold,
+                manifest_filter,
+                lcs.LifecycleState(lifecycle_state)
             )
-            self._verify_success(response)
-            return response.json()
+        return json.loads(response.raw_data)
 
 
     # @app.post("/manifests/add", tags=tags)
-    def _add_manifest(self, file_manifest: str, file: str):
+    def add_manifest(self, file_manifest: str, file: str):
         """
         Adds manifest along with its invocation code. As part of the addition,
         the description of the manifest is embedded and stored in vector db.
@@ -158,23 +156,16 @@ class ToolsClientBase:
         Returns:
             dict: The unique identifier of the manifest
         """
-        with open(file, "rb") as file_to_upload:
-            files = {"file": file_to_upload}
-            params = {"file_manifest": file_manifest}
-            url_obj = self._build_url(url_path="/manifests/add", params=params)
-
-            with httpx.Client() as client:
-                response = client.post(
-                    url_obj,
-                    files=files,
-                    headers={"accept": "application/json"}
-                )
-                self._verify_success(response)
-                return response.json()
+        response = None
+        file_blob = base_client_utils.read_file_to_bytes(file)
+        with openapi_client.ApiClient(self.configuration) as api_client:
+            api_instance = openapi_client.ManifestApi(api_client)
+            response = api_instance.add_manifest_manifests_add_post_with_http_info(file_manifest, file_blob)
+        return json.loads(response.raw_data)
 
     
     # @app.post("/manifests/execute/{uid}", tags=tags)
-    def _execute_manifest(self, uid: str, parameters: Optional[Dict[str, Any]] = None):
+    def execute_manifest(self, uid: str, parameters: Optional[Dict[str, Any]] = None):
         """
         Invoke manifest function given its uid.
 
@@ -186,23 +177,18 @@ class ToolsClientBase:
             dict: function output
 
         Raises:
-            HTTPException (404): If manifest not found
+            Exception: If manifest not found
 
         """
-        url_obj = self._build_url(url_path="/manifests/execute/" + uid)
-
-        with httpx.Client() as client:
-            response = client.post(
-                url_obj,
-                json=parameters,
-                headers={"accept": "application/json"}
-            )
-            self._verify_success(response)
-            return response.json()
+        response = None
+        with openapi_client.ApiClient(self.configuration) as api_client:
+            api_instance = openapi_client.ManifestApi(api_client)
+            response = api_instance.execute_manifest_manifests_execute_uid_post_with_http_info(uid=uid, body=parameters)
+        return json.loads(response.raw_data)
 
 
     # @app.delete("/manifests/{uid}", tags=tags)
-    def _delete_manifest(self, uid: str):
+    def delete_manifest(self, uid: str):
         """
         Delete the manifest removing its description from vector db.
 
@@ -210,19 +196,14 @@ class ToolsClientBase:
             dict: manifest deletion message
 
         Raises:
-            HTTPException (404): If manifest not found
+            Exception: If manifest not found
 
         """
-        url_obj = self._build_url(url_path="/manifests/" + uid)
-
-        with httpx.Client() as client:
-            response = client.delete(
-                url_obj,
-                headers={"accept": "application/json"}
-            )
-            self._verify_success(response)
-            return response.json()
-
+        response = None
+        with openapi_client.ApiClient(self.configuration) as api_client:
+            api_instance = openapi_client.ManifestApi(api_client)
+            response = api_instance.delete_manifest_manifests_uid_delete_with_http_info(uid)
+        return json.loads(response.raw_data)
 
     # ------- END 1-1 Server API mapping ----------
 
