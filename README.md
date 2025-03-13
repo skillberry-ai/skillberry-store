@@ -33,7 +33,7 @@ python3 -m venv ~/virtual/blueberry-tools-service
 
 ```bash
 cd ~
-git clone -b api_design_v2 git@github.ibm.com:Blueberry/blueberry-tools-service.git
+git clone git@github.ibm.com:Blueberry/blueberry-tools-service.git
 cd blueberry-tools-service
 source ~/virtual/blueberry-tools-service/bin/activate
 make install_requirements
