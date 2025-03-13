@@ -5,7 +5,7 @@ from docstring_parser import parse, ParseError
 import json
 from typing import List, Dict
 import ast
-from client.base_client.base_client_utils import init_manifest, extract_docstring, python_manifest_from_function_docstring
+from .base_client_utils import init_manifest, extract_docstring, python_manifest_from_function_docstring
 
 
 def python_manifest_from_json_record(json_rec: dict, module_path: str):

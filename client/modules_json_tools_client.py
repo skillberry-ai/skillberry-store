@@ -2,8 +2,6 @@
 
 from tools.configure import configure_logger
 import logging
-from client.base_client import base_client_utils
-from client.modules_json_client import json_client_utils
 from typing import Any, Dict, List, Optional
 import os, sys
 import httpx
@@ -11,6 +9,8 @@ import json
 from urllib.parse import quote
 from modules.lifecycle import LifecycleState
 import inspect
+from client.utils import base_client_utils
+from client.utils import json_client_utils
 from client.base_client.tools_client_base import ToolsClientBase
 
 class ModulesJsonToolsClient(ToolsClientBase):

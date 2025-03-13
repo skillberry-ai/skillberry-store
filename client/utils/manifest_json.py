@@ -1,8 +1,8 @@
 # This script creates a manifest for a function in a module, based on JSON documentation
 # for the function in a separate folder
 
-import client.base_client.base_client_utils as base_client_utils
-from client.modules_json_client import json_client_utils
+from client.utils import base_client_utils
+from client.utils import json_client_utils
 import argparse
 
 parser = argparse.ArgumentParser(description="Generate and print manifest for a function based on JSON")

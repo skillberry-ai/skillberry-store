@@ -1,7 +1,7 @@
 # This script creates a manifest for a function in a module, based on the function's well-formatted
 # and comprehensive doc string.
 
-import client.base_client.base_client_utils as base_client_utils
+from client.utils import base_client_utils
 import argparse
 
 parser = argparse.ArgumentParser(description="Generate and print manifest for a function based on doc string")

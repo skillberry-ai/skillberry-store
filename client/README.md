@@ -6,16 +6,16 @@ The client implements several important functions:
 3. It implements usage scenarios defined in the requirement document
 
 ### Client API
-The API exposed by the Blueberry Tools Service client is defined in two layers.
+The API exposed by the Blueberry Tools Service client is defined in several parts. All API functions (incl. utility API functions) are well-documented in the Python code with doc strings, so look in the indicated files for the detailed API documentation. Additionally, the API demo contains a usage example for each API function - so be sure to read it. 
 
 #### 1. RECOMMENDED Client API
-A far more convenient client API is defined and documented in the class `ModulesJsonToolsClient` in the file `client/modules_json_tools_client.py`. Similar to the core service API above, this API also exposes all the core functions of the Blueberry tools service. However, it handles generating manifests internally, so consumers don't need to worry about manifest generation at all - only work with tools.
+The most convenient client API is defined and documented in the class `ModulesJsonToolsClient` in the file `client/modules_json_tools_client.py`. Similar to the core service API below, this API also exposes all the core functions of the Blueberry tools service. However, it handles generating manifests internally, so consumers don't need to worry about manifest generation at all - only work with tools.
 
 #### 2. Core Service API
 The core client API is auto-generated from the service OpenAPI specification and wrapped in a very thin layer designed to remove the a few usage issues from the generated code. It is defined and documented in the class `ToolsClientBase` in the file `client/base_client/tools_client_base.py`.
 
 #### 3. Utility API
-Additionally, there are utility functions for generating manifests from code, docstrings, pretty-printing etc. Those functions are designated to assist with engaging the API. There are two sets of utility functions, each defined and documented in a separate file. One set, in the file `client/modules_json_client/json_client_utils.py` handles only processing of JSON documentation. The other, broader set, provides the rest of the functions and is located at `client/base_client/base_client_utils.py`.
+Additionally, there are utility functions for generating manifests from code, docstrings, pretty-printing etc. Those functions are designated to assist with engaging the API. There are two sets of utility functions, each defined and documented in a separate file. One set, in the file `client/utils/json_client_utils.py` handles only processing of JSON documentation. The other, broader set, provides the rest of the functions and is located at `client/utils/base_client_utils.py`.
 
 The **API demo** (see below) makes exhaustive use of the recommended client API and also uses some utility functions. It is recommended as a reference for consumers.
 
