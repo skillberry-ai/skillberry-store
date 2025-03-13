@@ -18,6 +18,8 @@ from modules.file_handler import FileHandler
 from modules.file_executor import FileExecutor
 from tools.configure import get_files_directory_path, get_descriptions_directory, get_metadata_directory, \
     get_manifest_directory
+from fast_api.server_utils import get_mcp_tools,mcp_json_converter,generate_mcp_filename
+
 
 # this environment variable is used to enable the latest API version
 ENABLE_API_VERSION = os.environ.get('ENABLE_API_VERSION', 'latest')
@@ -218,7 +220,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
 
         Parameters:
             uid (str): The unique identifier of the manifest
-            parameters (dict): List of key/val pair to be passed to method invocation (Optional) 
+            parameters (dict): List of key/val pair to be passed to method invocation (Optional)
 
         Returns:
             dict: function output
@@ -338,18 +340,35 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
         return file_response
 
     @app.post("/file/json/{filename}", tags=tags)
-    def write_file_json(file_name: str, file_json: dict):
+    async def write_file_json(file_name: str, file_json: dict):
+        file_metadata = file_json.get("metadata", {})
+        aggregated_results = []
+
+        if file_metadata.get("packaging_format", "") == "mcp":
+            tools = await get_mcp_tools(file_metadata)
+            if not tools:
+                raise HTTPException(status_code=500, detail="No tools retrieved from MCP.")
+
+            for tool in tools:
+                tool_dict= vars(tool)
+                generated_json = mcp_json_converter(tool_dict, file_metadata)
+                new_file_name = generate_mcp_filename(file_name, tool_dict.get("name", ""))
+                result = write_single_file_json(new_file_name, generated_json)
+                aggregated_results.append(result)
+            return aggregated_results
+
+        # For non MCP tools
+        return write_single_file_json(file_name, file_json)
+    def write_single_file_json(file_name: str, file_json: dict):
         logger.info(f"Request to write file (from json): {file_name}")
         file_content = file_json.get("content", "")
         file_description = file_json.get("description", "")
         file_metadata = file_json.get("metadata", {})
-
         file_response = file_handler.write_file_content(file_name, file_content)
         if file_description:
             descriptions.write_description(file_name, file_description)
         if file_metadata:
             metadata.write_metadata(file_name, file_metadata)
-
         return file_response
 
     @app.delete("/file/{filename}", tags=tags)

@@ -180,13 +180,21 @@ class FileExecutor:
         Executes a Python file using MCP server
         """
 
-        # to experience with the MCP server, you should:
-        # 1. Start the demo MCP server under `contrib/mcp/server` by executing: `uv run server.py`
-        # 2. Upload a demo MCP tool from `contrib/mcp/demo_tool/demo_add_tool.json`
-        # using the POST /file/json/ API (use the tool name `add_mcp.py`)
-        # 3. execute the tool with parameters, for example `{"a":5, "b":5}`
-        # The MCP server URL is taken from the 'url' field in the JSON;
-        # if not provided, it falls back to the environment variable `MCP_SERVER_URL`.
+        # To experiment with the MCP server, follow these steps:
+        # 1. Start the demo MCP server located in `contrib/mcp/server` by running: `uv run server.py`.
+        # 2. Upload a demo MCP tool from `contrib/mcp/demo_tool/demo_mcp_server.json`
+        #    using the POST /file/json/ API (use the server name `math.py`).
+        # 3. Execute the tool using a filename combining the server name and tool name (e.g., `math_add.py`),
+        #    along with parameters, for example: `{"a": 5, "b": 5}`.
+        #
+        # The MCP server URL is retrieved from the 'url' field in the JSON.
+        # If not provided, it defaults to the environment variable `MCP_SERVER_URL`.
+        #
+        # If you want to add only a single tool from the MCP server, add the tool name to the metadata.
+        # See the example: `contrib/mcp/demo_tool/demo_add_single_tool.json`.
+        #
+        # The `content` field is not required but can be included.
+        # If provided, it will overwrite the automatically generated content from the MCP server.
 
         async def execute_mcp_tool(_url: str, _function_name: str, _mcp_args_dict: dict):
             async with sse_client(_url) as (read, write):
@@ -295,7 +303,7 @@ def parse_arguments(func):
             # Optional parameter with default, add it to argparse with default value
             parser.add_argument(f"--{{param.name}}", type=str, default=str(param.default),
                                 help=f"Argument for {{param.name}} (default: {{param.default}})")
-    
+
     return parser
 
 
@@ -315,14 +323,14 @@ def main():
                 parsed_args.append(value)
         else:
             parsed_args.append(value)
-    
+
     # Call the function with the parsed arguments
     result = {function_name}(*parsed_args)
     print(json.dumps(result))
-    
+
 if __name__ == "__main__":
     main()
-        
+
 """)
                 temp_file_path = temp_file.name
                 logger.info(f"tmp container python file name {temp_file_path}")
