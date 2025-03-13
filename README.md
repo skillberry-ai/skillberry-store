@@ -2,7 +2,7 @@
 This service implements a smart tools repository for agentic workflows.
 
 # Design Requirements
-See `REQUIREMENTS.md`
+See [DESIGN_REQUIREMENTS.md](DESIGN_REQUIREMENTS.md)
 
 # Quickstart
 
@@ -26,23 +26,23 @@ sudo apt install python3-venv python3-pip
 python3 -m pip install --user --upgrade pip
 
 # set virtual environment
-python3 -m venv ~/virtual/Blueberry-tools-service
+python3 -m venv ~/virtual/blueberry-tools-service
 ```
 
 ## 2. Installation
 
 ```bash
 cd ~
-git clone -b api_design_v2 git@github.ibm.com:Blueberry/Blueberry-tools-service.git
-cd Blueberry-tools-service
-source ~/virtual/Blueberry-tools-service/bin/activate
+git clone -b api_design_v2 git@github.ibm.com:Blueberry/blueberry-tools-service.git
+cd blueberry-tools-service
+source ~/virtual/blueberry-tools-service/bin/activate
 make install_requirements
 ```
 
 ## 3. Start the service
 
 ```bash
-cd ~/Blueberry-tools-service
+cd ~/blueberry-tools-service
 make run
 ```
 
@@ -51,7 +51,7 @@ When the service is running:
 ```bash
 make gen_client
 ```
-You can now read `client/README.md` to learn more about the service clients, including testing and using the Python APIs and utilities
+You can now read [client/README.md](client/README.md) to learn more about the service clients, including testing and using the Python APIs and utilities
 
 # Loading Sample Data
 
