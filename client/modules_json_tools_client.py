@@ -2,8 +2,6 @@
 
 from tools.configure import configure_logger
 import logging
-from client.base_client import base_client_utils
-from client.modules_json_client import json_client_utils
 from typing import Any, Dict, List, Optional
 import os, sys
 import httpx
@@ -11,6 +9,8 @@ import json
 from urllib.parse import quote
 from modules.lifecycle import LifecycleState
 import inspect
+from client.utils import base_client_utils
+from client.utils import json_client_utils
 from client.base_client.tools_client_base import ToolsClientBase
 
 class ModulesJsonToolsClient(ToolsClientBase):
@@ -54,7 +54,24 @@ class ModulesJsonToolsClient(ToolsClientBase):
 
     # ------- BEGIN client API --------
 
-    def get_tool(self, uid: str):
+    def list_tools(self, manifest_filter: str = ".", lifecycle_state: LifecycleState = LifecycleState.ANY) -> List[Dict]:
+        """
+        Retrieve a list of manifests of stored tools according to criteria
+
+        Args:
+            filter (str): a JSON filter of criteria, jq format. Default: all 
+            lifecycle_state (LifeCycleState): filter on the life cycle state. Default: any
+
+        Returns:
+            List[Dict]: List of matching manifests
+        """
+        self.logger.debug(f"Listing tool manifests with criteria:\n\tManifest Filter: {manifest_filter}\n\tLifecycle State: {lifecycle_state}")
+        response = self.get_manifests(manifest_filter, lifecycle_state)
+        self.logger.debug(f"Service response: \n{base_client_utils.json_pretty_print(response)}")
+        return response    
+    
+    
+    def get_tool_manifest(self, uid: str):
         """
         Retrieve the manifest of a stored tool based on the tool UID
 
@@ -65,9 +82,29 @@ class ModulesJsonToolsClient(ToolsClientBase):
             str: the JSON manifest of the tool if the tool exists
         """
         self.logger.debug(f"Retrieving tool manifest for UID: {uid}")
-        response = self._get_manifest(uid)
+        response = self.get_manifest(uid)
         self.logger.debug(f"Service response: \n{base_client_utils.json_pretty_print(response)}")
         return response    
+
+
+    def get_tool_code(self, uid: str) -> str:
+        """
+        Retrieve code for the given tool uid.
+
+        Parameters:
+            uid (str): The uid of the tool
+
+        Returns:
+            str: The tool code (single code module)
+
+        Raises:
+            Exception: If tool or code not found
+        """
+        self.logger.debug(f"Retrieving tool code for UID: {uid}")
+        response = self.get_code_manifest(uid)
+        self.logger.debug(f"Service response: \n{base_client_utils.json_pretty_print(response)}")
+        return response["module_code"]   
+
 
     def search_tools(self,
                     description: str,
@@ -90,8 +127,8 @@ class ModulesJsonToolsClient(ToolsClientBase):
         Returns:
             list (dict): A list of matched manifests in json format
         """
-        self.logger.debug(f"Begin searching tool manifests with:\n\tDesciption: {description}\n\tMax results: {max_number_of_results}\n\tSimilarty distance <= {similarity_threshold}\n\tLife cycle state: {lifecycle_state}")
-        results = self._search_manifest(search_term=description, 
+        self.logger.debug(f"Begin searching tool manifests with:\n\tDescription: {description}\n\tMax results: {max_number_of_results}\n\tSimilarity distance <= {similarity_threshold}\n\tLife cycle state: {lifecycle_state}")
+        results = self.search_manifest(search_term=description, 
                                        max_number_of_results=max_number_of_results, 
                                        similarity_threshold=similarity_threshold,
                                        lifecycle_state=lifecycle_state)
@@ -119,7 +156,7 @@ class ModulesJsonToolsClient(ToolsClientBase):
                 raise Exception(f"Failed to generate manifest for: ({module_path}, {func_name})")
             self.logger.debug(f"Generated manifest for ({module_path}, {func_name}): \n{base_client_utils.json_pretty_print(manifest)}")
             manifest_str = json.dumps(manifest)
-            response = self._add_manifest(manifest_str, module_path)
+            response = self.add_manifest(manifest_str, module_path)
             self.logger.debug(f"Service response: \n{base_client_utils.json_pretty_print(response)}")
             uids.append(response["uid"])
         return uids
@@ -141,7 +178,7 @@ class ModulesJsonToolsClient(ToolsClientBase):
 
         """
         self.logger.debug(f"Invoking tool with UID: {uid}\nArguments: {base_client_utils.json_pretty_print(parameters)}")
-        response = self._execute_manifest(uid, parameters)
+        response = self.execute_manifest(uid, parameters)
         self.logger.debug(f"Service response: \n{base_client_utils.json_pretty_print(response)}")
         return response    
 
@@ -157,7 +194,7 @@ class ModulesJsonToolsClient(ToolsClientBase):
             HTTPException (404): If manifest not found
         """
         self.logger.debug(f"Deleting tool with UID: {uid}")
-        response = self._delete_manifest(uid)
+        response = self.delete_manifest(uid)
         self.logger.debug(f"Service response: \n{base_client_utils.json_pretty_print(response)}")
         return response    
     

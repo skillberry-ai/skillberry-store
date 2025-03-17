@@ -2,8 +2,8 @@
 # a manifest for each function. The manifest is based either on the function's doc string,
 # or (if not available) on the matching JSON documentation.
 
-import client.base_client.base_client_utils as base_client_utils
-from client.modules_json_client import json_client_utils
+from client.utils import base_client_utils
+from client.utils import json_client_utils
 import argparse
 import os
 
@@ -16,12 +16,8 @@ args = parser.parse_args()
 json_base = json_client_utils.load_json_base(args.jsonpath)
 func_list = base_client_utils.list_functions_in_folder(args.codepath)
 for func_data in func_list:
-    modpath, funcname, docstring = func_data
-    manifest = None
-    if docstring != None:
-        manifest = base_client_utils.python_manifest_from_function_docstring(modpath, funcname, docstring)
-    if manifest == None:
-        manifest = json_client_utils.python_manifest_from_json_base(json_base, modpath, funcname)
+    modpath, funcname, _ = func_data
+    manifest = json_client_utils.python_manifest_from_docstring_or_json(json_base, modpath, funcname)
     if manifest == None:
         raise Exception(f"No manifest constructed for function {funcname} in module {modpath} - ABORTING")
     mft_filepath = os.path.join(args.mftpath, funcname + ".json")

@@ -1,41 +1,60 @@
-## Client For the Tools Service
+## Python Client For The Blueberry Tools Service
 
 The client implements several important functions:
 1. It mediates between the internal generic tool artifacts stored in the service and the simplified abstractions (e.g., single code module) used by consumers
 2. It handles the OpenAPI-based interaction with the service
-3. It implements the usage scenarios defined in the requirement document
+3. It implements usage scenarios defined in the requirement document
 
 ### Client API
-Currently, we have one class of client API - `ModulesJsonToolsClient`. This is a client exposes all the core functions of the Blueberry tools service in a convenient manner. Specifically, it handles generating manifests from function docstrings or (if docstring not available) from an optional JSON base that is provided externally. The documented client API is found in the file `client/modules_json_client/modules_json_tools_client.py`.
+The API exposed by the Blueberry Tools Service client is defined in several parts. All API functions (incl. utility API functions) are well-documented in the Python code with doc strings, so look in the indicated files for the detailed API documentation. Additionally, the API demo contains a usage example for each API function - so be sure to read it. 
 
-Additionally, there are utility functions for extracting manifests, docstrings, pretty-printing etc. Those functions are beyond the designated API, but may be helpful as well. There are two sets of utility functions. One set, in the file `client/modules_json_client/json_client_utils.py` handles only processing of JSON documentation. The other, broader set, provides the rest of the functions and is located at `client/base_client/base_client_utils.py`.
+#### 1. RECOMMENDED Client API
+The most convenient client API is defined and documented in the class `ModulesJsonToolsClient` in the file `client/modules_json_tools_client.py`. Similar to the core service API below, this API also exposes all the core functions of the Blueberry tools service. However, it handles generating manifests internally, so consumers don't need to worry about manifest generation at all - only work with tools.
 
-The API demo (see below) makes exhaustive use of the client API and also uses some utility functions. Thus, it can be used as a reference for exploiters.
+#### 2. Core Service API
+The core client API is auto-generated from the service OpenAPI specification and wrapped in a very thin layer designed to remove the a few usage issues from the generated code. It is defined and documented in the class `ToolsClientBase` in the file `client/base_client/tools_client_base.py`.
 
-### Client Setup
-If you're installing the tools service locally using the `Makefile`, then that should be enough for the client as well. NOTE: it's *highly* recommended to use a virtual environment to install Python dependencies. 
+#### 3. Utility API
+Additionally, there are utility functions for generating manifests from code, docstrings, pretty-printing etc. Those functions are designated to assist with engaging the API. There are two sets of utility functions, each defined and documented in a separate file. One set, in the file `client/utils/json_client_utils.py` handles only processing of JSON documentation. The other, broader set, provides the rest of the functions and is located at `client/utils/base_client_utils.py`.
 
-If you cloned this repo to install just the client to interact with the tools service remotely, then just run `make install_requirements`
+The **API demo** (see below) makes exhaustive use of the recommended client API and also uses some utility functions. It is recommended as a reference for consumers.
 
 ### Testing the Client
 All tests should be run from the root folder of Blueberry-tools-service
 
-#### Manifest generation
-1. Generate a manifest for a Python function based on a properly-formatted doc string:
-```
-python -m client.manifest_ds <path to module of function> <function name>
-```
-2. Generate a manifest for a Python function based on a JSON base of function descriptions (using the format defined by the LakeHouse project):
-```
-python -m client.manifest_json <path to JSON definitions folder> <path to module of function> <function name>
-```
-3. Generate manifests for all the functions in Python modules in a given folder using either a doc string or (if not available) JSON description from accompanying folder:
-```
-python -m client.manifest_gen <path to JSON definitions folder> <path to folder with Python modules> <path to output folder>
-```
-
-#### Demo of client API
+#### 1. API Demo
+This is a comprehensive demonstration of all the client-facing tools APIs. 
 Make sure that `genai_proj_loc` is set correctly in `main` code to the location of the `genai-lakehouse-mapping` codebase in your filesystem.
 
-To run the demo: `python -m client.api_demo`
+To run the demo: `python -m client.demo.api_demo`
+
+#### 2. Manifest Generation Utilities
+These are utilities for CLI usage the are built using the Utility API (see above).
+1. Generate (on stdout) a manifest for a Python function based on a properly-formatted doc string:
+```bash
+python -m client.util.manifest_ds <path to module of function> <function name>
+```
+For example:
+```bash
+python -m client.utils.manifest_ds ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
+```
+2. Generate a manifest for a Python function based on a JSON base of function descriptions (using the format defined by the LakeHouse project):
+```bash
+python -m client.utils.manifest_json <path to JSON definitions folder> <path to module of function> <function name>
+```
+For example:
+```bash
+python -m client.utils.manifest_json  ~/genai-lakehouse-mapping/examples ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
+```
+3. Bulk operation - Generate manifests for all the functions in Python modules in a given folder using either a doc string or (if not available) JSON description from accompanying folder:
+```bash
+python -m client.utils.manifest_gen <path to JSON definitions folder> <path to folder with Python modules> <path to output folder>
+```
+For example:
+```bash
+python -m client.utils.manifest_gen  ~/genai-lakehouse-mapping/examples ~/genai-lakehouse-mapping/transformations ./manifests
+```
+
+## Accessing the Blueberry Tools Service via CURL
+Doable just as well. See `client/curl/README.md` for details. 
 
