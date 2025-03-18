@@ -346,9 +346,6 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
 
         if file_metadata.get("packaging_format", "") == "mcp":
             tools = await get_mcp_tools(file_metadata)
-            if not tools:
-                raise HTTPException(status_code=500, detail="No tools retrieved from MCP.")
-
             for tool in tools:
                 tool_dict= vars(tool)
                 generated_json = mcp_json_converter(tool_dict, file_metadata)

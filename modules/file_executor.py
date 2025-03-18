@@ -180,21 +180,7 @@ class FileExecutor:
         Executes a Python file using MCP server
         """
 
-        # To experiment with the MCP server, follow these steps:
-        # 1. Start the demo MCP server located in `contrib/mcp/server` by running: `uv run server.py`.
-        # 2. Upload a demo MCP tool from `contrib/mcp/demo_tool/demo_mcp_server.json`
-        #    using the POST /file/json/ API (use the server name `math.py`).
-        # 3. Execute the tool using a filename combining the server name and tool name (e.g., `math_add.py`),
-        #    along with parameters, for example: `{"a": 5, "b": 5}`.
-        #
-        # The MCP server URL is retrieved from the 'url' field in the JSON.
-        # If not provided, it defaults to the environment variable `MCP_SERVER_URL`.
-        #
-        # If you want to add only a single tool from the MCP server, add the tool name to the metadata.
-        # See the example: `contrib/mcp/demo_tool/demo_add_single_tool.json`.
-        #
-        # The `content` field is not required but can be included.
-        # If provided, it will overwrite the automatically generated content from the MCP server.
+        # To experiment with the MCP server, see the instructions in the `contrib/mcp/README.md` file.
 
         async def execute_mcp_tool(_url: str, _function_name: str, _mcp_args_dict: dict):
             async with sse_client(_url) as (read, write):

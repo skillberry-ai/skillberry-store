@@ -1,8 +1,9 @@
 from mcp import ClientSession
 from mcp.client.sse import sse_client
-import json
+from fastapi import HTTPException
+
 import os
-def mcp_json_converter(tool: dict, file_json: dict):
+def mcp_json_converter(tool: dict, file_json: dict)-> dict:
     """
     Converts an MCP tool JSON into the required format.
 
@@ -55,7 +56,7 @@ def mcp_json_converter(tool: dict, file_json: dict):
     }
     return generated_json
 
-async def get_mcp_tools(file_metadata: dict):
+async def get_mcp_tools(file_metadata: dict)-> list:
     """
     Retrieves tool information from the MCP server based on the provided metadata.
 
@@ -71,12 +72,14 @@ async def get_mcp_tools(file_metadata: dict):
             await session.initialize()
 
             tools = await session.list_tools()
+            if not tools:
+                raise HTTPException(status_code=500, detail="No tools retrieved from MCP.")
             # Find matching tool by name
             if tool_name:
-                matching_tool = next(
-                    (tool for tool in tools.tools if tool.name == file_metadata.get("name",{})), None
-                )
-                return [matching_tool]
+                for tool in tools.tools:
+                    if tool.name == file_metadata.get("name", {}):
+                        return [tool]
+                raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found.")
 
             return tools.tools
 
