@@ -23,22 +23,29 @@ uids = my_client.add_tools_from_python_functions([
 logger.info(f"Result = {base_client_utils.json_pretty_print(uids)}")
 # List the tools
 logger.info("Listing the tools")
-logger.info(f"Result = {base_client_utils.json_pretty_print(my_client.list_tools())}")
+result = my_client.list_tools()
+logger.info(f"Result = {base_client_utils.json_pretty_print(result)}")
 # Search for the tool - expect to find GetQuarter
 logger.info("Searching for GetQuarter")
-logger.info(f"Result = {base_client_utils.json_pretty_print(my_client.search_tools("quarter of the year"))}")
+result = my_client.search_tools("quarter of the year")
+logger.info(f"Result = {base_client_utils.json_pretty_print(result)}")
 # Get the tool manifest - GetCurrencySymbol
 logger.info("Getting tool manifest - GetCurrencySymbol")
-logger.info(f"Result = {base_client_utils.json_pretty_print(my_client.get_tool_manifest("GetCurrencySymbol"))}")
+result = my_client.get_tool_manifest("GetCurrencySymbol")
+logger.info(f"Result = {base_client_utils.json_pretty_print(result)}")
 # Get tool code - GetCurrencySymbol
 logger.info("Getting tool code - GetCurrencySymbol")
-logger.info(f"Result = {my_client.get_tool_code("GetCurrencySymbol")}")
+result = my_client.get_tool_code("GetCurrencySymbol")
+logger.info(f"Result = {result}")
 # Execute the tool GetQuarter
 logger.info("Executing tool - GetQuarter")
-logger.info(f"Result = {base_client_utils.json_pretty_print(my_client.execute_tool("GetQuarter", {"input_string": "2Q2056"}))}")
+result = my_client.execute_tool("GetQuarter", {"input_string": "2Q2056"})
+logger.info(f"Result = {base_client_utils.json_pretty_print(result)}")
 # Delete the tool
 logger.info("Deleting the tool - GetQuarter")
-logger.info(f"Result = {base_client_utils.json_pretty_print(my_client.delete_tool("GetQuarter"))}")
+result = my_client.delete_tool("GetQuarter")
+logger.info(f"Result = {base_client_utils.json_pretty_print(result)}")
 # Get the tool (manifest) again - SHOULD FAIL
 logger.info("Getting the deleted tool manifest - GetQuarter - SHOULD FAIL")
-logger.info(f"Result = {base_client_utils.json_pretty_print(my_client.get_tool_manifest("GetQuarter"))}")
+result = my_client.get_tool_manifest("GetQuarter")
+logger.info(f"Result = {base_client_utils.json_pretty_print(result)}")

@@ -55,7 +55,7 @@ stop: $(TOOLS_SERVICE_SENTINEL)
 	@echo "Stopping Blueberry Tools Service"
 	@contrib/scripts/stop-service.sh $(TOOLS_SERVICE_SENTINEL)
 
-clean:  stop ## Clean temporary files
+clean:  ## Clean temporary files
 	@rm -f $(TOOLS_SERVICE_SENTINEL)
 	-rm -rf __pycache__ .pytest_cache
 
