@@ -46,12 +46,8 @@ cd ~/blueberry-tools-service
 make run
 ```
 
-## 4. Setup the Python client
-When the service is running:
-```bash
-make gen_client
-```
-You can now read [client/README.md](client/README.md) to learn more about the service clients, including testing and using the Python APIs and utilities
+### 4. Engage the service through a client
+You can now read [client/README.md](client/README.md) to learn more about the service clients - both Python client and CURL client. There are also tests and demos you can use.
 
 # Loading Sample Data
 
