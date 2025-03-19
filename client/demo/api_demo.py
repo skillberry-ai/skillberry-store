@@ -1,29 +1,29 @@
 from tools.configure import configure_logger
 from client.modules_json_tools_client import ModulesJsonToolsClient
 from client.utils import base_client_utils
-import os
+import os, sys
 
 # This is a DEMO to run and inspect, not a TEST. You should run it from the top folder of Blueberry-tools-service (python -m client.api_demo). 
-# Before running, update genai_proj_loc below to the location of the genai-lakehouse-mapping project
+# Before running, update EXAMPLESPATH env var to the location of examples root folder, such as the genai-lakehouse-mapping project clone
 
-genai_proj_loc = os.environ.get('EXAMPLESPATH')
-if not genai_proj_loc:
-    raise Exception("Please set environment variable EXAMPLESPATH to point to the root directory of the repo holding the examples")
-#genai_proj_loc="/home/davidbr/genai-lakehouse-mapping"
+example_path = os.environ.get('EXAMPLESPATH')
+if not example_path:
+    print("Please set environment variable EXAMPLESPATH to the root directory of the examples, such as the genai-lakehouse-mapping clone", file=sys.stderr)
+    sys.exit(-1)
 logger=configure_logger("Main")
 # Example usage
 logger.info("Creating client")
 my_client = ModulesJsonToolsClient() # use defaults - connect locally
 # Set JSON base
 logger.info("Setting JSON base")
-my_client.set_json_base(f"{genai_proj_loc}/examples/")
+my_client.set_json_base(f"{example_path}/examples/")
 # Add tool - GetQuarter - from DOT project
 logger.info("Adding tools - GetYear, GetQuarter, GetCurrencySymbol, ParseDealSize")
 uids = my_client.add_tools_from_python_functions([
-    (f"{genai_proj_loc}/transformations/client-win-functions.py", "GetYear"),
-    (f"{genai_proj_loc}/transformations/client-win-functions.py", "GetQuarter"),
-    (f"{genai_proj_loc}/transformations/client-win-functions.py", "GetCurrencySymbol"),
-    (f"{genai_proj_loc}/transformations/client-win-functions.py", "ParseDealSize")
+    (f"{example_path}/transformations/client-win-functions.py", "GetYear"),
+    (f"{example_path}/transformations/client-win-functions.py", "GetQuarter"),
+    (f"{example_path}/transformations/client-win-functions.py", "GetCurrencySymbol"),
+    (f"{example_path}/transformations/client-win-functions.py", "ParseDealSize")
 ])
 logger.info(f"Result = {base_client_utils.json_pretty_print(uids)}")
 # List the tools
