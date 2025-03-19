@@ -1,6 +1,7 @@
 from tools.configure import configure_logger
 from client.modules_json_tools_client import ModulesJsonToolsClient
 from client.utils import base_client_utils
+import logging
 import os, sys
 
 # This is a DEMO to run and inspect, not a TEST. You should run it from the top folder of Blueberry-tools-service (python -m client.api_demo). 
@@ -13,7 +14,7 @@ if not example_path:
 logger=configure_logger("Main")
 # Example usage
 logger.info("Creating client")
-my_client = ModulesJsonToolsClient() # use defaults - connect locally
+my_client = ModulesJsonToolsClient(log_level=logging.CRITICAL) # use defaults - connect locally
 # Set JSON base
 logger.info("Setting JSON base")
 my_client.set_json_base(f"{example_path}/examples/")
