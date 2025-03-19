@@ -22,7 +22,7 @@ All tests should be run from the root folder of Blueberry-tools-service
 
 #### 1. API Demo
 This is a comprehensive demonstration of all the client-facing tools APIs. 
-Make sure that `genai_proj_loc` is set correctly in `main` code to the location of the `genai-lakehouse-mapping` codebase in your filesystem.
+Prior to launching the API demo, make sure that `EXAMPLESPATH` env var is set correctly in `main` code to a location of an examples folder, such as the root folder of a clone of the `genai-lakehouse-mapping` repository.
 
 To run the demo: `python -m client.demo.api_demo`
 
