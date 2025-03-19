@@ -1,10 +1,15 @@
 from tools.configure import configure_logger
 from client.modules_json_tools_client import ModulesJsonToolsClient
 from client.utils import base_client_utils
+import os
 
 # This is a DEMO to run and inspect, not a TEST. You should run it from the top folder of Blueberry-tools-service (python -m client.api_demo). 
 # Before running, update genai_proj_loc below to the location of the genai-lakehouse-mapping project
-genai_proj_loc="../../mc_connectors/genai-lakehouse-mapping"
+
+genai_proj_loc = os.environ.get('EXAMPLESPATH')
+if not genai_proj_loc:
+    raise Exception("Please set environment variable EXAMPLESPATH to point to the root directory of the repo holding the examples")
+#genai_proj_loc="/home/davidbr/genai-lakehouse-mapping"
 logger=configure_logger("Main")
 # Example usage
 logger.info("Creating client")
