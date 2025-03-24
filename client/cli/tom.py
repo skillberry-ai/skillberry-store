@@ -115,7 +115,7 @@ def client_from_context(ctx) -> ModulesJsonToolsClient:
         ctx: the context with config data
     """
     if 'load_error' in ctx.obj or not ctx.obj['profile'] in ctx.obj['config']:
-        print(f'Configuration could not be loaded from: {ctx.obj['config_file']} or is missing profile: {ctx.obj['profile']}. Please run `tom profile` to correct')
+        print(f'Configuration could not be loaded from: {ctx.obj['config_file']} or is missing profile: {ctx.obj['profile']}. Please run `tom config` to correct')
         sys.exit(-1)
 
     # Config ok, create client
