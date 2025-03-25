@@ -11,12 +11,9 @@ LABEL date="$BUILD_DATE"
 # Set the working directory
 WORKDIR /app
 
-# Copy only requirements first (for better caching)
-COPY requirements.txt .
+# Copy the application
+COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application
-COPY contrib .
 
 # Expose a port (change if needed)
 EXPOSE 8000
