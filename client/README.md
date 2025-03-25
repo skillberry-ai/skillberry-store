@@ -34,7 +34,35 @@ python -m client.util.manifest_ds <path to module of function> <function name>
 ```
 For example:
 ```bash
-python -m client.utils.manifest_ds ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
+python -m client.utils.manifest_ds ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter
+
+{
+    "programming_language": "python",
+    "packaging_format": "code",
+    "version": "0.0.1",
+    "params": {
+        "type": "object",
+        "properties": {
+            "input_string": {
+                "type": "str",
+                "description": "The input string containing the deal quarter."
+            }
+        },
+        "required": [
+            "input_string"
+        ],
+        "optional": []
+    },
+    "name": "GetQuarter",
+    "module_name": "client-win-functions.py",
+    "state": "approved",
+    "description": "Extracts the deal quarter from a given string.",
+    "returns": {
+        "type": "str",
+        "description": "The extracted deal quarter."
+    }
+}
+
 ```
 2. Generate a manifest for a Python function based on a JSON base of function descriptions (using the format defined by the LakeHouse project):
 ```bash
@@ -42,7 +70,30 @@ python -m client.utils.manifest_json <path to JSON definitions folder> <path to 
 ```
 For example:
 ```bash
-python -m client.utils.manifest_json  ~/genai-lakehouse-mapping/examples ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
+python -m client.utils.manifest_json  ~/genai-lakehouse-mapping/examples ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter
+
+{
+    "programming_language": "Python",
+    "packaging_format": "code",
+    "version": "0.0.1",
+    "params": {
+        "type": "object",
+        "properties": {
+            "input_string": {
+                "type": "str",
+                "description": "The input string containing the quarter."
+            }
+        },
+        "required": [
+            "input_string"
+        ],
+        "optional": []
+    },
+    "module_name": "client-win-functions.py",
+    "state": "approved",
+    "description": "Returns the quarter of the year for a given string. Returns: str: The quarter of the year, e.g., 1Q, 2Q, 3Q, or 4Q."
+}
+
 ```
 3. Bulk operation - Generate manifests for all the functions in Python modules in a given folder using either a doc string or (if not available) JSON description from accompanying folder:
 ```bash
