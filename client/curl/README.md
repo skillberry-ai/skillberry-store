@@ -12,7 +12,7 @@ source ~/virtual/Blueberry-tools-service/bin/activate
 
 ```
 cd ~/Blueberry-tools-service
-python -m client.manifest_ds ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
+python -m client.utils.manifest_ds ~/genai-lakehouse-mapping/transformations/client-win-functions.py GetQuarter > manifest-GetQuarter.json
 
 ```
 
