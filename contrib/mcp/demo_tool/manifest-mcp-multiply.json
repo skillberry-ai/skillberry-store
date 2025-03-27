@@ -1,0 +1,8 @@
+{
+    "programming_language": "python",
+    "packaging_format": "mcp",
+    "version": "0.0.1",
+    "mcp_url": "http://localhost:8080/sse",
+    "name": "multiply",
+    "state": "approved"
+}

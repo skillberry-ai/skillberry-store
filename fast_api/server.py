@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -18,7 +19,7 @@ from modules.file_handler import FileHandler
 from modules.file_executor import FileExecutor
 from tools.configure import get_files_directory_path, get_descriptions_directory, get_metadata_directory, \
     get_manifest_directory
-from fast_api.server_utils import get_mcp_tools,mcp_json_converter,generate_mcp_filename
+from fast_api.server_utils import get_mcp_tools, mcp_json_converter, generate_mcp_filename, mcp_content
 
 
 # this environment variable is used to enable the latest API version
@@ -98,6 +99,8 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         """
         Retrieve manifest code for the given uid.
 
+        Note: supported for 'code' manifests only.
+
         Parameters:
             uid (str): The uid of the manifest
 
@@ -105,6 +108,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             str: The manifest code
 
         Raises:
+            HTTPException (400): If manifest not from 'code' type
             HTTPException (404): If manifest or code not found
 
         """
@@ -114,6 +118,9 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             logger.info(f"Manifest for {uid}: {manifest_as_dict}")
         else:
             raise HTTPException(status_code=404, detail="Manifest not found")
+        if manifest_as_dict.get("packaging_format") != "code":
+            raise HTTPException(status_code=400, detail="Manifest is not from 'code' type")
+
         # mandatory to exist
         module_name = manifest_as_dict['module_name']
         file_content = file_handler.read_file(module_name, raw_content=True)
@@ -181,32 +188,67 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         return filtered_matched_entities
 
     @app.post("/manifests/add", tags=tags)
-    def add_manifest(file_manifest: str, file: UploadFile = File(...)):
+    async def add_manifest(file_manifest: str, file: Optional [UploadFile] = File(None)):
         """
-        Adds manifest along with its invocation code. As part of the addition,
-        the description of the manifest is embedded and stored in vector db.
+        Adds manifest.
+
+        Two types of manifests are supported: code and mcp.
+
+        - code: manifest points to corresponding method in a file module
+        - mcp:  manifest points to corresponding tool in a mcp server
+
+        As part of the addition, the description of the manifest is being embedded and
+        stored in vector db.
 
         The manifest is assigned with a unique identifier.
 
         Parameters:
             file_manifest (str): The manifest of the file (json format).
-            file (UploadFile): The file containing invocation code.
+            file (UploadFile): The file containing invocation code. Not applicable for
+                               manifest from type mcp 
 
         Returns:
             dict: The unique identifier of the manifest
+
+        Raises:
+            HTTPException (404): If mcp tool not found for this manifest
+            HTTPException (409): If manifest already exist
+
         """
         logger.info(f"Request to add manifest")
 
         manifest_as_dict = json.loads(file_manifest)
         name = manifest_as_dict['name']
 
+        manifest_as_dict_entities = manifest.list_manifests()
+        if list(filter(lambda m: m['name'] == name, manifest_as_dict_entities)):
+            raise HTTPException(status_code=409, detail=f"Manifest '{name}' already exists.")
+
         # TODO: generate UID
         uid = name
         manifest_as_dict['uid'] = uid
-        module_name = manifest_as_dict['module_name']
 
-        # persist the artifacts
-        file_handler.write_file(file, filename=module_name)
+        # TODO: enum mcp/code
+
+        if manifest_as_dict.get("packaging_format") == "mcp":
+            if not manifest_as_dict.get('mcp_url'):
+                raise HTTPException(status_code=400, detail=f"Missing 'mcp_url' in manifest.") 
+
+            # error if tool does not exist in mcp
+            tools = await get_mcp_tools(manifest_as_dict)
+            if not tools:
+                raise HTTPException(status_code=404, detail=f"MCP tool '{name}' not found.")
+            if len(tools) != 1:
+                logger.warning(f"More than one MCP tool '{name}' found.")
+
+            tool_dict = vars(tools[0])
+            _manifest_as_dict = mcp_json_converter(tool_dict, manifest_as_dict)
+            manifest_as_dict.update(**_manifest_as_dict)
+
+        if manifest_as_dict.get("packaging_format") == "code":
+            module_name = manifest_as_dict['module_name']
+            file_handler.write_file(file, filename=module_name)
+
         manifest.write_manifest(f'{uid}.json', manifest_as_dict)
         # TODO: in current version name == uid
         descriptions.write_description(name, manifest_as_dict['description'])
@@ -226,7 +268,7 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             dict: function output
 
         Raises:
-            HTTPException (404): If manifest not found
+            HTTPException (404): If manifest/tool not found
 
         """
         logger.info(f"Request to execute manifest: {uid} with parameters: {parameters}")
@@ -234,13 +276,25 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
         if not manifest_as_dict:
             raise HTTPException(status_code=404, detail="Manifest/file not found")
 
-        module_name = manifest_as_dict['module_name']
-        file_content = file_handler.read_file(module_name, raw_content=True)
-        if not file_content:
-            raise HTTPException(status_code=404, detail="Manifest/file not found")
+        name = manifest_as_dict["name"]
+        # TODO: enum mcp/code
+        if manifest_as_dict.get("packaging_format") == "code":
+            module_name = manifest_as_dict['module_name']
+            # note: if not found 404 is raised
+            content = file_handler.read_file(module_name, raw_content=True)
+
+        # TODO: enum mcp/code
+        if manifest_as_dict.get("packaging_format") == "mcp":
+            # ensure the tool exists in mcp
+            tools = asyncio.run(get_mcp_tools(manifest_as_dict))
+            if not tools:
+                raise HTTPException(status_code=404, detail=f"MCP tool '{name}' not found.")
+            # assert len(tools) == 1, 'More than one tool returned' # TypeError: object of type 'coroutine' has no len()
+            tool_dict = vars(tools[0])
+            content = mcp_content(tool_dict)
 
         file_executor = FileExecutor(
-            filename=module_name, file_content=file_content, file_metadata=manifest_as_dict)
+            name=name, file_content=content, file_manifest=manifest_as_dict)
 
         return file_executor.execute_file(parameters=parameters)
 
@@ -274,13 +328,6 @@ def manifest_api(app, file_handler: FileHandler, descriptions: Description, tags
             logger.warning(f"Failed to delete manifest: {e}")
 
         return {"message": f"Manifest '{uid}' deleted."}
-
-    app.put("/artifacts/manifests/update/{uid}", tags=tags)
-
-    # @version(2)
-    async def update_artifact(uid: str, state: LifecycleState):
-        # this function updates the lifecycle state of a tool artifact
-        return
 
 
 def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
@@ -356,6 +403,7 @@ def file_api(app, descriptions: Description, metadata: Metadata, tags: str):
 
         # For non MCP tools
         return write_single_file_json(file_name, file_json)
+
     def write_single_file_json(file_name: str, file_json: dict):
         logger.info(f"Request to write file (from json): {file_name}")
         file_content = file_json.get("content", "")
@@ -461,7 +509,7 @@ def get_filtered_matched_files(files: List[str],
     files = lifecycle_filtered_matched_files
     return files
 
-
+# TODO: remove
 def descriptions_api(app, metadata, tags: str):
     descriptions_directory = get_descriptions_directory()
     descriptions = Description(descriptions_directory=descriptions_directory,
@@ -524,6 +572,7 @@ def descriptions_api(app, metadata, tags: str):
     return descriptions
 
 
+# TODO: remove
 def metadata_api(app, tags: str):
     metadata_directory = get_metadata_directory()
     metadata = Metadata(metadata_directory=metadata_directory)
@@ -586,7 +635,7 @@ def execute_api(app, tags: str, file_handler: FileHandler, metadata: Metadata):
         file_metadata = metadata.read_metadata(filename)
 
         file_executor = FileExecutor(
-            filename=filename, file_content=file_content, file_metadata=file_metadata)
+            filename=filename, file_content=file_content, file_manifest=file_metadata)
         return file_executor.execute_file(parameters=parameters)
 
 

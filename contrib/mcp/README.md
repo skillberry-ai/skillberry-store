@@ -8,7 +8,7 @@ Follow these steps to set up and experiment with the MCP server:
 Run the MCP server with an accessible URL. For example, start the **Math Tool Server** located in `contrib/mcp/server`:
 
 ```sh
-uv run server.py
+uv run server/server.py
 ```
 
 This will start the MCP server at the following URL:
@@ -21,51 +21,52 @@ Make sure the **Blueberry Service Tool** is running by executing the following c
 make run
 ```
 
-### 3. Upload a Demo MCP Tool
-Open the API documentation at:
+### 3. Add single tool from the MCP server
+
+create the manifest, pointing it to the running server
 
 ```
-http://localhost:8000/docs
-```
-
-Use the **POST** `/file/json/` API to upload a demo MCP tool from:
-
-```
-contrib/mcp/demo_tool/demo_mcp_server.json
-```
-
-Make sure to use the **server name `math.py`**.
-This will add all the tools that exist in the Math MCP server.
-
-### 4. Execute the Tool
-To execute the tool, combine the **server name** and **tool name** to create a filename (e.g., `math_add.py`).
-Use the **POST** `/excute/` Pass the required parameters in JSON format. Example:
-
-```json
+cat <<EOF > my-manifest.json
 {
-  "a": 5,
-  "b": 5
+    "programming_language": "python",
+    "packaging_format": "mcp",
+    "version": "0.0.1",
+    "mcp_url": "http://localhost:8080/sse",
+    "name": "multiply",
+    "state": "approved"
 }
-```
-
-## MCP Server Configuration
-
-### MCP Server URL
-The MCP server URL is retrieved from the **`url`** field in the JSON.
-If not provided, it defaults to the environment variable:
-
-```sh
-MCP_SERVER_URL
-```
-
-### Adding a Single Tool from the MCP Server
-If you only want to add a **single tool** from the MCP server, include the tool name in the metadata.
-Refer to this example:
+EOF
 
 ```
-contrib/mcp/demo_tool/demo_add_single_tool.json
+
+add the manifest. This will add the tool to the tools service and will embed tool description
+
+```
+file_manifest="./my-manifest.json"
+manifest=$(cat "$file_manifest")
+file_manifest_url=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$manifest'''))")
+curl -X POST \
+    -H 'accept: application/json' \
+    "http://localhost:8000/manifests/add?file_manifest=${file_manifest_url}" | jq .
+
 ```
 
-### Content Field
-- The **`content`** field is **optional**.
-- If provided, it **overwrites** the automatically generated content from the MCP server.
+### 4. Execute the tool
+
+```
+curl -X POST \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    --data "{\"a\":\"5\", \"b\":\"5\"}" "http://localhost:8000/manifests/execute/multiply" | jq .
+
+```
+
+### 5. Search for the tool
+
+```
+curl -X GET \
+    -H 'accept: application/json' \
+    -H 'Content-Type: application/json' \
+    "http://localhost:8000/search/manifests?search_term=multiply+numbers" | jq .
+
+```

@@ -107,27 +107,27 @@ def extract_function_and_imports(content: str, function_name: str) -> (
 
 
 class FileExecutor:
-    def __init__(self, filename: str, file_content: AnyStr, file_metadata: dict):
+    def __init__(self, name: str, file_content: AnyStr, file_manifest: dict):
         """
         Initialize the PythonExecutor with the directory path.
         """
-        self.filename = filename
+        self.name = name
         self.content = file_content
 
         try:
-            self.metadata = file_metadata
+            self.manifest = file_manifest
         except Exception as e:
-            logger.error(f"Error parsing metadata: {e}")
+            logger.error(f"Error parsing manifest: {e}")
             raise HTTPException(
-                status_code=400, detail=f"Error parsing metadata: {e}")
+                status_code=400, detail=f"Error parsing manifest: {e}")
 
         self.client = docker.from_env()
         logger.info(
-            f"Initialized file file executor for file: {self.filename}")
+            f"Initialized file file executor: {self.name}")
 
     def execute_file(self, parameters: Dict[str, Any]) -> dict:
         """
-        Executes dynamically based on metadata and parameters.
+        Executes dynamically based on manifest and parameters.
 
         Args:
             parameters (Dict): Execution parameters
@@ -136,7 +136,7 @@ class FileExecutor:
             dict: A message with the execution result or error message.
         """
         logger.info(
-            f"Executing file: {self.filename} with parameters: {parameters}")
+            f"Executing: {self.name} with parameters: {parameters}")
 
         try:
             return self.based_on_programming_language(parameters=parameters)
@@ -147,11 +147,11 @@ class FileExecutor:
 
     def based_on_programming_language(self, parameters):
         """
-        Switches based on the programming_language field in the metadata.
+        Switches based on the programming_language field in the manifest.
         """
-        if self.metadata.get("programming_language") == "python":
+        if self.manifest.get("programming_language") == "python":
             return self.execute_python_file(parameters=parameters)
-        elif self.metadata.get("programming_language") == "bash":
+        elif self.manifest.get("programming_language") == "bash":
             return self.execute_bash_file(parameters=parameters)
         else:
             raise HTTPException(
@@ -165,9 +165,9 @@ class FileExecutor:
 
     def execute_python_file(self, parameters):
 
-        if self.metadata.get("packaging_format") == "code":
+        if self.manifest.get("packaging_format") == "code":
             return_value = self.execute_python_file_using_docker(parameters)
-        elif self.metadata.get("packaging_format") == "mcp":
+        elif self.manifest.get("packaging_format") == "mcp":
             return_value = self.execute_python_file_in_mcp_server(parameters)
         else:
             raise HTTPException(
@@ -202,7 +202,7 @@ class FileExecutor:
 
         try:
             function_name, parameter_definitions, function_imports = (
-                extract_function_and_imports(content=self.content, function_name=self.metadata["name"]))
+                extract_function_and_imports(content=self.content, function_name=self.manifest["name"]))
             if function_name is None:
                 raise HTTPException(
                     status_code=400, detail="No function definition found in the file")
@@ -232,7 +232,7 @@ class FileExecutor:
                     mcp_args_dict[parameter_definition_name] = converted_arg
                 else:
                     mcp_args_dict[parameter_definition_name] = converted_arg
-            mcp_server_url = self.metadata.get("url") or default_mcp_server_url
+            mcp_server_url = self.manifest.get("mcp_url") or default_mcp_server_url
             return_value = asyncio.run(execute_mcp_tool(mcp_server_url, function_name, mcp_args_dict))
 
             if return_value is None:
@@ -255,8 +255,7 @@ class FileExecutor:
 
         try:
             function_name, parameter_definitions, function_imports = extract_function_and_imports(
-                # NOTE: code will not break: manifest/metadata 'name' is mapped to function_name
-                content=self.content, function_name=self.metadata['name'])
+                content=self.content, function_name=self.manifest['name'])
             # format docker command from function name and parameters
             if function_name is None:
                 raise HTTPException(
