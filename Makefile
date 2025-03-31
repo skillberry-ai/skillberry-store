@@ -78,12 +78,7 @@ docker_run: docker_stop ## run the docker image
 	@echo "Running Docker container: $(DOCKER_NAME)"
 	docker run --name $(DOCKER_NAME) -d -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
 
-##@ Develop
-load_tools:  ## Loading tools from the contrib directory to the service
-	./contrib/scripts/load_tools_into_service.sh
+load_tools: ## Load tools into the service
+	@echo "Loading tools into blueberry-tools-service"
+	./client/curl/load_lakehouse_manifests_into_service.sh "$(shell pwd)"
 
-delete_tools:  ## clean tool directories from /tmp
-	-rm -rf /tmp/files
-	-rm -rf /tmp/descriptions
-	-rm -rf /tmp/metadata
-	-rm -rf /tmp/manifest
