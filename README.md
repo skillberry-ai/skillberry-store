@@ -29,6 +29,7 @@ python3 -m pip install --user --upgrade pip
 python3 -m venv ~/virtual/blueberry-tools-service
 ```
 
+
 ## 2. Installation
 
 ```bash
@@ -39,15 +40,42 @@ source ~/virtual/blueberry-tools-service/bin/activate
 make install_requirements
 ```
 
-## 3. Start the service
+## 3. Environment Variables
+
+### Set blueberry-tools-service home directory
+
+```bash
+cd ~/blueberry-tools-service
+export BTS_HOME=$(pwd)
+```
+### Set blueberry-tools-service EXAMPLESPATH to default enclosed examples
+
+```bash
+cd ~/blueberry-tools-service
+export EXAMPLESPATH=$BTS_HOME/contrib/examples
+```
+
+## 4. Start the service
 
 ```bash
 cd ~/blueberry-tools-service
 make run
 ```
 
-### 4. Engage the service through a client
+## 5. Load examples into the service
+```bash
+cd ~/blueberry-tools-service
+make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
+```
+
+### 6. Engage with the service via OpenAPI (Swagger)
+Open a new browser tab/window 
+Copy `0.0.0.0:8000/docs` into the browser search bar and press `Enter`
+
+### 5. Engage the service through a Python client and CURL
 You can now read [client/README.md](client/README.md) to learn more about the service clients - both Python client and CURL client. There are also tests and demos you can use.
+
+# Load included examples
 
 # Loading Sample Data
 

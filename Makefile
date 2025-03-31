@@ -71,6 +71,7 @@ docker_build: ## build  docker image
 	docker build --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .
 
 docker_stop: ## stop docker
+	@echo "Stopping Docker container: $(DOCKER_NAME)"
 	@docker stop $(DOCKER_NAME) > /dev/null 2>&1 || true
 	@docker rm $(DOCKER_NAME) > /dev/null 2>&1 || true
 
@@ -78,7 +79,15 @@ docker_run: docker_stop ## run the docker image
 	@echo "Running Docker container: $(DOCKER_NAME)"
 	docker run --name $(DOCKER_NAME) -d -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
 
+# To run this target: 
+# make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
 load_tools: ## Load tools into the service
 	@echo "Loading tools into blueberry-tools-service"
-	./client/curl/load_lakehouse_manifests_into_service.sh "$(shell pwd)"
+	./client/curl/load_tools.sh $(ARGS) 
+
+clean_slate: stop docker_stop 
+	@echo "Cleaning slate blueberry-tools-service"
+	+rm -rf /tmp/manifest
+	+rm -rf /tmp/descriptions
+	+rm -rf /tmp/files
 
