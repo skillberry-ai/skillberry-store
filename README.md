@@ -68,9 +68,7 @@ Copy `0.0.0.0:8000/docs` into the browser search bar and press `Enter`
 ### 5. Engage the service through a Python client and CURL
 You can now read [client/README.md](client/README.md) to learn more about the service clients - both Python client and CURL client. There are also tests and demos you can use.
 
-# Load included examples
-
-# Loading Sample Data
+## Loading Sample Data
 
 This step downloads sample tools and JSON data to play with from the `genai-lakehouse-mapping` repository
 ```bash
