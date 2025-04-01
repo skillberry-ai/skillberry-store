@@ -17,18 +17,11 @@ docker info --format '{{.LoggingDriver}}'
 ```
 If the response is not `json-file` or `journald`, fix your Docker logging as documented [here](https://docs.docker.com/engine/logging/configure/#configure-the-default-logging-driver)
 
-Next, install prereqs as listed below:   
-```
-sudo apt-get update
-sudo apt-get upgrade
-sudo apt install python3-venv python3-pip
+Set virtual environment
 
-python3 -m pip install --user --upgrade pip
-
-# set virtual environment
+```bash
 python3 -m venv ~/virtual/blueberry-tools-service
 ```
-
 
 ## 2. Installation
 
