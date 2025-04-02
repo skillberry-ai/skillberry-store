@@ -125,7 +125,7 @@ class FileExecutor:
         logger.info(
             f"Initialized file file executor: {self.name}")
 
-    def execute_file(self, parameters: Dict[str, Any]) -> dict:
+    async def execute_file(self, parameters: Dict[str, Any]) -> dict:
         """
         Executes dynamically based on manifest and parameters.
 
@@ -139,7 +139,7 @@ class FileExecutor:
             f"Executing: {self.name} with parameters: {parameters}")
 
         try:
-            return self.based_on_programming_language(parameters=parameters)
+            return await self.based_on_programming_language(parameters=parameters)
         except Exception as e:
             logger.error(f"Error executing file: {e}")
             raise HTTPException(
@@ -163,19 +163,19 @@ class FileExecutor:
         """
         raise HTTPException(status_code=400, detail="Not implemented")
 
-    def execute_python_file(self, parameters):
+    async def execute_python_file(self, parameters):
 
         if self.manifest.get("packaging_format") == "code":
             return_value = self.execute_python_file_using_docker(parameters)
         elif self.manifest.get("packaging_format") == "mcp":
-            return_value = self.execute_python_file_in_mcp_server(parameters)
+            return_value = await self.execute_python_file_in_mcp_server(parameters)
         else:
             raise HTTPException(
                 status_code=400, detail="Unsupported packaging format")
 
         return return_value
 
-    def execute_python_file_in_mcp_server(self, parameters):
+    async def execute_python_file_in_mcp_server(self, parameters):
         """
         Executes a Python file using MCP server
         """
@@ -233,7 +233,7 @@ class FileExecutor:
                 else:
                     mcp_args_dict[parameter_definition_name] = converted_arg
             mcp_server_url = self.manifest.get("mcp_url") or default_mcp_server_url
-            return_value = asyncio.run(execute_mcp_tool(mcp_server_url, function_name, mcp_args_dict))
+            return_value = await execute_mcp_tool(mcp_server_url, function_name, mcp_args_dict)
 
             if return_value is None:
                 raise HTTPException(
