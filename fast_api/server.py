@@ -1,13 +1,15 @@
 import json
 import logging
 import os
+from time import time
+
 import uvicorn
 
 from mcp.server.sse import SseServerTransport
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from starlette.routing import Route, Mount
 
-
-from typing import  Optional, Dict, Any,Literal
+from typing import Optional, Dict, Any, Literal
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
@@ -24,14 +26,42 @@ from modules.description_vector_index import DescriptionVectorIndex
 from modules.file_handler import FileHandler
 from modules.file_executor import FileExecutor
 from tools.configure import get_files_directory_path, get_descriptions_directory, \
-    get_manifest_directory,configure_logging
+    get_manifest_directory, configure_logging
 from fast_api.server_utils import get_mcp_tools, mcp_json_converter, mcp_content
 
+from fast_api.observability import observability_setup
+from prometheus_client import Counter, Histogram
 
 # this environment variable is used to enable the latest API version
 ENABLE_API_VERSION = os.environ.get('ENABLE_API_VERSION', 'latest')
 
 logger = logging.getLogger(__name__)
+
+observability_setup()
+
+# observability - metrics
+prom_prefix = "bts_fastapi_"
+list_manifests_counter = Counter(f"{prom_prefix}list_manifests_counter",
+                                 "Count number of manifest list operations")
+delete_manifest_counter = Counter(f"{prom_prefix}delete_manifest_counter",
+                                  "Count number of manifest delete operations")
+add_manifest_counter = Counter(f"{prom_prefix}add_manifest_counter",
+                               "Count number of manifest delete operations")
+get_manifest_counter = Counter(f"{prom_prefix}get_manifest_counter",
+                               "Count number of manifest get operations")
+get_code_manifest_counter = Counter(f"{prom_prefix}get_code_manifest_counter",
+                                    "Count number of manifest get code operations")
+search_manifest_counter = Counter(f"{prom_prefix}search_manifest_counter",
+                                  "Count number of manifest search operations")
+execute_manifest_counter = Counter(f"{prom_prefix}execute_manifest_counter",
+                                   "Count number of manifest execute operations",
+                                   ["uid"])
+execute_successfully_manifest_counter = Counter(f"{prom_prefix}execute_successfully_manifest_counter",
+                                                "Count number of manifest executed successfully operations",
+                                                ["uid"])
+execute_successfully_manifest_latency = Histogram(f"{prom_prefix}execute_successfully_manifest_latency",
+                                                  "Histogram of execute manifest successfully latencies",
+                                                  ["uid"], unit="seconds")
 
 
 class BTSettings(BaseSettings):
@@ -40,6 +70,7 @@ class BTSettings(BaseSettings):
     port: int = Field(8000, env="UVICORN_PORT")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field("INFO", env="UVICORN_LOG_LEVEL")
     mcp_mode: bool = Field(False, env="MCP_MODE")
+
 
 class BTS(FastAPI):
     def __init__(self, **settings: Any):
@@ -50,14 +81,15 @@ class BTS(FastAPI):
         self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
         self.logger = logging.getLogger(__name__)
-        self.manifest_api(file_handler=file_api(), descriptions= descriptions_api(), tags=["manifest"])
+        self.manifest_api(file_handler=file_api(), descriptions=descriptions_api(), tags=["manifest"])
+
     def configure_fastapi(self):
         """Configures CORS middleware and OpenAPI documentation settings."""
         openapi_tags = [
             {
                 "name": "manifest",
                 "description": "Operations for manifest (tools manifest, programming language, packaging format, "
-                            "security, etc.)",
+                               "security, etc.)",
             }
         ]
 
@@ -70,6 +102,9 @@ class BTS(FastAPI):
         )
 
         self.openapi = lambda: custom_openapi(self, openapi_tags)
+
+        # Add observability for FastAPI application
+        FastAPIInstrumentor.instrument_app(self)
 
     def run(self):
         """Starts the FastAPI app using Uvicorn, and sets up SSE proxy routes if MCP mode is enabled."""
@@ -93,8 +128,8 @@ class BTS(FastAPI):
 
         uvicorn.run(self, host=self.settings.host, port=self.settings.port)
 
-    def get_manifests(self,manifest_filter: str = ".",
-                    lifecycle_state: LifecycleState = LifecycleState.ANY):
+    def get_manifests(self, manifest_filter: str = ".",
+                      lifecycle_state: LifecycleState = LifecycleState.ANY):
         """
         Return a list of manifests matching the given lifecycle state and properties filter.
 
@@ -106,6 +141,8 @@ class BTS(FastAPI):
             list (dict): A list of matched manifests in json format
 
         """
+        list_manifests_counter.inc()
+
         manifest_directory = get_manifest_directory()
         manifest = Manifest(manifest_directory=manifest_directory)
         manifest_as_dict_entities = manifest.list_manifests()
@@ -133,7 +170,7 @@ class BTS(FastAPI):
 
         return manifest_as_dict_entities
 
-    async def execute_manifest(self,uid: str, parameters: Optional[Dict[str, Any]] = None):
+    async def execute_manifest(self, uid: str, parameters: Optional[Dict[str, Any]] = None):
         """
         Invoke manifest function given its uid.
 
@@ -149,6 +186,9 @@ class BTS(FastAPI):
 
         """
         logger.info(f"Request to execute manifest: {uid} with parameters: {parameters}")
+        execute_manifest_counter.labels(uid=uid).inc()
+        start_time = time()
+
         manifest_directory = get_manifest_directory()
         manifest = Manifest(manifest_directory=manifest_directory)
         file_handler = file_api()
@@ -175,7 +215,12 @@ class BTS(FastAPI):
 
         file_executor = FileExecutor(
             name=name, file_content=content, file_manifest=manifest_as_dict)
-        result= await file_executor.execute_file(parameters=parameters)
+        result = await file_executor.execute_file(parameters=parameters)
+
+        duration = (time() - start_time)
+        execute_successfully_manifest_counter.labels(uid=uid).inc()
+        execute_successfully_manifest_latency.labels(uid=uid).observe(duration)
+
         logger.info(f"result {result}")
         return result
 
@@ -189,8 +234,8 @@ class BTS(FastAPI):
 
         @self.get("/manifests/", tags=tags)
         def get_manifests_handler(manifest_filter: str = ".",
-                        lifecycle_state: LifecycleState = LifecycleState.ANY):
-            return self.get_manifests(manifest_filter,lifecycle_state)
+                                  lifecycle_state: LifecycleState = LifecycleState.ANY):
+            return self.get_manifests(manifest_filter, lifecycle_state)
 
         @self.get("/manifests/{uid}", tags=tags)
         def get_manifest(uid: str):
@@ -208,6 +253,8 @@ class BTS(FastAPI):
 
             """
             logger.info(f"Request to read manifest for uid: {uid}")
+            get_manifest_counter.inc()
+
             file_manifest = manifest.read_manifest(f'{uid}.json')
             if file_manifest:
                 logger.info(f"Manifest for {uid}: {file_manifest}")
@@ -234,6 +281,8 @@ class BTS(FastAPI):
 
             """
             logger.info(f"Request to read manifest code for uid: {uid}")
+            get_code_manifest_counter.inc()
+
             manifest_as_dict = manifest.read_manifest(f'{uid}.json')
             if manifest_as_dict:
                 logger.info(f"Manifest for {uid}: {manifest_as_dict}")
@@ -273,12 +322,14 @@ class BTS(FastAPI):
 
             """
             logger.info(f"Request to search descriptions for term: {search_term}")
+            search_manifest_counter.inc()
+
             matched_entities = descriptions.search_description(
                 search_term=search_term,
                 k=max_number_of_results)
 
             filtered_matched_entities = [matched_entity for matched_entity in matched_entities if
-                                        matched_entity["similarity_score"] <= similarity_threshold]
+                                         matched_entity["similarity_score"] <= similarity_threshold]
 
             # if we are requested to limit the search to a specific lifecycle state, we filter the results
             if lifecycle_state is not LifecycleState.ANY:
@@ -309,7 +360,7 @@ class BTS(FastAPI):
             return filtered_matched_entities
 
         @self.post("/manifests/add", tags=tags)
-        async def add_manifest(file_manifest: str, file: Optional [UploadFile] = File(None)):
+        async def add_manifest(file_manifest: str, file: Optional[UploadFile] = File(None)):
             """
             Adds manifest.
 
@@ -337,6 +388,7 @@ class BTS(FastAPI):
 
             """
             logger.info(f"Request to add manifest")
+            add_manifest_counter.inc()
 
             manifest_as_dict = json.loads(file_manifest)
             name = manifest_as_dict['name']
@@ -407,6 +459,8 @@ class BTS(FastAPI):
 
             """
             logger.info(f"Request to delete manifest: {uid}")
+            delete_manifest_counter.inc()
+
             manifest_as_dict = manifest.read_manifest(f'{uid}.json')
             if not manifest_as_dict:
                 raise HTTPException(status_code=404, detail="Manifest not found")
@@ -496,5 +550,3 @@ print(response.json())"""
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
-
-
