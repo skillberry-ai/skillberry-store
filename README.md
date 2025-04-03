@@ -62,7 +62,7 @@ make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetC
 ```
 
 ### 6. Engage with the service via OpenAPI (Swagger)
-Open a new browser tab/window 
+Open a new browser tab/window
 Copy `0.0.0.0:8000/docs` into the browser search bar and press `Enter`
 
 ### 5. Engage the service through a Python client and CURL
@@ -78,3 +78,6 @@ cd genai-lakehouse-mapping
 git checkout 7ff12d99f4533c294a0d978c4a075adda485f02
 ```
 
+### 7. Run BTS with Agent Frameworks
+
+To connect BTS to different agent frameworks, follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
