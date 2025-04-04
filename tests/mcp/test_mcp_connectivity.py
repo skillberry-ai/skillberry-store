@@ -2,11 +2,10 @@ import asyncio
 import httpx
 import pytest
 
-from utils import clean_test_tmp_dir,wait_until_server_ready, add_tool_manifest
+from tests.utils import clean_test_tmp_dir,wait_until_server_ready, add_tool_manifest
 
 
 
-@pytest.mark.mcp
 @pytest.mark.asyncio
 async def test_mcp_mode():
     """Test the BSP server running in MCP mode via subprocess."""

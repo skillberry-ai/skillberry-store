@@ -1,13 +1,7 @@
 # Agent Framework
-## 1. Set Root and Environment Variables
+## 1. Set Environment Variables
 
-First, navigate to the BTS project root directory and export the necessary environment variables:
-
-```bash
-cd ~/blueberry-tools-service
-export BTS_HOME=$(pwd)
-export EXAMPLESPATH=$BTS_HOME/contrib/examples
-```
+First, make sure that `$BTS_HOME` and  `EXAMPLESPATH` are set as defined in the project [README](../../../README.md)
 
 ## 2. Configure the `.env` File
 
@@ -16,7 +10,7 @@ To connect BTS to different agent frameworks, set the following parameters in th
 ```bash
 MODEL_NAME=rits/meta-llama/llama-3-3-70b-instruct
 BASE_URL=http://blueberry.sl.cloud9.ibm.com:4000
-RITS_API_KEY=<RITS_API_KEY>
+OPENAI_API_KEY=<RITS_API_KEY>
 ```
 
 ## 3. Run BTS in MCP Server Mode

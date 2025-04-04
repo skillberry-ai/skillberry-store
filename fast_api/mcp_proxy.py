@@ -12,11 +12,11 @@ class ToolMapping:
     client: ClientSession
     tool :types.Tool
 
-class MCPProxyServer(server.Server):
-    """An MCP Proxy Server that forwards requests to remote MCP servers."""
+class MCPToBTSProxy(server.Server):
+    """An MCP Proxy Server that convert the requests to BTS."""
 
     def __init__(self,app: FastAPI):
-        super().__init__("MCP Proxy Server")
+        super().__init__("MCP-BTS Proxy")
         self._register_request_handlers()
         configure_logging()
         self.app=app
@@ -25,7 +25,7 @@ class MCPProxyServer(server.Server):
 
 
     async def _list_tools(self, _: Any) -> types.ServerResult:
-        """Aggregate tools from all remote MCP servers and return a combined list."""
+        """Send a list of the tools from BTS."""
         manifests_list = self.app.get_manifests()
 
         self.logger.info(f"Found {len(manifests_list)} manifests")
@@ -41,7 +41,7 @@ class MCPProxyServer(server.Server):
         return types.ListToolsResult(tools=tools)
 
     async def _call_tool(self, req: types.CallToolRequest) -> types.ServerResult:
-        """Invoke a tool on the correct backend MCP server."""
+        """Invoke a tool using the appropriate manifest in BTS."""
         result = await  self.app.execute_manifest(req.params.name,req.params.arguments)
         self.logger.info(f"result {result}")
 

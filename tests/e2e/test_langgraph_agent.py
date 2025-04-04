@@ -5,7 +5,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
-from utils import clean_test_tmp_dir,wait_until_server_ready, add_tool_manifest
+from tests.utils import clean_test_tmp_dir,wait_until_server_ready, add_tool_manifest
 
 load_dotenv()
 EXPECTED_TOOLS=["multiply"]
@@ -23,7 +23,6 @@ def get_chat_model() -> ChatOpenAI:
         temperature=0.7,
     )
 
-@pytest.mark.mcp
 @pytest.mark.asyncio
 async def test_mcp_mode():
     """Test the BSP server running in MCP mode via subprocess."""

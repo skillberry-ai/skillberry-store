@@ -15,7 +15,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from fast_api.mcp_proxy import MCPProxyServer
+from fast_api.mcp_proxy import MCPToBTSProxy
 from modules.dictionary_checker import DictionaryChecker
 from modules.lifecycle import LifecycleState, LifecycleManager
 from modules.manifest import Manifest
@@ -47,11 +47,11 @@ class BTS(FastAPI):
 
         super().__init__()
         self.settings = BTSettings(**settings)
-        self.setup()
+        self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
         self.logger = logging.getLogger(__name__)
         self.manifest_api(file_handler=file_api(), descriptions= descriptions_api(), tags=["manifest"])
-    def setup(self):
+    def configure_fastapi(self):
         """Configures CORS middleware and OpenAPI documentation settings."""
         openapi_tags = [
             {
@@ -60,8 +60,6 @@ class BTS(FastAPI):
                             "security, etc.)",
             }
         ]
-
-
 
         self.add_middleware(
             CORSMiddleware,
@@ -77,9 +75,9 @@ class BTS(FastAPI):
         """Starts the FastAPI app using Uvicorn, and sets up SSE proxy routes if MCP mode is enabled."""
         self.logger.info("Starting BTS server")
         if self.settings.mcp_mode:
-            self.logger.info("BTS server run in MCP mode")
+            self.logger.info("BTS server run in MCP mode with transport SSE")
 
-            proxy = MCPProxyServer(self)
+            proxy = MCPToBTSProxy(self)
             sse = SseServerTransport("/messages/")
 
             async def handle_sse(request):

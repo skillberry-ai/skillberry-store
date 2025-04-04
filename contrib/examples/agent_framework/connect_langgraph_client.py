@@ -35,8 +35,8 @@ async def main():
 
 
         # Use calculator tool
-        weather_response = await agent.ainvoke({"messages": "what's the answer for (10 + 5)?"})
-        for m in weather_response['messages']:
+        response = await agent.ainvoke({"messages": "what's the answer for (10 + 5)?"})
+        for m in response['messages']:
             m.pretty_print()
 
 

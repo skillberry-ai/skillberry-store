@@ -48,10 +48,10 @@ run: install_requirements ## Launch the tools service
 	fi
 
 test: install_requirements ## Test the application
-	pytest -m "not mcp"
+	pytest
 
-test-mcp:
-	pytest -s tests
+test-e2e:
+	pytest -s tests/e2e
 ## Use only when absolutely needed! (e.g., initial setup or when service API changed)
 gen_client: $(TOOLS_SERVICE_SENTINEL)
 	@mkdir -p client/gen

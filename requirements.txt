@@ -9,10 +9,12 @@ charset-normalizer==3.4.1
 click==8.1.8
 configobj==5.0.9
 distro==1.9.0
+dnspython==2.7.0
 docker==7.1.0
 docstring-parser==0.16
+email-validator==2.2.0
 faiss-cpu==1.8.0
-fastapi==0.115.8
+fastapi==0.115.12
 fastapi-versioning==0.10.0
 filelock==3.17.0
 flake8==3.9.0

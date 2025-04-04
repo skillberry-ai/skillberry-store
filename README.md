@@ -61,12 +61,25 @@ cd ~/blueberry-tools-service
 make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
 ```
 
-### 6. Engage with the service via OpenAPI (Swagger)
+## 6. Engage with the service via OpenAPI (Swagger)
 Open a new browser tab/window
 Copy `0.0.0.0:8000/docs` into the browser search bar and press `Enter`
 
-### 5. Engage the service through a Python client and CURL
+## 7. Engage the service through a Python client and CURL
 You can now read [client/README.md](client/README.md) to learn more about the service clients - both Python client and CURL client. There are also tests and demos you can use.
+
+## 8. Run BTS in MCP Server Mode
+
+Run BTS in MCP server mode to allow it to connect to any agent framework that supports MCP. Set the MCP_MODE variable:
+
+```bash
+MCP_MODE=True make run
+```
+
+### 9. Run BTS with Agent Frameworks
+
+To connect BTS to different agent frameworks, follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
+
 
 ## Loading Sample Data
 
@@ -78,6 +91,3 @@ cd genai-lakehouse-mapping
 git checkout 7ff12d99f4533c294a0d978c4a075adda485f02
 ```
 
-### 7. Run BTS with Agent Frameworks
-
-To connect BTS to different agent frameworks, follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
