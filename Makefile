@@ -80,6 +80,8 @@ docker_stop: ## Stop the docker image
 
 test: install_requirements ## Test the tools service
 	pytest
+test-e2e: ## Test end-to-end the tools service
+	pytest -s tests/e2e
 
 # To run this target:
 # make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
