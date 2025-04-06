@@ -91,3 +91,20 @@ cd genai-lakehouse-mapping
 git checkout 7ff12d99f4533c294a0d978c4a075adda485f02
 ```
 
+## Monitoring the service
+
+- Open a new browser tab/window and execute: (to start a local prometheus server)
+```bash
+echo -e "global:\n  scrape_interval: 5s\nscrape_configs:\n  - job_name: \"blueberry-tools-service\"\n    static_configs:\n      - targets: [\"localhost:9000\"]\n    metric_relabel_configs:\n      - source_labels: [__name__]\n        regex: '.*_created'\n        action: drop" > /tmp/prometheus.yml
+docker run --rm --name prometheus --network="host" -p 9090:9090 -v /tmp/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus --config.file=/etc/prometheus/prometheus.yml
+```
+
+Metrics are available in prometheus: http://localhost:9090
+Note: Application metrics are prefix with `bts_`
+
+- Open a new browser tab/window and execute: (to start a local jaeger server)
+```bash
+docker run --rm --name jaeger --network="host" -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one:latest
+```
+
+Trace are available in jaeger: http://localhost:16686
