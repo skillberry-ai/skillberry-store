@@ -64,14 +64,14 @@ clean:  ## Clean temporary files
 
 ##@ Docker
 
-docker_build: ## build docker image
+docker_build: ## Build docker image
 	docker build --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .
 
-docker_run: docker_stop ## run the docker image
+docker_run: docker_stop ## Run the docker image
 	@echo "Running Docker container: $(DOCKER_NAME)"
 	docker run --name $(DOCKER_NAME) -d -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
 
-docker_stop: ## stop the docker image
+docker_stop: ## Stop the docker image
 	@echo "Stopping Docker container: $(DOCKER_NAME)"
 	@docker stop $(DOCKER_NAME) > /dev/null 2>&1 || true
 	@docker rm $(DOCKER_NAME) > /dev/null 2>&1 || true
