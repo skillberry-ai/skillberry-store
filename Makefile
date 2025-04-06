@@ -45,11 +45,13 @@ run: install_requirements ## Launch the tools service
 	else \
 		echo "Starting Blueberry Tools Service"; \
 		contrib/scripts/start-service.sh /tmp/tools-service.log $(TOOLS_SERVICE_SENTINEL) python main.py; \
-	fi	
+	fi
 
 test: install_requirements ## Test the application
 	pytest
 
+test-e2e:
+	pytest -s tests/e2e
 ## Use only when absolutely needed! (e.g., initial setup or when service API changed)
 gen_client: $(TOOLS_SERVICE_SENTINEL)
 	@mkdir -p client/gen
@@ -79,15 +81,14 @@ docker_run: docker_stop ## run the docker image
 	@echo "Running Docker container: $(DOCKER_NAME)"
 	docker run --name $(DOCKER_NAME) -d -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
 
-# To run this target: 
+# To run this target:
 # make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
 load_tools: ## Load tools into the service
 	@echo "Loading tools into blueberry-tools-service"
-	./client/curl/load_tools.sh $(ARGS) 
+	./client/curl/load_tools.sh $(ARGS)
 
-clean_slate: stop docker_stop 
+clean_slate: stop docker_stop
 	@echo "Cleaning slate blueberry-tools-service"
 	+rm -rf /tmp/manifest
 	+rm -rf /tmp/descriptions
 	+rm -rf /tmp/files
-
