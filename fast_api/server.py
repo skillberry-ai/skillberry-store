@@ -6,7 +6,6 @@ from time import time
 import uvicorn
 
 from mcp.server.sse import SseServerTransport
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from starlette.routing import Route, Mount
 
 from typing import Optional, Dict, Any, Literal
@@ -16,6 +15,7 @@ from pydantic import Field
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from fast_api.mcp_proxy import MCPToBTSProxy
 from modules.dictionary_checker import DictionaryChecker
@@ -220,7 +220,6 @@ class BTS(FastAPI):
         duration = (time() - start_time)
         execute_successfully_manifest_counter.labels(uid=uid).inc()
         execute_successfully_manifest_latency.labels(uid=uid).observe(duration)
-
         logger.info(f"result {result}")
         return result
 
