@@ -4,8 +4,12 @@
 BUILD_VERSION ?= latest
 BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
 
-DOCKER_NAME = blueberry-tools-service
+DOCKER_REPOSITORY_NAME ?= artifactory.haifa.ibm.com:5130
+IMAGE_NAME = blueberry-tools-service
+
+DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
 DOCKER_VERSION = $(BUILD_VERSION)
+
 
 TOOLS_SERVICE_SENTINEL=/tmp/tools-service.pid
 
@@ -68,13 +72,17 @@ docker_build: ## Build docker image
 	docker build --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .
 
 docker_run: docker_stop ## Run the docker image
-	@echo "Running Docker container: $(DOCKER_NAME)"
-	docker run --name $(DOCKER_NAME) -d -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
+	@echo "Running Docker container: $(IMAGE_NAME)"
+	docker run --name $(IMAGE_NAME) --env-file .env -d -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
 
 docker_stop: ## Stop the docker image
-	@echo "Stopping Docker container: $(DOCKER_NAME)"
-	@docker stop $(DOCKER_NAME) > /dev/null 2>&1 || true
-	@docker rm $(DOCKER_NAME) > /dev/null 2>&1 || true
+	@echo "Stopping Docker container: $(IMAGE_NAME)"
+	@docker stop $(IMAGE_NAME) > /dev/null 2>&1 || true
+	@docker rm $(IMAGE_NAME) > /dev/null 2>&1 || true
+
+# make sure that you are login with required credentials
+docker_push: docker_build ## Push docker image
+	docker push $(DOCKER_NAME):$(DOCKER_VERSION)
 
 ##@ Develop
 
