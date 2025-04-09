@@ -26,7 +26,7 @@ class MCPToBTSProxy(server.Server):
 
     async def _list_tools(self, _: Any) -> types.ServerResult:
         """Send a list of the tools from BTS."""
-        manifests_list = self.app.get_manifests()
+        manifests_list = self.app.handle_get_manifests()
 
         self.logger.info(f"Found {len(manifests_list)} manifests")
 
@@ -42,7 +42,7 @@ class MCPToBTSProxy(server.Server):
 
     async def _call_tool(self, req: types.CallToolRequest) -> types.ServerResult:
         """Invoke a tool using the appropriate manifest in BTS."""
-        result = await  self.app.execute_manifest(req.params.name,req.params.arguments)
+        result = await  self.app.handle_execute_manifest(req.params.name,req.params.arguments)
         self.logger.info(f"result {result}")
 
         return types.CallToolResult(

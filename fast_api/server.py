@@ -128,7 +128,7 @@ class BTS(FastAPI):
 
         uvicorn.run(self, host=self.settings.host, port=self.settings.port)
 
-    def get_manifests(self, manifest_filter: str = ".",
+    def handle_get_manifests(self, manifest_filter: str = ".",
                       lifecycle_state: LifecycleState = LifecycleState.ANY):
         """
         Return a list of manifests matching the given lifecycle state and properties filter.
@@ -170,7 +170,7 @@ class BTS(FastAPI):
 
         return manifest_as_dict_entities
 
-    async def execute_manifest(self, uid: str, parameters: Optional[Dict[str, Any]] = None):
+    async def handle_execute_manifest(self, uid: str, parameters: Optional[Dict[str, Any]] = None):
         """
         Invoke manifest function given its uid.
 
@@ -232,9 +232,9 @@ class BTS(FastAPI):
         manifest = Manifest(manifest_directory=manifest_directory)
 
         @self.get("/manifests/", tags=tags)
-        def get_manifests_handler(manifest_filter: str = ".",
+        def get_manifests(manifest_filter: str = ".",
                                   lifecycle_state: LifecycleState = LifecycleState.ANY):
-            return self.get_manifests(manifest_filter, lifecycle_state)
+            return self.handle_get_manifests(manifest_filter, lifecycle_state)
 
         @self.get("/manifests/{uid}", tags=tags)
         def get_manifest(uid: str):
@@ -428,7 +428,7 @@ class BTS(FastAPI):
             return {'uid': manifest_as_dict['uid']}
 
         @self.post("/manifests/execute/{uid}", tags=tags)
-        async def execute_manifest_handler(uid: str, parameters: Optional[Dict[str, Any]] = None):
+        async def execute_manifest(uid: str, parameters: Optional[Dict[str, Any]] = None):
             """
             Invoke manifest function given its uid.
 
@@ -443,7 +443,7 @@ class BTS(FastAPI):
                 HTTPException (404): If manifest/tool not found
 
             """
-            return await self.execute_manifest(uid, parameters)
+            return await self.handle_execute_manifest(uid, parameters)
 
         @self.delete("/manifests/{uid}", tags=tags)
         def delete_manifest(uid: str):
@@ -507,7 +507,7 @@ def custom_openapi(app: FastAPI, openapi_tags):
     openapi_schema = get_openapi(
         title="blueberry",
         summary="Towards hallucination-less AI systems",
-        version="0.0.1",
+        version="0.2",
         tags=openapi_tags,
         contact={
             "name": "Eran Raichstein",
@@ -515,37 +515,6 @@ def custom_openapi(app: FastAPI, openapi_tags):
         },
         routes=app.routes,
     )
-
-    for path, methods in openapi_schema["paths"].items():
-        for method in methods.keys():  # e.g., "get", "post"
-            if method in ["get", "post", "put", "delete", "patch"]:  # Only HTTP methods
-                url = f"http://127.0.0.1:8000{path}"
-
-                python_example_requests = f"""import requests
-
-response = requests.{method}("{url}")
-print(response.json())"""
-
-                curl_example = f"""curl -X {method.upper()} "{url}" """
-
-                example_obj = {
-                    "python_requests": {
-                        "summary": "Python (requests)",
-                        "value": python_example_requests
-                    },
-                    "curl": {
-                        "summary": "cURL example",
-                        "value": curl_example
-                    }
-                }
-
-                # Add examples to the responses
-                if "responses" in methods[method]:
-                    methods[method]["responses"]["200"]["content"] = {
-                        "text/plain": {
-                            "examples": example_obj
-                        }
-                    }
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
