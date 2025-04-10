@@ -25,7 +25,7 @@ make docker_run
   
 > Note: use `make help` for a complete list of options  
 
-### Prerequisites 🛠️
+## Prerequisites 🛠️
   
 - Docker is installed on your machine.  
   
@@ -43,7 +43,7 @@ Additional requisites for local deployment:
 
 See [DESIGN_REQUIREMENTS.md](DESIGN_REQUIREMENTS.md)
 
-### Local installation 📦
+## Local installation 📦
 
 ```bash
 git clone git@github.ibm.com:Blueberry/blueberry-tools-service.git
@@ -51,13 +51,13 @@ cd blueberry-tools-service
 make install_requirements
 ```
 
-### Start the Service locally (alternative to docker) 🚀
+## Start the Service locally (alternative to docker) 🚀
 
 ```bash
 make run
 ```
 
-### Loading example tools into the Service 📂
+## Loading example tools into the Service 📂
 
 - Set the home directory and the EXAMPLESPATH for blueberry-tools-service environment Variables 🌐
 
@@ -72,16 +72,16 @@ export EXAMPLESPATH=$BTS_HOME/contrib/examples
 make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
 ```
 
-### Engage with the Service via OpenAPI 📜
+## Engage with the Service via OpenAPI 📜
 
 Open a browser against `http://127.0.0.1:8000/docs` .
 
-### Engage with the Service through a Python Client and CURL 🐍
+## Engage with the Service through a Python Client and CURL 🐍
 
 Refer to [client/README.md](client/README.md) for more information on using the service clients, including Python and CURL clients.   
 There are also tests and demos available.
 
-### Run BTS in MCP Server Mode 🖥️
+## Run BTS in MCP Server Mode 🖥️
 
 To run BTS in MCP server mode, allowing it to connect to any agent framework that supports MCP, set the MCP_MODE variable:
 
@@ -89,7 +89,7 @@ To run BTS in MCP server mode, allowing it to connect to any agent framework tha
 MCP_MODE=True make run
 ```
 
-### Examples of using BTS with Agentic Frameworks 🤖
+## Examples of using BTS with Agentic Frameworks 🤖
 
 Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).  
 > Note: the example makes use of BTS in MCP mode
