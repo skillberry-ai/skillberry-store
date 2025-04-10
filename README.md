@@ -12,6 +12,8 @@ For a quick start, use Docker to run the service:
 make docker_run
 ```
   
+> Note: use `make help` for a complete list of options  
+
 ### Prerequisites 🛠️
   
 - Docker is installed on your machine.  
@@ -38,7 +40,7 @@ cd blueberry-tools-service
 make install_requirements
 ```
 
-### Start the Service locally 🚀
+### Start the Service locally (alternative to docker) 🚀
 
 ```bash
 make run
@@ -59,11 +61,11 @@ export EXAMPLESPATH=$BTS_HOME/contrib/examples
 make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
 ```
 
-### Engage with the Service via OpenAPI (Swagger) 📜
+### Engage with the Service via OpenAPI 📜
 
-Open a browser against `http://127.0.0.1:8000/docs`.
+Open a browser against `http://127.0.0.1:8000/docs` .
 
-### Engage the Service through a Python Client and CURL 🐍
+### Engage with the Service through a Python Client and CURL 🐍
 
 Refer to [client/README.md](client/README.md) for more information on using the service clients, including Python and CURL clients.   
 There are also tests and demos available.
@@ -78,7 +80,8 @@ MCP_MODE=True make run
 
 ### Examples of using BTS with Agentic Frameworks 🤖
 
-Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
+Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).  
+> Note: the example makes use of BTS in MCP mode
 
 ## Monitoring the Service 📈
 
