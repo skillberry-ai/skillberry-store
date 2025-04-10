@@ -96,15 +96,16 @@ Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/
 
 ## Monitoring the Service 📈
 
-- To start a local Prometheus server execute:
+### To start a local Prometheus server execute:
 ```bash
 echo -e "global:\n  scrape_interval: 5s\nscrape_configs:\n  - job_name: \"blueberry-tools-service\"\n    static_configs:\n      - targets: [\"localhost:9000\"]\n    metric_relabel_configs:\n      - source_labels: [__name__]\n        regex: '.*_created'\n        action: drop" > /tmp/prometheus.yml
 docker run --rm --name prometheus --network="host" -p 9090:9090 -v /tmp/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus --config.file=/etc/prometheus/prometheus.yml
 ```
 
-Metrics are available in Prometheus at http://localhost:9090. Note: Application metrics are prefixed with `bts_`.
+Metrics are available in Prometheus at http://localhost:9090.  
+> Note: Application metrics are prefixed with `bts_`.
 
-- To start a local Jaeger server execute:
+### To start a local Jaeger server execute:
 ```bash
 docker run --rm --name jaeger --network="host" -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one:latest
 ```
