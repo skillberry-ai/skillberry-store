@@ -73,7 +73,7 @@ docker_build: ## Build docker image
 
 docker_run: docker_stop ## Run the docker image
 	@echo "Running Docker container: $(IMAGE_NAME)"
-	docker run --name $(IMAGE_NAME) --env-file .env -d -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
+	docker run --name $(IMAGE_NAME) --env-file .env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
 
 docker_stop: ## Stop the docker image
 	@echo "Stopping Docker container: $(IMAGE_NAME)"
