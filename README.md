@@ -61,11 +61,11 @@ make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetC
 
 ### Engage with the Service via OpenAPI (Swagger) 📜
 
-Open a browser against `0.0.0.0:8000/docs`.
+Open a browser against `http://127.0.0.1:8000/docs`.
 
 ### Engage the Service through a Python Client and CURL 🐍
 
-Refer to client/README.md for more information on using the service clients, including Python and CURL clients. 
+Refer to [client/README.md](client/README.md) for more information on using the service clients, including Python and CURL clients.   
 There are also tests and demos available.
 
 ### Run BTS in MCP Server Mode 🖥️
@@ -76,9 +76,9 @@ To run BTS in MCP server mode, allowing it to connect to any agent framework tha
 MCP_MODE=True make run
 ```
 
-### Run BTS with Agent Frameworks 🤖
+### Examples of using BTS with Agentic Frameworks 🤖
 
-To connect BTS to different agent frameworks, follow the steps outlined in Run BTS with Agent Frameworks.
+Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
 
 ## Monitoring the Service 📈
 
