@@ -4,14 +4,16 @@ This service implements a smart tools repository for agentic workflows.
 
 ## Features ✨
 
-- **Manage tools for agentic workloads**: Add (Persist), Remove, Update, and Delete tools. 
+- **Manage tools for agentic workloads**: Add (Persist), Remove, Update, and Delete tools.
 - **Tools Execution**: Invoke tools (with parameters) using Docker (sand-boxing).
 - **Tools Search and list**: Shortlist tools using semantic and classic search.
 - **Tools Life Cycle Management**: Provides tools life cycle management (state, visability, etc.).
 - **Observability**: Provide metrics and traces for operational and behivioural analysis of tools usage.
-- **OpenAPI frontend**: FastAPI endpoint to interact and manage tools (using tools-manifest artifacts)   
+- **OpenAPI frontend**: FastAPI endpoint to interact and manage tools (using tools-manifest artifacts)
 - **MCP frontend**: Expose the tools in [MCP](https://github.com/modelcontextprotocol) format.
 - **Support Multiple MCP backends**: Consume and route additional tools from multiple backend MCP servers.
+- **Agentic Framework Integration**: Connect to different agentic frameworks via the MCP frontend.
+
 
 ## Quickstart 🚀
 
@@ -22,16 +24,16 @@ For a quick start, use Docker to run the service:
 ```bash
 make docker_run
 ```
-  
-> Note: use `make help` for a complete list of options  
+
+> Note: use `make help` for a complete list of options
 
 ## Prerequisites 🛠️
-  
-- Docker is installed on your machine.  
-  
-Additional requisites for local deployment:  
-- Your user has Docker permissions (i.e., is a member of the `docker` group).  
-- The Docker logging driver is set to either `json-file` or `journald`.   
+
+- Docker is installed on your machine.
+
+Additional requisites for local deployment:
+- Your user has Docker permissions (i.e., is a member of the `docker` group).
+- The Docker logging driver is set to either `json-file` or `journald`.
 
 > Check the logging driver with the following command:
 > ```bash
@@ -66,7 +68,7 @@ export BTS_HOME=$(pwd)
 export EXAMPLESPATH=$BTS_HOME/contrib/examples
 ```
 
-- Load example tools: 
+- Load example tools:
 
 ```bash
 make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
@@ -78,7 +80,7 @@ Open a browser against `http://127.0.0.1:8000/docs` .
 
 ## Engage with the Service through a Python Client and CURL 🐍
 
-Refer to [client/README.md](client/README.md) for more information on using the service clients, including Python and CURL clients.   
+Refer to [client/README.md](client/README.md) for more information on using the service clients, including Python and CURL clients.
 There are also tests and demos available.
 
 ## Run BTS in MCP Server Mode 🖥️
@@ -91,8 +93,12 @@ MCP_MODE=True make run
 
 ## Examples of using BTS with Agentic Frameworks 🤖
 
-Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).  
+Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
 > Note: the example makes use of BTS in MCP mode
+
+## Support Multiple MCP Backends
+
+Follow the steps outlined in [Connecting MCP as a backend](contrib/mcp/README.md).
 
 ## Monitoring the Service 📈
 
@@ -102,7 +108,7 @@ echo -e "global:\n  scrape_interval: 5s\nscrape_configs:\n  - job_name: \"bluebe
 docker run --rm --name prometheus --network="host" -p 9090:9090 -v /tmp/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus --config.file=/etc/prometheus/prometheus.yml
 ```
 
-Metrics are available in Prometheus at http://localhost:9090.  
+Metrics are available in Prometheus at http://localhost:9090.
 > Note: Application metrics are prefixed with `bts_`.
 
 ### To start a local Jaeger server execute:
