@@ -97,6 +97,12 @@ load_tools: ## Load tools into the service
 	@echo "Loading tools into blueberry-tools-service"
 	./client/curl/load_tools.sh $(ARGS)
 
+# To run this target:
+# make ARGS="ClientWinMVP/json ClientWinMVP/functions/transformations.py number_str_cleanup date_transformer full_address_concat GetYear GetQuarter GetCurrency GetDealAmount identity" load_tools_json
+load_tools_json: ## Load tools into the service using json files
+	@echo "Loading tools-json into blueberry-tools-service"
+	./client/curl/load_tools_json.sh $(ARGS)
+
 clean_slate: stop docker_stop
 	@echo "Cleaning slate blueberry-tools-service"
 	+rm -rf /tmp/manifest

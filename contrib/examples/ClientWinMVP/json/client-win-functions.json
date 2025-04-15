@@ -1,0 +1,62 @@
+[
+    {
+      "name": "GetYear",
+      "description": "Returns the year for a given string. Returns: integer: The year extracted from the input string. For example: the input 'Deal closed: 2Q 2022' returns '2022'.  This function should be selected only if the target is a number representing years.",
+      "arguments": {
+        "date_string": {
+          "type": "str",
+          "description": "The input string containing the year.For example: Deal closed: 1Q 2023."
+        }
+      },
+      "required": ["date_string"]
+  
+    },
+    {
+      "name": "GetQuarter",
+      "description": "Returns the quarter of the year for a given string. Returns: str: The quarter of the year, e.g., 1Q, 2Q, 3Q, or 4Q. For example: the input 'Deal closed: 2Q 2023' returns '2Q'.  This function should be selected only if the target is a string representing the quartner name.",
+      "arguments": {
+        "input_string": {
+          "type": "str",
+          "description": "The input string containing the quarter.For example: Deal closed: 4Q 2022."
+        }
+      },
+      "required": ["input_string"]
+  
+    },
+    {
+        "name": "GetCurrency",
+      "description": "Extracts the currency from a deal string (e.g. Deal size: AUD$25M). Returns: str: The extracted currency. For example: the input 'AUD$25M' returns 'AUD',the input '$25M' returns USD,he input '€1.5B' returns EUR. This function should be selected only if the target is a string representing a currency name.",
+      "arguments": {
+        "deal_string": {
+          "type": "str",
+          "description": "The input string containing the quarter.For example: Deal size: AUD$2.5M, Deal size: $83.2K , Deal size: €1.5B"
+        }
+        },
+      "required": ["deal_string"]
+    },
+    {
+      "name": "GetDealAmount",
+      "description": "Parse a deal size string and return the deal amount as a float. This function takes a string representing a deal size (e.g. Deal size: AUD$25M) and returns the deal amount as a float. It supports suffixes like 'M' for million, 'K' for thousand, and 'B' for billion. Returns: float: The deal size as a float. For example: 25000000.0, 100000.0, 5000000000.0. This function should be selected only if the target is a number.",
+      "arguments": {
+        "deal_size_str": {
+          "type": "str",
+          "description": "The input string representing the deal size. For example: Deal size: AUD$2.5M, Deal size: $83.2K , Deal size: €1.5B"
+        }
+        },
+      "required": ["deal_size_str"]
+    },
+    {
+      "name": "identity",
+      "description": "Returns the value of item_1 without modification. This function should be selected only if the argument is both a syntactic and semantic match with the target without the need for any modifications.",
+      "arguments": {
+        "item_1": {
+          "type": "any",
+          "description": "A source argument name.",
+          "required": "True"
+        }
+      },
+      "required": [
+        "item_1"
+      ]
+    }
+  ]

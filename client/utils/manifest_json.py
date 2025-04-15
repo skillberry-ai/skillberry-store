@@ -6,6 +6,7 @@ from client.utils import json_client_utils
 import argparse
 
 parser = argparse.ArgumentParser(description="Generate and print manifest for a function based on JSON")
+# TODO: specify json file(s) as an optional parameter(s)
 parser.add_argument("jsonpath", type=str, help="A path to a folder containing the JSON descriptions")
 parser.add_argument("modpath", type=str, help="A path to the module containing the function")
 parser.add_argument("funcname", type=str, help="Name of the function as defined in the module")
