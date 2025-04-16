@@ -17,10 +17,10 @@ AWK := awk
 OS := $(shell uname -s)
 
 ifeq ($(OS),Windows_NT)
-		AWK = gawk
-		ifeq (, $(shell where gawk 2> NUL))
-			$(error "gawk not found. Please install it and ensure it's in your PATH.")
-		endif
+	AWK = gawk
+	ifeq (, $(shell where gawk 2> NUL))
+		$(error "gawk not found. Please install it and ensure it's in your PATH.")
+	endif
 else
 	ifeq ($(shell uname -s), Darwin)
 		AWK = gawk
