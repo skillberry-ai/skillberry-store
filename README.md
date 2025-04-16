@@ -27,6 +27,16 @@ make docker_run
 
 > Note: use `make help` for a complete list of options
 
+
+### Interacting with the UI 👨‍💻
+
+To interact with the UI, navigate to [http://localhost:8000/docs](http://localhost:8000/docs).
+This will open the documentation interface where you can explore the available endpoints and test them directly.
+
+### Using the blueberry SDK 🔌
+
+For more detailed information and programmatic usage, refer to the [Blueberry SDK](https://github.ibm.com/Blueberry/blueberry-sdk).
+
 ## Prerequisites 🛠️
 
 - Docker is installed on your machine.
