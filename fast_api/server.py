@@ -45,6 +45,8 @@ list_manifests_counter = Counter(f"{prom_prefix}list_manifests_counter",
                                  "Count number of manifest list operations")
 delete_manifest_counter = Counter(f"{prom_prefix}delete_manifest_counter",
                                   "Count number of manifest delete operations")
+update_manifests_counter = Counter(f"{prom_prefix}update_manifests_counter",
+                                 "Count number of manifest update operations")
 add_manifest_counter = Counter(f"{prom_prefix}add_manifest_counter",
                                "Count number of manifest delete operations")
 get_manifest_counter = Counter(f"{prom_prefix}get_manifest_counter",
@@ -445,12 +447,35 @@ class BTS(FastAPI):
             """
             return await self.handle_execute_manifest(uid, parameters)
 
+        @self.post("/manifests/update/{uid}", tags=tags)
+        def update_manifest(uid: str, new_manifest: Dict[str, Any]):
+            """
+            Update the manifest for the given uid.
+
+            Parameters:
+                uid (str): The uid of the manifest
+                new_manifest (dict): the new manifest to update with
+
+            Returns:
+                dict: manifest update message
+
+            Raises:
+                HTTPException (404): If manifest not found
+            
+            """
+            logger.info(f"Request to update manifest for uid: {uid}")
+            update_manifests_counter.inc()
+            return manifest.update_manifest(f'{uid}.json', new_manifest)
+
         @self.delete("/manifests/{uid}", tags=tags)
         def delete_manifest(uid: str):
             """
             Delete the manifest removing its description from vector db.
 
             Parameters:
+                uid (str): The uid of the manifest
+
+            Returns:
                 dict: manifest deletion message
 
             Raises:
