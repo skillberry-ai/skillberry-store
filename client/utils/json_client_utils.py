@@ -21,7 +21,7 @@ def python_manifest_from_json_record(json_rec: dict, module_path: str):
         dict:   the manifest 
     """
     func_name = json_rec["name"]
-    manifest = init_manifest(func_name, "Python")
+    manifest = init_manifest(func_name, "python")
     manifest["name"] = func_name
     manifest["module_name"] = os.path.basename(module_path)
     manifest["state"] = "approved"
