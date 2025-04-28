@@ -107,14 +107,19 @@ To run BTS in MCP server mode, allowing it to connect to any agent framework tha
 MCP_MODE=True make run
 ```
 
-## Examples of using BTS with Agentic Frameworks 🤖
+### Examples of using BTS with Agentic Frameworks 🤖
 
 Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
 > Note: the example makes use of BTS in MCP mode
 
-## Support Multiple MCP Backends
+### Support Multiple MCP Backends
 
 Follow the steps outlined in [Connecting MCP as a backend](contrib/mcp/README.md).
+
+## Run BTS with GitHub backend
+
+Follow the steps outlined in [Github backend](docs/github_using_hooks.md).
+
 
 ## Monitoring the Service 📈
 
