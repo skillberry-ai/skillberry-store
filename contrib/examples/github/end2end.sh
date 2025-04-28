@@ -23,8 +23,8 @@ else \
     ### TODO Load the manifests into BTS
 fi"
 
-export BTS_POST_WRITE_FILE_COMMAND="git -C $DIRECTORY_PATH add . && git -C $DIRECTORY_PATH commit -m 'Add new tool {filename}' && git -C $DIRECTORY_PATH push origin main"
-export BTS_POST_DELETE_FILE_COMMAND="git -C $DIRECTORY_PATH add . && git -C $DIRECTORY_PATH commit -m 'Delete tool {filename}' && git -C $DIRECTORY_PATH push origin main"
+export BTS_POST_WRITE_FILE_COMMAND="git -C $BTS_DIRECTORY_BASE add . && git -C $BTS_DIRECTORY_BASE commit -m 'Add new tool {filename}' && git -C $BTS_DIRECTORY_BASE push origin main"
+export BTS_POST_DELETE_FILE_COMMAND="git -C $BTS_DIRECTORY_BASE add . && git -C $BTS_DIRECTORY_BASE commit -m 'Delete tool {filename}' && git -C $BTS_DIRECTORY_BASE push origin main"
 
 # step (2) start BTS Docker container
 
