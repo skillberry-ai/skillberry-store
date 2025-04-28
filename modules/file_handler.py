@@ -21,6 +21,8 @@ class FileHandler:
         self.directory_path = directory_path
         os.makedirs(self.directory_path, exist_ok=True)
         logger.info(f"Initialized FileHandler with directory: {self.directory_path}")
+        ShellHook.execute("post_" + inspect.stack()[1].function,
+                          directory_path=self.directory_path)
 
     def list_files(self) -> List[str]:
         """
