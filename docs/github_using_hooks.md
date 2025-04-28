@@ -13,7 +13,7 @@ allowing to store and manage your tools in a version-controlled environment.
 
 In order to persist and retrieve tools from GitHub, 
 you need to set up a GitHub repository and configure the Blueberry tools-service to use it. 
-This is done using environment variables in the format `BTS_HOOK_ID_COMMAND"` 
+This is done using environment variables in the format `BTS_HOOK_ID_COMMAND` 
 where `HOOK_ID` is the ID of the hook you want to use and `COMMAND` is a fixed.
 
 Following is the list of available Hook IDs and their explanations:
@@ -71,3 +71,5 @@ fi'
 export BTS_POST_WRITE_FILE_COMMAND="git -C $BTS_DIRECTORY_BASE add . && git -C $BTS_DIRECTORY_BASE commit -m 'Add new tool {filename}' && git -C $BTS_DIRECTORY_BASE push origin main"
 export BTS_POST_DELETE_FILE_COMMAND="git -C $BTS_DIRECTORY_BASE add . && git -C $BTS_DIRECTORY_BASE commit -m 'Delete tool {filename}' && git -C $BTS_DIRECTORY_BASE push origin main"
 ```
+
+For a complete end to end example refer [here](../contrib/examples/github/end2end.sh)
