@@ -7,8 +7,9 @@ This service implements a smart tools repository for agentic workflows.
 - **Manage tools for agentic workloads**: Add (Persist), Remove, Update, and Delete tools.
 - **Tools Execution**: Invoke tools (with parameters) using Docker (sand-boxing).
 - **Tools Search and list**: Shortlist tools using semantic and classic search.
-- **Tools Life Cycle Management**: Provides tools life cycle management (state, visability, etc.).
-- **Observability**: Provide metrics and traces for operational and behivioural analysis of tools usage.
+- **Tools Life Cycle Management**: Provides tools life cycle management (state, visibility, etc.).
+- **Tools Persistence**: Support persistence of tools into filesystem, GitHub repos etc.
+- **Observability**: Provide metrics and traces for operational and behavioural analysis of tools usage.
 - **OpenAPI frontend**: FastAPI endpoint to interact and manage tools (using tools-manifest artifacts)
 - **MCP frontend**: Expose the tools in [MCP](https://github.com/modelcontextprotocol) format.
 - **Support Multiple MCP backends**: Consume and route additional tools from multiple backend MCP servers.
@@ -107,14 +108,19 @@ To run BTS in MCP server mode, allowing it to connect to any agent framework tha
 MCP_MODE=True make run
 ```
 
-## Examples of using BTS with Agentic Frameworks 🤖
+### Examples of using BTS with Agentic Frameworks 🤖
 
 Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
 > Note: the example makes use of BTS in MCP mode
 
-## Support Multiple MCP Backends
+### Support Multiple MCP Backends
 
 Follow the steps outlined in [Connecting MCP as a backend](contrib/mcp/README.md).
+
+## Run BTS with GitHub backend
+
+Follow the steps outlined in [Github backend](docs/github_using_hooks.md).
+
 
 ## Monitoring the Service 📈
 
