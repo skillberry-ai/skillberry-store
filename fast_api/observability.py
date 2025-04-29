@@ -11,7 +11,7 @@ from prometheus_client import start_http_server
 
 logging.getLogger("opentelemetry").setLevel(logging.ERROR)
 
-PROMETHEUS_METRICS_PORT = int(os.getenv("PROMETHEUS_METRICS_PORT", 9000))
+PROMETHEUS_METRICS_PORT = int(os.getenv("PROMETHEUS_METRICS_PORT", 9090))
 OTEL_TRACES_PORT = int(os.getenv("OTEL_TRACES_PORT", 4317))
 OTEL_SERVICE_NAME = "blueberry-tools-service"
 
