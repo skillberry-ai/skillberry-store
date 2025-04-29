@@ -65,7 +65,7 @@ clean:  ## Clean temporary files
 ##@ Docker
 
 docker_build: ## Build docker image
-	docker build --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .
+	DOCKER_BUILDKIT=1 docker build --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .
 
 docker_run: docker_stop ## Run the docker image
 	@echo "Running Docker container: $(IMAGE_NAME)"

@@ -9,12 +9,10 @@ logger = logging.getLogger(__name__)
 class ShellHook:
     """
     A class to execute shell commands with dynamic context.
-
-    Methods
-    -------
-    execute(hook_id: str, **context_vars)
-        Executes a shell command with the provided context variables.
     """
+
+    def __init__(self):
+        pass
 
     def execute(self, hook_id: str, **context_vars: Any) -> None:
         """

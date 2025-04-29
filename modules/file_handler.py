@@ -21,8 +21,8 @@ class FileHandler:
         self.directory_path = directory_path
         os.makedirs(self.directory_path, exist_ok=True)
         logger.info(f"Initialized FileHandler with directory: {self.directory_path}")
-        ShellHook.execute("post_" + inspect.stack()[1].function,
-                          directory_path=self.directory_path)
+        ShellHook().execute("init_filehandler",
+                            directory_path=self.directory_path)
 
     def list_files(self) -> List[str]:
         """
@@ -34,19 +34,19 @@ class FileHandler:
         Raises:
             HTTPException: If there is an error accessing the directory.
         """
-        ShellHook.execute("pre_" + inspect.stack()[1].function,
-                          directory_path=self.directory_path)
+        ShellHook().execute("pre_" + inspect.stack()[0].function,
+                            directory_path=self.directory_path)
         try:
             files = os.listdir(self.directory_path)
-            ShellHook.execute("post_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path)
+            ShellHook().execute("post_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path)
             logger.info(f"Listed files: {files}")
             return files
         except Exception as e:
             logger.error(f"Error listing files: {e}")
             raise HTTPException(status_code=500, detail=f"Error listing files: {str(e)}")
-            ShellHook.execute("post_fail_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path)
+            ShellHook().execute("post_fail_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path)
 
     def read_file(self, filename: str, raw_content: bool = False):
         """
@@ -56,12 +56,12 @@ class FileHandler:
             HTTPException: If there is an error reading the file.
         """
 
-        ShellHook.execute("pre_" + inspect.stack()[1].function,
-                          directory_path=self.directory_path, filename=filename)
+        ShellHook().execute("pre_" + inspect.stack()[0].function,
+                            directory_path=self.directory_path, filename=filename)
         file_path = os.path.join(self.directory_path, filename)
         if not os.path.exists(file_path):
-            ShellHook.execute("post_fail_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path, filename=filename)
+            ShellHook().execute("post_fail_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path, filename=filename)
             logger.warning(f"File not found: {file_path}")
             raise HTTPException(status_code=404, detail="File not found")
         logger.info(f"Reading file: {file_path}")
@@ -71,16 +71,16 @@ class FileHandler:
                 with open(file_path, "r") as file:
                     content = file.read()
             except Exception as e:
-                ShellHook.execute("post_raw_content_fail_" + inspect.stack()[1].function,
-                                  directory_path=self.directory_path, filename=filename)
+                ShellHook().execute("post_raw_content_fail_" + inspect.stack()[0].function,
+                                    directory_path=self.directory_path, filename=filename)
                 logger.error(f"Error reading file '{file.filename}': {e}")
                 raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
-            ShellHook.execute("post_raw_content_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path, filename=filename)
+            ShellHook().execute("post_raw_content_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path, filename=filename)
             return content
         else:
-            ShellHook.execute("post_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path, filename=filename)
+            ShellHook().execute("post_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path, filename=filename)
             return FileResponse(file_path)
 
     def write_file(self, file: UploadFile, filename: Optional[str]) -> dict:
@@ -101,18 +101,18 @@ class FileHandler:
         filename = filename if filename else file.filename
         file_path = os.path.join(self.directory_path, filename)
 
-        ShellHook.execute("pre_" + inspect.stack()[1].function,
-                          directory_path=self.directory_path, filename=filename)
+        ShellHook().execute("pre_" + inspect.stack()[0].function,
+                            directory_path=self.directory_path, filename=filename)
         try:
             with open(file_path, "wb") as f:
                 f.write(file.file.read())
             logger.info(f"File saved: {file_path}")
-            ShellHook.execute("post_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path, filename=filename)
+            ShellHook().execute("post_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path, filename=filename)
             return {"message": f"File '{filename}' saved successfully."}
         except Exception as e:
-            ShellHook.execute("post_fail_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path, filename=filename)
+            ShellHook().execute("post_fail_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path, filename=filename)
             logger.error(f"Error saving file '{filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
@@ -131,20 +131,20 @@ class FileHandler:
             HTTPException: If there is an error saving the file.
         """
 
-        ShellHook.execute("pre_" + inspect.stack()[1].function,
-                          directory_path=self.directory_path, filename=filename)
+        ShellHook().execute("pre_" + inspect.stack()[0].function,
+                            directory_path=self.directory_path, filename=filename)
         file_path = os.path.join(self.directory_path, filename)
         try:
             with open(file_path, "wb") as f:
                 binary_file_content = file_content.encode('utf-8')
                 f.write(binary_file_content)
             logger.info(f"File saved: {file_path}")
-            ShellHook.execute("post_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path, filename=filename)
+            ShellHook().execute("post_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path, filename=filename)
             return {"message": f"File '{filename}' saved successfully."}
         except Exception as e:
-            ShellHook.execute("post_fail_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path, filename=filename)
+            ShellHook().execute("post_fail_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path, filename=filename)
             logger.error(f"Error saving file '{filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
@@ -152,19 +152,19 @@ class FileHandler:
         """
         Delete a file from the directory.
         """
-        ShellHook.execute("pre_" + inspect.stack()[1].function, directory_path=self.directory_path, filename=filename)
+        ShellHook().execute("pre_" + inspect.stack()[0].function, directory_path=self.directory_path, filename=filename)
         file_path = os.path.join(self.directory_path, filename)
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
                 logger.info(f"File deleted: {file_path}")
-                ShellHook.execute("post_" + inspect.stack()[1].function, directory_path=self.directory_path,
-                                  filename=filename)
+                ShellHook().execute("post_" + inspect.stack()[0].function, directory_path=self.directory_path,
+                                    filename=filename)
                 return {"message": f"File '{filename}' deleted successfully."}
             else:
                 raise HTTPException(status_code=404, detail=f"File '{filename}' not found.")
         except Exception as e:
-            ShellHook.execute("post_fail_" + inspect.stack()[1].function,
-                              directory_path=self.directory_path, filename=filename)
+            ShellHook().execute("post_fail_" + inspect.stack()[0].function,
+                                directory_path=self.directory_path, filename=filename)
             logger.error(f"Error deleting file '{filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
