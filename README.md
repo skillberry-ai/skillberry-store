@@ -95,10 +95,9 @@ make ARGS="ClientWinMVP/json ClientWinMVP/functions/transformations.py GetYear G
 
 Open a browser against `http://127.0.0.1:8000/docs` .
 
-## Engage with the Service through a Python Client and CURL 🐍
+## Engage with the Service through a Python Client 🐍
 
-Refer to [client/README.md](client/README.md) for more information on using the service clients, including Python and CURL clients.
-There are also tests and demos available.
+The service can be consumed via blueberry tools service sdk. Refer to [blueberry-sdk](https://github.ibm.com/Blueberry/blueberry-sdk) for installation and usage.
 
 ## Run BTS in MCP Server Mode 🖥️
 

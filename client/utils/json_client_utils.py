@@ -1,10 +1,8 @@
 # Additional client utilities for tools that build from external JSON documentation
 
 import os
-from docstring_parser import parse, ParseError
 import json
 from typing import List, Dict
-import ast
 from .base_client_utils import init_manifest, extract_docstring, python_manifest_from_function_docstring
 
 

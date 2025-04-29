@@ -36,7 +36,6 @@ mypy==0.910
 mypy_extensions==0.4.4
 networkx==3.4.2
 numpy==1.26.4
-openapi-generator-cli==7.11.0.post0
 openapi-python-client==0.24.0
 packaging==24.2
 pathspec==0.12.1
@@ -83,5 +82,3 @@ typer==0.15.2
 typing_extensions==4.12.2
 urllib3==2.3.0
 uvicorn==0.23.1
--e client/gen  # Generated OpenAPI client
--e . # CLI tool installation

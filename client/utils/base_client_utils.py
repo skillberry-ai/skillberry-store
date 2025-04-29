@@ -1,7 +1,6 @@
 import os
 from docstring_parser import parse, ParseError
 import json
-from typing import List, Dict
 import ast
 
 def list_functions_in_module(module_path: str):

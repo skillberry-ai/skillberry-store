@@ -41,6 +41,9 @@ else
 	@pip install -q -r requirements.txt
 endif
 
+install_dev_requirements: # Install dev requirements
+	@pip install -q -r requirements-dev.txt
+
 ##@ Setup & teardown
 
 run: install_requirements ## Launch the tools service
@@ -50,13 +53,6 @@ run: install_requirements ## Launch the tools service
 		echo "Starting Blueberry Tools Service"; \
 		contrib/scripts/start-service.sh /tmp/tools-service.log $(TOOLS_SERVICE_SENTINEL) python main.py; \
 	fi
-
-## Use only when absolutely needed! (e.g., initial setup or when service API changed)
-gen_client: $(TOOLS_SERVICE_SENTINEL)
-	@mkdir -p client/gen
-	@rm -fr client/gen/*
-	@openapi-generator-cli generate -i http://0.0.0.0:8000/openapi.json -g python -o client/gen --skip-validate-spec
-	@pip install --upgrade client/gen
 
 stop: $(TOOLS_SERVICE_SENTINEL) ## Stop the tools service
 	@echo "Stopping Blueberry Tools Service"
@@ -88,7 +84,7 @@ docker_push: docker_build ## Push docker image
 
 test: install_requirements ## Test the tools service
 	pytest
-test-e2e: ## Test end-to-end the tools service
+test-e2e: install_requirements install_dev_requirements ## Test end-to-end the tools service (installs tools service sdk)
 	pytest -s tests/e2e
 
 # To run this target:

@@ -50,7 +50,6 @@ mypy==0.910
 mypy-extensions==0.4.4
 networkx==3.4.2
 numpy==1.26.4
-openapi-generator-cli==7.11.0.post0
 openapi-python-client==0.24.0
 orjson==3.10.16
 ormsgpack==1.9.1
@@ -112,5 +111,3 @@ opentelemetry-exporter-otlp
 opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-requests
 faiss-cpu
--e client/gen  # Generated OpenAPI client
--e . # CLI tool installation
