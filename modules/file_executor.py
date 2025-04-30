@@ -384,7 +384,7 @@ if __name__ == "__main__":
 
             # Create and run a container to execute the Python file
             container = self.client.containers.run(
-                "python:3.10",  # Using the official Python 3.9 image
+                "python:3.10",  # Using the official Python 3.10 image
                 command=f"/bin/bash -c '{command}'",
                 volumes={temp_file_path: {"bind": f"/tmp/function.py", "mode": "ro"}},
                 remove=True,
