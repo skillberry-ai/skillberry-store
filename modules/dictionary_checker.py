@@ -86,7 +86,9 @@ class DictionaryChecker:
         if not values:
             return False
 
-        return any(self.match_value(value, v) for value in values for v in possible_values)
+        return any(
+            self.match_value(value, v) for value in values for v in possible_values
+        )
 
     def check_and_condition(self, key, value):
         """

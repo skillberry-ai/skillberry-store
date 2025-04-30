@@ -9,9 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 class DescriptionVectorIndex:
-    def __init__(self, index_file: str = "description_index.faiss",
-                 dimension: int = 384,
-                 model: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(
+        self,
+        index_file: str = "description_index.faiss",
+        dimension: int = 384,
+        model: str = "sentence-transformers/all-MiniLM-L6-v2",
+    ):
         """
         Initialize the DescriptionVectorIndex class to handle FAISS indexing and searching.
 
@@ -41,13 +44,13 @@ class DescriptionVectorIndex:
             logger.info(f"Loading existing FAISS index from {self.index_file}")
             self.index = faiss.read_index(self.index_file)
         else:
-            logger.info(
-                "No existing FAISS index found. Starting with an empty index.")
+            logger.info("No existing FAISS index found. Starting with an empty index.")
 
         # Load the files to FAISS index map
         if os.path.exists(f"{self.index_file}.files_index.npy"):
             self.files_to_faiss_index_map = np.load(
-                f"{self.index_file}.files_index.npy", allow_pickle=True)
+                f"{self.index_file}.files_index.npy", allow_pickle=True
+            )
             self.files_to_faiss_index_map = self.files_to_faiss_index_map.tolist()
             logger.info("Loaded files to FAISS index map.")
 
@@ -58,9 +61,11 @@ class DescriptionVectorIndex:
         faiss.write_index(self.index, self.index_file)
 
         # persist the files to FAISS index map
-        np.save(f"{self.index_file}.files_index.npy",
-                self.files_to_faiss_index_map,
-                allow_pickle=True)
+        np.save(
+            f"{self.index_file}.files_index.npy",
+            self.files_to_faiss_index_map,
+            allow_pickle=True,
+        )
 
         logger.info(f"FAISS index saved to {self.index_file}")
 
@@ -100,8 +105,9 @@ class DescriptionVectorIndex:
         embedding = self.model.encode([new_description])[0]
 
         # FAISS does not support updating a single vector, so we rebuild the index after removal
-        embeddings = [embedding for embedding in self.index.reconstruct_n(
-            0, self.index.ntotal)]
+        embeddings = [
+            embedding for embedding in self.index.reconstruct_n(0, self.index.ntotal)
+        ]
         embeddings[index] = embedding
 
         new_index = faiss.IndexFlatL2(self.dimension)
@@ -132,10 +138,9 @@ class DescriptionVectorIndex:
         for idx, dist in results:
             if idx != -1:
                 filename = self.files_to_faiss_index_map[idx]
-                matched_files.append({
-                    "filename": filename,
-                    "similarity_score": float(dist)
-                })
+                matched_files.append(
+                    {"filename": filename, "similarity_score": float(dist)}
+                )
 
         return matched_files
 
@@ -152,8 +157,9 @@ class DescriptionVectorIndex:
         if index == -1:
             raise ValueError(f"Filename '{filename}' not found in the index.")
 
-        embeddings = [embedding for embedding in self.index.reconstruct_n(
-            0, self.index.ntotal)]
+        embeddings = [
+            embedding for embedding in self.index.reconstruct_n(0, self.index.ntotal)
+        ]
         del embeddings[index]
         del self.files_to_faiss_index_map[index]
 

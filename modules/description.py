@@ -14,15 +14,18 @@ default_model_search_k = 5
 
 _embedding_model = os.getenv("EMBEDDING_MODEL", default_model)
 _dimension = os.getenv("EMBEDDING_MODEL_DIMENSION", default_dimension)
-_embedding_model_search_k = os.getenv("EMBEDDING_MODEL_SEARCH_K", default_model_search_k)
+_embedding_model_search_k = os.getenv(
+    "EMBEDDING_MODEL_SEARCH_K", default_model_search_k
+)
 
 INDEX_RELATIVE_DIRECTORY = "/index/"
 INDEX_FILE_NAME = "descriptions_index.faiss"
 
 
 class Description:
-    def __init__(self, descriptions_directory: str,
-                 vector_index: DescriptionVectorIndex):
+    def __init__(
+        self, descriptions_directory: str, vector_index: DescriptionVectorIndex
+    ):
         """
         Initialize the Descriptions with a directory to store descriptions.
         Initialize the vector index
@@ -31,12 +34,15 @@ class Description:
         os.makedirs(self.descriptions_directory, exist_ok=True)
         index_directory = descriptions_directory + INDEX_RELATIVE_DIRECTORY
         os.makedirs(index_directory, exist_ok=True)
-        self.vector_index = vector_index(index_file=index_directory + INDEX_FILE_NAME,
-                                         dimension=_dimension,
-                                         model=_embedding_model)
+        self.vector_index = vector_index(
+            index_file=index_directory + INDEX_FILE_NAME,
+            dimension=_dimension,
+            model=_embedding_model,
+        )
 
         logger.info(
-            f"Initialized Descriptions with directory: {self.descriptions_directory}")
+            f"Initialized Descriptions with directory: {self.descriptions_directory}"
+        )
 
     def load_index(self):
         """
@@ -70,16 +76,19 @@ class Description:
                 f.write(description)
 
             # Add description embedding to the vector index
-            self.vector_index.add_description(description=description, filename=filename)
+            self.vector_index.add_description(
+                description=description, filename=filename
+            )
 
-            logger.info(
-                f"Description and embedding saved for file: {filename}")
-            return {"message": f"Description and embedding saved for file '{filename}'."}
+            logger.info(f"Description and embedding saved for file: {filename}")
+            return {
+                "message": f"Description and embedding saved for file '{filename}'."
+            }
         except Exception as e:
-            logger.error(
-                f"Error saving description for file '{filename}': {e}")
+            logger.error(f"Error saving description for file '{filename}': {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error saving description: {str(e)}")
+                status_code=500, detail=f"Error saving description: {str(e)}"
+            )
 
     def update_description(self, filename: str, new_description: str) -> dict:
         """
@@ -88,7 +97,8 @@ class Description:
         description_file_path = self.get_description_file_path(filename)
         if not os.path.exists(description_file_path):
             raise HTTPException(
-                status_code=404, detail=f"No description found for file '{filename}'")
+                status_code=404, detail=f"No description found for file '{filename}'"
+            )
 
         try:
             with open(description_file_path, "w", encoding="utf-8") as f:
@@ -96,15 +106,16 @@ class Description:
 
             # Update the description in the vector index
             self.vector_index.update_description(new_description, filename)
-            logger.info(
-                f"Description and embedding updated for file: {filename}")
-            return {"message": f"Description and embedding updated for file '{filename}'."}
+            logger.info(f"Description and embedding updated for file: {filename}")
+            return {
+                "message": f"Description and embedding updated for file '{filename}'."
+            }
 
         except Exception as e:
-            logger.error(
-                f"Error updating description for file '{filename}': {e}")
+            logger.error(f"Error updating description for file '{filename}': {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error updating description: {str(e)}")
+                status_code=500, detail=f"Error updating description: {str(e)}"
+            )
 
     def delete_description(self, filename: str) -> dict:
         """
@@ -116,19 +127,23 @@ class Description:
                 self.vector_index.delete_description(filename)
                 os.remove(description_file_path)
                 logger.info(f"Description deleted for file: {filename}")
-                return {"message": f"Description for file '{filename}' deleted successfully."}
+                return {
+                    "message": f"Description for file '{filename}' deleted successfully."
+                }
             else:
                 raise HTTPException(
-                    status_code=404, detail=f"Description for file '{filename}' not found.")
+                    status_code=404,
+                    detail=f"Description for file '{filename}' not found.",
+                )
         except Exception as e:
-            logger.error(
-                f"Error deleting description for file '{filename}': {e}")
+            logger.error(f"Error deleting description for file '{filename}': {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error deleting description: {str(e)}")
+                status_code=500, detail=f"Error deleting description: {str(e)}"
+            )
 
-    def search_description(self,
-                           search_term: str,
-                           k: int = _embedding_model_search_k) -> list[dict[str, str | Any]]:
+    def search_description(
+        self, search_term: str, k: int = _embedding_model_search_k
+    ) -> list[dict[str, str | Any]]:
         matched_files = self.vector_index.search(search_term, k)
 
         logger.info(f"Search results for term '{search_term}': {matched_files}")

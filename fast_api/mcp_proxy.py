@@ -6,23 +6,24 @@ from mcp.client.session import ClientSession
 from tools.configure import configure_logging
 from dataclasses import dataclass
 from fastapi import FastAPI
+
+
 @dataclass
 class ToolMapping:
     server_name: str
     client: ClientSession
-    tool :types.Tool
+    tool: types.Tool
+
 
 class MCPToBTSProxy(server.Server):
     """An MCP Proxy Server that convert the requests to BTS."""
 
-    def __init__(self,app: FastAPI):
+    def __init__(self, app: FastAPI):
         super().__init__("MCP-BTS Proxy")
         self._register_request_handlers()
         configure_logging()
-        self.app=app
+        self.app = app
         self.logger = logging.getLogger(__name__)
-
-
 
     async def _list_tools(self, _: Any) -> types.ServerResult:
         """Send a list of the tools from BTS."""
@@ -42,7 +43,9 @@ class MCPToBTSProxy(server.Server):
 
     async def _call_tool(self, req: types.CallToolRequest) -> types.ServerResult:
         """Invoke a tool using the appropriate manifest in BTS."""
-        result = await  self.app.handle_execute_manifest(req.params.name,req.params.arguments)
+        result = await self.app.handle_execute_manifest(
+            req.params.name, req.params.arguments
+        )
         self.logger.info(f"result {result}")
 
         return types.CallToolResult(
@@ -53,9 +56,9 @@ class MCPToBTSProxy(server.Server):
         """Dynamically registers handlers for all MCP requests."""
 
         self.request_handlers[types.ListToolsRequest] = self._list_tools
-        self.request_handlers[types.CallToolRequest]  = self._call_tool
+        self.request_handlers[types.CallToolRequest] = self._call_tool
 
-    def manifest_to_tool(self,manifest: dict[str, Any]) -> types.Tool:
+    def manifest_to_tool(self, manifest: dict[str, Any]) -> types.Tool:
         # Clean up extras before unpacking
         extras = manifest.copy()
         for key in ["name", "description", "params"]:
@@ -65,7 +68,7 @@ class MCPToBTSProxy(server.Server):
             name=str(manifest["name"]),
             description=manifest.get("description"),
             inputSchema=manifest["params"],
-            **extras
+            **extras,
         )
 
     def tool_to_manifest(self, tool: types.Tool) -> dict[str, Any]:

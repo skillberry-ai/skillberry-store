@@ -111,3 +111,6 @@ opentelemetry-exporter-otlp
 opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-requests
 faiss-cpu
+pylint
+flake8
+black

@@ -1,0 +1,22 @@
+name: push
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  push:
+    name: push
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.11"
+    - name: install make
+      run: sudo apt-get install make
+    - name: checkout
+      uses: actions/checkout@v4
+    - name: run_make
+      run: |
+          make ci_push
