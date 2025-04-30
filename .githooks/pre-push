@@ -1,0 +1,14 @@
+#!/usr/bin/sh
+
+# $1 -- Name of the remote to which the push is being done
+# $2 -- URL to which the push is being done
+
+remote="$1"
+url="$2"
+
+# this will make sure that when we push to a branch the code is ready for a pull request
+echo "========> Executing make ci_pull_request to make sure that this push is ready for PR"
+make ci_pull_request && echo "========> Done." || { echo "========> Failed."; exit 1; }
+
+
+exit 0
