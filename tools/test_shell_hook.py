@@ -31,21 +31,19 @@ def test_execute_success(shell_hook):
                 args=["echo", "Hello world"],
                 returncode=0,
                 stdout="Hello world\n",
-                stderr=""
+                stderr="",
             )
             shell_hook.execute("test", name="world")
 
             mock_run.assert_called_once()
             assert "Hello world" in mock_run.return_value.stdout
 
+
 def test_execute_command_failure(shell_hook):
     with mock.patch.dict(os.environ, {"BTS_FAIL_COMMAND": "false"}):
         with mock.patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.CalledProcessError(
-                returncode=1,
-                cmd="false",
-                output="",
-                stderr="Simulated failure"
+                returncode=1, cmd="false", output="", stderr="Simulated failure"
             )
             shell_hook.execute("fail")
             mock_run.assert_called_once()

@@ -18,33 +18,38 @@ def mcp_content(tool_dict: dict) -> str:
     parameters = {
         "type": "object",
         "properties": {
-            k: {
-                "type": v["type"],
-                "description": f"The {k} parameter."
-            } for k, v in input_schema.get("properties", {}).items()
+            k: {"type": v["type"], "description": f"The {k} parameter."}
+            for k, v in input_schema.get("properties", {}).items()
         },
-        "required": input_schema.get("required", [])
+        "required": input_schema.get("required", []),
     }
-    param_list = ", ".join([f"{k}: {v['type']}" for k, v in parameters["properties"].items()])
+    param_list = ", ".join(
+        [f"{k}: {v['type']}" for k, v in parameters["properties"].items()]
+    )
 
     content_lines = [
         f"def {tool_dict['name']}({param_list}):",
-        "    \"\"\"",
+        '    """',
         f"    {tool_dict['description']}",
-        "" if not parameters["properties"] else "\n".join(
+        ""
+        if not parameters["properties"]
+        else "\n".join(
             [
                 "    Parameters:",
-                *[f"        {k} ({v['type']}): {v['description']}" for k, v in parameters["properties"].items()]
+                *[
+                    f"        {k} ({v['type']}): {v['description']}"
+                    for k, v in parameters["properties"].items()
+                ],
             ]
         ),
-        "    \"\"\""
+        '    """',
     ]
     content = "\n".join(line for line in content_lines if line.strip())
 
     return content
 
 
-def mcp_json_converter(tool: dict, manifest_as_dict: dict)-> dict:
+def mcp_json_converter(tool: dict, manifest_as_dict: dict) -> dict:
     """
     Converts an MCP tool JSON into the required manifest format by adding
     description and parameters.
@@ -60,23 +65,18 @@ def mcp_json_converter(tool: dict, manifest_as_dict: dict)-> dict:
     parameters = {
         "type": "object",
         "properties": {
-            k: {
-                "type": v["type"],
-                "description": f"The {k} parameter."
-            } for k, v in input_schema.get("properties", {}).items()
+            k: {"type": v["type"], "description": f"The {k} parameter."}
+            for k, v in input_schema.get("properties", {}).items()
         },
-        "required": input_schema.get("required", [])
+        "required": input_schema.get("required", []),
     }
 
-    generated_json = {
-        "description": tool["description"],
-        "params": parameters
-    }
+    generated_json = {"description": tool["description"], "params": parameters}
 
     return generated_json
 
 
-async def get_mcp_tools(manifest_as_dict: dict)-> list:
+async def get_mcp_tools(manifest_as_dict: dict) -> list:
     """
     Retrieves tool information from the MCP server based on the provided manifest. If manifest
     contains name then tool with that name should be returned.
@@ -93,7 +93,7 @@ async def get_mcp_tools(manifest_as_dict: dict)-> list:
             await session.initialize()
 
             tools = await session.list_tools()
-            # TODO: 
+            # TODO:
             if not tools:
                 return None
             # Find matching tool by name

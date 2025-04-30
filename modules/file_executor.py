@@ -12,7 +12,7 @@ from fastapi import HTTPException
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
-default_mcp_server_url = os.getenv('MCP_SERVER_URL', "http://localhost:8080/sse")
+default_mcp_server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8080/sse")
 
 logger = logging.getLogger(__name__)
 
@@ -52,19 +52,20 @@ def arg_convert(arg_name, arg_type):
         pass
 
     try:
-        parts = arg_str.split(':')
+        parts = arg_str.split(":")
         if len(parts) == 2:
-            return datetime.datetime.strptime(arg_str, '%H:%M').time()
+            return datetime.datetime.strptime(arg_str, "%H:%M").time()
         elif len(parts) == 3:
-            return datetime.datetime.strptime(arg_str, '%H:%M:%S').time()
+            return datetime.datetime.strptime(arg_str, "%H:%M:%S").time()
     except ValueError:
         pass
 
     return f'"{arg_str}"'
 
 
-def extract_function_and_imports(content: str, function_name: str) -> (
-        Tuple)[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
+def extract_function_and_imports(
+    content: str, function_name: str
+) -> (Tuple)[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
     """
     Extracts the function's name, its parameters with type annotations and whether they are positional or optional,
     and imported modules from Python code.
@@ -77,19 +78,26 @@ def extract_function_and_imports(content: str, function_name: str) -> (
     try:
         tree = ast.parse(content)
         first_found_function_name: Optional[str] = None
-        parameters: List[Tuple[str, str, str]] = []  # (param_name, param_type, "positional"/"optional")
+        parameters: List[
+            Tuple[str, str, str]
+        ] = []  # (param_name, param_type, "positional"/"optional")
         imports: List[Tuple[str, str]] = []
 
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and first_found_function_name is None and \
-                    node.name == function_name:
+            if (
+                isinstance(node, ast.FunctionDef)
+                and first_found_function_name is None
+                and node.name == function_name
+            ):
                 first_found_function_name = node.name
                 defaults_count = len(node.args.defaults)
                 positional_count = len(node.args.args) - defaults_count
 
                 for i, arg in enumerate(node.args.args):
                     param_name = arg.arg
-                    param_type = ast.unparse(arg.annotation) if arg.annotation else "None"
+                    param_type = (
+                        ast.unparse(arg.annotation) if arg.annotation else "None"
+                    )
                     param_kind = "positional" if i < positional_count else "optional"
                     parameters.append((param_name, param_type, param_kind))
 
@@ -118,12 +126,10 @@ class FileExecutor:
             self.manifest = file_manifest
         except Exception as e:
             logger.error(f"Error parsing manifest: {e}")
-            raise HTTPException(
-                status_code=400, detail=f"Error parsing manifest: {e}")
+            raise HTTPException(status_code=400, detail=f"Error parsing manifest: {e}")
 
         self.client = docker.from_env()
-        logger.info(
-            f"Initialized file file executor: {self.name}")
+        logger.info(f"Initialized file file executor: {self.name}")
 
     async def execute_file(self, parameters: Dict[str, Any]) -> dict:
         """
@@ -135,15 +141,13 @@ class FileExecutor:
         Returns:
             dict: A message with the execution result or error message.
         """
-        logger.info(
-            f"Executing: {self.name} with parameters: {parameters}")
+        logger.info(f"Executing: {self.name} with parameters: {parameters}")
 
         try:
             return await self.based_on_programming_language(parameters=parameters)
         except Exception as e:
             logger.error(f"Error executing file: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error executing file: {e}")
+            raise HTTPException(status_code=500, detail=f"Error executing file: {e}")
 
     def based_on_programming_language(self, parameters):
         """
@@ -155,7 +159,8 @@ class FileExecutor:
             return self.execute_bash_file(parameters=parameters)
         else:
             raise HTTPException(
-                status_code=400, detail="Unsupported programming language")
+                status_code=400, detail="Unsupported programming language"
+            )
 
     def execute_bash_file(self, parameters):
         """
@@ -170,8 +175,7 @@ class FileExecutor:
         elif self.manifest.get("packaging_format") == "mcp":
             return_value = await self.execute_python_file_in_mcp_server(parameters)
         else:
-            raise HTTPException(
-                status_code=400, detail="Unsupported packaging format")
+            raise HTTPException(status_code=400, detail="Unsupported packaging format")
 
         return return_value
 
@@ -182,7 +186,9 @@ class FileExecutor:
 
         # To experiment with the MCP server, see the instructions in the `contrib/mcp/README.md` file.
 
-        async def execute_mcp_tool(_url: str, _function_name: str, _mcp_args_dict: dict):
+        async def execute_mcp_tool(
+            _url: str, _function_name: str, _mcp_args_dict: dict
+        ):
             async with sse_client(_url) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
@@ -193,7 +199,9 @@ class FileExecutor:
                         logging.info(f"tool: {tool.name}")
                         if _function_name == tool.name:
                             logging.info(f"tool found: {tool.name}")
-                            _return_value = await session.call_tool(tool.name, arguments=_mcp_args_dict)
+                            _return_value = await session.call_tool(
+                                tool.name, arguments=_mcp_args_dict
+                            )
                             return _return_value.content[0].text
 
                     return None
@@ -201,16 +209,24 @@ class FileExecutor:
         logger.info(f"Executing python code using a MCP server")
 
         try:
-            function_name, parameter_definitions, function_imports = (
-                extract_function_and_imports(content=self.content, function_name=self.manifest["name"]))
+            (
+                function_name,
+                parameter_definitions,
+                function_imports,
+            ) = extract_function_and_imports(
+                content=self.content, function_name=self.manifest["name"]
+            )
             if function_name is None:
                 raise HTTPException(
-                    status_code=400, detail="No function definition found in the file")
+                    status_code=400, detail="No function definition found in the file"
+                )
 
-            logging.info(f"=== executing function with imports === \n"
-                         f"function_name: {function_name}\n"
-                         f"parameter_definitions:{parameter_definitions}\n"
-                         f"function_imports:{function_imports}\n")
+            logging.info(
+                f"=== executing function with imports === \n"
+                f"function_name: {function_name}\n"
+                f"parameter_definitions:{parameter_definitions}\n"
+                f"function_imports:{function_imports}\n"
+            )
 
             mcp_args_dict = {}
             for parameter_definition in parameter_definitions:
@@ -220,31 +236,38 @@ class FileExecutor:
                 if parameters.get(parameter_definition_name) is None:
                     if parameter_definition_kind == "positional":
                         raise HTTPException(
-                            status_code=400, detail=f"Missing parameter: "
-                                                    f"name:{parameter_definition_name}, "
-                                                    f"type:{parameter_definition_type}")
+                            status_code=400,
+                            detail=f"Missing parameter: "
+                            f"name:{parameter_definition_name}, "
+                            f"type:{parameter_definition_type}",
+                        )
                     else:
                         continue
 
-                converted_arg = arg_convert(parameters.get(parameter_definition_name),
-                                            parameter_definition_type)
+                converted_arg = arg_convert(
+                    parameters.get(parameter_definition_name), parameter_definition_type
+                )
                 if parameter_definition_kind == "positional":
                     mcp_args_dict[parameter_definition_name] = converted_arg
                 else:
                     mcp_args_dict[parameter_definition_name] = converted_arg
             mcp_server_url = self.manifest.get("mcp_url") or default_mcp_server_url
-            return_value = await execute_mcp_tool(mcp_server_url, function_name, mcp_args_dict)
+            return_value = await execute_mcp_tool(
+                mcp_server_url, function_name, mcp_args_dict
+            )
 
             if return_value is None:
                 raise HTTPException(
-                    status_code=400, detail="No return value from the function")
+                    status_code=400, detail="No return value from the function"
+                )
 
             logger.info(f"Python code executed successfully: {return_value}")
             return {"return value": f"{return_value}"}
         except Exception as e:
             logger.error(f"Error executing Python file: {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error executing Python file: {e}")
+                status_code=500, detail=f"Error executing Python file: {e}"
+            )
 
     def execute_python_file_using_docker(self, parameters):
         """
@@ -254,19 +277,29 @@ class FileExecutor:
         logger.info(f"Executing python code using a Docker container")
 
         try:
-            function_name, parameter_definitions, function_imports = extract_function_and_imports(
-                content=self.content, function_name=self.manifest['name'])
+            (
+                function_name,
+                parameter_definitions,
+                function_imports,
+            ) = extract_function_and_imports(
+                content=self.content, function_name=self.manifest["name"]
+            )
             # format docker command from function name and parameters
             if function_name is None:
                 raise HTTPException(
-                    status_code=400, detail="No function definition found in the file")
+                    status_code=400, detail="No function definition found in the file"
+                )
 
-            logging.info(f"=== executing function with imports === \n"
-                         f"function_name: {function_name}\n"
-                         f"parameter_definitions:{parameter_definitions}\n"
-                         f"function_imports:{function_imports}\n")
-            with tempfile.NamedTemporaryFile(delete=False, mode='w') as temp_file:
-                temp_file.write(self.content + f"""
+            logging.info(
+                f"=== executing function with imports === \n"
+                f"function_name: {function_name}\n"
+                f"parameter_definitions:{parameter_definitions}\n"
+                f"function_imports:{function_imports}\n"
+            )
+            with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
+                temp_file.write(
+                    self.content
+                    + f"""
 
 import json
 import argparse
@@ -316,7 +349,8 @@ def main():
 if __name__ == "__main__":
     main()
 
-""")
+"""
+                )
                 temp_file_path = temp_file.name
                 logger.info(f"tmp container python file name {temp_file_path}")
 
@@ -332,14 +366,17 @@ if __name__ == "__main__":
                 if parameters.get(parameter_definition_name) is None:
                     if parameter_definition_kind == "positional":
                         raise HTTPException(
-                            status_code=400, detail=f"Missing parameter: "
-                                                    f"name:{parameter_definition_name}, "
-                                                    f"type:{parameter_definition_type}")
+                            status_code=400,
+                            detail=f"Missing parameter: "
+                            f"name:{parameter_definition_name}, "
+                            f"type:{parameter_definition_type}",
+                        )
                     else:
                         continue
 
-                converted_arg = arg_convert(parameters.get(parameter_definition_name),
-                                            parameter_definition_type)
+                converted_arg = arg_convert(
+                    parameters.get(parameter_definition_name), parameter_definition_type
+                )
                 if parameter_definition_kind == "positional":
                     command += f"{converted_arg} "
                 else:
@@ -349,8 +386,7 @@ if __name__ == "__main__":
             container = self.client.containers.run(
                 "python:3.10",  # Using the official Python 3.9 image
                 command=f"/bin/bash -c '{command}'",
-                volumes={temp_file_path: {
-                    'bind': f'/tmp/function.py', 'mode': 'ro'}},
+                volumes={temp_file_path: {"bind": f"/tmp/function.py", "mode": "ro"}},
                 remove=True,
                 detach=False,
                 stderr=True,
@@ -358,10 +394,11 @@ if __name__ == "__main__":
                 environment={"PYTHONUNBUFFERED": "1"},
             )
 
-            return_value = container.decode().replace('\n', '')
+            return_value = container.decode().replace("\n", "")
             logger.info(f"Python code executed successfully: {return_value}")
             return {"return value": f"{return_value}"}
         except Exception as e:
             logger.error(f"Error executing Python file: {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error executing Python file: {e}")
+                status_code=500, detail=f"Error executing Python file: {e}"
+            )

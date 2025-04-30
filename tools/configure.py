@@ -20,7 +20,6 @@ def configure_logging(lvl=logging.INFO):
     logger.info("Configuring logging")
 
 
-
 class ColoredFormatter(logging.Formatter):
     """A formatter that adds color to log messages."""
 
@@ -36,34 +35,38 @@ class ColoredFormatter(logging.Formatter):
         "GRAY": "\033[90m",
         "ORANGE": "\033[38;5;208m",
         "BROWN": "\033[38;5;130m",
-        "PURPLE": "\033[38;5;93m", 
+        "PURPLE": "\033[38;5;93m",
         "PINK": "\033[38;5;201m",
-        "BEIGE": "\033[38;5;230m", 
-        "CRIMSON": "\033[38;5;196m", 
+        "BEIGE": "\033[38;5;230m",
+        "CRIMSON": "\033[38;5;196m",
         "TURQUOISE": "\033[38;5;81m",
-        "RESET": "\033[0m"
+        "RESET": "\033[0m",
     }
 
     LVL_COLORS = {
-        'DEBUG': ANSI_COLORS["CYAN"],  # Cyan
-        'INFO': ANSI_COLORS["GREEN"],   # Green
-        'WARNING': ANSI_COLORS["YELLOW"],# Yellow
-        'ERROR': ANSI_COLORS["RED"],  # Red
-        'CRITICAL': ANSI_COLORS["MAGENTA"], # Magenta
+        "DEBUG": ANSI_COLORS["CYAN"],  # Cyan
+        "INFO": ANSI_COLORS["GREEN"],  # Green
+        "WARNING": ANSI_COLORS["YELLOW"],  # Yellow
+        "ERROR": ANSI_COLORS["RED"],  # Red
+        "CRITICAL": ANSI_COLORS["MAGENTA"],  # Magenta
     }
-
 
     def __init__(self, colored=True):
         self.colored = colored
 
     def format(self, record):
-        log_color = self.LVL_COLORS.get(record.levelname, self.ANSI_COLORS['RESET'])
+        log_color = self.LVL_COLORS.get(record.levelname, self.ANSI_COLORS["RESET"])
         formatter = None
         if self.colored:
-            formatter = logging.Formatter(f'{self.ANSI_COLORS["GRAY"]}%(asctime)ss{self.ANSI_COLORS["RESET"]} - {self.ANSI_COLORS["WHITE"]}%(name)s{self.ANSI_COLORS["RESET"]} - {log_color}%(levelname)s - %(message)s{self.ANSI_COLORS["RESET"]} - (%(filename)s:%(lineno)d)')
+            formatter = logging.Formatter(
+                f'{self.ANSI_COLORS["GRAY"]}%(asctime)ss{self.ANSI_COLORS["RESET"]} - {self.ANSI_COLORS["WHITE"]}%(name)s{self.ANSI_COLORS["RESET"]} - {log_color}%(levelname)s - %(message)s{self.ANSI_COLORS["RESET"]} - (%(filename)s:%(lineno)d)'
+            )
         else:
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s - %(filename)s:%(lineno)d')
+            formatter = logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s - %(filename)s:%(lineno)d"
+            )
         return formatter.format(record)
+
 
 def configure_logger(logger_name, log_level=logging.INFO, colored=True, log_file=None):
     """
@@ -72,7 +75,7 @@ def configure_logger(logger_name, log_level=logging.INFO, colored=True, log_file
 
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level)  # Set the desired logging level
- 
+
     if log_file:
         handler = logging.FileHandler(log_file)
     else:

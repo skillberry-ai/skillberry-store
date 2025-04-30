@@ -31,8 +31,12 @@ def prometheus_setup():
 def otel_setup():
     """Configures OpenTelemetry tracing for a FastAPI app."""
 
-    trace_provider = TracerProvider(resource=Resource.create({SERVICE_NAME: OTEL_SERVICE_NAME}))
-    trace_exporter = OTLPSpanExporter(endpoint=f"http://localhost:{OTEL_TRACES_PORT}", insecure=True)
+    trace_provider = TracerProvider(
+        resource=Resource.create({SERVICE_NAME: OTEL_SERVICE_NAME})
+    )
+    trace_exporter = OTLPSpanExporter(
+        endpoint=f"http://localhost:{OTEL_TRACES_PORT}", insecure=True
+    )
     trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
 
     trace.set_tracer_provider(trace_provider)

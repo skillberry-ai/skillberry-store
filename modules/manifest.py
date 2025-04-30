@@ -20,8 +20,7 @@ class Manifest:
         os.makedirs(self.manifest_directory, exist_ok=True)
         ShellHook().execute("init_manifest", manifest_directory=manifest_directory)
 
-        logger.info(
-            f"Initialized Manifests with directory: {self.manifest_directory}")
+        logger.info(f"Initialized Manifests with directory: {self.manifest_directory}")
 
     def get_manifest_file_path(self, filename: str) -> str:
         """
@@ -39,8 +38,7 @@ class Manifest:
         """
         data = None
 
-        ShellHook().execute("pre_" + inspect.stack()[0].function,
-                            filename=filename)
+        ShellHook().execute("pre_" + inspect.stack()[0].function, filename=filename)
         manifest_file_path = self.get_manifest_file_path(filename)
         if os.path.exists(manifest_file_path):
             with open(manifest_file_path, "r", encoding="utf-8") as f:
@@ -51,50 +49,67 @@ class Manifest:
         """
         Write a manifest for the given file.
         """
-        ShellHook().execute("pre_" + inspect.stack()[0].function,
-                            filename=filename, manifest=manifest)
+        ShellHook().execute(
+            "pre_" + inspect.stack()[0].function, filename=filename, manifest=manifest
+        )
         manifest_file_path = self.get_manifest_file_path(filename)
         try:
             with open(manifest_file_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=4)
-            ShellHook().execute("post_" + inspect.stack()[0].function,
-                                filename=filename, manifest=manifest)
+            ShellHook().execute(
+                "post_" + inspect.stack()[0].function,
+                filename=filename,
+                manifest=manifest,
+            )
             logger.info(f"manifest saved for file: {filename}")
             return {"message": f"manifest saved for file '{filename}'."}
         except Exception as e:
-            logger.error(
-                f"Error saving manifest for file '{filename}': {e}")
-            ShellHook().execute("post_fail_" + inspect.stack()[0].function,
-                                filename=filename, manifest=manifest)
+            logger.error(f"Error saving manifest for file '{filename}': {e}")
+            ShellHook().execute(
+                "post_fail_" + inspect.stack()[0].function,
+                filename=filename,
+                manifest=manifest,
+            )
             raise HTTPException(
-                status_code=500, detail=f"Error saving manifest: {str(e)}")
+                status_code=500, detail=f"Error saving manifest: {str(e)}"
+            )
 
     def update_manifest(self, filename: str, new_manifest: Dict[str, Any]) -> dict:
         """
         Update the manifest for the given file.
         """
-        ShellHook().execute("pre_" + inspect.stack()[0].function,
-                            filename=filename, new_manifest=new_manifest)
+        ShellHook().execute(
+            "pre_" + inspect.stack()[0].function,
+            filename=filename,
+            new_manifest=new_manifest,
+        )
         manifest_file_path = self.get_manifest_file_path(filename)
         if not os.path.exists(manifest_file_path):
             raise HTTPException(
-                status_code=404, detail=f"No manifest found for file '{filename}'")
+                status_code=404, detail=f"No manifest found for file '{filename}'"
+            )
 
         try:
             with open(manifest_file_path, "w", encoding="utf-8") as f:
                 json.dump(new_manifest, f, indent=4, default=str)
             logger.info(f"manifest updated for file: {filename}")
-            ShellHook().execute("post_" + inspect.stack()[0].function,
-                                filename=filename, new_manifest=new_manifest)
+            ShellHook().execute(
+                "post_" + inspect.stack()[0].function,
+                filename=filename,
+                new_manifest=new_manifest,
+            )
             return {"message": f"manifest updated for file '{filename}'."}
 
         except Exception as e:
-            logger.error(
-                f"Error updating manifest for file '{filename}': {e}")
-            ShellHook().execute("post_fail_" + inspect.stack()[0].function,
-                                filename=filename, new_manifest=new_manifest)
+            logger.error(f"Error updating manifest for file '{filename}': {e}")
+            ShellHook().execute(
+                "post_fail_" + inspect.stack()[0].function,
+                filename=filename,
+                new_manifest=new_manifest,
+            )
             raise HTTPException(
-                status_code=500, detail=f"Error updating manifest: {str(e)}")
+                status_code=500, detail=f"Error updating manifest: {str(e)}"
+            )
 
     def list_manifests(self) -> List[Dict[str, str]]:
         """
@@ -109,12 +124,17 @@ class Manifest:
         try:
             ShellHook().execute("pre_" + inspect.stack()[0].function)
             manifest_files = os.listdir(self.manifest_directory)
-            return [self.read_manifest(f) for f in manifest_files
-                    if self.read_manifest(f) is not None]
+            return [
+                self.read_manifest(f)
+                for f in manifest_files
+                if self.read_manifest(f) is not None
+            ]
         except Exception as e:
             ShellHook().execute("post_fail_" + inspect.stack()[0].function)
             logger.error(f"Error listing files: {e}")
-            raise HTTPException(status_code=500, detail=f"Error listing manifests: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error listing manifests: {str(e)}"
+            )
 
     def delete_manifest(self, filename: str) -> dict:
         """
@@ -122,22 +142,26 @@ class Manifest:
         """
         manifest_file_path = self.get_manifest_file_path(filename)
         try:
-            ShellHook().execute("pre_" + inspect.stack()[0].function,
-                                filename=filename)
+            ShellHook().execute("pre_" + inspect.stack()[0].function, filename=filename)
             if os.path.exists(manifest_file_path):
                 os.remove(manifest_file_path)
-                ShellHook().execute("post_" + inspect.stack()[0].function,
-                                    filename=filename)
+                ShellHook().execute(
+                    "post_" + inspect.stack()[0].function, filename=filename
+                )
 
                 logger.info(f"manifest deleted for file: {filename}")
-                return {"message": f"manifest for file '{filename}' deleted successfully."}
+                return {
+                    "message": f"manifest for file '{filename}' deleted successfully."
+                }
             else:
                 raise HTTPException(
-                    status_code=404, detail=f"manifest for file '{filename}' not found.")
+                    status_code=404, detail=f"manifest for file '{filename}' not found."
+                )
         except Exception as e:
-            logger.error(
-                f"Error deleting manifest for file '{filename}': {e}")
-            ShellHook().execute("post_fail_" + inspect.stack()[0].function,
-                                filename=filename)
+            logger.error(f"Error deleting manifest for file '{filename}': {e}")
+            ShellHook().execute(
+                "post_fail_" + inspect.stack()[0].function, filename=filename
+            )
             raise HTTPException(
-                status_code=500, detail=f"Error deleting manifest: {str(e)}")
+                status_code=500, detail=f"Error deleting manifest: {str(e)}"
+            )

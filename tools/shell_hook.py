@@ -51,8 +51,14 @@ class ShellHook:
 
         try:
             # Execute the command
-            result = subprocess.run(command, shell=True, check=True,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            result = subprocess.run(
+                command,
+                shell=True,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
             logger.info(f"[{hook_id}] Command output:\n{result.stdout}")
         except subprocess.CalledProcessError as e:
             logger.error(f"[{hook_id}] Command failed with error:\n{e.stderr}")
