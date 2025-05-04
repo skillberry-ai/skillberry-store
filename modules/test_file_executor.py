@@ -183,7 +183,7 @@ def test_tool(input_string: str) -> str:
         str: The quarter of the year, e.g., 1Q, 2Q, 3Q, or 4Q.
     '''
     import re
-    pattern = r'(\dQ)'
+    pattern = r'(\\dQ)'
     match = re.search(pattern, input_string)
     if match:
         return match.group()
