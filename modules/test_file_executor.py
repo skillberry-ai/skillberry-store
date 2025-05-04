@@ -228,7 +228,7 @@ def file_content_inner():
     return """
 def test_tool(a: int, b: int) -> int:
     '''
-    Adds two floating-point numbers and returns the result.
+    Adds two numbers and returns the result.
 
     Args:
         a (int): The first number to be added.
@@ -237,7 +237,7 @@ def test_tool(a: int, b: int) -> int:
     Returns:
         int: The result of adding a and b.
     '''
-    def inner_helper(a, b)
+    def inner_helper(a, b):
         return a + b
     return inner_helper(a, b)
 """
@@ -261,4 +261,4 @@ async def test_execute_inner(executor_instance_inner, parameters, expected):
     result = await executor_instance_inner.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f'"{expected}"'
+    assert result["return value"] == f'{expected}'

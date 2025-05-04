@@ -6,8 +6,16 @@
 remote="$1"
 url="$2"
 
-# this will make sure that when we push to a branch the code is ready for a pull request
+# This hook makes sure that when we push to a branch the code is ready for a pull request
+# It is possible to skip this (for debug/as needed) by setting the environment variable
+# 'SKIP_CI`. Make sure to use this options only when absolutely needed.
 echo "========> Executing make ci_pull_request to make sure that this push is ready for PR"
+
+if [ "$SKIP_CI" ]; then
+    echo "========> SKIP_CI is set. Skipping CI check."
+    exit 0
+fi
+
 make ci_pull_request && echo "========> Done." || { echo "========> Failed."; exit 1; }
 
 

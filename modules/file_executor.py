@@ -319,7 +319,7 @@ def parse_arguments(func):
             parser.add_argument(param.name, type=str, help=f"Argument for {{param.name}}")
         else:
             # Optional parameter with default, add it to argparse with default value
-            parser.add_argument(f"--{{param.name}}", type=str, default=str(param.default),
+            parser.add_argument(f"--{{param.name}}", type=str, default=param.default,
                                 help=f"Argument for {{param.name}} (default: {{param.default}})")
 
     return parser
@@ -334,7 +334,7 @@ def main():
     parsed_args = []
     for param, value in vars(args).items():
         # Convert the argument to the correct type if possible
-        if func_params[param].annotation != inspect.Parameter.empty:
+        if func_params[param].annotation != inspect.Parameter.empty and value is not None:
             try:
                 parsed_args.append(func_params[param].annotation(value))
             except ValueError:
