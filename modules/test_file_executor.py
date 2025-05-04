@@ -261,4 +261,4 @@ async def test_execute_inner(executor_instance_inner, parameters, expected):
     result = await executor_instance_inner.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f'{expected}'
+    assert result["return value"] == f"{expected}"
