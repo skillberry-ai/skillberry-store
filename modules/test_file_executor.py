@@ -262,3 +262,230 @@ async def test_execute_inner(executor_instance_inner, parameters, expected):
     # pytest -vs to print
     print(result)
     assert result["return value"] == f"{expected}"
+
+
+@pytest.fixture
+def file_content_date_converter():
+    """
+    Single tool code.
+
+    """
+
+    return """
+def test_tool(date_str: str) -> str:
+    '''
+    Converts a string representing a valid date to a string representing a date in ISO format.
+
+    Args:
+        date_str (str): The input date string.
+
+    Returns:
+        str: The date in ISO format.
+
+    Raises:
+        ValueError: If the input string is not a valid recognizable date.
+    '''
+    import dateutil
+    try:
+        date = dateutil.parser.parse(date_str)
+        return date.strftime('%Y-%m-%d')
+    except ValueError:
+        raise ValueError("Invalid date string")
+"""
+
+@pytest.fixture
+def executor_instance_date_converter(manifest_test_tool, file_content_date_converter):
+    """Fixture to create a FileExecutor instance."""
+    return FileExecutor(
+        name=manifest_test_tool["name"],
+        file_content=file_content_date_converter,
+        file_manifest=manifest_test_tool,
+    )
+
+
+@pytest.mark.parametrize(
+    "parameters,expected",
+    [
+        ({"date_str": "January 1, 2022"}, "2022-01-01"),
+        ({"date_str": "2022-01-01"}, "2022-01-01"),
+        ({"date_str": "5Feb2020"}, "2020-02-05"),
+    ],
+    ids=["test_one", "test_two", "test_three"],
+)
+@pytest.mark.asyncio
+async def test_execute_date_converter(executor_instance_date_converter, parameters, expected):
+    result = await executor_instance_date_converter.execute_file(parameters)
+    # pytest -vs to print
+    print(result)
+    assert result["return value"] == f'"{expected}"'
+
+
+@pytest.fixture
+def file_content_date_converter_from():
+    """
+    Single tool code.
+
+    """
+
+    return """
+def test_tool(date_str: str) -> str:
+    '''
+    Converts a string representing a valid date to a string representing a date in ISO format.
+
+    Args:
+        date_str (str): The input date string.
+
+    Returns:
+        str: The date in ISO format.
+
+    Raises:
+        ValueError: If the input string is not a valid recognizable date.
+    '''
+    from dateutil.parser import parse
+    try:
+        date = parse(date_str)
+        return date.strftime('%Y-%m-%d')
+    except ValueError:
+        raise ValueError("Invalid date string")
+"""
+
+@pytest.fixture
+def executor_instance_date_converter_from(manifest_test_tool, file_content_date_converter_from):
+    """Fixture to create a FileExecutor instance."""
+    return FileExecutor(
+        name=manifest_test_tool["name"],
+        file_content=file_content_date_converter_from,
+        file_manifest=manifest_test_tool,
+    )
+
+
+@pytest.mark.parametrize(
+    "parameters,expected",
+    [
+        ({"date_str": "January 1, 2022"}, "2022-01-01"),
+        ({"date_str": "2022-01-01"}, "2022-01-01"),
+        ({"date_str": "5Feb2020"}, "2020-02-05"),
+    ],
+    ids=["test_one", "test_two", "test_three"],
+)
+@pytest.mark.asyncio
+async def test_execute_date_converter_from(executor_instance_date_converter_from, parameters, expected):
+    result = await executor_instance_date_converter_from.execute_file(parameters)
+    # pytest -vs to print
+    print(result)
+    assert result["return value"] == f'"{expected}"'
+
+
+@pytest.fixture
+def file_content_date_converter_from2():
+    """
+    Single tool code.
+
+    """
+
+    return """
+def test_tool(date_str: str) -> str:
+    '''
+    Converts a string representing a valid date to a string representing a date in ISO format.
+
+    Args:
+        date_str (str): The input date string.
+
+    Returns:
+        str: The date in ISO format.
+
+    Raises:
+        ValueError: If the input string is not a valid recognizable date.
+    '''
+    from dateutil import parser
+    try:
+        date = parser.parse(date_str)
+        return date.strftime('%Y-%m-%d')
+    except ValueError:
+        raise ValueError("Invalid date string")
+"""
+
+@pytest.fixture
+def executor_instance_date_converter_from2(manifest_test_tool, file_content_date_converter_from2):
+    """Fixture to create a FileExecutor instance."""
+    return FileExecutor(
+        name=manifest_test_tool["name"],
+        file_content=file_content_date_converter_from2,
+        file_manifest=manifest_test_tool,
+    )
+
+
+@pytest.mark.parametrize(
+    "parameters,expected",
+    [
+        ({"date_str": "January 1, 2022"}, "2022-01-01"),
+        ({"date_str": "2022-01-01"}, "2022-01-01"),
+        ({"date_str": "5Feb2020"}, "2020-02-05"),
+    ],
+    ids=["test_one", "test_two", "test_three"],
+)
+@pytest.mark.asyncio
+async def test_execute_date_converter_from2(executor_instance_date_converter_from2, parameters, expected):
+    result = await executor_instance_date_converter_from2.execute_file(parameters)
+    # pytest -vs to print
+    print(result)
+    assert result["return value"] == f'"{expected}"'
+
+
+@pytest.fixture
+def file_content_multiple_imports():
+    """
+    Single tool code.
+
+    """
+
+    return """
+def test_tool(date_str: str) -> str:
+    '''
+    Converts a string representing a valid date to a string representing a date in ISO format.
+
+    Args:
+        date_str (str): The input date string.
+
+    Returns:
+        str: The date in ISO format.
+
+    Raises:
+        ValueError: If the input string is not a valid recognizable date.
+    '''
+    import dateutil, json
+    try:
+        date = dateutil.parser.parse(date_str)
+        # just ensure loads work
+        json.loads('{"a": "1"}')
+        return date.strftime('%Y-%m-%d')
+    except ValueError:
+        raise ValueError("Invalid date string")
+"""
+
+@pytest.fixture
+def executor_instance_multiple_imports(manifest_test_tool, file_content_multiple_imports):
+    """Fixture to create a FileExecutor instance."""
+    return FileExecutor(
+        name=manifest_test_tool["name"],
+        file_content=file_content_multiple_imports,
+        file_manifest=manifest_test_tool,
+    )
+
+
+@pytest.mark.parametrize(
+    "parameters,expected",
+    [
+        ({"date_str": "January 1, 2022"}, "2022-01-01"),
+        ({"date_str": "2022-01-01"}, "2022-01-01"),
+        ({"date_str": "5Feb2020"}, "2020-02-05"),
+    ],
+    ids=["test_one", "test_two", "test_three"],
+)
+@pytest.mark.asyncio
+async def test_execute_multiple_imports(executor_instance_multiple_imports, parameters, expected):
+    result = await executor_instance_multiple_imports.execute_file(parameters)
+    # pytest -vs to print
+    print(result)
+    assert result["return value"] == f'"{expected}"'
+

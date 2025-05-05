@@ -1,5 +1,5 @@
 import ast
-import asyncio
+from importlib.metadata import packages_distributions
 import logging
 import os
 import tempfile
@@ -15,6 +15,25 @@ from mcp.client.sse import sse_client
 default_mcp_server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8080/sse")
 
 logger = logging.getLogger(__name__)
+
+
+def get_distribution(module_name: str) -> str:
+    """
+    Return the package that provides the given module.
+
+    Parameters:
+        module_name: python module name (e.g. dateutil, yaml, ...)
+
+    Returns:
+        str: package name or None if not found 
+
+    """
+    distributions = packages_distributions()
+    package_distribution = distributions.get(module_name)
+    # return the first found distro for this package
+    return package_distribution[0] \
+        if (package_distribution and len(package_distribution) > 0) \
+        else None
 
 
 def arg_convert(arg_name, arg_type):
@@ -104,7 +123,8 @@ def extract_function_and_imports(
             elif isinstance(node, ast.Import):
                 imports.extend(alias.name for alias in node.names)
             elif isinstance(node, ast.ImportFrom):
-                imports.extend(alias.name for alias in node.names)
+                # imports.extend(alias.name for alias in node.names)
+                imports.extend([node.module])
 
         return function_name, parameters, imports
 
@@ -355,6 +375,7 @@ if __name__ == "__main__":
                 logger.info(f"tmp container python file name {temp_file_path}")
 
             if function_imports:
+                function_imports = [get_distribution(m.split('.')[0]) for m in function_imports if get_distribution(m.split('.')[0]) is not None]
                 command = f"pip install -q --no-cache-dir {' '.join(function_imports)} > /dev/null 2>&1 ; "
             else:
                 command = ""
