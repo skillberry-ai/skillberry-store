@@ -375,8 +375,29 @@ if __name__ == "__main__":
                 logger.info(f"tmp container python file name {temp_file_path}")
 
             if function_imports:
-                function_imports = [get_distribution(m.split('.')[0]) for m in function_imports if get_distribution(m.split('.')[0]) is not None]
-                command = f"pip install -q --no-cache-dir {' '.join(function_imports)} > /dev/null 2>&1 ; "
+                packages_to_install = []
+                # (1) transform to a list of main module names (e.g. in case
+                #     of nested - the first element prior to '.')
+                function_imports = [fi.split('.')[0] for fi in function_imports]
+                for fi in function_imports:
+                    # (2) attempt to resolve package name via packages_distributions
+                    package_name = get_distribution(fi)
+                    if package_name:
+                        # (3a) succeed: append to list of packages to be installed
+                        packages_to_install.append(package_name)
+                    else:
+                        # (3b) not found: append module name as is plus same one
+                        #      prefixed with "python".
+                        #      Note: pip install error is silently ignored (e.g. in case
+                        #      of a none-existing/illegal package names (see below)
+                        packages_to_install.append(fi)
+                        packages_to_install.append(f"python-{fi}")
+
+                command = ""
+                for p in packages_to_install:
+                    # (4) individual pip install commands so that a failure does not
+                    #     affect the rest 
+                    command += f"pip install -q --no-cache-dir {p} > /dev/null 2>&1 ; "
             else:
                 command = ""
             command += f"python /tmp/function.py "
