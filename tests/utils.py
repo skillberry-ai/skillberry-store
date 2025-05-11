@@ -1,13 +1,18 @@
+import os
 import shutil
 import asyncio
 import httpx
 import json
 from urllib.parse import quote
+
+
 def clean_test_tmp_dir():
     """Removes temporary directories used by the tools service."""
 
     for path in ["/tmp/manifest", "/tmp/descriptions", "/tmp/files"]:
-        shutil.rmtree(path, ignore_errors=True)
+        if os.path.exists(path):
+            print(f"Removing: {path}")
+            shutil.rmtree(path, ignore_errors=False)
 
 
 async def wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=15):
@@ -28,6 +33,7 @@ async def wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeou
             raise TimeoutError(f"Server did not become ready within {timeout} seconds")
 
         await asyncio.sleep(0.5)
+
 
 async def add_tool_manifest(name: str = "multiply", mcp_url: str = "http://localhost:8080/sse"):
     """Registers a tool manifest with the tools service via HTTP POST."""
