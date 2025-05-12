@@ -25,15 +25,17 @@ def get_distribution(module_name: str) -> str:
         module_name: python module name (e.g. dateutil, yaml, ...)
 
     Returns:
-        str: package name or None if not found 
+        str: package name or None if not found
 
     """
     distributions = packages_distributions()
     package_distribution = distributions.get(module_name)
     # return the first found distro for this package
-    return package_distribution[0] \
-        if (package_distribution and len(package_distribution) > 0) \
+    return (
+        package_distribution[0]
+        if (package_distribution and len(package_distribution) > 0)
         else None
+    )
 
 
 def arg_convert(arg_name, arg_type):
@@ -321,11 +323,50 @@ class FileExecutor:
                     self.content
                     + f"""
 
+from typing import get_origin, get_args
 import json
 import argparse
 import sys
 import datetime
 import inspect
+
+def convert_value(value: str, annotation):
+    origin = get_origin(annotation) or annotation
+    args   = get_args(annotation)
+
+    if origin in (list, tuple):
+        subtype = args[0] if args else str
+        items = [item.strip().strip('[]()') for item in value.split(',')]
+        parsed = [subtype(item) for item in items]
+        return parsed if origin is list else tuple(parsed)
+
+    if origin is dict:
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON for dict: {{e}}")
+
+    if annotation is datetime.date:
+        try:
+            return datetime.date.fromisoformat(value)
+        except Exception as e:
+            raise ValueError(f"Invalid date (YYYY-MM-DD): {{e}}")
+    if annotation is datetime.datetime:
+        try:
+            return datetime.datetime.fromisoformat(value)
+        except Exception as e:
+            raise ValueError(f"Invalid datetime (ISO 8601): {{e}}")
+
+    if annotation is int:
+        return int(value)
+    if annotation is float:
+        return float(value)
+    if annotation is bool:
+        return value.lower() in ("true", "1", "yes")
+    if annotation is str:
+        return value
+
+    return value
 
 def parse_arguments(func):
     # Get the signature of the function
@@ -356,7 +397,7 @@ def main():
         # Convert the argument to the correct type if possible
         if func_params[param].annotation != inspect.Parameter.empty and value is not None:
             try:
-                parsed_args.append(func_params[param].annotation(value))
+                parsed_args.append(convert_value(value,func_params[param].annotation))
             except ValueError:
                 parsed_args.append(value)
         else:
@@ -364,7 +405,10 @@ def main():
 
     # Call the function with the parsed arguments
     result = {function_name}(*parsed_args)
-    print(json.dumps(result))
+    if isinstance(result, str):
+        print(result)
+    else:
+        print(json.dumps(result))
 
 if __name__ == "__main__":
     main()
@@ -378,7 +422,7 @@ if __name__ == "__main__":
                 packages_to_install = []
                 # (1) transform to a list of main module names (e.g. in case
                 #     of nested - the first element prior to '.')
-                function_imports = [fi.split('.')[0] for fi in function_imports]
+                function_imports = [fi.split(".")[0] for fi in function_imports]
                 for fi in function_imports:
                     # (2) attempt to resolve package name via packages_distributions
                     package_name = get_distribution(fi)
@@ -396,7 +440,7 @@ if __name__ == "__main__":
                 command = ""
                 for p in packages_to_install:
                     # (4) individual pip install commands so that a failure does not
-                    #     affect the rest 
+                    #     affect the rest
                     command += f"pip install -q --no-cache-dir {p} > /dev/null 2>&1 ; "
             else:
                 command = ""

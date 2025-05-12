@@ -161,7 +161,7 @@ async def test_execute_string(executor_instance_string, parameters, expected):
     result = await executor_instance_string.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f'"{expected}"'
+    assert result["return value"] == expected
 
 
 @pytest.fixture
@@ -215,7 +215,7 @@ async def test_execute_GetQuarter(executor_instance_GetQuarter, parameters, expe
     result = await executor_instance_GetQuarter.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f'"{expected}"'
+    assert result["return value"] == expected
 
 
 @pytest.fixture
@@ -261,7 +261,7 @@ async def test_execute_inner(executor_instance_inner, parameters, expected):
     result = await executor_instance_inner.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f"{expected}"
+    assert result["return value"] == expected
 
 
 @pytest.fixture
@@ -270,7 +270,6 @@ def file_content_date_converter():
     Single tool code.
 
     """
-
     return """
 def test_tool(date_str: str) -> str:
     '''
@@ -293,6 +292,7 @@ def test_tool(date_str: str) -> str:
         raise ValueError("Invalid date string")
 """
 
+
 @pytest.fixture
 def executor_instance_date_converter(manifest_test_tool, file_content_date_converter):
     """Fixture to create a FileExecutor instance."""
@@ -313,11 +313,13 @@ def executor_instance_date_converter(manifest_test_tool, file_content_date_conve
     ids=["test_one", "test_two", "test_three"],
 )
 @pytest.mark.asyncio
-async def test_execute_date_converter(executor_instance_date_converter, parameters, expected):
+async def test_execute_date_converter(
+    executor_instance_date_converter, parameters, expected
+):
     result = await executor_instance_date_converter.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f'"{expected}"'
+    assert result["return value"] == expected
 
 
 @pytest.fixture
@@ -349,8 +351,11 @@ def test_tool(date_str: str) -> str:
         raise ValueError("Invalid date string")
 """
 
+
 @pytest.fixture
-def executor_instance_date_converter_from(manifest_test_tool, file_content_date_converter_from):
+def executor_instance_date_converter_from(
+    manifest_test_tool, file_content_date_converter_from
+):
     """Fixture to create a FileExecutor instance."""
     return FileExecutor(
         name=manifest_test_tool["name"],
@@ -369,11 +374,13 @@ def executor_instance_date_converter_from(manifest_test_tool, file_content_date_
     ids=["test_one", "test_two", "test_three"],
 )
 @pytest.mark.asyncio
-async def test_execute_date_converter_from(executor_instance_date_converter_from, parameters, expected):
+async def test_execute_date_converter_from(
+    executor_instance_date_converter_from, parameters, expected
+):
     result = await executor_instance_date_converter_from.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f'"{expected}"'
+    assert result["return value"] == expected
 
 
 @pytest.fixture
@@ -405,8 +412,11 @@ def test_tool(date_str: str) -> str:
         raise ValueError("Invalid date string")
 """
 
+
 @pytest.fixture
-def executor_instance_date_converter_from2(manifest_test_tool, file_content_date_converter_from2):
+def executor_instance_date_converter_from2(
+    manifest_test_tool, file_content_date_converter_from2
+):
     """Fixture to create a FileExecutor instance."""
     return FileExecutor(
         name=manifest_test_tool["name"],
@@ -425,11 +435,13 @@ def executor_instance_date_converter_from2(manifest_test_tool, file_content_date
     ids=["test_one", "test_two", "test_three"],
 )
 @pytest.mark.asyncio
-async def test_execute_date_converter_from2(executor_instance_date_converter_from2, parameters, expected):
+async def test_execute_date_converter_from2(
+    executor_instance_date_converter_from2, parameters, expected
+):
     result = await executor_instance_date_converter_from2.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f'"{expected}"'
+    assert result["return value"] == expected
 
 
 @pytest.fixture
@@ -463,8 +475,11 @@ def test_tool(date_str: str) -> str:
         raise ValueError("Invalid date string")
 """
 
+
 @pytest.fixture
-def executor_instance_multiple_imports(manifest_test_tool, file_content_multiple_imports):
+def executor_instance_multiple_imports(
+    manifest_test_tool, file_content_multiple_imports
+):
     """Fixture to create a FileExecutor instance."""
     return FileExecutor(
         name=manifest_test_tool["name"],
@@ -483,9 +498,59 @@ def executor_instance_multiple_imports(manifest_test_tool, file_content_multiple
     ids=["test_one", "test_two", "test_three"],
 )
 @pytest.mark.asyncio
-async def test_execute_multiple_imports(executor_instance_multiple_imports, parameters, expected):
+async def test_execute_multiple_imports(
+    executor_instance_multiple_imports, parameters, expected
+):
     result = await executor_instance_multiple_imports.execute_file(parameters)
     # pytest -vs to print
     print(result)
-    assert result["return value"] == f'"{expected}"'
+    assert result["return value"] == expected
 
+
+@pytest.fixture
+def file_content_nth_number_in_list():
+    return """
+def test_tool(numbers: list, n: int) -> int:
+    '''Returns the nth number in a list.
+
+    Parameters:
+        numbers (list): A list of numbers.
+        n (int): The position of the number to be returned.
+
+    Returns:
+        int: The nth number in the list.
+    '''
+    if n < 1 or n > len(numbers):
+        raise ValueError("n is out of range")
+
+    return numbers[n-1]
+"""
+
+
+@pytest.fixture
+def executor_instance_nth_number(manifest_test_tool, file_content_nth_number_in_list):
+    """Fixture to create a FileExecutor instance."""
+    return FileExecutor(
+        name=manifest_test_tool["name"],
+        file_content=file_content_nth_number_in_list,
+        file_manifest=manifest_test_tool,
+    )
+
+
+@pytest.mark.parametrize(
+    "parameters,expected",
+    [
+        ({"numbers": "[10,20,30]", "n": 1}, "10"),
+        ({"numbers": "[10,20,30]", "n": 2}, "20"),
+        ({"numbers": "[-1,0,1]", "n": 3}, "1"),
+    ],
+    ids=["test_one", "test_two", "test_three"],
+)
+@pytest.mark.asyncio
+async def test_execute_nth_number_in_list(
+    executor_instance_nth_number, parameters, expected
+):
+    result = await executor_instance_nth_number.execute_file(parameters)
+    # pytest -vs to print
+    print(result)
+    assert result["return value"] == expected
