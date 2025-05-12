@@ -463,6 +463,13 @@ if __name__ == "__main__":
                 converted_arg = arg_convert(
                     parameters.get(parameter_definition_name), parameter_definition_type
                 )
+                # attempt to escape $ signs with `\` so that bash does
+                # not treat it as a variable
+                try:
+                    converted_arg = converted_arg.replace("$", "\\$")
+                except:
+                    # ignore none string, any error
+                    pass
                 if parameter_definition_kind == "positional":
                     command += f"{converted_arg} "
                 else:

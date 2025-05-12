@@ -508,6 +508,63 @@ async def test_execute_multiple_imports(
 
 
 @pytest.fixture
+def file_content_transform_total():
+    """
+    Single tool code.
+
+    """
+
+    return """
+def test_tool(total: str) -> float:
+    '''
+    This function transforms a string representing the final total amount including all charges into a float.
+    It removes any non-numeric characters and converts the resulting string to a float.
+    If the input string does not contain a decimal point, it appends '.00' to the end.
+
+    Parameters:
+        total (str): The final total amount including all charges as a string.
+
+    Returns:
+        float: The total amount as a float.
+    '''
+    # Remove any non-numeric characters except for the decimal point
+    total = ''.join(char for char in total if char.isdigit() or char == '.')
+
+    # If the total does not contain a decimal point, append '.00'
+    if '.' not in total:
+        total += '.00'
+
+    # Convert the total to a float and return it
+    return float(total)
+"""
+
+@pytest.fixture
+def executor_instance_transform_total(manifest_test_tool, file_content_transform_total):
+    """Fixture to create a FileExecutor instance."""
+    return FileExecutor(
+        name=manifest_test_tool["name"],
+        file_content=file_content_transform_total,
+        file_manifest=manifest_test_tool,
+    )
+
+
+@pytest.mark.parametrize(
+    "parameters,expected",
+    [
+        ({"total": "$34,690.64"}, "34690.64"),
+        ({"total": "‚Ç¨4,898.58"}, "4898.58")
+    ],
+    ids=["test_one", "test_two"]
+)
+@pytest.mark.asyncio
+async def test_execute_transform_total(executor_instance_transform_total, parameters, expected):
+    result = await executor_instance_transform_total.execute_file(parameters)
+    # pytest -vs to print
+    print(result)
+    assert result["return value"] == expected
+
+
+@pytest.fixture
 def file_content_nth_number_in_list():
     return """
 def test_tool(numbers: list, n: int) -> int:
