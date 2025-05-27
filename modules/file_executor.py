@@ -7,6 +7,7 @@ import datetime
 from typing import Dict, List, Any, Tuple, AnyStr, Optional
 
 import docker
+
 from fastapi import HTTPException
 
 from mcp import ClientSession
@@ -140,6 +141,10 @@ class FileExecutor:
     def __init__(self, name: str, file_content: AnyStr, file_manifest: dict):
         """
         Initialize the PythonExecutor with the directory path.
+        The executor runtime is determined by the environment variable CODE_EXEC_RUNTIME.
+        If the variable is set to "podman", the executor will use Podman.
+        If the variable is set to "docker", the executor will use Docker.
+        If the variable is not set or has an invalid value, an HTTPException will be raised.
         """
         self.name = name
         self.content = file_content
@@ -150,8 +155,15 @@ class FileExecutor:
             logger.error(f"Error parsing manifest: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing manifest: {e}")
 
-        self.client = docker.from_env()
-        logger.info(f"Initialized file file executor: {self.name}")
+        self.client = docker.from_env() 
+        
+        try:
+            self.client = docker.from_env()    
+        except ImportError:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Docker SDK for Python not found. Please install the Docker SDK for Python.",
+            )
 
     async def execute_file(self, parameters: Dict[str, Any]) -> dict:
         """
@@ -476,17 +488,18 @@ if __name__ == "__main__":
                     command += f"--{parameter_definition_name}={converted_arg} "
 
             # Create and run a container to execute the Python file
+            
             container = self.client.containers.run(
-                "python:3.10",  # Using the official Python 3.10 image
-                command=f"/bin/bash -c '{command}'",
-                volumes={temp_file_path: {"bind": f"/tmp/function.py", "mode": "ro"}},
-                remove=True,
-                detach=False,
-                stderr=True,
-                stdout=True,
-                environment={"PYTHONUNBUFFERED": "1"},
+                    "python:3.11",  # Using the official Python 3.11 image
+                    command=f"/bin/bash -c '{command}'",
+                    volumes={temp_file_path: {"bind": f"/tmp/function.py", "mode": "ro"}},
+                    remove=True,
+                    detach=False,
+                    stderr=True,
+                    stdout=True,
+                    environment={"PYTHONUNBUFFERED": "1"},
             )
-
+            
             return_value = container.decode().replace("\n", "")
             logger.info(f"Python code executed successfully: {return_value}")
             return {"return value": f"{return_value}"}

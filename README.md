@@ -18,7 +18,7 @@ This service implements a smart tools repository for agentic workflows.
 
 ## Quickstart 🚀
 
-### Run the Service with Docker 🐳
+### Run the Service with Docker or Podman 🐳
 
 For a quick start, use Docker to run the service:
 
@@ -40,7 +40,17 @@ For more detailed information and programmatic usage, refer to the [Blueberry SD
 
 ## Prerequisites 🛠️
 
-- Docker is installed on your machine.
+- Docker or Podman is installed on your machine.
+
+The default is `docker`. If you want to use `podman`, include this line
+```
+docker alias=`podman`
+```
+into one (or more) of the following configuration files, depending on which shell(s) you are using
+- `~/.zshrc`
+- `~/.bashrc`
+- `~/.bash_profile`
+- `~/.profile`
 
 Additional requisites for local deployment:
 - Your user has Docker permissions (i.e., is a member of the `docker` group).
@@ -51,6 +61,24 @@ Additional requisites for local deployment:
 > docker info --format '{{.LoggingDriver}}'
 > ```
 > If the response is not `json-file` or `journald`, configure your Docker logging as documented [here](https://docs.docker.com/engine/logging/configure/#configure-the-default-logging-driver).
+
+## Running with podman on MacOS ⚒️
+
+- Alias `docker` to `podman`, as explained in [Prerequisites](#prerequisites-️)
+- Create and start a Podman machine:
+```bash
+podman machine init --now --cpus=4 --memory=4096 -v /tmp:/tmp podman-machine-default
+```   
+if you already have a default Podman machine with this name, then you need to first
+```bash
+podman machine stop
+podman machine rm podman-machine-default
+```
+Then rerun Podman machine initialization and 
+```bash
+make docker_run
+```
+
 
 ## Design Requirements
 

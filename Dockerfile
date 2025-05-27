@@ -13,10 +13,11 @@ WORKDIR /app
 
 # Copy the application
 COPY . .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --upgrade pip
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Expose a port (change if needed)
 EXPOSE 8000
 
 # Set the entrypoint command (adjust if running FastAPI, Flask, Django, etc.)
-CMD echo "Starting blueberry tools-service (version $BUILD_VERSION built on $BUILD_DATE)" && echo "" && python main.py
+CMD ["sh", "-c", "echo \"Starting blueberry tools-service (version $BUILD_VERSION built on $BUILD_DATE)\" && echo \"\" && python main.py"]

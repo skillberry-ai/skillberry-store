@@ -1,4 +1,6 @@
 annotated-types==0.7.0
+maturin==1.8.4
+cargo
 anyio==4.5.0
 asgiref==3.8.1
 attrs==25.1.0
@@ -13,7 +15,6 @@ dnspython==2.7.0
 docker==7.1.0
 docstring-parser==0.16
 email-validator==2.2.0
-faiss-cpu==1.8.0
 fastapi==0.115.12
 fastapi-versioning==0.10.0
 filelock==3.17.0
@@ -59,9 +60,9 @@ pillow==11.1.0
 platformdirs==4.3.6
 pluggy==1.5.0
 pycodestyle==2.7.0
-pydantic==2.7.4
-pydantic-core==2.18.4
-pydantic-settings==2.8.1
+pydantic==2.11.4
+pydantic-core
+pydantic-settings==2.9.1
 pyflakes==2.3.1
 pygments==2.19.1
 pytest==8.3.4
@@ -110,7 +111,7 @@ opentelemetry-sdk
 opentelemetry-exporter-otlp
 opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-requests
-faiss-cpu
 pylint
 flake8
 black
+faiss-cpu

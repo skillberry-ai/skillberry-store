@@ -1,0 +1,49 @@
+FROM python:3.11
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    libffi-dev \
+    libssl-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    zlib1g-dev \
+    git \
+    curl \
+    wget && \
+    rm -rf /var/lib/apt/lists/*
+#install rust
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y && \
+    export PATH="$HOME/.cargo/bin:$PATH" && \
+    rustup default nightly
+
+# Define build arguments
+ARG BUILD_VERSION=latest
+ARG BUILD_DATE
+
+# Label the image with metadata
+LABEL version="$BUILD_VERSION"
+LABEL date="$BUILD_DATE"
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the application
+COPY . .
+RUN pip3 install --no-cache-dir --upgrade pip
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Make sure that the user inside the container has the same GID as the docker group on the host machine 
+#RUN useradd -u 501 -g 20 -m docker && \
+#    usermod -aG 20 docker
+# Switch to the non-root user
+#USER docker
+
+
+# Expose a port (change if needed)
+EXPOSE 8000
+
+# Set the entrypoint command (adjust if running FastAPI, Flask, Django, etc.)
+CMD ["sh", "-c", "echo \"Starting blueberry tools-service (version $BUILD_VERSION built on $BUILD_DATE)\" && echo \"\" && python main.py"]

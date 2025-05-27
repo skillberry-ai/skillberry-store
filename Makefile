@@ -1,7 +1,9 @@
 
 .DEFAULT_GOAL := help
 
-BUILD_VERSION ?= latest
+ARCH := $(shell uname -m)
+
+BUILD_VERSION ?= $(ARCH)-latest
 BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
 
 DOCKER_REPOSITORY_NAME ?= artifactory.haifa.ibm.com:5130
@@ -10,8 +12,11 @@ IMAGE_NAME = blueberry-tools-service
 DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
 DOCKER_VERSION = $(BUILD_VERSION)
 
+DOCKER := docker
 
 TOOLS_SERVICE_SENTINEL=/tmp/tools-service.pid
+
+DOCKER_FILE := Dockerfile
 
 AWK := awk
 OS := $(shell uname -s)
@@ -30,28 +35,34 @@ else
 	endif
 endif
 
+ifeq ($(ARCH), arm64)
+	DOCKER_FILE := Dockerfile-$(ARCH)
+endif
+
+
 .PHONY: help
 help: ## Display this help.
 	@$(AWK) 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-
+.PHONY: git_hooks_setup
 git_hooks_setup:
 	@git config core.hooksPath .githooks
 	@chmod +x .githooks/*
 
 install_requirements: git_hooks_setup # Install requirements
 ifeq ($(OS), Darwin)
-	@pip install -q -r macos-requirements.txt
+	@pip install -r macos-requirements.txt
 else
-	@pip install -q -r requirements.txt
+	@pip install -r requirements.txt
 endif
 
 install_dev_requirements: # Install dev requirements
-	@pip install -q -r requirements-dev.txt
+	@pip install -r requirements-dev.txt
 
-##@ Setup & teardown
+##@ Setup & teardown as a process
 
-run: install_requirements ## Launch the tools service
+.PHONY: run install_requirements
+run: install_requirements ## Run the tools service
 	@if [ -f $(TOOLS_SERVICE_SENTINEL) ]; then \
 		echo "Blueberry Tools Service is already running"; \
 	else \
@@ -69,21 +80,94 @@ clean:  ## Clean temporary files
 
 ##@ Docker
 
-docker_build: ## Build docker image
-	DOCKER_BUILDKIT=1 docker build --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .
+# Check whether docker is aliased to podman
+# I is assumed that the user is using zsh or bash and alias is defined in ~/.zshrc or ~/.bashrc
+# Check that either Docker or Podman is installed
+# Check if the user has aliased Docker to Podman in their shell configuration file
+# If the user has aliased Docker to Podman, set the DOCKER variable to podman 
+# If the user has not aliased Docker to Podman, set the DOCKER variable to docker
+docker_check:
+	@echo "Checking whether Docker or Podman is installed..."
+	@if ! command -v docker > /dev/null && ! command -v podman > /dev/null; then \
+        echo "Neither Docker nor Podman is installed. Please install Docker or Podman (or both)."; \
+        exit 1; \
+    fi
 
-docker_run: docker_stop ## Run the docker image
-	@echo "Running Docker container: $(IMAGE_NAME)"
-	docker run --name $(IMAGE_NAME) --env-file .env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
+	@echo "Checking for Docker or Podman aliases..."
+# Search the shell configuration file to check for aliases
+# This assumes you are using zsh or bash
+# If you are using a different shell, you may need to adjust this accordingly
 
-docker_stop: ## Stop the docker image
+# Check for Docker alias in shell configuration files
+ifeq ($(shell grep -q "alias docker='podman'" ~/.zshrc && echo found),found)
+DOCKER := podman
+endif
+
+ifeq ($(shell grep -q "alias docker='podman'" ~/.bashrc && echo found),found)
+DOCKER := podman
+endif
+
+ifeq ($(shell grep -q "alias docker='podman'" ~/.bash_profile && echo found),found)
+DOCKER := podman
+endif
+
+ifeq ($(shell grep -q "alias docker='podman'" ~/.profile && echo found),found)
+DOCKER := podman
+endif
+
+# Print the value of DOCKER
+@echo "Using Docker: $(DOCKER)"
+
+.PHONY: docker_build 
+docker_build: docker_check ## Build docker image for arm64 and amd64
+	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
+	@echo "Building Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
+	@echo "Build version: $(BUILD_VERSION)"
+	@echo "Build date: $(BUILD_DATE)"
+	@echo "Building for $(ARCH) using the Docker file $(DOCKER_FILE): $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
+	@if [ "$(DOCKER)" = "docker" ]; then \
+		DOCKER_BUILDKIT=1 $(DOCKER) buildx build --file $(DOCKER_FILE) --load --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .; \
+	elif [ "$(DOCKER)" = "podman" ]; then \
+		$(DOCKER) build --no-cache=true --file $(DOCKER_FILE) --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .; \
+    else \
+		echo "Unsupported Docker version: $(DOCKER)"; \
+		echo "Please use Docker or Podman"; \
+		exit 1; \
+	fi
+
+.PHONY: docker_run
+docker_run: docker_check docker_stop ## Run the docker image
+	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
+	@echo "Docker container started: $(IMAGE_NAME)"
+	
+
+.PHONY: docker_rm
+docker_rm: docker_stop ## Remove the docker container and image
+	@echo "Removing Docker container: $(IMAGE_NAME)"
+	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
+	@echo "Removing Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
+	$(DOCKER) rmi -f $(DOCKER_NAME):$(DOCKER_VERSION) > /dev/null 2>&1 || true
+	@echo "Removing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
+	@echo "Clean blueberry-tools-service /tmp directory"
+	+rm -rf /tmp/manifest
+	+rm -rf /tmp/descriptions
+	+rm -rf /tmp/files
+	
+
+.PHONY: docker_stop
+docker_stop: docker_check ## Stop the docker image
 	@echo "Stopping Docker container: $(IMAGE_NAME)"
-	@docker stop $(IMAGE_NAME) > /dev/null 2>&1 || true
-	@docker rm $(IMAGE_NAME) > /dev/null 2>&1 || true
-
-# make sure that you are login with required credentials
-docker_push: docker_build ## Push docker image
-	docker push $(DOCKER_NAME):$(DOCKER_VERSION)
+	$(DOCKER) stop $(IMAGE_NAME) > /dev/null 2>&1 || true
+	$(DOCKER) rm $(IMAGE_NAME) > /dev/null 2>&1 || true
+	
+# make sure that you are login into the appropriate Docker registry with required credentials
+# before running this command
+# set up the credentials in ~/.docker/config.json according to the instructions in artifactory.haifa.ibm.com
+.PHONY: docker_push
+docker_push: docker_check docker_build ## Push docker image into the registry
+	@echo "Pushing Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
+	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
+	$(DOCKER) push $(DOCKER_NAME):$(DOCKER_VERSION)
 
 include .mk/development.mk
 include .mk/ci.mk

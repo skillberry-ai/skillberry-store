@@ -14,18 +14,19 @@ lint: install_requirements ## List the tools-service
 
 # To run this target:
 # make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
-load_tools: ## Load tools into the service
+load_tools: install_requirements ## Load tools into the service
 	@echo "Loading tools into blueberry-tools-service"
 	./client/curl/load_tools.sh $(ARGS)
 
 # To run this target:
 # make ARGS="ClientWinMVP/json ClientWinMVP/functions/transformations.py number_str_cleanup date_transformer full_address_concat GetYear GetQuarter GetCurrency GetDealAmount identity" load_tools_json
-load_tools_json: ## Load tools into the service using json files
+load_tools_json: install_requirements ## Load tools into the service using json files
 	@echo "Loading tools-json into blueberry-tools-service"
 	./client/curl/load_tools_json.sh $(ARGS)
 
-clean_slate: stop docker_stop
-	@echo "Cleaning slate blueberry-tools-service"
+#stops service if running in a process
+clean_slate: stop
+	@echo "Clean blueberry-tools-service /tmp directory"
 	+rm -rf /tmp/manifest
 	+rm -rf /tmp/descriptions
 	+rm -rf /tmp/files
