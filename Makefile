@@ -50,11 +50,8 @@ git_hooks_setup:
 	@chmod +x .githooks/*
 
 install_requirements: git_hooks_setup # Install requirements
-ifeq ($(OS), Darwin)
-	@pip install -r macos-requirements.txt
-else
 	@pip install -r requirements.txt
-endif
+
 
 install_dev_requirements: # Install dev requirements
 	@pip install -r requirements-dev.txt
@@ -77,6 +74,10 @@ stop: $(TOOLS_SERVICE_SENTINEL) ## Stop the tools service
 clean:  ## Clean temporary files
 	@rm -f $(TOOLS_SERVICE_SENTINEL)
 	-rm -rf __pycache__ .pytest_cache
+	@echo "Clean blueberry-tools-service /tmp directory"
+	+rm -rf /tmp/manifest
+	+rm -rf /tmp/descriptions
+	+rm -rf /tmp/files
 
 ##@ Docker
 
@@ -142,17 +143,17 @@ docker_run: docker_check docker_stop ## Run the docker image
 	
 
 .PHONY: docker_rm
-docker_rm: docker_stop ## Remove the docker container and image
+docker_rm: docker_stop clean ## Remove the docker container and image
 	@echo "Removing Docker container: $(IMAGE_NAME)"
 	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
 	@echo "Removing Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
 	$(DOCKER) rmi -f $(DOCKER_NAME):$(DOCKER_VERSION) > /dev/null 2>&1 || true
 	@echo "Removing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
-	@echo "Clean blueberry-tools-service /tmp directory"
-	+rm -rf /tmp/manifest
-	+rm -rf /tmp/descriptions
-	+rm -rf /tmp/files
-	
+
+.PHONY: docker_clean
+docker_rm: docker_stop clean ## Remove the docker container and image
+	@echo "Removing Docker container: $(IMAGE_NAME)"
+	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
 
 .PHONY: docker_stop
 docker_stop: docker_check ## Stop the docker image
