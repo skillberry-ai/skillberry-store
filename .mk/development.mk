@@ -30,3 +30,41 @@ clean_slate: stop
 	+rm -rf /tmp/manifest
 	+rm -rf /tmp/descriptions
 	+rm -rf /tmp/files
+
+check-git-clean:
+	@changes="$$(git status --porcelain)"; \
+	if [ -n "$$changes" ]; then \
+	  echo "! You have uncommitted changes. Please commit, stash or clean them before releasing."; \
+	  echo "=== Changes ==="; \
+	  echo "$$changes"; \
+	  exit 1; \
+	fi
+
+check-git-main:
+	@if [ "$(shell git rev-parse --abbrev-ref HEAD)" != "main" ]; then \
+		echo "! You must be on the main branch to run this command"; \
+		exit 1; \
+	fi
+
+release: check-git-main check-git-clean install_requirements  ## Release a new version
+	@if [ -z "$(RELEASE_VERSION)" ]; then \
+		echo "++++++++++++++++++++++++++++++++++++++++++++"; \
+  		echo "RELEASE_VERSION is not set. It is required for the release"; \
+  		echo "Please set RELEASE_VERSION and use 'RELEASE_VERSION=<version> make release' "; \
+		echo "++++++++++++++++++++++++++++++++++++++++++++"; \
+	exit 1; fi
+
+	@echo "++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "=> Creating release with version: $(RELEASE_VERSION)"
+	@echo "++++++++++++++++++++++++++++++++++++++++++++"
+	@sleep 10
+	@echo "===> Generating git tag $(RELEASE_VERSION) and creating GitHub release"
+	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)" && \
+	git push origin $(RELEASE_VERSION) && \
+	gh release create $(RELEASE_VERSION) --generate-notes
+
+	@echo "===> Building and pushing new docker image"
+	@make docker_push
+	@echo "++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "=> Release $(RELEASE_VERSION) created successfully"
+	@echo "++++++++++++++++++++++++++++++++++++++++++++"
