@@ -49,6 +49,7 @@ git_hooks_setup:
 	@git config core.hooksPath .githooks
 	@chmod +x .githooks/*
 
+.PHONY: install_requirements
 install_requirements: git_hooks_setup # Install requirements
 	@pip install -r requirements.txt
 
@@ -143,15 +144,16 @@ docker_run: docker_check docker_stop ## Run the docker image
 	
 
 .PHONY: docker_rm
-docker_rm: docker_stop clean ## Remove the docker container and image
+docker_rm: docker_stop clean ## Remove the docker container, image, and temporary files
 	@echo "Removing Docker container: $(IMAGE_NAME)"
 	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
 	@echo "Removing Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
 	$(DOCKER) rmi -f $(DOCKER_NAME):$(DOCKER_VERSION) > /dev/null 2>&1 || true
 	@echo "Removing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
 
+
 .PHONY: docker_clean
-docker_rm: docker_stop clean ## Remove the docker container and image
+docker_clean: docker_stop clean ## Remove the docker container and temporary files, but keeping the image
 	@echo "Removing Docker container: $(IMAGE_NAME)"
 	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
 
