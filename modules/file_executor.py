@@ -155,10 +155,10 @@ class FileExecutor:
             logger.error(f"Error parsing manifest: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing manifest: {e}")
 
-        self.client = docker.from_env() 
-        
+        self.client = docker.from_env()
+
         try:
-            self.client = docker.from_env()    
+            self.client = docker.from_env()
         except ImportError:
             raise HTTPException(
                 status_code=500,
@@ -488,18 +488,18 @@ if __name__ == "__main__":
                     command += f"--{parameter_definition_name}={converted_arg} "
 
             # Create and run a container to execute the Python file
-            
+
             container = self.client.containers.run(
-                    "python:3.11",  # Using the official Python 3.11 image
-                    command=f"/bin/bash -c '{command}'",
-                    volumes={temp_file_path: {"bind": f"/tmp/function.py", "mode": "ro"}},
-                    remove=True,
-                    detach=False,
-                    stderr=True,
-                    stdout=True,
-                    environment={"PYTHONUNBUFFERED": "1"},
+                "python:3.11",  # Using the official Python 3.11 image
+                command=f"/bin/bash -c '{command}'",
+                volumes={temp_file_path: {"bind": f"/tmp/function.py", "mode": "ro"}},
+                remove=True,
+                detach=False,
+                stderr=True,
+                stdout=True,
+                environment={"PYTHONUNBUFFERED": "1"},
             )
-            
+
             return_value = container.decode().replace("\n", "")
             logger.info(f"Python code executed successfully: {return_value}")
             return {"return value": f"{return_value}"}

@@ -538,6 +538,7 @@ def test_tool(total: str) -> float:
     return float(total)
 """
 
+
 @pytest.fixture
 def executor_instance_transform_total(manifest_test_tool, file_content_transform_total):
     """Fixture to create a FileExecutor instance."""
@@ -550,14 +551,13 @@ def executor_instance_transform_total(manifest_test_tool, file_content_transform
 
 @pytest.mark.parametrize(
     "parameters,expected",
-    [
-        ({"total": "$34,690.64"}, "34690.64"),
-        ({"total": "‚Ç¨4,898.58"}, "4898.58")
-    ],
-    ids=["test_one", "test_two"]
+    [({"total": "$34,690.64"}, "34690.64"), ({"total": "‚Ç¨4,898.58"}, "4898.58")],
+    ids=["test_one", "test_two"],
 )
 @pytest.mark.asyncio
-async def test_execute_transform_total(executor_instance_transform_total, parameters, expected):
+async def test_execute_transform_total(
+    executor_instance_transform_total, parameters, expected
+):
     result = await executor_instance_transform_total.execute_file(parameters)
     # pytest -vs to print
     print(result)
