@@ -33,6 +33,11 @@ from tools.configure import (
 )
 from fast_api.server_utils import get_mcp_tools, mcp_json_converter, mcp_content
 
+try:
+    from fast_api.git_version import __git_version__
+except:
+    __git_version__="unknown"
+
 from fast_api.observability import observability_setup
 from prometheus_client import Counter, Histogram
 
@@ -596,7 +601,7 @@ def custom_openapi(app: FastAPI, openapi_tags):
     openapi_schema = get_openapi(
         title="blueberry",
         summary="Towards hallucination-less AI systems",
-        version="0.2",
+        version=__git_version__,
         tags=openapi_tags,
         contact={
             "name": "Eran Raichstein",

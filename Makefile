@@ -3,7 +3,7 @@
 
 ARCH := $(shell uname -m)
 
-BUILD_VERSION ?= $(ARCH)-latest
+BUILD_VERSION ?= $(ARCH)-$(shell git describe --always --dirty 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
 
 DOCKER_REPOSITORY_NAME ?= artifactory.haifa.ibm.com:5130
@@ -49,8 +49,14 @@ git_hooks_setup:
 	@git config core.hooksPath .githooks
 	@chmod +x .githooks/*
 
+.PHONY: update_git_version
+update_git_version:
+	@echo "Writing git version to fast_api/git_version.py"
+	@echo "__git_version__ = \"$(BUILD_VERSION)\"" > fast_api/git_version.py
+
+
 .PHONY: install_requirements
-install_requirements: git_hooks_setup # Install requirements
+install_requirements: update_git_version git_hooks_setup # Install requirements
 	@pip install -r requirements.txt
 
 
@@ -121,7 +127,7 @@ endif
 @echo "Using Docker: $(DOCKER)"
 
 .PHONY: docker_build 
-docker_build: docker_check ## Build docker image for arm64 and amd64
+docker_build: docker_check update_git_version ## Build docker image for arm64 and amd64
 	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
 	@echo "Build version: $(BUILD_VERSION)"
