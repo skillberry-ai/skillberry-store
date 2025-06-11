@@ -36,7 +36,7 @@ from fast_api.server_utils import get_mcp_tools, mcp_json_converter, mcp_content
 try:
     from fast_api.git_version import __git_version__
 except:
-    __git_version__="unknown"
+    __git_version__ = "unknown"
 
 from fast_api.observability import observability_setup
 from prometheus_client import Counter, Histogram
@@ -421,7 +421,7 @@ class BTS(FastAPI):
         async def generate_manifest(
             function_name: str,
             json_description: str = None,
-            code: Optional[UploadFile] = File(None)
+            code: Optional[UploadFile] = File(None),
         ):
             """
             Returns a manifest representation for the given function name.
@@ -441,7 +441,8 @@ class BTS(FastAPI):
             manifest_as_dict = manifest.generate_manifest(
                 function_name,
                 json_description=json_description,
-                code=code.file.read() if code else None)
+                code=code.file.read() if code else None,
+            )
 
             return manifest_as_dict
 
