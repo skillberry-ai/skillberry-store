@@ -95,6 +95,20 @@ def init_manifest(uid: str, prog_lang: str, pack_fmt="code"):
     return manifest
 
 
+def do_extract_docstring(module_code: str, function_name: str) -> str:
+    try:
+        tree = ast.parse(module_code)
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == function_name:
+                docstring = ast.get_docstring(node)
+                return docstring
+
+        return None  # Function not found
+
+    except (FileNotFoundError, SyntaxError, OSError) as e:
+        return None  # Module not found or parsing error
+
 
 def extract_docstring(module_path, function_name):
     """
@@ -111,18 +125,12 @@ def extract_docstring(module_path, function_name):
     try:
         with open(module_path, "r", encoding="utf-8") as f:
             module_code = f.read()
-        tree = ast.parse(module_code)
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == function_name:
-                docstring = ast.get_docstring(node)
-                return docstring
-
-        return None  # Function not found
+        return do_extract_docstring(
+            module_code=module_code,
+            function_name=function_name)
 
     except (FileNotFoundError, SyntaxError, OSError):
         return None  # Module not found or parsing error
-
 
 
 def docstring_to_manifest(docstring_obj, mft):

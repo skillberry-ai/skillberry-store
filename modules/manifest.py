@@ -4,8 +4,9 @@ import logging
 import os
 from typing import List, Optional, Dict, Any
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 
+from client.utils import base_client_utils, json_client_utils
 from tools.shell_hook import ShellHook
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,37 @@ class Manifest:
             raise HTTPException(
                 status_code=500, detail=f"Error saving manifest: {str(e)}"
             )
+
+    def generate_manifest(self, func_name: str, json_description: str = None,
+                          code: str = None) -> dict:
+
+        try:
+            json_description_as_dict = json.loads(json_description) if json_description else {}
+
+            manifest = {}
+            if json_description_as_dict:
+                # return manifest out from json description format
+                manifest = json_client_utils.python_manifest_from_json_base(
+                    [[json_description_as_dict]],
+                    f"{func_name}.py",
+                    func_name)
+
+            elif code:
+                # return manifest out from code docstring
+                docstring = base_client_utils.do_extract_docstring(
+                    module_code=code,
+                    function_name=func_name)
+                manifest = base_client_utils.python_manifest_from_function_docstring(
+                    f"{func_name}.py",
+                    func_name,
+                    docstring)
+
+            return manifest
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error generating manifest: {str(e)}"
+            )
+
 
     def update_manifest(self, filename: str, new_manifest: Dict[str, Any]) -> dict:
         """

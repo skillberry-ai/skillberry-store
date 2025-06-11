@@ -417,6 +417,34 @@ class BTS(FastAPI):
 
             return filtered_matched_entities
 
+        @self.post("/manifests/generate/{function_name}", tags=tags)
+        async def generate_manifest(
+            function_name: str,
+            json_description: str = None,
+            code: Optional[UploadFile] = File(None)
+        ):
+            """
+            Returns a manifest representation for the given function name.
+
+            The manifest can either get generated out from the supplied json representation
+            of the function or from function module code.
+
+            Parameters:
+                function_name (str): The name of the function
+                json_description (str): The description of the function in a json format
+                code (UploadFile): The module code
+
+            Returns:
+                dict: manifest representation
+
+            """
+            manifest_as_dict = manifest.generate_manifest(
+                function_name,
+                json_description=json_description,
+                code=code.file.read() if code else None)
+
+            return manifest_as_dict
+
         @self.post("/manifests/add", tags=tags)
         async def add_manifest(
             file_manifest: str, file: Optional[UploadFile] = File(None)

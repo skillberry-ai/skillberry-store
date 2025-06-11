@@ -46,9 +46,11 @@ def python_manifest_from_json_base(json_base: List[List[Dict]], module_path: str
     Returns:
         dict or None:   the manifest, if the function has a record in the JSON base. None otherwise.
     """
+    # print (f"python_manifest_from_json_base: {json_base} {module_path} {func_name}")
     for json_file in json_base:
         for json_record in json_file:
             if json_record["name"] == func_name:
+                # print ("here")
                 return python_manifest_from_json_record(json_record, module_path)
     return None
 
