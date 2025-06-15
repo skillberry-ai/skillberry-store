@@ -22,6 +22,9 @@ This service implements a smart tools repository for agentic workflows.
 
 For a quick start, use Docker to run the service:
 
+- By default, BTS runs on host `0.0.0.0` and port `8000`. To change, set the environment variables BTS_PORT and/or BTS_HOST
+
+
 ```bash
 make docker_run
 ```
@@ -100,7 +103,7 @@ make run
 
 ## Loading example tools into the Service 📂
 
-- Set the home directory and the EXAMPLESPATH for blueberry-tools-service environment Variables 🌐
+- Set the home directory and the EXAMPLESPATH for blueberry-tools-service environment variables 🌐
 
 ```bash
 export BTS_HOME=$(pwd)

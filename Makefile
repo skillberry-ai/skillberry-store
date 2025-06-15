@@ -18,6 +18,8 @@ TOOLS_SERVICE_SENTINEL=/tmp/tools-service.pid
 
 DOCKER_FILE := Dockerfile
 
+BTS_PORT := $(or $(shell echo $$BTS_PORT), 8000) 
+
 AWK := awk
 OS := $(shell uname -s)
 
@@ -145,7 +147,7 @@ docker_build: docker_check update_git_version ## Build docker image for arm64 an
 
 .PHONY: docker_run
 docker_run: docker_check docker_stop ## Run the docker image
-	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p 8000:8000 $(DOCKER_NAME):$(DOCKER_VERSION)
+	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p $(strip $(BTS_PORT)):$(strip $(BTS_PORT)) $(DOCKER_NAME):$(DOCKER_VERSION)
 	@echo "Docker container started: $(IMAGE_NAME)"
 	
 

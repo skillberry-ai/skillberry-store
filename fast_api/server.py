@@ -95,9 +95,8 @@ execute_successfully_manifest_latency = Histogram(
 
 class BTSettings(BaseSettings):
     """Configuration settings for the BTS server."""
-
-    host: str = Field("0.0.0.0", env="UVICORN_HOST")
-    port: int = Field(8000, env="UVICORN_PORT")
+    bts_host: str = Field("0.0.0.0", env="UVICORN_HOST")
+    bts_port: int = Field(8000, env="UVICORN_PORT")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         "INFO", env="UVICORN_LOG_LEVEL"
     )
@@ -162,7 +161,7 @@ class BTS(FastAPI):
             self.router.routes.append(Route("/sse", endpoint=handle_sse))
             self.router.routes.append(Mount("/messages/", app=sse.handle_post_message))
 
-        uvicorn.run(self, host=self.settings.host, port=self.settings.port)
+        uvicorn.run(self, host=self.settings.bts_host, port=self.settings.bts_port)
 
     def handle_get_manifests(
         self,
