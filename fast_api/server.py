@@ -95,6 +95,7 @@ execute_successfully_manifest_latency = Histogram(
 
 class BTSettings(BaseSettings):
     """Configuration settings for the BTS server."""
+
     bts_host: str = Field("0.0.0.0", env="BTS_HOST")
     bts_port: int = Field(8000, env="BTS_PORT")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
