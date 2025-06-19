@@ -4,10 +4,14 @@ import logging
 import os
 from typing import List, Optional, Dict, Any
 
-from fastapi import HTTPException, UploadFile
+from docstring_parser import parse, ParseError
+
+from fastapi import HTTPException
 
 from client.utils import base_client_utils, json_client_utils
+from modules.tool_type import ToolType
 from tools.shell_hook import ShellHook
+from utils.python_utils import extract_docstring
 
 logger = logging.getLogger(__name__)
 
@@ -75,10 +79,48 @@ class Manifest:
                 status_code=500, detail=f"Error saving manifest: {str(e)}"
             )
 
-    def generate_manifest(
+    def create_manifest(
+        self, tool_type: ToolType, tool_bytes: bytes, tool_name: str
+    ) -> Dict:
+        """
+        Create a manifest out from the given tool_bytes (blob) and tool_name.
+
+        Note: currently it is assumed that the tool is a Python module with a valid
+        docstring.
+
+        Parameters:
+            tool_type (ToolType): tool type. Enumeration of the type of the tool to be added
+            tool_bytes (bytes): tool blob e.g. Python module
+            tool_name (str): tool name e.g. Python function name
+
+        Raises:
+            HTTPException: if an error occurred
+
+        Returns:
+            dict: the manifest
+        """
+        if tool_type != ToolType.CODE_PYTHON:
+            raise HTTPException(
+                status_code=400, detail=f"ToolType: {tool_type} not supported"
+            )
+        try:
+            # return manifest out from code docstring
+            docstring = extract_docstring(tool_bytes, tool_name)
+            if not docstring:
+                raise Exception(f"Docstring is missing for tool: {tool_name}")
+
+            return python_manifest_from_function_docstring(tool_name, docstring)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error generating manifest: {str(e)}"
+            )
+
+    def print_manifest(
         self, func_name: str, json_description: str = None, code: str = None
     ) -> dict:
-
+        """
+        NOTE: THIS METHOD IS DEPRECATED
+        """
         try:
             json_description_as_dict = (
                 json.loads(json_description) if json_description else {}
@@ -197,3 +239,96 @@ class Manifest:
             raise HTTPException(
                 status_code=500, detail=f"Error deleting manifest: {str(e)}"
             )
+
+
+def init_manifest(prog_lang: str, pack_fmt="code"):
+    """
+    This utility function initializes and returns an empty tool manifest with
+    programming language and packaging format.
+
+    Parameters:
+        prog_lang (str): programming language
+        pack_fmt (str): packaging format of the tool, default "code"
+
+    Returns:
+        dict:   Initialized manifest with programming_language, packaging and
+                history with initial "0.0.1" version with status "approved"
+    """
+    manifest = dict()
+    manifest["programming_language"] = prog_lang
+    manifest["packaging_format"] = pack_fmt
+    manifest["version"] = "0.0.1"
+    manifest["params"] = {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "optional": [],
+    }
+    return manifest
+
+
+def add_docstring_to_manifest(docstring_obj, manifest):
+    """
+    Adds docstring object into the given manifest dictionary.
+
+    Parameters:
+        docstring_obj: A parsed docstring object from docstring_parser.parse()
+        manifest (dict): The target manifest dictionary to update
+
+    """
+
+    # Descriptions
+    manifest["description"] = docstring_obj.short_description
+
+    # Not using docstring_obj.long_description
+
+    # Store parameters as a dictionary: name -> {type, description}
+    manifest["params"]["properties"] = {
+        param.arg_name: {"type": param.type_name, "description": param.description}
+        for param in docstring_obj.params
+    }
+
+    # All parameters are "required" - so "optional" remains empty
+    manifest["params"]["required"] = [param.arg_name for param in docstring_obj.params]
+
+    # Exceptions are not stored
+    # Store return type and description
+    manifest["returns"] = {
+        "type": docstring_obj.returns.type_name if docstring_obj.returns else None,
+        "description": docstring_obj.returns.description
+        if docstring_obj.returns
+        else None,
+    }
+
+
+def python_manifest_from_function_docstring(func_name: str, docstring: str) -> Dict:
+    """
+    This utility function takes a function with a well-formatted docstring
+    and extracts an initial Python manifest from the docstring
+
+    Parameters:
+        func_name (str): the name of the function as declared in the module
+        docstring: the doc string of the function
+
+    Returns:
+        dict: the manifest
+
+    Raises:
+        Exception: if no valid docstring could be extracted or parse error
+                   occurred
+
+    """
+    manifest = init_manifest("python")
+    manifest["name"] = func_name
+    manifest["module_name"] = func_name
+    manifest["state"] = "approved"
+
+    if not docstring:
+        raise Exception(f"Docstring is missing for tool: {func_name}")
+    try:
+        docstring_obj = parse(docstring)
+        add_docstring_to_manifest(docstring_obj, manifest)
+    except ParseError as e:
+        raise Exception(f"Failed to parse docstring: {str(e)}")
+
+    return manifest

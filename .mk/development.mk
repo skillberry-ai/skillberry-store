@@ -9,8 +9,8 @@ test-e2e: install_requirements install_dev_requirements ## Test end-to-end the t
 	pytest -s tests/e2e
 
 lint: install_requirements ## List the tools-service
-	black --check --diff --color modules tools fast_api || \
-		(echo "Lint Failed. Please run 'black modules tools fast_api' to fix the issues" && exit 1)
+	black --check --diff --color modules tools fast_api utils || \
+		(echo "Lint Failed. Please run 'black modules tools fast_api utils' to fix the issues" && exit 1)
 
 # To run this target:
 # make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools

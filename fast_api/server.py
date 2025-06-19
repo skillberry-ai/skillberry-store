@@ -25,6 +25,7 @@ from modules.description import Description
 from modules.description_vector_index import DescriptionVectorIndex
 from modules.file_handler import FileHandler
 from modules.file_executor import FileExecutor
+from modules.tool_type import ToolType
 from tools.configure import (
     get_files_directory_path,
     get_descriptions_directory,
@@ -113,8 +114,12 @@ class BTS(FastAPI):
         self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
         self.logger = logging.getLogger(__name__)
+        descriptions = descriptions_api()
         self.manifest_api(
-            file_handler=file_api(), descriptions=descriptions_api(), tags=["manifest"]
+            file_handler=file_api(), descriptions=descriptions, tags=["manifest"]
+        )
+        self.tools_api(
+            file_handler=file_api(), descriptions=descriptions, tags=["tools"]
         )
 
     def configure_fastapi(self):
@@ -424,6 +429,9 @@ class BTS(FastAPI):
             code: Optional[UploadFile] = File(None),
         ):
             """
+            TODO: this API will be deprecated and will be removed in future version. Use
+            POST /tools/add instead.
+
             Returns a manifest representation for the given function name.
 
             The manifest can either get generated out from the supplied json representation
@@ -438,7 +446,7 @@ class BTS(FastAPI):
                 dict: manifest representation
 
             """
-            manifest_as_dict = manifest.generate_manifest(
+            manifest_as_dict = manifest.print_manifest(
                 function_name,
                 json_description=json_description,
                 code=code.file.read() if code else None,
@@ -451,6 +459,9 @@ class BTS(FastAPI):
             file_manifest: str, file: Optional[UploadFile] = File(None)
         ):
             """
+            NOTE: this API will be considered to be deprecated and planed to be removed
+            in future version.
+
             Adds manifest.
 
             Two types of manifests are supported: code and mcp.
@@ -515,7 +526,7 @@ class BTS(FastAPI):
 
             if manifest_as_dict.get("packaging_format") == "code":
                 module_name = manifest_as_dict["module_name"]
-                file_handler.write_file(file, filename=module_name)
+                file_handler.write_file(file.file.read(), filename=module_name)
 
             manifest.write_manifest(f"{uid}.json", manifest_as_dict)
             # TODO: in current version name == uid
@@ -598,6 +609,80 @@ class BTS(FastAPI):
                 logger.warning(f"Failed to delete manifest: {e}")
 
             return {"message": f"Manifest '{uid}' deleted."}
+
+    def tools_api(
+        self, file_handler: FileHandler, descriptions: Description, tags: str
+    ):
+        """
+        Initialize tools apis with proper persistency and APIs.
+
+        """
+        manifest_directory = get_manifest_directory()
+        manifest = Manifest(manifest_directory=manifest_directory)
+
+        @self.post("/tools/add", tags=tags)
+        async def tools_add(
+            tool_type: ToolType, tool: UploadFile, tool_name: str, update: bool = True
+        ):
+            """
+            Adds a tool for the provided code file and name.
+            A manifest for that function is being generated and stored.
+            As part of the addition, the description of the manifest is being embedded and stored in vector db.
+            The manifest is assigned with a unique identifier which is returned.
+
+            Parameters:
+                tool_type (ToolType): Tool type. Enumeration of the type of the tool to be added
+                tool (UploadFile): Tool code
+                tool_name (str): Tool name
+                update (bool): Whether to update (delete) the tool if exists.
+                               Default: update. (Optional)
+
+            Returns:
+                dict: The unique identifier of the manifest representing the tool
+
+            Raises:
+                HTTPException (400): If wrong parameter values supplied
+                HTTPException (409): If manifest already exist
+                HTTPException (500): Any other error
+            """
+            # TODO: use pydantic and schema validation
+            tool_bytes = tool.file.read()
+            manifest_as_dict = manifest.create_manifest(
+                tool_type, tool_bytes, tool_name
+            )
+            manifest_as_dict_entities = manifest.list_manifests()
+            name = manifest_as_dict["name"]
+            assert name == tool_name, "Error: name and tool_name must be identical"
+
+            if list(filter(lambda m: m["name"] == name, manifest_as_dict_entities)):
+                if update is True:
+                    logger.info(f"Updating tool {tool_name}..")
+                    try:
+                        descriptions.delete_description(name)
+                    except Exception as e:
+                        # just log and continue
+                        logger.warning(f"Failed to delete description: {e}")
+                    try:
+                        manifest.delete_manifest(f"{tool_name}.json")
+                    except Exception as e:
+                        # just log and continue
+                        logger.warning(f"Failed to delete manifest: {e}")
+                else:
+                    raise HTTPException(
+                        status_code=409, detail=f"Manifest '{name}' already exists."
+                    )
+
+            # Note: currently uid is tool_name
+            uid = tool_name
+            manifest_as_dict["uid"] = uid
+
+            module_name = manifest_as_dict["module_name"]
+            file_handler.write_file(tool_bytes, filename=module_name)
+
+            manifest.write_manifest(f"{name}.json", manifest_as_dict)
+            descriptions.write_description(name, manifest_as_dict["description"])
+
+            return {"uid": uid}
 
 
 def descriptions_api():

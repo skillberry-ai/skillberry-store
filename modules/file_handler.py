@@ -1,9 +1,9 @@
 import inspect
 import logging
 import os
-from typing import List, Optional
+from typing import List, Dict
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from tools.shell_hook import ShellHook
 
@@ -106,12 +106,12 @@ class FileHandler:
             )
             return FileResponse(file_path)
 
-    def write_file(self, file: UploadFile, filename: Optional[str]) -> dict:
+    def write_file(self, file_bytes: bytes, filename: str) -> Dict:
         """
         Write a file to the directory.
 
         Args:
-            file (UploadFile): The file to save.
+            file (bytes): The file to save.
             filename (str): The name of the file. If not provided
                             file.filename being used
 
@@ -121,7 +121,6 @@ class FileHandler:
         Raises:
             HTTPException: If there is an error saving the file.
         """
-        filename = filename if filename else file.filename
         file_path = os.path.join(self.directory_path, filename)
 
         ShellHook().execute(
@@ -131,7 +130,7 @@ class FileHandler:
         )
         try:
             with open(file_path, "wb") as f:
-                f.write(file.file.read())
+                f.write(file_bytes)
             logger.info(f"File saved: {file_path}")
             ShellHook().execute(
                 "post_" + inspect.stack()[0].function,
