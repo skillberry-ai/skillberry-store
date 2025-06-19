@@ -156,3 +156,6 @@ cython_debug/
 
 .idea/
 .vscode/
+
+fast_api/git_version.py
+
