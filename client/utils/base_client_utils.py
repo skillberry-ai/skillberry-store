@@ -3,6 +3,7 @@ from docstring_parser import parse, ParseError
 import json
 import ast
 
+
 def list_functions_in_module(module_path: str):
     """
     Parses a Python module in the given path and extracts function names and docstrings
@@ -30,13 +31,13 @@ def list_functions_in_module(module_path: str):
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):  # Check for function definitions
                 function_list.append((module_name, node.name, ast.get_docstring(node)))
-    
+
     return function_list
 
 
 def list_functions_in_folder(folder_path: str):
     """
-    Parses all Python modules in a folder and extracts function names and docstrings 
+    Parses all Python modules in a folder and extracts function names and docstrings
     without executing the code.
 
     Args:
@@ -58,7 +59,9 @@ def list_functions_in_folder(folder_path: str):
     function_list = []
 
     for filename in os.listdir(folder_path):
-        if filename.endswith(".py") and not filename.startswith("__"):  # Ignore __init__.py
+        if filename.endswith(".py") and not filename.startswith(
+            "__"
+        ):  # Ignore __init__.py
             module_path = os.path.join(folder_path, filename)
 
             mod_func_list = list_functions_in_module(module_path)
@@ -67,10 +70,9 @@ def list_functions_in_folder(folder_path: str):
     return function_list
 
 
-
 def init_manifest(uid: str, prog_lang: str, pack_fmt="code"):
     """
-    This utility function initializes and returns an empty tool manifest with 
+    This utility function initializes and returns an empty tool manifest with
     a specific uid (tool unique identifier), programming language and packaging format
 
     Args:
@@ -79,7 +81,7 @@ def init_manifest(uid: str, prog_lang: str, pack_fmt="code"):
         pack_fmt (str): packaging format of the tool, default "code"
 
     Returns:
-        dict:   Initialized manifest with programming_language, packaging and 
+        dict:   Initialized manifest with programming_language, packaging and
                 history with initial "0.0.1" version with status "approved"
     """
     manifest = dict()
@@ -90,7 +92,7 @@ def init_manifest(uid: str, prog_lang: str, pack_fmt="code"):
         "type": "object",
         "properties": {},
         "required": [],
-        "optional": []
+        "optional": [],
     }
     return manifest
 
@@ -126,8 +128,8 @@ def extract_docstring(module_path, function_name):
         with open(module_path, "r", encoding="utf-8") as f:
             module_code = f.read()
         return do_extract_docstring(
-            module_code=module_code,
-            function_name=function_name)
+            module_code=module_code, function_name=function_name
+        )
 
     except (FileNotFoundError, SyntaxError, OSError):
         return None  # Module not found or parsing error
@@ -140,7 +142,7 @@ def docstring_to_manifest(docstring_obj, mft):
     Args:
         docstring_obj: A parsed Docstring object from docstring_parser.parse()
         mft (dict): the target manifest dictionary to update
-    
+
     Returns:
         None
     """
@@ -151,8 +153,10 @@ def docstring_to_manifest(docstring_obj, mft):
     # Not using docstring_obj.long_description
 
     # Store parameters as a dictionary: name -> {type, description}
-    mft["params"]["properties"] = {param.arg_name: {"type": param.type_name, "description": param.description}
-        for param in docstring_obj.params}
+    mft["params"]["properties"] = {
+        param.arg_name: {"type": param.type_name, "description": param.description}
+        for param in docstring_obj.params
+    }
 
     # All parameters are "required" - so "optional" remains empty
     mft["params"]["required"] = [param.arg_name for param in docstring_obj.params]
@@ -161,12 +165,15 @@ def docstring_to_manifest(docstring_obj, mft):
     # Store return type and description
     mft["returns"] = {
         "type": docstring_obj.returns.type_name if docstring_obj.returns else None,
-        "description": docstring_obj.returns.description if docstring_obj.returns else None,
+        "description": docstring_obj.returns.description
+        if docstring_obj.returns
+        else None,
     }
 
 
-
-def python_manifest_from_function_docstring(module_path: str, func_name: str, docstring):
+def python_manifest_from_function_docstring(
+    module_path: str, func_name: str, docstring
+):
     """
     This utility function takes a function with a well-formatted docstring
     and extracts an initial Python manifest from the docstring
@@ -177,7 +184,7 @@ def python_manifest_from_function_docstring(module_path: str, func_name: str, do
         docstring: the doc string of the function
 
     Returns:
-        dict or None:   the manifest if available, or None if no 
+        dict or None:   the manifest if available, or None if no
                         valid docstring could be extracted and parsed
     """
     manifest = init_manifest(func_name, "python")
@@ -187,10 +194,10 @@ def python_manifest_from_function_docstring(module_path: str, func_name: str, do
 
     if not docstring:
         return None
-    
+
     try:
         func_ds = parse(docstring)
-        docstring_to_manifest(func_ds, manifest)   # docstring object -> manifest
+        docstring_to_manifest(func_ds, manifest)  # docstring object -> manifest
     except ParseError:
         return None
 
@@ -226,7 +233,6 @@ def read_file_to_bytes(file_path):
         IOError - if any I/O error happens when reading the file
         Exception - any other failure
     """
-    with open(file_path, 'rb') as file:  # 'rb' mode for reading in binary
+    with open(file_path, "rb") as file:  # 'rb' mode for reading in binary
         file_bytes = file.read()
         return file_bytes
-

@@ -35,7 +35,9 @@ async def wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeou
         await asyncio.sleep(0.5)
 
 
-async def add_tool_manifest(name: str = "multiply", mcp_url: str = "http://localhost:8080/sse"):
+async def add_tool_manifest(
+    name: str = "multiply", mcp_url: str = "http://localhost:8080/sse"
+):
     """Registers a tool manifest with the tools service via HTTP POST."""
 
     manifest = {
@@ -44,7 +46,7 @@ async def add_tool_manifest(name: str = "multiply", mcp_url: str = "http://local
         "version": "0.0.1",
         "mcp_url": mcp_url,
         "name": name,
-        "state": "approved"
+        "state": "approved",
     }
 
     manifest_str = json.dumps(manifest)
@@ -53,7 +55,7 @@ async def add_tool_manifest(name: str = "multiply", mcp_url: str = "http://local
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"http://localhost:8000/manifests/add?file_manifest={file_manifest_url}",
-            headers={"accept": "application/json"}
+            headers={"accept": "application/json"},
         )
         assert response.status_code == 200, f"Add manifest failed: {response.text}"
         return response.json()

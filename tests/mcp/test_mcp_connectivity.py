@@ -12,7 +12,8 @@ async def test_mcp_mode():
     clean_test_tmp_dir()
 
     mcp_server_proc = await asyncio.create_subprocess_exec(
-        "python", "contrib/mcp/server/server.py",
+        "python",
+        "contrib/mcp/server/server.py",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -20,13 +21,16 @@ async def test_mcp_mode():
     # Check if the BTS server is already running, if so, exit with an error
     try:
         await wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=1)
-        raise SystemExit("BTS Server is already running, stop it and re-run the test. exiting !!!")
+        raise SystemExit(
+            "BTS Server is already running, stop it and re-run the test. exiting !!!"
+        )
         return
     except TimeoutError:
         pass
 
     main_proc = await asyncio.create_subprocess_exec(
-        "python", "main.py",
+        "python",
+        "main.py",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -39,9 +43,11 @@ async def test_mcp_mode():
             execute_response = await client.post(
                 "http://localhost:8000/manifests/execute/multiply",
                 json={"a": 5, "b": 5},
-                headers={"accept": "application/json"}
+                headers={"accept": "application/json"},
             )
-            assert execute_response.status_code == 200, f"Execution failed: {execute_response.text}"
+            assert (
+                execute_response.status_code == 200
+            ), f"Execution failed: {execute_response.text}"
             result = execute_response.json()
             print("Execution result:", result)
             numeric_result = float(result["return value"])

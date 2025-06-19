@@ -1,4 +1,5 @@
 import ast
+import textwrap
 from importlib.metadata import packages_distributions
 import logging
 import os
@@ -331,103 +332,13 @@ class FileExecutor:
                 f"parameter_definitions:{parameter_definitions}\n"
                 f"function_imports:{function_imports}\n"
             )
+            # generate the wrapper around the function_name
+            wrapper_code = generate_wrapper_any_types(
+                str(self.content), str(function_name), dict(parameters)
+            )
+
             with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
-                temp_file.write(
-                    self.content
-                    + f"""
-
-from typing import get_origin, get_args
-import json
-import argparse
-import sys
-import datetime
-import inspect
-
-def convert_value(value: str, annotation):
-    origin = get_origin(annotation) or annotation
-    args   = get_args(annotation)
-
-    if origin in (list, tuple):
-        subtype = args[0] if args else str
-        items = [item.strip().strip('[]()') for item in value.split(',')]
-        parsed = [subtype(item) for item in items]
-        return parsed if origin is list else tuple(parsed)
-
-    if origin is dict:
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON for dict: {{e}}")
-
-    if annotation is datetime.date:
-        try:
-            return datetime.date.fromisoformat(value)
-        except Exception as e:
-            raise ValueError(f"Invalid date (YYYY-MM-DD): {{e}}")
-    if annotation is datetime.datetime:
-        try:
-            return datetime.datetime.fromisoformat(value)
-        except Exception as e:
-            raise ValueError(f"Invalid datetime (ISO 8601): {{e}}")
-
-    if annotation is int:
-        return int(value)
-    if annotation is float:
-        return float(value)
-    if annotation is bool:
-        return value.lower() in ("true", "1", "yes")
-    if annotation is str:
-        return value
-
-    return value
-
-def parse_arguments(func):
-    # Get the signature of the function
-    sig = inspect.signature(func)
-    parser = argparse.ArgumentParser(description="Use the following parameters to work with {function_name}.")
-
-    # Iterate over the parameters in the function signature
-    for param in sig.parameters.values():
-        if param.default == inspect.Parameter.empty:
-            # Required parameter, add it to argparse
-            parser.add_argument(param.name, type=str, help=f"Argument for {{param.name}}")
-        else:
-            # Optional parameter with default, add it to argparse with default value
-            parser.add_argument(f"--{{param.name}}", type=str, default=param.default,
-                                help=f"Argument for {{param.name}} (default: {{param.default}})")
-
-    return parser
-
-
-def main():
-    parser = parse_arguments({function_name})
-    args = parser.parse_args()
-
-    # Convert string arguments to their appropriate types (int, float, etc.)
-    func_params = inspect.signature({function_name}).parameters
-    parsed_args = []
-    for param, value in vars(args).items():
-        # Convert the argument to the correct type if possible
-        if func_params[param].annotation != inspect.Parameter.empty and value is not None:
-            try:
-                parsed_args.append(convert_value(value,func_params[param].annotation))
-            except ValueError:
-                parsed_args.append(value)
-        else:
-            parsed_args.append(value)
-
-    # Call the function with the parsed arguments
-    result = {function_name}(*parsed_args)
-    if isinstance(result, str):
-        print(result)
-    else:
-        print(json.dumps(result))
-
-if __name__ == "__main__":
-    main()
-
-"""
-                )
+                temp_file.write(wrapper_code)
                 temp_file_path = temp_file.name
                 logger.info(f"tmp container python file name {temp_file_path}")
 
@@ -458,7 +369,8 @@ if __name__ == "__main__":
             else:
                 command = ""
             command += f"python /tmp/function.py "
-            for parameter_definition in parameter_definitions:
+            # DAVIDBR: remove commented out code
+            """ for parameter_definition in parameter_definitions:
                 parameter_definition_name = parameter_definition[0]
                 parameter_definition_type = parameter_definition[1]
                 parameter_definition_kind = parameter_definition[2]
@@ -486,7 +398,7 @@ if __name__ == "__main__":
                 if parameter_definition_kind == "positional":
                     command += f"{converted_arg} "
                 else:
-                    command += f"--{parameter_definition_name}={converted_arg} "
+                    command += f"--{parameter_definition_name}={converted_arg} " """
 
             # Create and run a container to execute the Python file
 
@@ -509,3 +421,39 @@ if __name__ == "__main__":
             raise HTTPException(
                 status_code=500, detail=f"Error executing Python file: {e}"
             )
+
+
+def generate_wrapper_any_types(code_str: str, func_name: str, parameters: dict) -> str:
+    tree = ast.parse(code_str)
+
+    func_def = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            func_def = node
+            if func_def.name == func_name:
+                break
+
+    if func_def is None:
+        raise ValueError("No function definition found in the code.")
+
+    arg_str = ", ".join(f"{key}={repr(value)}" for key, value in parameters.items())
+    func_name_call_code = f"{func_name}({arg_str})"
+
+    main_code = f"""
+import json
+
+def main():
+    
+    result = {func_name_call_code}
+    
+    if isinstance(result, str):
+        print(result)
+    else:
+        print(json.dumps(result))
+
+if __name__ == "__main__":
+    main()
+"""
+
+    full_code = "\n" + code_str.strip() + "\n\n" + textwrap.dedent(main_code)
+    return full_code

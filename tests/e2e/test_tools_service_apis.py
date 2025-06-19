@@ -21,18 +21,19 @@ async def run_bts(request):
     Teardown - terminates the service and remove its resources.
 
     """
-    print ("setup called")
+    print("setup called")
     clean_test_tmp_dir()
-    main_proc  = await asyncio.create_subprocess_exec(
-        "python", "main.py",
+    main_proc = await asyncio.create_subprocess_exec(
+        "python",
+        "main.py",
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE
+        stderr=asyncio.subprocess.PIPE,
     )
     await wait_until_server_ready()
-    
+
     yield
 
-    print ("teardown called")
+    print("teardown called")
     # Cleanup: kill server process
     main_proc.kill()
 
@@ -73,18 +74,19 @@ async def test_add_manifest(run_bts, func_name):
     file_blob = base_client_utils.read_file_to_bytes(module_path)
 
     configuration = blueberry_tools_service_sdk.Configuration(
-        host = "http://localhost:8000"
+        host="http://localhost:8000"
     )
     with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
         api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
 
-        manifest = json_client_utils.python_manifest_from_json_base([json_descriptions], module_path, func_name)
+        manifest = json_client_utils.python_manifest_from_json_base(
+            [json_descriptions], module_path, func_name
+        )
         assert manifest is not None, f"Manifest could not get created for {func_name}"
 
         manifest_str = json.dumps(manifest)
         api_response = api_instance.add_manifest_manifests_add_post(
-            manifest_str,
-            file=file_blob
+            manifest_str, file=file_blob
         )
         assert api_response.get("uid", None), "Should receive 'uid' key"
         assert api_response["uid"] == func_name, f"Should receive uid: {func_name}"
@@ -92,11 +94,11 @@ async def test_add_manifest(run_bts, func_name):
 
 def test_search_manifests(run_bts):
     """
-    Search manifests.    
+    Search manifests.
 
     """
     configuration = blueberry_tools_service_sdk.Configuration(
-        host = "http://localhost:8000"
+        host="http://localhost:8000"
     )
     with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
         api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
@@ -105,7 +107,9 @@ def test_search_manifests(run_bts):
             "A tool that returns the quarter of the year."
         )
 
-        assert len(api_response) > 0, "Should return at least one manifest for search operation"
+        assert (
+            len(api_response) > 0
+        ), "Should return at least one manifest for search operation"
         # TODO: asset GetQuarter present and has the smallest score
 
 
@@ -116,7 +120,7 @@ def test_get_manifest(run_bts, uid: str):
 
     """
     configuration = blueberry_tools_service_sdk.Configuration(
-        host = "http://localhost:8000"
+        host="http://localhost:8000"
     )
     with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
         api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
@@ -135,19 +139,21 @@ def test_list_manifests(run_bts, expected: int = 3):
 
     """
     configuration = blueberry_tools_service_sdk.Configuration(
-        host = "http://localhost:8000"
+        host="http://localhost:8000"
     )
     with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
         api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
 
         api_response = api_instance.get_manifests_manifests_get()
-        assert len(api_response) == expected, f"Execution failed: received none empty response"
+        assert (
+            len(api_response) == expected
+        ), f"Execution failed: received none empty response"
 
 
 @pytest.mark.parametrize("uid", ["GetQuarter"])
 def test_delete_manifest(run_bts, uid):
     configuration = blueberry_tools_service_sdk.Configuration(
-        host = "http://localhost:8000"
+        host="http://localhost:8000"
     )
     with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
         api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
@@ -155,7 +161,9 @@ def test_delete_manifest(run_bts, uid):
         api_response = api_instance.delete_manifest_manifests_uid_delete(uid)
 
         assert api_response.get("message", None), "Should receive 'message' key"
-        assert api_response["message"] == f"Manifest '{uid}' deleted.", f"Should receive deletion message for {uid}"
+        assert (
+            api_response["message"] == f"Manifest '{uid}' deleted."
+        ), f"Should receive deletion message for {uid}"
 
 
 @pytest.mark.parametrize("uid", ["GetQuarter"])
@@ -165,7 +173,7 @@ def test_get_manifest2(run_bts, uid: str):
 
     """
     configuration = blueberry_tools_service_sdk.Configuration(
-        host = "http://localhost:8000"
+        host="http://localhost:8000"
     )
     with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
         try:

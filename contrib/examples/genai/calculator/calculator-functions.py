@@ -1,4 +1,6 @@
 import math
+
+
 def add(a: float, b: float) -> float:
     """
     Adds two floating-point numbers and returns the result.
@@ -11,6 +13,7 @@ def add(a: float, b: float) -> float:
         float: The result of adding a and b.
     """
     return a + b
+
 
 def subtract(a: float, b: float) -> float:
     """
@@ -25,6 +28,7 @@ def subtract(a: float, b: float) -> float:
     """
     return a - b
 
+
 def multiply(a: float, b: float) -> float:
     """
     Multiplies two floating-point numbers and returns the result.
@@ -37,6 +41,7 @@ def multiply(a: float, b: float) -> float:
         float: The result of multiplying a and b.
     """
     return a * b
+
 
 def divide(a: float, b: float) -> float:
     """
@@ -56,6 +61,7 @@ def divide(a: float, b: float) -> float:
         raise ValueError("Division by zero")
     return a / b
 
+
 def nth_root(a: float, b: float) -> float:
     """
     Calculates the b-th root of a and returns the result.
@@ -72,7 +78,8 @@ def nth_root(a: float, b: float) -> float:
     """
     if b == 0:
         raise ValueError("Cannot take the 0th root")
-    return math.pow(a, 1/b)
+    return math.pow(a, 1 / b)
+
 
 def power(a: float, b: float) -> float:
     """
@@ -86,6 +93,7 @@ def power(a: float, b: float) -> float:
         float: The result of a raised to the power of b.
     """
     return math.pow(a, b)
+
 
 def modulo(a: float, b: float) -> float:
     """

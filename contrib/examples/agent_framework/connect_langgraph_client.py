@@ -9,11 +9,12 @@ load_dotenv()
 
 # Initialize the chat model using OpenAI-compatible settings.
 model = ChatOpenAI(
-    model        =os.environ.get("MODEL_NAME"),
-    base_url         = os.environ["BASE_URL"],
-    api_key         = os.environ["OPENAI_API_KEY"],
-    temperature     = 0.7,
+    model=os.environ.get("MODEL_NAME"),
+    base_url=os.environ["BASE_URL"],
+    api_key=os.environ["OPENAI_API_KEY"],
+    temperature=0.7,
 )
+
 
 async def main():
     # Create and connect a MultiServerMCPClient to the BTS server
@@ -24,19 +25,16 @@ async def main():
             url="http://127.0.0.1:8000/sse",
         )
 
-
         # Retrieve the tools exposed by the connected MCP server(s)
-        tools=client.get_tools()
+        tools = client.get_tools()
         print(f"🔧 Tools list:{  [tool.name for tool in tools]}")
 
         # Create a reactive LangGraph agent using the MCP tools
         agent = create_react_agent(model, tools)
 
-
-
         # Use calculator tool
         response = await agent.ainvoke({"messages": "what's the answer for (10 + 5)?"})
-        for m in response['messages']:
+        for m in response["messages"]:
             m.pretty_print()
 
 

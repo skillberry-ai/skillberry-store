@@ -3,20 +3,24 @@
 import os
 import json
 from typing import List, Dict
-from .base_client_utils import init_manifest, extract_docstring, python_manifest_from_function_docstring
+from .base_client_utils import (
+    init_manifest,
+    extract_docstring,
+    python_manifest_from_function_docstring,
+)
 
 
 def python_manifest_from_json_record(json_rec: dict, module_path: str):
     """
-    Generate a Python manifest for a function whose description is 
-    in a JSON record of the DOT project. 
+    Generate a Python manifest for a function whose description is
+    in a JSON record of the DOT project.
 
     Args:
         json_rec (dict): a JSON record extracted from the DOT project descriptions
         module_path (str): the path to the Python module containing the function
 
     Returns:
-        dict:   the manifest 
+        dict:   the manifest
     """
     func_name = json_rec["name"]
     manifest = init_manifest(func_name, "python")
@@ -32,11 +36,12 @@ def python_manifest_from_json_record(json_rec: dict, module_path: str):
     return manifest
 
 
-
-def python_manifest_from_json_base(json_base: List[List[Dict]], module_path: str, func_name: str):
+def python_manifest_from_json_base(
+    json_base: List[List[Dict]], module_path: str, func_name: str
+):
     """
-    Generate a Python manifest for a function whose description is 
-    in a JSON record inside a JSON base of the DOT project. 
+    Generate a Python manifest for a function whose description is
+    in a JSON record inside a JSON base of the DOT project.
 
     Args:
         json_base (List[List[Dict]]): a JSON base of DOT project function descriptions
@@ -55,10 +60,11 @@ def python_manifest_from_json_base(json_base: List[List[Dict]], module_path: str
     return None
 
 
-
-def python_manifest_from_docstring_or_json(json_base: List[List[Dict]], module_path: str, func_name: str):
+def python_manifest_from_docstring_or_json(
+    json_base: List[List[Dict]], module_path: str, func_name: str
+):
     """
-    Generate a Python manifest for a function whose description is 
+    Generate a Python manifest for a function whose description is
     either in the function's docstring or in an accompanying JSON base (GIN).
 
     Args:
@@ -72,11 +78,12 @@ def python_manifest_from_docstring_or_json(json_base: List[List[Dict]], module_p
     docstring = extract_docstring(module_path, func_name)
     manifest = None
     if docstring != None:
-        manifest = python_manifest_from_function_docstring(module_path, func_name, docstring)
+        manifest = python_manifest_from_function_docstring(
+            module_path, func_name, docstring
+        )
     if manifest == None and json_base != None:
         manifest = python_manifest_from_json_base(json_base, module_path, func_name)
     return manifest
-
 
 
 def load_json_base(json_path: str):
@@ -85,7 +92,7 @@ def load_json_base(json_path: str):
 
     Args:
         json_path (str): a path to a folder containing the JSON files
-    
+
     Returns:
         list:   the JSON base as a list of JSON data from the folder,
                 each loaded from a different file
@@ -102,12 +109,12 @@ def load_json_base(json_path: str):
                     except json.JSONDecodeError:
                         raise Exception(f"Could not decode JSON in file: {filename}")
                     except Exception as e:
-                        raise Exception(f"An error occurred while processing file: {filename} - {e}")
+                        raise Exception(
+                            f"An error occurred while processing file: {filename} - {e}"
+                        )
     except FileNotFoundError:
         raise Exception(f"Error: Folder not found: {json_path}")
     except Exception as e:
         raise e
 
     return json_base
-
-

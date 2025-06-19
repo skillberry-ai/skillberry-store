@@ -154,7 +154,6 @@ def number_str_cleanup(text):
         return float(text)
     except Exception as e:
         raise TypeError(f"Unable to convert text={text} to float with error:{e}")
-        
 
 
 def date_transformer(text):
@@ -165,7 +164,9 @@ def date_transformer(text):
     matches = list(datefinder.find_dates(text))
     if matches:
         return str(matches[0])
-    raise TypeError(f"Date with value={text}, is not currently supported by date_transformer!")
+    raise TypeError(
+        f"Date with value={text}, is not currently supported by date_transformer!"
+    )
 
 
 def full_address_concat(address, pin, state, city=""):
