@@ -107,7 +107,7 @@ make run
 
 ```bash
 export BTS_HOME=$(pwd)
-export EXAMPLESPATH=$BTS_HOME/contrib/examples
+export EXAMPLESPATH=$BTS_HOME/blueberry_tools_service/contrib/examples
 ```
 
 - Load example tools:
@@ -141,12 +141,12 @@ MCP_MODE=True make run
 
 ### Examples of using BTS with Agentic Frameworks 🤖
 
-Follow the steps outlined in [Run BTS with Agent Frameworks](./contrib/examples/agent_framework/agent_framework.md).
+Follow the steps outlined in [Run BTS with Agent Frameworks](blueberry_tools_service/contrib/examples/agent_framework/agent_framework.md).
 > Note: the example makes use of BTS in MCP mode
 
 ### Support Multiple MCP Backends
 
-Follow the steps outlined in [Connecting MCP as a backend](contrib/mcp/README.md).
+Follow the steps outlined in [Connecting MCP as a backend](blueberry_tools_service/contrib/mcp/README.md).
 
 ## Run BTS with GitHub backend
 

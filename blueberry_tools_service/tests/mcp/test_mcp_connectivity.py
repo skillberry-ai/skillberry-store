@@ -2,7 +2,7 @@ import asyncio
 import httpx
 import pytest
 
-from tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
+from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
 
 
 @pytest.mark.asyncio
@@ -13,7 +13,7 @@ async def test_mcp_mode():
 
     mcp_server_proc = await asyncio.create_subprocess_exec(
         "python",
-        "contrib/mcp/server/server.py",
+        "blueberry_tools_service/contrib/mcp/server/server.py",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -29,8 +29,7 @@ async def test_mcp_mode():
         pass
 
     main_proc = await asyncio.create_subprocess_exec(
-        "python",
-        "main.py",
+        "python", "-m", "blueberry_tools_service.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -69,3 +68,4 @@ async def test_mcp_mode():
             await mcp_server_proc.stdout.read()
         if mcp_server_proc.stderr:
             await mcp_server_proc.stderr.read()
+

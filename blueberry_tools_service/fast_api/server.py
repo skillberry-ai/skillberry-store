@@ -17,29 +17,35 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-from fast_api.mcp_proxy import MCPToBTSProxy
-from modules.dictionary_checker import DictionaryChecker
-from modules.lifecycle import LifecycleState, LifecycleManager
-from modules.manifest import Manifest
-from modules.description import Description
-from modules.description_vector_index import DescriptionVectorIndex
-from modules.file_handler import FileHandler
-from modules.file_executor import FileExecutor
-from modules.tool_type import ToolType
-from tools.configure import (
+from blueberry_tools_service.fast_api.mcp_proxy import MCPToBTSProxy
+from blueberry_tools_service.modules.dictionary_checker import DictionaryChecker
+from blueberry_tools_service.modules.lifecycle import LifecycleState, LifecycleManager
+from blueberry_tools_service.modules.manifest import Manifest
+from blueberry_tools_service.modules.description import Description
+from blueberry_tools_service.modules.description_vector_index import (
+    DescriptionVectorIndex,
+)
+from blueberry_tools_service.modules.file_handler import FileHandler
+from blueberry_tools_service.modules.file_executor import FileExecutor
+from blueberry_tools_service.modules.tool_type import ToolType
+from blueberry_tools_service.tools.configure import (
     get_files_directory_path,
     get_descriptions_directory,
     get_manifest_directory,
     configure_logging,
 )
-from fast_api.server_utils import get_mcp_tools, mcp_json_converter, mcp_content
+from blueberry_tools_service.fast_api.server_utils import (
+    get_mcp_tools,
+    mcp_json_converter,
+    mcp_content,
+)
 
 try:
-    from fast_api.git_version import __git_version__
+    from blueberry_tools_service.fast_api.git_version import __git_version__
 except:
     __git_version__ = "unknown"
 
-from fast_api.observability import observability_setup
+from blueberry_tools_service.fast_api.observability import observability_setup
 from prometheus_client import Counter, Histogram
 
 # this environment variable is used to enable the latest API version

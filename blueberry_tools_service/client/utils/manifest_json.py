@@ -1,8 +1,8 @@
 # This script creates a manifest for a function in a module, based on JSON documentation
 # for the function in a separate folder
 
-from client.utils import base_client_utils
-from client.utils import json_client_utils
+from blueberry_tools_service.client.utils import base_client_utils
+from blueberry_tools_service.client.utils import json_client_utils
 import argparse
 
 parser = argparse.ArgumentParser(

@@ -54,17 +54,16 @@ git_hooks_setup:
 
 .PHONY: update_git_version
 update_git_version:
-	@echo "Writing git version to fast_api/git_version.py"
-	@echo "__git_version__ = \"$(BUILD_VERSION)\"" > fast_api/git_version.py
+	@echo "Writing git version to blueberry_tools_service/fast_api/git_version.py"
+	@echo "__git_version__ = \"$(BUILD_VERSION)\"" > blueberry_tools_service/fast_api/git_version.py
 
 
 .PHONY: install_requirements
 install_requirements: update_git_version git_hooks_setup # Install requirements
-	@pip install -r requirements.txt
-
+	@pip install -e .
 
 install_dev_requirements: # Install dev requirements
-	@pip install -r requirements-dev.txt
+	@pip install -e ".[dev]"
 
 ##@ Setup & teardown as a process
 
@@ -74,12 +73,12 @@ run: install_requirements ## Run the tools service
 		echo "Blueberry Tools Service is already running"; \
 	else \
 		echo "Starting Blueberry Tools Service"; \
-		contrib/scripts/start-service.sh /tmp/tools-service.log $(TOOLS_SERVICE_SENTINEL) python main.py; \
+		blueberry_tools_service/contrib/scripts/start-service.sh /tmp/tools-service.log $(TOOLS_SERVICE_SENTINEL) python -m blueberry_tools_service.main; \
 	fi
 
 stop: $(TOOLS_SERVICE_SENTINEL) ## Stop the tools service
 	@echo "Stopping Blueberry Tools Service"
-	@contrib/scripts/stop-service.sh $(TOOLS_SERVICE_SENTINEL)
+	@blueberry_tools_service/contrib/scripts/stop-service.sh $(TOOLS_SERVICE_SENTINEL)
 
 clean:  ## Clean temporary files
 	@rm -f $(TOOLS_SERVICE_SENTINEL)
@@ -88,6 +87,8 @@ clean:  ## Clean temporary files
 	+rm -rf /tmp/manifest
 	+rm -rf /tmp/descriptions
 	+rm -rf /tmp/files
+
+	rm -rf build dist *.egg-info	
 
 ##@ Docker
 

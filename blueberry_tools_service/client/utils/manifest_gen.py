@@ -2,8 +2,8 @@
 # a manifest for each function. The manifest is based either on the function's doc string,
 # or (if not available) on the matching JSON documentation.
 
-from client.utils import base_client_utils
-from client.utils import json_client_utils
+from blueberry_tools_service.client.utils import base_client_utils
+from blueberry_tools_service.client.utils import json_client_utils
 import argparse
 import os
 

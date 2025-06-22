@@ -157,5 +157,4 @@ cython_debug/
 .idea/
 .vscode/
 
-fast_api/git_version.py
-
+blueberry_tools_service/fast_api/git_version.py

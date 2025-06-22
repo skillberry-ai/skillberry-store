@@ -4,7 +4,7 @@ from unittest import mock
 
 import pytest
 
-from tools.shell_hook import ShellHook
+from blueberry_tools_service.tools.shell_hook import ShellHook
 
 
 @pytest.fixture

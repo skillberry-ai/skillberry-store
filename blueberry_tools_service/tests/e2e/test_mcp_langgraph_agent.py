@@ -5,7 +5,8 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
-from tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
+from blueberry_tools_service.tests.utils import clean_test_tmp_dir,wait_until_server_ready, add_tool_manifest
+
 
 load_dotenv()
 EXPECTED_TOOLS = ["multiply"]
@@ -30,17 +31,15 @@ async def test_mcp_mode():
 
     clean_test_tmp_dir()
     mcp_server_proc = await asyncio.create_subprocess_exec(
-        "python",
-        "contrib/mcp/server/server.py",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    "python", "blueberry_tools_service/contrib/mcp/server/server.py",
+    stdout=asyncio.subprocess.PIPE,
+    stderr=asyncio.subprocess.PIPE,
+)
     env = os.environ.copy()
     env["MCP_MODE"] = "true"
 
-    main_proc = await asyncio.create_subprocess_exec(
-        "python",
-        "main.py",
+    main_proc  = await asyncio.create_subprocess_exec(
+        "python", "-m", "blueberry_tools_service.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=env,

@@ -1,7 +1,7 @@
 import pytest
 import pytest_asyncio
 
-from modules.file_executor import FileExecutor
+from blueberry_tools_service.modules.file_executor import FileExecutor
 
 
 @pytest.fixture

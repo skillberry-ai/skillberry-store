@@ -8,10 +8,10 @@ from docstring_parser import parse, ParseError
 
 from fastapi import HTTPException
 
-from client.utils import base_client_utils, json_client_utils
-from modules.tool_type import ToolType
-from tools.shell_hook import ShellHook
-from utils.python_utils import extract_docstring
+from blueberry_tools_service.client.utils import base_client_utils, json_client_utils
+from blueberry_tools_service.modules.tool_type import ToolType
+from blueberry_tools_service.tools.shell_hook import ShellHook
+from blueberry_tools_service.utils.python_utils import extract_docstring
 
 logger = logging.getLogger(__name__)
 

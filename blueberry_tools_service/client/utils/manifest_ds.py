@@ -1,7 +1,7 @@
 # This script creates a manifest for a function in a module, based on the function's well-formatted
 # and comprehensive doc string.
 
-from client.utils import base_client_utils
+from blueberry_tools_service.client.utils import base_client_utils
 import argparse
 
 parser = argparse.ArgumentParser(

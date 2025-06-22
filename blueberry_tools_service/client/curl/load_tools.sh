@@ -43,11 +43,10 @@ else
     exit 1
 fi
 
-
 # Check Usage
 if [ $# -lt 2 ]; then
-    echo "Usage: $0 <folder/to/json> <tools_file> <tool_name> [<tool_name> ...]"
-    echo "Example: $0 ClientWinMVP/json ClientWinMVP/functions/transformations.py GetYear"
+    echo "Usage: $0 <tools_file> <tool_name> [<tool_name> ...]"
+    echo "Example: $0 genai/transformations/client-win-functions.py GetYear"
     exit 1
 fi
 
@@ -80,8 +79,7 @@ fi
 # Check if the tools file exists
 # The tools file is the first argument passed to the script
 # The tools file should be in the EXAMPLESPATH directory
-TOOLS_JSON_FOLDER=${EXAMPLESPATH}/$1
-TOOLS_FILE=${EXAMPLESPATH}/$2
+TOOLS_FILE=${EXAMPLESPATH}/$1
 echo "${bold}Checking if the tools file exists...${normal}"
 
 if [ -f "${TOOLS_FILE}" ]; then
@@ -94,7 +92,6 @@ fi
 echo "${bold}Creating the manifests...${normal}"
 
 shift # Shift the first argument (the tools file) so that $@ contains only the tool names
-shift
 # Loop through the tool names passed as arguments
 # and generate the manifests for each tool
 for value in "$@"; do
@@ -102,8 +99,7 @@ for value in "$@"; do
     file_manifest="${BTS_MFT_DIR}/manifest-${value}.json"
     echo "Manifest file: $file_manifest"
 
-    python -m client.utils.manifest_json ${TOOLS_JSON_FOLDER} ${TOOLS_FILE} ${value} > $file_manifest
-
+    python -m blueberry_tools_service.client.utils.manifest_ds ${TOOLS_FILE} ${value} > $file_manifest
     sleep $SLEEP_TIME
     
     echo "${bold}Adding manifest: '$value'...${normal}"

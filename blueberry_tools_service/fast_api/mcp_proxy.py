@@ -3,7 +3,7 @@ import logging
 from typing import Any
 from mcp import server, types
 from mcp.client.session import ClientSession
-from tools.configure import configure_logging
+from blueberry_tools_service.tools.configure import configure_logging
 from dataclasses import dataclass
 from fastapi import FastAPI
 

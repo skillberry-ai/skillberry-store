@@ -3,7 +3,9 @@ import pytest
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
-from modules.description_vector_index import DescriptionVectorIndex
+from blueberry_tools_service.modules.description_vector_index import (
+    DescriptionVectorIndex,
+)
 
 
 @pytest.fixture

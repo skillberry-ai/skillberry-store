@@ -4,9 +4,9 @@ import json
 import pytest
 import pytest_asyncio
 
-from client.utils import base_client_utils, json_client_utils
-from tests import resources as resources_package
-from tests.utils import clean_test_tmp_dir, wait_until_server_ready
+from blueberry_tools_service.client.utils import base_client_utils, json_client_utils
+from blueberry_tools_service.tests import resources as resources_package
+from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready
 
 import blueberry_tools_service_sdk
 from blueberry_tools_service_sdk.exceptions import NotFoundException
@@ -23,9 +23,8 @@ async def run_bts(request):
     """
     print("setup called")
     clean_test_tmp_dir()
-    main_proc = await asyncio.create_subprocess_exec(
-        "python",
-        "main.py",
+    main_proc  = await asyncio.create_subprocess_exec(
+        "python", "-m", "blueberry_tools_service.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
