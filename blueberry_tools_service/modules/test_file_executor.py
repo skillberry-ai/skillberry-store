@@ -314,7 +314,7 @@ def executor_instance_date_converter(manifest_test_tool, file_content_date_conve
 )
 @pytest.mark.asyncio
 async def test_execute_date_converter(
-    executor_instance_date_converter, parameters, expected
+        executor_instance_date_converter, parameters, expected
 ):
     result = await executor_instance_date_converter.execute_file(parameters)
     # pytest -vs to print
@@ -354,7 +354,7 @@ def test_tool(date_str: str) -> str:
 
 @pytest.fixture
 def executor_instance_date_converter_from(
-    manifest_test_tool, file_content_date_converter_from
+        manifest_test_tool, file_content_date_converter_from
 ):
     """Fixture to create a FileExecutor instance."""
     return FileExecutor(
@@ -375,7 +375,7 @@ def executor_instance_date_converter_from(
 )
 @pytest.mark.asyncio
 async def test_execute_date_converter_from(
-    executor_instance_date_converter_from, parameters, expected
+        executor_instance_date_converter_from, parameters, expected
 ):
     result = await executor_instance_date_converter_from.execute_file(parameters)
     # pytest -vs to print
@@ -415,7 +415,7 @@ def test_tool(date_str: str) -> str:
 
 @pytest.fixture
 def executor_instance_date_converter_from2(
-    manifest_test_tool, file_content_date_converter_from2
+        manifest_test_tool, file_content_date_converter_from2
 ):
     """Fixture to create a FileExecutor instance."""
     return FileExecutor(
@@ -436,7 +436,7 @@ def executor_instance_date_converter_from2(
 )
 @pytest.mark.asyncio
 async def test_execute_date_converter_from2(
-    executor_instance_date_converter_from2, parameters, expected
+        executor_instance_date_converter_from2, parameters, expected
 ):
     result = await executor_instance_date_converter_from2.execute_file(parameters)
     # pytest -vs to print
@@ -478,7 +478,7 @@ def test_tool(date_str: str) -> str:
 
 @pytest.fixture
 def executor_instance_multiple_imports(
-    manifest_test_tool, file_content_multiple_imports
+        manifest_test_tool, file_content_multiple_imports
 ):
     """Fixture to create a FileExecutor instance."""
     return FileExecutor(
@@ -499,7 +499,7 @@ def executor_instance_multiple_imports(
 )
 @pytest.mark.asyncio
 async def test_execute_multiple_imports(
-    executor_instance_multiple_imports, parameters, expected
+        executor_instance_multiple_imports, parameters, expected
 ):
     result = await executor_instance_multiple_imports.execute_file(parameters)
     # pytest -vs to print
@@ -556,7 +556,7 @@ def executor_instance_transform_total(manifest_test_tool, file_content_transform
 )
 @pytest.mark.asyncio
 async def test_execute_transform_total(
-    executor_instance_transform_total, parameters, expected
+        executor_instance_transform_total, parameters, expected
 ):
     result = await executor_instance_transform_total.execute_file(parameters)
     # pytest -vs to print
@@ -605,7 +605,7 @@ def executor_instance_nth_number(manifest_test_tool, file_content_nth_number_in_
 )
 @pytest.mark.asyncio
 async def test_execute_nth_number_in_list(
-    executor_instance_nth_number, parameters, expected
+        executor_instance_nth_number, parameters, expected
 ):
     result = await executor_instance_nth_number.execute_file(parameters)
     # pytest -vs to print
