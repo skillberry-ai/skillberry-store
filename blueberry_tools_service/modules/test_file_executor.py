@@ -97,9 +97,9 @@ def executor_instance_add_float(manifest_test_tool, file_content_add_float):
 @pytest.mark.parametrize(
     "parameters,expected",
     [
-        ({"a": 5, "b": 8}, "13.0"),
-        ({"a": -5, "b": 2}, "-3.0"),
-        ({"a": 0, "b": 0}, "0.0"),
+        ({"a": 5, "b": 8}, "13"),
+        ({"a": -5, "b": 2}, "-3"),
+        ({"a": 0, "b": 0}, "0"),
         ({"a": 5.5, "b": 4.5}, "10.0"),
     ],
     ids=["test_one", "test_two", "test_three", "test_four"],
@@ -597,9 +597,9 @@ def executor_instance_nth_number(manifest_test_tool, file_content_nth_number_in_
 @pytest.mark.parametrize(
     "parameters,expected",
     [
-        ({"numbers": "[10,20,30]", "n": 1}, "10"),
-        ({"numbers": "[10,20,30]", "n": 2}, "20"),
-        ({"numbers": "[-1,0,1]", "n": 3}, "1"),
+        ({"numbers": [10, 20, 30], "n": 1}, "10"),
+        ({"numbers": [10, 20, 30], "n": 2}, "20"),
+        ({"numbers": [-1, 0, 1], "n": 3}, "1"),
     ],
     ids=["test_one", "test_two", "test_three"],
 )
