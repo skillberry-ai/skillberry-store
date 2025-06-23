@@ -372,7 +372,7 @@ class FileExecutor:
 
             # Create and run a container to execute the Python file
             container = self.client.containers.run(
-                "python:3.11",  # Using the official Python 3.11 image
+                "public.ecr.aws/docker/library/python:3.11",  # Python 3.11 image from AWS (no rate limits)
                 command=f"/bin/bash -c '{command}'",
                 volumes={temp_file_path: {"bind": f"/tmp/function.py", "mode": "ro"}},
                 remove=True,
