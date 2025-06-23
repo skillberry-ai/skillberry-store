@@ -14,7 +14,7 @@ WORKDIR /app
 # Copy the application
 COPY . .
 RUN pip3 install --no-cache-dir --upgrade pip
-RUN pip3 install --no-cache-dir .
+RUN PIP_CONFIG_FILE=./pip.conf pip3 install --no-cache-dir .
 # RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Expose a port (change if needed)
