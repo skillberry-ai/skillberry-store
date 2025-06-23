@@ -1,4 +1,5 @@
 import asyncio
+import os
 from importlib import resources as impresources
 import json
 import pytest
@@ -23,12 +24,14 @@ async def run_bts(request):
     """
     print("setup called")
     clean_test_tmp_dir()
-    main_proc  = await asyncio.create_subprocess_exec(
+    main_proc = await asyncio.create_subprocess_exec(
         "python", "-m", "blueberry_tools_service.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        cwd=os.path.dirname(
+            os.path.abspath(__file__).rstrip("/tests/e2e/test_tools_service_apis.py")),
     )
-    await wait_until_server_ready()
+    await wait_until_server_ready(timeout=60)
 
     yield
 
@@ -107,7 +110,7 @@ def test_search_manifests(run_bts):
         )
 
         assert (
-            len(api_response) > 0
+                len(api_response) > 0
         ), "Should return at least one manifest for search operation"
         # TODO: asset GetQuarter present and has the smallest score
 
@@ -145,7 +148,7 @@ def test_list_manifests(run_bts, expected: int = 3):
 
         api_response = api_instance.get_manifests_manifests_get()
         assert (
-            len(api_response) == expected
+                len(api_response) == expected
         ), f"Execution failed: received none empty response"
 
 
@@ -161,7 +164,7 @@ def test_delete_manifest(run_bts, uid):
 
         assert api_response.get("message", None), "Should receive 'message' key"
         assert (
-            api_response["message"] == f"Manifest '{uid}' deleted."
+                api_response["message"] == f"Manifest '{uid}' deleted."
         ), f"Should receive deletion message for {uid}"
 
 
