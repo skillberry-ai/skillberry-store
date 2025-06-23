@@ -60,7 +60,7 @@ update_git_version:
 
 .PHONY: install_requirements
 install_requirements: update_git_version git_hooks_setup # Install requirements
-	@pip install -e .
+	@PIP_CONFIG_FILE=./pip.conf pip install -e .
 
 install_dev_requirements: # Install dev requirements
 	@pip install -e ".[dev]"
