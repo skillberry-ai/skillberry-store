@@ -89,7 +89,7 @@ def arg_convert(arg_name, arg_type):
 
 def extract_function_and_imports(
     content: str, function_name: str
-) -> (Tuple)[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
+) -> Tuple[Optional[str], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
     """
     Extracts the function's name, its parameters with type annotations and whether they are positional or optional,
     and imported modules from Python code.
@@ -369,39 +369,8 @@ class FileExecutor:
             else:
                 command = ""
             command += f"python /tmp/function.py "
-            # DAVIDBR: remove commented out code
-            """ for parameter_definition in parameter_definitions:
-                parameter_definition_name = parameter_definition[0]
-                parameter_definition_type = parameter_definition[1]
-                parameter_definition_kind = parameter_definition[2]
-                if parameters.get(parameter_definition_name) is None:
-                    if parameter_definition_kind == "positional":
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Missing parameter: "
-                            f"name:{parameter_definition_name}, "
-                            f"type:{parameter_definition_type}",
-                        )
-                    else:
-                        continue
-
-                converted_arg = arg_convert(
-                    parameters.get(parameter_definition_name), parameter_definition_type
-                )
-                # attempt to escape $ signs with `\` so that bash does
-                # not treat it as a variable
-                try:
-                    converted_arg = converted_arg.replace("$", "\\$")
-                except:
-                    # ignore none string, any error
-                    pass
-                if parameter_definition_kind == "positional":
-                    command += f"{converted_arg} "
-                else:
-                    command += f"--{parameter_definition_name}={converted_arg} " """
 
             # Create and run a container to execute the Python file
-
             container = self.client.containers.run(
                 "python:3.11",  # Using the official Python 3.11 image
                 command=f"/bin/bash -c '{command}'",

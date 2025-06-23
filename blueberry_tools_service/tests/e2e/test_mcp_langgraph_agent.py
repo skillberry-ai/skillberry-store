@@ -5,8 +5,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
-from blueberry_tools_service.tests.utils import clean_test_tmp_dir,wait_until_server_ready, add_tool_manifest
-
+from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
 
 load_dotenv()
 EXPECTED_TOOLS = ["multiply"]
@@ -17,10 +16,17 @@ TEST_PROMPTS = [
 
 def get_chat_model() -> ChatOpenAI:
     """Initialize and return a ChatOpenAI model from environment settings."""
+
+    rits_api_key = os.environ.get("RITS_API_KEY")
+    if not rits_api_key:
+        raise ValueError("RITS_API_KEY environment variable is not set.")
+
     return ChatOpenAI(
-        model=os.environ.get("MODEL_NAME"),
-        base_url=os.environ["BASE_URL"],
-        api_key=os.environ["OPENAI_API_KEY"],
+        model=os.environ.get("MODEL_NAME",
+                             "rits/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"),  # using llama-4 as default
+        base_url=os.environ.get("BASE_MODEL_URL",
+                                "http://blueberry.sl.cloud9.ibm.com:4000/"),  # using blueberry proxy IP as default
+        api_key=rits_api_key,
         temperature=0.7,
     )
 
@@ -30,22 +36,28 @@ async def test_mcp_mode():
     """Test the BSP server running in MCP mode via subprocess."""
 
     clean_test_tmp_dir()
-    mcp_server_proc = await asyncio.create_subprocess_exec(
-    "python", "blueberry_tools_service/contrib/mcp/server/server.py",
-    stdout=asyncio.subprocess.PIPE,
-    stderr=asyncio.subprocess.PIPE,
-)
-    env = os.environ.copy()
-    env["MCP_MODE"] = "true"
 
-    main_proc  = await asyncio.create_subprocess_exec(
+    env = os.environ.copy()
+
+    mcp_server_proc = await asyncio.create_subprocess_exec(
+        "python", "blueberry_tools_service/contrib/mcp/server/server.py",
+        cwd=os.path.dirname(
+            os.path.abspath(__file__).rstrip("/tests/e2e/test_mcp_langgraph_agent.py")),
+        env=env
+    )
+
+    env["MCP_MODE"] = "true"
+    main_proc = await asyncio.create_subprocess_exec(
         "python", "-m", "blueberry_tools_service.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=env,
+        cwd=os.path.dirname(
+            os.path.abspath(__file__).rstrip("/tests/e2e/test_mcp_langgraph_agent.py"))
     )
+
     try:
-        await wait_until_server_ready()
+        await wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=60)
         await add_tool_manifest()
 
         async with MultiServerMCPClient() as client:
