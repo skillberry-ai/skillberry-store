@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from typing import Optional, Any
 
 from fastapi import HTTPException
@@ -9,10 +10,10 @@ from blueberry_tools_service.modules.description_vector_index import (
 
 logger = logging.getLogger(__name__)
 
-# default_model = 'sentence-transformers/all-MiniLM-L6-v2'
-default_model = (
-    "blueberry_tools_service/modules/description_vector_index_models/slate30_improved"
-)
+base_dir = Path(__file__).resolve().parent
+
+default_model = str(base_dir / "description_vector_index_models" / "slate30_improved")
+
 default_dimension = 384
 default_model_search_k = 5
 

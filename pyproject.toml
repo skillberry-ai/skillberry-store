@@ -142,3 +142,7 @@ bts = "blueberry_tools_service.main:main"
 
 [tool.setuptools]
 include-package-data = true
+
+[tool.setuptools.package-data]
+# TODO: use **/*
+"blueberry_tools_service" = ["modules/*", "modules/description_vector_index_models/*", "modules/description_vector_index_models/slate30_improved/*", "modules/description_vector_index_models/slate30_improved/1_Pooling/*"]
