@@ -47,16 +47,23 @@ endif
 help: ## Display this help.
 	@$(AWK) 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-.PHONY: git_hooks_setup
 git_hooks_setup:
-	@git config core.hooksPath .githooks
-	@chmod +x .githooks/*
+	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
+	    echo "Setting up Git hooks..."; \
+	    git config core.hooksPath .githooks; \
+	    chmod +x .githooks/*; \
+	else \
+	    echo "Skipping git_hooks_setup: not inside a Git repository."; \
+	fi
 
 .PHONY: update_git_version
 update_git_version:
-	@echo "Writing git version to blueberry_tools_service/fast_api/git_version.py"
-	@echo "__git_version__ = \"$(BUILD_VERSION)\"" > blueberry_tools_service/fast_api/git_version.py
-
+	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
+	    echo "Writing git version to blueberry_tools_service/fast_api/git_version.py"; \
+	    echo "__git_version__ = \"$(BUILD_VERSION)\"" > blueberry_tools_service/fast_api/git_version.py; \
+	else \
+	    echo "Skipping update_git_version: not inside a Git repository."; \
+	fi
 
 .PHONY: install_requirements
 install_requirements: update_git_version git_hooks_setup # Install requirements
