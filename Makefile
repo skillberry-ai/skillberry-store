@@ -47,16 +47,23 @@ endif
 help: ## Display this help.
 	@$(AWK) 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-.PHONY: git_hooks_setup
 git_hooks_setup:
-	@git config core.hooksPath .githooks
-	@chmod +x .githooks/*
+	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
+	    echo "Setting up Git hooks..."; \
+	    git config core.hooksPath .githooks; \
+	    chmod +x .githooks/*; \
+	else \
+	    echo "Skipping git_hooks_setup: not inside a Git repository."; \
+	fi
 
 .PHONY: update_git_version
 update_git_version:
-	@echo "Writing git version to blueberry_tools_service/fast_api/git_version.py"
-	@echo "__git_version__ = \"$(BUILD_VERSION)\"" > blueberry_tools_service/fast_api/git_version.py
-
+	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
+	    echo "Writing git version to blueberry_tools_service/fast_api/git_version.py"; \
+	    echo "__git_version__ = \"$(BUILD_VERSION)\"" > blueberry_tools_service/fast_api/git_version.py; \
+	else \
+	    echo "Skipping update_git_version: not inside a Git repository."; \
+	fi
 
 .PHONY: install_requirements
 install_requirements: update_git_version git_hooks_setup # Install requirements
@@ -138,9 +145,9 @@ docker_build: docker_check update_git_version ## Build docker image for arm64 an
 	@echo "Build date: $(BUILD_DATE)"
 	@echo "Building for $(ARCH) using the Docker file $(DOCKER_FILE): $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
 	@if [ "$(DOCKER)" = "docker" ]; then \
-		DOCKER_BUILDKIT=1 $(DOCKER) buildx build --file $(DOCKER_FILE) --load --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .; \
+		DOCKER_BUILDKIT=1 $(DOCKER) buildx build --file $(DOCKER_FILE) --load --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) -t $(DOCKER_NAME):latest .; \
 	elif [ "$(DOCKER)" = "podman" ]; then \
-		$(DOCKER) build --no-cache=true --file $(DOCKER_FILE) --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) .; \
+		$(DOCKER) build --no-cache=true --file $(DOCKER_FILE) --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) -t $(DOCKER_NAME):latest .; \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
@@ -178,9 +185,10 @@ docker_stop: docker_check ## Stop the docker image
 # set up the credentials in ~/.docker/config.json according to the instructions in artifactory.haifa.ibm.com
 .PHONY: docker_push
 docker_push: docker_check docker_build ## Push docker image into the registry
-	@echo "Pushing Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
 	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
 	$(DOCKER) push $(DOCKER_NAME):$(DOCKER_VERSION)
+	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):latest"
+	$(DOCKER) push $(DOCKER_NAME):latest
 
 include .mk/development.mk
 include .mk/ci.mk
