@@ -62,7 +62,7 @@ def load_json_resource(resource_name: str) -> dict:
         return json.load(f)
 
 
-@pytest.mark.parametrize("func_name", ["GetCurrency", "GetYear", "GetQuarter"])
+@pytest.mark.parametrize("func_name", ["GetCurrency", "GetYear", "GetQuarter", "identity"])
 @pytest.mark.asyncio
 async def test_add_manifest(run_bts, func_name):
     """
@@ -115,7 +115,7 @@ def test_search_manifests(run_bts):
         # TODO: asset GetQuarter present and has the smallest score
 
 
-@pytest.mark.parametrize("uid", ["GetCurrency", "GetYear", "GetQuarter"])
+@pytest.mark.parametrize("uid", ["GetCurrency", "GetYear", "GetQuarter", "identity"])
 def test_get_manifest(run_bts, uid: str):
     """
     Retrieve single manifest.
@@ -132,7 +132,7 @@ def test_get_manifest(run_bts, uid: str):
         assert api_response["uid"] == uid, f"Should receive uid: {uid}"
 
 
-def test_list_manifests(run_bts, expected: int = 3):
+def test_list_manifests(run_bts, expected: int = 4):
     """
     List manifests.
 
@@ -185,3 +185,34 @@ def test_get_manifest2(run_bts, uid: str):
 
         except NotFoundException:
             pass
+
+
+def test_delete_manifests_wildcard(run_bts):
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+
+        api_response = api_instance.delete_manifests_manifests_delete(manifest_filter="name:Get*")
+
+        assert api_response.get("message", None), "Should receive 'message' key"
+        assert (
+                api_response["message"] == f"Manifests ['GetCurrency', 'GetYear'] deleted."
+        ), f"Should receive deletion message for GetCurrency and GetYear"
+
+
+def test_get_manifests(run_bts):
+    """
+    Retrieve single manifest.
+
+    """
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+
+        api_response = api_instance.get_manifests_manifests_get()
+        assert len(api_response) == 1, "Should receive exactly one manifest"
+        assert api_response[0]["uid"] == "identity", "Manifest 'identity' does not exist"
