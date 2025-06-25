@@ -580,6 +580,44 @@ class BTS(FastAPI):
             update_manifests_counter.inc()
             return manifest.update_manifest(f"{uid}.json", new_manifest)
 
+        @self.delete("/manifests/", tags=tags)
+        def delete_manifests(
+            manifest_filter: str = ".",
+            lifecycle_state: LifecycleState = LifecycleState.ANY,
+        ):
+            logger.info(f"Request to delete manifests")
+            manifest_as_dict_entities = manifest.list_manifests()
+            # if we are requested to limit delete to a specific lifecycle state, we filter the results
+            if lifecycle_state is not LifecycleState.ANY:
+                matched_manifest_as_dict_entities = []
+                for manifest_as_dict in manifest_as_dict_entities:
+                    life_cycle_manager = LifecycleManager(manifest_as_dict)
+                    if life_cycle_manager.get_state() != lifecycle_state:
+                        continue
+                    matched_manifest_as_dict_entities.append(manifest_as_dict)
+                # update list to only ones matching state
+                manifest_as_dict_entities = matched_manifest_as_dict_entities
+
+            if manifest_filter != "" and manifest_filter != ".":
+                matched_manifest_as_dict_entities = []
+                for manifest_as_dict in manifest_as_dict_entities:
+                    dictionary_checker = DictionaryChecker(manifest_as_dict)
+                    if not dictionary_checker.check_key_value_exists(manifest_filter):
+                        continue
+                    matched_manifest_as_dict_entities.append(manifest_as_dict)
+                # update list to only ones matching filter attributes
+                manifest_as_dict_entities = matched_manifest_as_dict_entities
+            success_deleted = []
+            for m in manifest_as_dict_entities:
+                uid = m["uid"]
+                try:
+                    delete_manifest(uid)
+                    success_deleted.append(uid)
+                except Exception as e:
+                    logger.warning(f"Failed to delete manifest {uid}: {str(e)}")
+
+            return {"message": f"Manifests {success_deleted} deleted."}
+
         @self.delete("/manifests/{uid}", tags=tags)
         def delete_manifest(uid: str):
             """
