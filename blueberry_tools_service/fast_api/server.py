@@ -578,6 +578,13 @@ class BTS(FastAPI):
             """
             logger.info(f"Request to update manifest for uid: {uid}")
             update_manifests_counter.inc()
+            #
+            # This logic should be revised:
+            # there are cases where new_manifest does not contain uid
+            # especially when being passed from btm. btm git issue #45 opened to
+            # handle this.
+            #
+            new_manifest["uid"] = uid
             return manifest.update_manifest(f"{uid}.json", new_manifest)
 
         @self.delete("/manifests/", tags=tags)
