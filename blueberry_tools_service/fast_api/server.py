@@ -592,6 +592,18 @@ class BTS(FastAPI):
             manifest_filter: str = ".",
             lifecycle_state: LifecycleState = LifecycleState.ANY,
         ):
+            """
+            Delete the manifests removing their descriptions from vector db.
+
+            Parameters:
+                manifest_filter (str): manifest properties to filter (Optional)
+                lifecycle_state (LifecycleState): state to filter (Optional)
+
+            Returns:
+                dict: manifest deletion message with a list of deleted
+                      manifest uids
+
+            """
             logger.info(f"Request to delete manifests")
             manifest_as_dict_entities = manifest.list_manifests()
             # if we are requested to limit delete to a specific lifecycle state, we filter the results
