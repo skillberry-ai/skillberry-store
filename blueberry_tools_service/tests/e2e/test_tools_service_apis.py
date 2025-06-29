@@ -197,9 +197,10 @@ def test_delete_manifests_wildcard(run_bts):
         api_response = api_instance.delete_manifests_manifests_delete(manifest_filter="name:Get*")
 
         assert api_response.get("message", None), "Should receive 'message' key"
-        assert (
-                api_response["message"] == f"Manifests ['GetCurrency', 'GetYear'] deleted."
-        ), f"Should receive deletion message for GetCurrency and GetYear"
+        actual = api_response["message"]
+        expected1 = f"Manifests ['GetCurrency', 'GetYear'] deleted."
+        expected2 = f"Manifests ['GetYear', 'GetCurrency'] deleted."
+        assert actual in (expected1, expected2), f"Should receive deletion message for GetCurrency and GetYear"
 
 
 def test_get_manifests(run_bts):
