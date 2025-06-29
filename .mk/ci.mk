@@ -18,11 +18,11 @@ ci_push: ci_pull_request ## Executed upon ci push event
 	VERSION=$(VERSION) make test-e2e
 	@echo "|||====> make test-e2e Done."
 	@echo ""
-	@echo "|||====> Executing make docker_build"
-	VERSION=$(VERSION) make docker_build
-	@echo "|||====> docker_build Done."
-	@echo ""
-	@echo "|||====> Executing make docker_push"
+	@echo "|||====> Executing make docker_push (and build)"
 	VERSION=$(VERSION) make docker_push
 	@echo "|||====> docker_push Done."
+	@echo ""
+	@echo "|||====> Executing make update_bts_sdk"
+	VERSION=$(VERSION) make update_bts_sdk
+	@echo "|||====> update_bts_sdk Done."
 	@echo ""

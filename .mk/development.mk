@@ -69,3 +69,31 @@ release: check-git-main check-git-clean install_requirements  ## Release a new v
 	@echo "=> Release $(RELEASE_VERSION) created successfully"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 
+update_bts_sdk: ## Update the BTS SDK
+	rm -rf /tmp/blueberry-sdk || true
+	@echo "==> Updating BTS SDK..."
+	make docker_run
+	timeout 120 bash -c 'until curl -sf http://localhost:8000/docs > /dev/null;\
+ 						 do echo "Waiting for Blueberry BTS service..."; sleep 5; done'
+	@echo "Blueberry BTS started (using docker)"
+	@cd /tmp && \
+	git clone git@github.ibm.com:Blueberry/blueberry-sdk.git && \
+	echo "Cloned blueberry-sdk repository into /tmp/blueberry-sdk" && \
+	cd blueberry-sdk && \
+	python -m venv venv && \
+	source venv/bin/activate && \
+	echo "Activated virtual environment" && \
+	make generate_blueberry_tools_service_sdk && \
+	echo "Blueberry SDK updated successfully" && \
+	git add . && \
+	if git diff --cached --quiet; then \
+	  		echo "!!! No updates to commit in blueberry-sdk !!!"; \
+	else \
+		echo "!!! Updates detected in blueberry-sdk, committing... !!!"; \
+		git commit -m "Update tools_service_sdk SDK $$(date '+%Y-%m-%d %H:%M:%S')" && \
+		git push origin main && \
+		echo "Pushed updated SDK to blueberry-sdk repository (origin main)"; \
+	fi
+	make docker_stop
+	echo "BTS service stopped"
+	@echo "==> SDK update completed successfully"
