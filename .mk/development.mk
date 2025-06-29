@@ -90,7 +90,7 @@ update_bts_sdk: ## Update the BTS SDK
 	  		echo "!!! No updates to commit in blueberry-sdk !!!"; \
 	else \
 		echo "!!! Updates detected in blueberry-sdk, committing... !!!"; \
-		git commit -m "Update tools_service_sdk for BTS SDK on $$(date '+%Y-%m-%d %H:%M:%S')" && \
+		git commit -m "Update tools_service_sdk SDK $$(date '+%Y-%m-%d %H:%M:%S')" && \
 		git push origin main && \
 		echo "Pushed updated SDK to blueberry-sdk repository (origin main)"; \
 	fi
