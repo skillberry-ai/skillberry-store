@@ -6,6 +6,7 @@ import pytest
 import pytest_asyncio
 
 from blueberry_tools_service.client.utils import base_client_utils, json_client_utils
+from blueberry_tools_service.modules.manifest import python_manifest_from_json_description
 from blueberry_tools_service.tests import resources as resources_package
 from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready
 
@@ -89,6 +90,84 @@ async def test_add_manifest(run_bts, func_name):
         manifest_str = json.dumps(manifest)
         api_response = api_instance.add_manifest_manifests_add_post(
             manifest_str, file=file_blob
+        )
+        assert api_response.get("uid", None), "Should receive 'uid' key"
+        assert api_response["uid"] == func_name, f"Should receive uid: {func_name}"
+
+
+@pytest.mark.parametrize("func_name", ["GetYear", "GetQuarter"])
+@pytest.mark.asyncio
+async def test_tools_add(run_bts, func_name):
+    """
+    Add tools from the proper module.
+
+    This function is being called at the beginning of the test. It asserts the tools successfully added.
+
+    """
+    module_path = impresources.files(resources_package) / "e2e" / "client-win-functions.py"
+    tool_blob = base_client_utils.read_file_to_bytes(module_path)
+
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+
+        api_response = api_instance.tools_add_tools_add_post(
+            "code/python", tool_blob, tool_name=func_name
+        )
+        assert api_response.get("uid", None), "Should receive 'uid' key"
+        assert api_response["uid"] == func_name, f"Should receive uid: {func_name}"
+
+
+@pytest.mark.asyncio
+async def test_tools_add_no_tool_name(run_bts):
+    """
+    Add tools from the proper module.
+
+    This function is being called at the beginning of the test. It asserts the tools successfully added.
+
+    """
+    module_path = impresources.files(resources_package) / "e2e" / "client-win-functions.py"
+    tool_blob = base_client_utils.read_file_to_bytes(module_path)
+
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+
+        # tool_name not supplied - first function is added
+        api_response = api_instance.tools_add_tools_add_post(
+            "code/python", tool_blob
+        )
+        assert api_response.get("uid", None), "Should receive 'uid' key"
+        assert api_response["uid"] == "GetQuarter", "Should receive uid: GetQuarter"
+
+
+@pytest.mark.parametrize("func_name", ["GetCurrency", "GetYear", "GetQuarter", "identity"])
+@pytest.mark.asyncio
+async def test_tools_add_genai(run_bts, func_name):
+    """
+    Add tools from the proper json file and module.
+
+    This function is being called at the beginning of the test. It asserts the tools successfully added.
+
+    """
+    json_descriptions = load_json_resource("client-win-functions.json")
+    json_description = list(filter(lambda d: d["name"] == func_name, json_descriptions))[0]
+    module_path = impresources.files(resources_package) / "e2e" / "transformations.py"
+    tool_blob = base_client_utils.read_file_to_bytes(module_path)
+
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+
+        json_description_str = json.dumps(json_description)
+        api_response = api_instance.tools_add_tools_add_post(
+            "json/genai-lh", tool_blob, kwargs=json_description_str
         )
         assert api_response.get("uid", None), "Should receive 'uid' key"
         assert api_response["uid"] == func_name, f"Should receive uid: {func_name}"
@@ -217,3 +296,6 @@ def test_get_manifests(run_bts):
         api_response = api_instance.get_manifests_manifests_get()
         assert len(api_response) == 1, "Should receive exactly one manifest"
         assert api_response[0]["uid"] == "identity", "Manifest 'identity' does not exist"
+
+
+
