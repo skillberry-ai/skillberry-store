@@ -80,18 +80,25 @@ class Manifest:
             )
 
     def create_manifest(
-        self, tool_type: ToolType, tool_bytes: bytes, tool_name: str
+        self,
+        tool_type: ToolType,
+        tool_bytes: bytes,
+        tool_name: str = None,
+        parsed_kwargs: Dict = None,
     ) -> Dict:
         """
         Create a manifest out from the given tool_bytes (blob) and tool_name.
 
-        Note: currently it is assumed that the tool is a Python module with a valid
-        docstring.
+        Note: the behavior of manifest creation is dependant on tool_type:
+        - CODE_PYTHON: manifest is created out from tool_bytes docsrting
+        - JSON_GENAI_LH: manifest is created out from parsed_kwargs
 
         Parameters:
             tool_type (ToolType): tool type. Enumeration of the type of the tool to be added
             tool_bytes (bytes): tool blob e.g. Python module
-            tool_name (str): tool name e.g. Python function name
+            tool_name (str): tool name e.g. Python function name (Optional)
+            parsed_kwargs (dict): additional key/val pairs to be processed depending on the
+                                  too_type (Optional)
 
         Raises:
             HTTPException: if an error occurred
@@ -99,21 +106,16 @@ class Manifest:
         Returns:
             dict: the manifest
         """
-        if tool_type != ToolType.CODE_PYTHON:
-            raise HTTPException(
-                status_code=400, detail=f"ToolType: {tool_type} not supported"
-            )
-        try:
-            # return manifest out from code docstring
-            docstring = extract_docstring(tool_bytes, tool_name)
-            if not docstring:
-                raise Exception(f"Docstring is missing for tool: {tool_name}")
+        if tool_type == ToolType.CODE_PYTHON:
+            # generate manifest out from docstring
+            func_name, docstring = extract_docstring(tool_bytes, tool_name=tool_name)
+            return python_manifest_from_function_docstring(func_name, docstring)
 
-            return python_manifest_from_function_docstring(tool_name, docstring)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Error generating manifest: {str(e)}"
-            )
+        elif tool_type == ToolType.JSON_GENAI_LH:
+            json_description = parsed_kwargs
+            # just validate tool name existence otherwise exception is raised
+            extract_docstring(tool_bytes, tool_name=json_description["name"])
+            return python_manifest_from_json_description(json_description)
 
     def print_manifest(
         self, func_name: str, json_description: str = None, code: str = None
@@ -330,5 +332,33 @@ def python_manifest_from_function_docstring(func_name: str, docstring: str) -> D
         add_docstring_to_manifest(docstring_obj, manifest)
     except ParseError as e:
         raise Exception(f"Failed to parse docstring: {str(e)}")
+
+    return manifest
+
+
+### genai lakehouse specific
+
+
+def python_manifest_from_json_description(json_description: dict):
+    """
+    Generate a Python manifest for a function whose description is
+    in a JSON record of the DOT project.
+
+    Args:
+        json_description (dict): a JSON record extracted from the DOT project descriptions
+
+    Returns:
+        dict:   the manifest
+    """
+    func_name = json_description["name"]
+    manifest = init_manifest(func_name, "python")
+    manifest["name"] = func_name
+    manifest["module_name"] = os.path.basename(func_name)
+    manifest["state"] = "approved"
+    manifest["description"] = json_description["description"]
+    manifest["params"]["properties"] = json_description["arguments"]
+    manifest["params"]["required"] = json_description["required"]
+    if "optional" in json_description:
+        manifest["params"]["optional"] = json_description["optional"]
 
     return manifest

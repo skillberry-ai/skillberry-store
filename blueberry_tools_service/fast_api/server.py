@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any, Literal
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -685,43 +685,84 @@ class BTS(FastAPI):
 
         @self.post("/tools/add", tags=tags)
         async def tools_add(
-            tool_type: ToolType, tool: UploadFile, tool_name: str, update: bool = True
+            tool_type: ToolType,
+            tool: UploadFile,
+            update: bool = True,
+            tool_name: Optional[str] = None,
+            kwargs: Optional[str] = Form(
+                "",
+                description="Additional key/val pairs as JSON string interpreted by the tool_type.",
+            ),
         ):
             """
-            Adds a tool for the provided code file and name.
-            A manifest for that function is being generated and stored.
+            Adds a tool based on the type of the tool and provided content.
+
+            A manifest for that tool is being generated and stored.
+
             As part of the addition, the description of the manifest is being embedded and stored in vector db.
+
             The manifest is assigned with a unique identifier which is returned.
 
-            Parameters:
-                tool_type (ToolType): Tool type. Enumeration of the type of the tool to be added
-                tool (UploadFile): Tool code
-                tool_name (str): Tool name
-                update (bool): Whether to update (delete) the tool if exists.
-                               Default: update. (Optional)
+            If tool_name is provided and tool_type is code/python the generated manifest will point to the referenced function.
+
+            If kwargs are provided and tool_type is json/genai-lh the generated manifest will respect the provided content
+
+            Notes on tool_type values:
+            - code/python: manifest is created out from tool code docstring
+            - json/genai-lh: manifest is created out from the additional key/val pairs
 
             Returns:
+
                 dict: The unique identifier of the manifest representing the tool
 
             Raises:
-                HTTPException (400): If wrong parameter values supplied
-                HTTPException (409): If manifest already exist
-                HTTPException (500): Any other error
-            """
-            # TODO: use pydantic and schema validation
-            tool_bytes = tool.file.read()
-            manifest_as_dict = manifest.create_manifest(
-                tool_type, tool_bytes, tool_name
-            )
-            manifest_as_dict_entities = manifest.list_manifests()
-            name = manifest_as_dict["name"]
-            assert name == tool_name, "Error: name and tool_name must be identical"
 
-            if list(filter(lambda m: m["name"] == name, manifest_as_dict_entities)):
+                HTTPException (400): If wrong parameter values supplied
+
+                HTTPException (409): If manifest already exist
+
+                HTTPException (500): Any other error
+
+            """
+            # TODO: 400 should come from pydantic validation
+            try:
+                parsed_kwargs = json.loads(kwargs) if kwargs else {}
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail=f"Invalid JSON in kwargs.")
+            if tool_type not in [ToolType.CODE_PYTHON, ToolType.JSON_GENAI_LH]:
+                raise HTTPException(
+                    status_code=400, detail=f"ToolType: {tool_type} not supported"
+                )
+            if tool_type == ToolType.JSON_GENAI_LH:
+                if not parsed_kwargs:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="kwargs is mandatory for tool_type json/genai-lh",
+                    )
+            tool_bytes = tool.file.read()
+
+            try:
+                manifest_as_dict = manifest.create_manifest(
+                    tool_type,
+                    tool_bytes,
+                    tool_name=tool_name,
+                    parsed_kwargs=parsed_kwargs,
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500, detail=f"Error generating manifest: {str(e)}"
+                )
+
+            tool_name = manifest_as_dict["name"]
+            manifest_as_dict_entities = manifest.list_manifests()
+
+            if list(
+                filter(lambda m: m["name"] == tool_name, manifest_as_dict_entities)
+            ):
                 if update is True:
                     logger.info(f"Updating tool {tool_name}..")
                     try:
-                        descriptions.delete_description(name)
+                        descriptions.delete_description(tool_name)
                     except Exception as e:
                         # just log and continue
                         logger.warning(f"Failed to delete description: {e}")
@@ -732,7 +773,8 @@ class BTS(FastAPI):
                         logger.warning(f"Failed to delete manifest: {e}")
                 else:
                     raise HTTPException(
-                        status_code=409, detail=f"Manifest '{name}' already exists."
+                        status_code=409,
+                        detail=f"Manifest '{tool_name}' already exists.",
                     )
 
             # Note: currently uid is tool_name
@@ -742,8 +784,8 @@ class BTS(FastAPI):
             module_name = manifest_as_dict["module_name"]
             file_handler.write_file(tool_bytes, filename=module_name)
 
-            manifest.write_manifest(f"{name}.json", manifest_as_dict)
-            descriptions.write_description(name, manifest_as_dict["description"])
+            manifest.write_manifest(f"{tool_name}.json", manifest_as_dict)
+            descriptions.write_description(tool_name, manifest_as_dict["description"])
 
             return {"uid": uid}
 
