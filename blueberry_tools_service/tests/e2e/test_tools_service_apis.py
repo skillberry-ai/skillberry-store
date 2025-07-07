@@ -11,7 +11,7 @@ from blueberry_tools_service.tests import resources as resources_package
 from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready
 
 import blueberry_tools_service_sdk
-from blueberry_tools_service_sdk.exceptions import NotFoundException
+from blueberry_tools_service_sdk.exceptions import NotFoundException, ServiceException
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -171,6 +171,46 @@ async def test_tools_add_genai(run_bts, func_name):
         )
         assert api_response.get("uid", None), "Should receive 'uid' key"
         assert api_response["uid"] == func_name, f"Should receive uid: {func_name}"
+
+
+@pytest.mark.asyncio
+async def test_tools_add(run_bts):
+    """
+    Add tools from the proper module. Negative test.
+
+    """
+    module_path = impresources.files(resources_package) / "e2e" / "client-win-functions.py"
+    tool_blob = base_client_utils.read_file_to_bytes(module_path)
+
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+        with pytest.raises(ServiceException, match="Missing docstring description"):
+            api_instance.tools_add_tools_add_post(
+                "code/python", tool_blob, tool_name="DocstringNoDescription"
+            )
+
+
+@pytest.mark.asyncio
+async def test_tools_add(run_bts):
+    """
+    Add tools from the proper module. Negative test.
+
+    """
+    module_path = impresources.files(resources_package) / "e2e" / "client-win-functions.py"
+    tool_blob = base_client_utils.read_file_to_bytes(module_path)
+
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+        with pytest.raises(ServiceException, match="Missing docstring parameters"):
+            api_instance.tools_add_tools_add_post(
+                "code/python", tool_blob, tool_name="DocstringParameterIndentationError"
+            )
 
 
 def test_search_manifests(run_bts):

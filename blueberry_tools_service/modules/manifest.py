@@ -4,14 +4,18 @@ import logging
 import os
 from typing import List, Optional, Dict, Any
 
-from docstring_parser import parse, ParseError
+from docstring_parser import Docstring
 
 from fastapi import HTTPException
 
 from blueberry_tools_service.client.utils import base_client_utils, json_client_utils
 from blueberry_tools_service.modules.tool_type import ToolType
 from blueberry_tools_service.tools.shell_hook import ShellHook
-from blueberry_tools_service.utils.python_utils import extract_docstring
+from blueberry_tools_service.utils.python_utils import (
+    extract_docstring,
+    get_function_node,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -108,13 +112,17 @@ class Manifest:
         """
         if tool_type == ToolType.CODE_PYTHON:
             # generate manifest out from docstring
-            func_name, docstring = extract_docstring(tool_bytes, tool_name=tool_name)
-            return python_manifest_from_function_docstring(func_name, docstring)
+            func_name, docstring_obj = extract_docstring(
+                tool_bytes, tool_name=tool_name
+            )
+            return python_manifest_from_function_docstring(func_name, docstring_obj)
 
         elif tool_type == ToolType.JSON_GENAI_LH:
             json_description = parsed_kwargs
-            # just validate tool name existence otherwise exception is raised
-            extract_docstring(tool_bytes, tool_name=json_description["name"])
+            tool_name = json_description["name"]
+            # validate tool name existence and raise exception
+            if not get_function_node(tool_bytes, tool_name=tool_name):
+                raise Exception(f"Function {tool_name} not found in module code")
             return python_manifest_from_json_description(json_description)
 
     def print_manifest(
@@ -303,14 +311,16 @@ def add_docstring_to_manifest(docstring_obj, manifest):
     }
 
 
-def python_manifest_from_function_docstring(func_name: str, docstring: str) -> Dict:
+def python_manifest_from_function_docstring(
+    func_name: str, docstring_obj: Docstring
+) -> Dict:
     """
     This utility function takes a function with a well-formatted docstring
     and extracts an initial Python manifest from the docstring
 
     Parameters:
         func_name (str): the name of the function as declared in the module
-        docstring: the doc string of the function
+        docstring_obj (Docstring): the doc string of the function
 
     Returns:
         dict: the manifest
@@ -325,13 +335,11 @@ def python_manifest_from_function_docstring(func_name: str, docstring: str) -> D
     manifest["module_name"] = func_name
     manifest["state"] = "approved"
 
-    if not docstring:
-        raise Exception(f"Docstring is missing for tool: {func_name}")
     try:
-        docstring_obj = parse(docstring)
         add_docstring_to_manifest(docstring_obj, manifest)
-    except ParseError as e:
-        raise Exception(f"Failed to parse docstring: {str(e)}")
+    except Exception as e:
+        logger.error("Failed to apply docstring to manifest")
+        raise
 
     return manifest
 

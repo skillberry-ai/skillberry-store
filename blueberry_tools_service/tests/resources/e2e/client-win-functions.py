@@ -96,3 +96,42 @@ def ParseDealSize(deal_size_str):
     else:
         return None
 
+
+def DocstringParameterIndentationError(input_string):
+    """
+    Extracts the deal quarter from a given string.
+
+    Args:
+    input_string (str): The input string containing the deal quarter.
+
+    Returns:
+        str: The extracted deal quarter.
+    """
+    # Split the string into parts based on spaces
+    parts = input_string.split()
+
+    # Iterate over each part
+    for part in parts:
+        # Check if the part contains 'Q' (assuming it's the quarter)
+        if "Q" in part:
+            # Return the part as the deal quarter
+            return part
+
+
+def DocstringNoDescription(input_string):
+    """
+    Args:
+        input_string (str): The input string containing the deal quarter.
+
+    Returns:
+        str: The extracted deal quarter.
+    """
+    # Split the string into parts based on spaces
+    parts = input_string.split()
+
+    # Iterate over each part
+    for part in parts:
+        # Check if the part contains 'Q' (assuming it's the quarter)
+        if "Q" in part:
+            # Return the part as the deal quarter
+            return part
