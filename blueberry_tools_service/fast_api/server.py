@@ -301,12 +301,15 @@ class BTS(FastAPI):
             Retrieve manifest for the given uid.
 
             Parameters:
+
                 uid (str): The uid of the manifest
 
             Returns:
+
                 dict: The manifest in json format
 
             Raises:
+
                 HTTPException (404): If manifest not found
 
             """
@@ -328,13 +331,17 @@ class BTS(FastAPI):
             Note: supported for 'code' manifests only.
 
             Parameters:
+
                 uid (str): The uid of the manifest
 
             Returns:
+
                 str: The manifest code
 
             Raises:
+
                 HTTPException (400): If manifest not from 'code' type
+
                 HTTPException (404): If manifest or code not found
 
             """
@@ -372,13 +379,19 @@ class BTS(FastAPI):
             similarity threshold matching the given lifecycle state.
 
             Parameters:
+
                 search_term (str): search term
+
                 max_number_of_results (int): number of results to return
+
                 similarity_threshold (float): threshold to be used
+
                 manifest_filter (str): manifest properties to filter
+
                 lifecycle_state (LifecycleState): state to filter
 
             Returns:
+
                 list (dict): A list of matched description_vector keys and
                             similarity score
 
@@ -444,11 +457,15 @@ class BTS(FastAPI):
             of the function or from function module code.
 
             Parameters:
+
                 function_name (str): The name of the function
+
                 json_description (str): The description of the function in a json format
+
                 code (UploadFile): The module code
 
             Returns:
+
                 dict: manifest representation
 
             """
@@ -481,15 +498,20 @@ class BTS(FastAPI):
             The manifest is assigned with a unique identifier.
 
             Parameters:
+
                 file_manifest (str): The manifest of the file (json format).
+
                 file (UploadFile): The file containing invocation code. Not applicable for
                                 manifest from type mcp
 
             Returns:
+
                 dict: The unique identifier of the manifest
 
             Raises:
+
                 HTTPException (404): If mcp tool not found for this manifest
+
                 HTTPException (409): If manifest already exist
 
             """
@@ -548,13 +570,17 @@ class BTS(FastAPI):
             Invoke manifest function given its uid.
 
             Parameters:
+
                 uid (str): The unique identifier of the manifest
+
                 parameters (dict): List of key/val pair to be passed to method invocation (Optional)
 
             Returns:
+
                 dict: function output
 
             Raises:
+
                 HTTPException (404): If manifest/tool not found
 
             """
@@ -566,13 +592,17 @@ class BTS(FastAPI):
             Update the manifest for the given uid.
 
             Parameters:
+
                 uid (str): The uid of the manifest
+
                 new_manifest (dict): the new manifest to update with
 
             Returns:
+
                 dict: manifest update message
 
             Raises:
+
                 HTTPException (404): If manifest not found
 
             """
@@ -596,10 +626,13 @@ class BTS(FastAPI):
             Delete the manifests removing their descriptions from vector db.
 
             Parameters:
+
                 manifest_filter (str): manifest properties to filter (Optional)
+
                 lifecycle_state (LifecycleState): state to filter (Optional)
 
             Returns:
+
                 dict: manifest deletion message with a list of deleted
                       manifest uids
 
@@ -643,12 +676,15 @@ class BTS(FastAPI):
             Delete the manifest removing its description from vector db.
 
             Parameters:
+
                 uid (str): The uid of the manifest
 
             Returns:
+
                 dict: manifest deletion message
 
             Raises:
+
                 HTTPException (404): If manifest not found
 
             """
