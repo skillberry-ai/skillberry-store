@@ -156,7 +156,11 @@ docker_build: docker_check update_git_version ## Build docker image for arm64 an
 
 .PHONY: docker_run
 docker_run: docker_check docker_stop ## Run the docker image
-	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env -e BTS_HOST=$(strip $(BTS_HOST)) -e BTS_PORT=$(strip $(BTS_PORT)) -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p $(strip $(BTS_PORT)):$(strip $(BTS_PORT)) $(DOCKER_NAME):$(DOCKER_VERSION)
+	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env \
+		-e BTS_HOST=$(strip $(BTS_HOST)) -e BTS_PORT=$(strip $(BTS_PORT)) \
+		-d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp \
+		--network=host \
+		$(DOCKER_NAME):$(DOCKER_VERSION)
 	@echo "Docker container started: $(IMAGE_NAME)"
 	
 
@@ -192,3 +196,4 @@ docker_push: docker_check docker_build ## Push docker image into the registry
 
 include .mk/development.mk
 include .mk/ci.mk
+

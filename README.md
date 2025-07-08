@@ -20,10 +20,6 @@ This service implements a smart tools repository for agentic workflows.
 
 ### Run the Service with Docker or Podman 🐳
 
-For a quick start, use Docker to run the service:
-
-- By default, BTS runs on host `0.0.0.0` and port `8000`. To change, set the environment variables BTS_PORT and/or BTS_HOST
-
 
 ```bash
 make docker_run
@@ -100,6 +96,8 @@ make install_requirements
 ```bash
 make run
 ```
+
+*Note:* By default, BTS runs on host `0.0.0.0` and port `8000`. To change, set the environment variables BTS_PORT and/or BTS_HOST
 
 ## Loading example tools into the Service 📂
 
