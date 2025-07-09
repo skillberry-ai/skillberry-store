@@ -359,7 +359,7 @@ def python_manifest_from_json_description(json_description: dict):
         dict:   the manifest
     """
     func_name = json_description["name"]
-    manifest = init_manifest(func_name, "python")
+    manifest = init_manifest("python")
     manifest["name"] = func_name
     manifest["module_name"] = os.path.basename(func_name)
     manifest["state"] = "approved"
