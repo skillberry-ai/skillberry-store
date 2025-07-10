@@ -54,11 +54,28 @@ release: check-git-main check-git-clean install_requirements  ## Release a new v
 		echo "++++++++++++++++++++++++++++++++++++++++++++"; \
 	exit 1; fi
 
+	@command -v sed >/dev/null 2>&1 || { echo "❌ 'sed' is not installed. Aborting."; exit 1; }
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "=> Creating release with version: $(RELEASE_VERSION)"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 	@sleep 10
 	@echo "===> Generating git tag $(RELEASE_VERSION) and creating GitHub release"
+
+	@git checkout -b branch-$(RELEASE_VERSION)
+	@echo "===> Generated release branch $(RELEASE_VERSION)"
+	sed -i "s|blueberry-tools-service-sdk @ git+ssh://git@github.ibm.com/Blueberry/blueberry-sdk.git#subdirectory=blueberry_tools_service_sdk|blueberry-tools-service-sdk @ git+ssh://git@github.ibm.com/Blueberry/blueberry-sdk.git@$$RELEASE_VERSION#subdirectory=blueberry_tools_service_sdk|" pyproject.toml 
+	git add pyproject.toml && \
+	if git diff --cached --quiet; then \
+	  		echo "!!! No updates to commit in blueberry-tools-service !!!"; \
+	else \
+		echo "!!! Updates detected in blueberry-tools-service, committing... !!!"; \
+		git config --get user.name >/dev/null || git config user.name "Blueberry CI process" && \
+		git config --get user.email >/dev/null || git config user.email "blueberry.ci@blueberry.ai" && \
+		git commit -m "Update tools_service toml file with $(RELEASE_VERSION)" && \
+		git push origin branch-$(RELEASE_VERSION) && \
+		echo "Pushed updated toml file to blueberry-tools-service repository (origin branch-$(RELEASE_VERSION))"; \
+	fi
+
 	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)" && \
 	git push origin $(RELEASE_VERSION) && \
 	gh release create $(RELEASE_VERSION) --generate-notes
