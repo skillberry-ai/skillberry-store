@@ -31,16 +31,18 @@ def mcp_content(tool_dict: dict) -> str:
         f"def {tool_dict['name']}({param_list}):",
         '    """',
         f"    {tool_dict['description']}",
-        ""
-        if not parameters["properties"]
-        else "\n".join(
-            [
-                "    Parameters:",
-                *[
-                    f"        {k} ({v['type']}): {v['description']}"
-                    for k, v in parameters["properties"].items()
-                ],
-            ]
+        (
+            ""
+            if not parameters["properties"]
+            else "\n".join(
+                [
+                    "    Parameters:",
+                    *[
+                        f"        {k} ({v['type']}): {v['description']}"
+                        for k, v in parameters["properties"].items()
+                    ],
+                ]
+            )
         ),
         '    """',
     ]
