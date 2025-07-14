@@ -305,9 +305,9 @@ def add_docstring_to_manifest(docstring_obj, manifest):
     # Store return type and description
     manifest["returns"] = {
         "type": docstring_obj.returns.type_name if docstring_obj.returns else None,
-        "description": docstring_obj.returns.description
-        if docstring_obj.returns
-        else None,
+        "description": (
+            docstring_obj.returns.description if docstring_obj.returns else None
+        ),
     }
 
 
