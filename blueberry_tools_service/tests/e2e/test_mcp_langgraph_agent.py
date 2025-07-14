@@ -60,28 +60,30 @@ async def test_mcp_mode():
         await wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=60)
         await add_tool_manifest()
 
-        async with MultiServerMCPClient() as client:
-            await client.connect_to_server(
-                "multi-mcp", transport="sse", url="http://127.0.0.1:8000/sse"
-            )
-            """Run an end-to-end test using a connected MCP client and validate tool behavior."""
-            tools = client.get_tools()
-            tool_names = [tool.name for tool in tools]
-            print(f"🔧 Tools list: {tool_names}")
+        client = MultiServerMCPClient({
+            "multi-mcp": {
+                "transport": "sse",
+                "url": "http://127.0.0.1:8000/sse",
+            }
+        })
 
-            for tool in tool_names:
-                assert tool in EXPECTED_TOOLS, f"Expected '{tool}' tool to be available"
+        tools = await client.get_tools()
+        tool_names = [tool.name for tool in tools]
+        print(f"🔧 Tools list: {tool_names}")
 
-            agent = create_react_agent(get_chat_model(), tools)
+        for tool in tool_names:
+            assert tool in EXPECTED_TOOLS, f"Expected '{tool}' tool to be available"
 
-            for question, expected_answer in TEST_PROMPTS:
-                response = await agent.ainvoke({"messages": question})
-                for m in response["messages"]:
-                    m.pretty_print()
-                assert any(
-                    expected_answer.lower() in m.content.lower()
-                    for m in response["messages"]
-                ), f"Expected answer to include '{expected_answer}'"
+        agent = create_react_agent(get_chat_model(), tools)
+
+        for question, expected_answer in TEST_PROMPTS:
+            response = await agent.ainvoke({"messages": question})
+            for m in response["messages"]:
+                m.pretty_print()
+            assert any(
+                expected_answer.lower() in m.content.lower()
+                for m in response["messages"]
+            ), f"Expected answer to include '{expected_answer}'"
 
     finally:
         # Cleanup: kill server process

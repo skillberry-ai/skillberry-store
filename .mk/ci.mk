@@ -11,13 +11,13 @@ ci_pull_request: ## Executed upon ci pull_request event
 	VERSION=$(VERSION) make test
 	@echo "|||====> make test Done."
 	@echo ""
-
-.PHONY: ci_push
-ci_push: ci_pull_request ## Executed upon ci push event
 	@echo "|||====> Executing make test-e2e"
 	VERSION=$(VERSION) make test-e2e
 	@echo "|||====> make test-e2e Done."
 	@echo ""
+
+.PHONY: ci_push
+ci_push: ci_pull_request ## Executed upon ci push event
 	@echo "|||====> Executing make docker_push (and build)"
 	VERSION=$(VERSION) make docker_push
 	@echo "|||====> docker_push Done."

@@ -8,7 +8,7 @@ test: install_requirements ## Test the tools-service
 test-e2e: install_dev_requirements ## Test end-to-end the tools service (installs tools service sdk)
 	pytest -s blueberry_tools_service/tests/e2e
 
-lint: install_requirements ## List the tools-service
+lint: install_requirements install_dev_requirements ## List the tools-service
 	black --check --diff --color blueberry_tools_service/modules blueberry_tools_service/tools blueberry_tools_service/fast_api blueberry_tools_service/utils || \
 		(echo "Lint Failed. Please run 'black blueberry_tools_service/modules blueberry_tools_service/tools blueberry_tools_service/fast_api blueberry_tools_service/utils' to fix the issues" && exit 1)
 
