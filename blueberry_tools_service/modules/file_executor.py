@@ -102,9 +102,9 @@ def extract_function_and_imports(
     try:
         tree = ast.parse(content)
         first_found_function_name: Optional[str] = None
-        parameters: List[Tuple[str, str, str]] = (
-            []
-        )  # (param_name, param_type, "positional"/"optional")
+        parameters: List[
+            Tuple[str, str, str]
+        ] = []  # (param_name, param_type, "positional"/"optional")
         imports: List[Tuple[str, str]] = []
 
         for node in ast.walk(tree):
