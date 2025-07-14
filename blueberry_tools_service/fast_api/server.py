@@ -48,12 +48,12 @@ except:
 from blueberry_tools_service.fast_api.observability import observability_setup
 from prometheus_client import Counter, Histogram
 
+observability_setup()
+
 # this environment variable is used to enable the latest API version
 ENABLE_API_VERSION = os.environ.get("ENABLE_API_VERSION", "latest")
 
 logger = logging.getLogger(__name__)
-
-observability_setup()
 
 # observability - metrics
 prom_prefix = "bts_fastapi_"
@@ -149,7 +149,8 @@ class BTS(FastAPI):
         self.openapi = lambda: custom_openapi(self, openapi_tags)
 
         # Add observability for FastAPI application
-        FastAPIInstrumentor.instrument_app(self)
+        # TODO: add support for OpenTelemetry - disabled FastAPIInstrumentor for now !
+        # FastAPIInstrumentor.instrument_app(self)
 
     def run(self):
         """Starts the FastAPI app using Uvicorn, and sets up SSE proxy routes if MCP mode is enabled."""
