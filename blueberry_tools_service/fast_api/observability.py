@@ -12,12 +12,17 @@ from prometheus_client import start_http_server
 logging.getLogger("opentelemetry").setLevel(logging.ERROR)
 
 PROMETHEUS_METRICS_PORT = int(os.getenv("PROMETHEUS_METRICS_PORT", 9090))
-OTEL_TRACES_PORT = int(os.getenv("OTEL_TRACES_PORT", 4317))
+OTEL_TRACES_PORT = int(os.getenv("OTEL_TRACES_PORT", 0))
 OTEL_SERVICE_NAME = "blueberry-tools-service"
 
 
 def observability_setup():
-    otel_setup()
+    if OTEL_TRACES_PORT == 0:
+        logging.info(
+            "OpenTelemetry tracing is not configured. Set OTEL_TRACES_PORT to enable."
+        )
+    else:
+        otel_setup()
     prometheus_setup()
 
 
