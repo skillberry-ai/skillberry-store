@@ -100,9 +100,6 @@ dependencies = [
   "tiktoken>=0.9.0",
   "tokenizers>=0.21.0",
   "toml>=0.10.2",
-  "torch==2.7.0; sys_platform == 'darwin'",
-  "torch==2.7.0+cpu; sys_platform == 'linux'",
-  "torch==2.7.0+cpu; sys_platform == 'win32'",  
   "tqdm>=4.67.1",
   "transformers>=4.48.0",
   "typer>=0.15.2",
@@ -117,8 +114,6 @@ dependencies = [
   "opentelemetry-exporter-otlp",
   "opentelemetry-instrumentation-fastapi",
   "opentelemetry-instrumentation-requests",
-  "pylint",
-  "flake8",
   "faiss-cpu"
 ]
 
