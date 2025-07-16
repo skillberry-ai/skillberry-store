@@ -45,7 +45,10 @@ try:
 except:
     __git_version__ = "unknown"
 
-from blueberry_tools_service.fast_api.observability import observability_setup, OTEL_TRACES_PORT
+from blueberry_tools_service.fast_api.observability import (
+    observability_setup,
+    OTEL_TRACES_PORT,
+)
 from prometheus_client import Counter, Histogram
 
 observability_setup()
