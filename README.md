@@ -97,7 +97,10 @@ make install_requirements
 make run
 ```
 
-*Note:* By default, BTS runs on host `0.0.0.0` and port `8000`. To change, set the environment variables BTS_PORT and/or BTS_HOST
+*Notes:*
+
+  * By default, BTS runs on host `0.0.0.0` and port `8000` publishing its metrics on port `8090`. To change, set the environment variables BTS_PORT/BTS_HOST/PROMETHEUS_METRICS_PORT
+  * To disable observability all together, set environment variable `OBSERVABILITY` with `False` 
 
 ## Loading example tools into the Service 📂
 

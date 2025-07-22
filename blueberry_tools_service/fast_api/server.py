@@ -51,8 +51,6 @@ from blueberry_tools_service.fast_api.observability import (
 )
 from prometheus_client import Counter, Histogram
 
-observability_setup()
-
 # this environment variable is used to enable the latest API version
 ENABLE_API_VERSION = os.environ.get("ENABLE_API_VERSION", "latest")
 
@@ -112,6 +110,7 @@ class BTSettings(BaseSettings):
         "INFO", env="UVICORN_LOG_LEVEL"
     )
     mcp_mode: bool = Field(False, env="MCP_MODE")
+    observability: bool = Field(True, env="OBSERVABILITY")
 
 
 class BTS(FastAPI):
@@ -177,6 +176,8 @@ class BTS(FastAPI):
             self.router.routes.append(Route("/sse", endpoint=handle_sse))
             self.router.routes.append(Mount("/messages/", app=sse.handle_post_message))
 
+        if self.settings.observability:
+            observability_setup()
         uvicorn.run(self, host=self.settings.bts_host, port=self.settings.bts_port)
 
     def handle_get_manifests(
