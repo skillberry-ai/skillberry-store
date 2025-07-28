@@ -171,3 +171,9 @@ docker run --rm --name jaeger --network="host" -p 4317:4317 -p 16686:16686 jaege
 ```
 
 Traces are available in Jaeger at http://localhost:16686.
+
+
+## 📚 Additional documentation can be found at [docs](docs).
+
+* Customizing configurations details can be found [here](docs/config-env-vars.md)
+* Guthub support details can be found [here](docs/github_using_hooks.md)
