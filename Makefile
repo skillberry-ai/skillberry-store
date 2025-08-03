@@ -6,7 +6,7 @@ ARCH := $(shell uname -m)
 BUILD_VERSION ?= $(ARCH)-$(shell git describe --always --dirty 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
 
-DOCKER_REPOSITORY_NAME ?= artifactory.haifa.ibm.com:5130
+DOCKER_REPOSITORY_NAME ?= us.icr.io/research3
 IMAGE_NAME = blueberry-tools-service
 
 DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
@@ -186,7 +186,6 @@ docker_stop: docker_check ## Stop the docker image
 	
 # make sure that you are login into the appropriate Docker registry with required credentials
 # before running this command
-# set up the credentials in ~/.docker/config.json according to the instructions in artifactory.haifa.ibm.com
 .PHONY: docker_push
 docker_push: docker_check docker_build ## Push docker image into the registry
 	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"

@@ -177,3 +177,4 @@ Traces are available in Jaeger at http://localhost:16686.
 
 * Customizing configurations details can be found [here](docs/config-env-vars.md)
 * Guthub support details can be found [here](docs/github_using_hooks.md)
+* Registry details can be found [here](docs/container-reigistry.md)

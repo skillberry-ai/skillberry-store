@@ -56,7 +56,7 @@ read -n 1 -s -r -p "==> Press any key to continue...\n"
 docker stop blueberry-tools-service 2>/dev/null # stop and remove the container if it exists
 docker rm blueberry-tools-service 2>/dev/null
 
-docker run --name blueberry-tools-service --env-file /tmp/.bts_github_repo_example_env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p 8000:8000 artifactory.haifa.ibm.com:5130/blueberry-tools-service:latest
+docker run --name blueberry-tools-service --env-file /tmp/.bts_github_repo_example_env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p 8000:8000 us.icr.io/research3/blueberry-tools-service:latest
 sleep 10
 read -n 1 -s -r -p "==> Press any key to continue...\n"
 
