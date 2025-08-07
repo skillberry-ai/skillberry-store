@@ -3,7 +3,52 @@
 
 ARCH := $(shell uname -m)
 
-BUILD_VERSION ?= $(ARCH)-$(shell git describe --always --dirty 2>/dev/null || echo "unknown")
+
+# 
+# In blueberry every tag/release is created in a separate branch (to have dedicated toml with
+# proper @ to sdk). So we implement our logic to maintain git format for 'git describe --always --dirty'
+# - i.e. 0.5.3 or 0.5.3-5-gc9b7ddd or 0.5.3-5-gc9b7ddd-dirty
+# 
+_LATEST_RELEASE=$(shell git branch -r | grep 'branch-' | sed 's|.*/branch-||' | sort -V | tail -n 1 | head -n 1)
+
+#
+# _LATEST_RELEASE is the actual tag e.g. 0.5.3
+#
+ifeq ($(_LATEST_RELEASE),)
+	#
+	# Latest release does not exist
+	#
+
+	_CURRENT_COMMIT=$(shell git rev-parse --short=7 HEAD)
+	# sets with "dirty" if there are uncommitted changes
+	_DIRTY=$(shell git diff --quiet || echo "-dirty")
+	# e.g. gc9b7ddd, gc9b7ddd-dirty
+	BUILD_VERSION="g$(_CURRENT_COMMIT)$(_DIRTY)"
+else
+	# Find the common ancestor (branch point)
+	# TODO: confirm _BASE_COMMIT not needed and remove 
+	# _BASE_COMMIT=$(shell git merge-base origin/main origin/branch-$(_LATEST_RELEASE))
+
+	#
+	# Count commits in main after the branch point
+	# tag is git global - can be safely used
+	#
+	_COMMIT_COUNT=$(shell git rev-list --count $(_LATEST_RELEASE)..HEAD)
+
+	_CURRENT_COMMIT=$(shell git rev-parse --short=7 HEAD)
+
+	_DIRTY=$(shell git diff --quiet || echo "-dirty")
+
+	ifeq ($(_COMMIT_COUNT),0)
+		# e.g. 0.4
+		BUILD_VERSION="$(_LATEST_RELEASE)$(_DIRTY)"
+	else
+		# e.g. 0.4-70-gc9b7ddd
+		BUILD_VERSION="$(_LATEST_RELEASE)-$(_COMMIT_COUNT)-g$(_CURRENT_COMMIT)$(_DIRTY)"
+	endif
+endif
+
+
 BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
 
 DOCKER_REPOSITORY_NAME ?= us.icr.io/research3
