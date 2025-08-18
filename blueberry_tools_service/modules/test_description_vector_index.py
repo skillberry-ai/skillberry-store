@@ -2,7 +2,7 @@ import os
 import pytest
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 from blueberry_tools_service.modules.description_vector_index import (
     DescriptionVectorIndex,
 )
@@ -24,7 +24,7 @@ def test_initialization(vector_index, temp_index_file):
     """Test the initialization of DescriptionVectorIndex."""
     assert vector_index.index_file == temp_index_file
     assert vector_index.dimension == 384
-    assert isinstance(vector_index.model, SentenceTransformer)
+    assert isinstance(vector_index.model, TextEmbedding)
     assert isinstance(vector_index.index, faiss.IndexFlatL2)
 
 

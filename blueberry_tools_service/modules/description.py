@@ -12,12 +12,9 @@ logger = logging.getLogger(__name__)
 
 base_dir = Path(__file__).resolve().parent
 
-default_model = str(base_dir / "description_vector_index_models" / "slate30_improved")
-
 default_dimension = 384
 default_model_search_k = 5
 
-_embedding_model = os.getenv("EMBEDDING_MODEL", default_model)
 _dimension = os.getenv("EMBEDDING_MODEL_DIMENSION", default_dimension)
 _embedding_model_search_k = os.getenv(
     "EMBEDDING_MODEL_SEARCH_K", default_model_search_k
@@ -42,7 +39,6 @@ class Description:
         self.vector_index = vector_index(
             index_file=index_directory + INDEX_FILE_NAME,
             dimension=_dimension,
-            model=_embedding_model,
         )
 
         logger.info(

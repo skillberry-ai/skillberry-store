@@ -29,7 +29,6 @@ This table lists embedding configuration used by BTS service, along with the env
 
 | Configuration   | Default value                                     | Environment Variables Override | 
 |-----------------|---------------------------------------------------|--------------------------------|
-| Embedding model | description_vector_index_models/slate30_improved  | `EMBEDDING_MODEL`              |
 | Model diemnsion | 384                                               | `EMBEDDING_MODEL_DIMENSION`    |
 | Model search k  | 5                                                 | `EMBEDDING_MODEL_SEARCH_K`     |
 

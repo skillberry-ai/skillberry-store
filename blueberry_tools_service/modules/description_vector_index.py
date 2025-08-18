@@ -3,7 +3,7 @@ import os
 
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,6 @@ class DescriptionVectorIndex:
         self,
         index_file: str = "description_index.faiss",
         dimension: int = 384,
-        model: str = "sentence-transformers/all-MiniLM-L6-v2",
     ):
         """
         Initialize the DescriptionVectorIndex class to handle FAISS indexing and searching.
@@ -24,7 +23,7 @@ class DescriptionVectorIndex:
         """
         self.index_file = index_file
         self.dimension = dimension
-        self.model = SentenceTransformer(model)
+        self.model = TextEmbedding()
 
         # Initialize FAISS index
         # L2 (Euclidean) distance-based index
@@ -82,7 +81,7 @@ class DescriptionVectorIndex:
             # if  filename exists in the index, update instead of adding
             self.update_description(description, filename)
         else:
-            embedding = self.model.encode([description])[0]
+            embedding = list(self.model.embed([description]))[0]
             self.index.add(np.array([embedding], dtype=np.float32))
             self.files_to_faiss_index_map.append(filename)
             self.save_index()
@@ -102,7 +101,7 @@ class DescriptionVectorIndex:
         if index == -1:
             raise ValueError(f"Filename '{filename}' not found in the index.")
 
-        embedding = self.model.encode([new_description])[0]
+        embedding = list(self.model.embed([new_description]))[0]
 
         # FAISS does not support updating a single vector, so we rebuild the index after removal
         embeddings = [
@@ -128,7 +127,7 @@ class DescriptionVectorIndex:
         Returns:
             list: A list of tuples containing indices and similarity scores.
         """
-        query_embedding = self.model.encode([query])[0]
+        query_embedding = list(self.model.embed([query]))[0]
         query_embedding = np.array([query_embedding], dtype=np.float32)
 
         distances, indices = self.index.search(query_embedding, k)

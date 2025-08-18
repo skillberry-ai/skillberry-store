@@ -22,6 +22,7 @@ dependencies = [
   "email-validator>=2.2.0",
   "fastapi>=0.115.12",
   "fastapi-versioning>=0.10.0",
+  "fastembed>=0.7.1",
   "filelock>=3.17.0",
   "flake8>=3.9.0",
   "fsspec>=2025.2.0",
@@ -87,7 +88,6 @@ dependencies = [
   "safetensors>=0.5.3",
   "scikit-learn>=1.6.1",
   "scipy>=1.15.2",
-  "sentence-transformers>=3.3.1",
   "setuptools>=75.8.2",
   "shellingham>=1.5.4",
   "six>=1.17.0",
@@ -138,7 +138,3 @@ bts = "blueberry_tools_service.main:main"
 
 [tool.setuptools]
 include-package-data = true
-
-[tool.setuptools.package-data]
-# TODO: use **/*
-"blueberry_tools_service" = ["modules/*", "modules/description_vector_index_models/*", "modules/description_vector_index_models/slate30_improved/*", "modules/description_vector_index_models/slate30_improved/1_Pooling/*"]
