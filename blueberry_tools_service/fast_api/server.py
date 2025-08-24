@@ -21,6 +21,8 @@ from blueberry_tools_service.fast_api.mcp_proxy import MCPToBTSProxy
 from blueberry_tools_service.modules.dictionary_checker import DictionaryChecker
 from blueberry_tools_service.modules.lifecycle import LifecycleState, LifecycleManager
 from blueberry_tools_service.modules.manifest import Manifest
+from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
+from blueberry_tools_service.modules.vmcp_server_manager import VirtualMcpServerManager
 from blueberry_tools_service.modules.description import Description
 from blueberry_tools_service.modules.description_vector_index import (
     DescriptionVectorIndex,
@@ -126,6 +128,7 @@ class BTS(FastAPI):
         self.manifest_api(
             file_handler=file_api(), descriptions=descriptions, tags=["manifest"]
         )
+        self.virtual_mcp_server_api(tags=["vmcp_servers"])
         self.tools_api(
             file_handler=file_api(), descriptions=descriptions, tags=["tools"]
         )
@@ -137,6 +140,10 @@ class BTS(FastAPI):
                 "name": "manifest",
                 "description": "Operations for manifest (tools manifest, programming language, packaging format, "
                 "security, etc.)",
+            },
+            {
+                "name": "vmcp_servers",
+                "description": "Operations for Virtual MCP Servers",
             }
         ]
 
@@ -713,6 +720,46 @@ class BTS(FastAPI):
                 logger.warning(f"Failed to delete manifest: {e}")
 
             return {"message": f"Manifest '{uid}' deleted."}
+
+    def virtual_mcp_server_api(self, tags: str):
+        from blueberry_tools_service.modules.vmcp_server_manager import VirtualMcpServerManager
+        from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
+        from fastapi import HTTPException
+
+        vmcp_server_manager = VirtualMcpServerManager()
+
+        @self.post("/vmcp_servers/add", tags=tags)
+        def add_vmcp_server(name: str, description: str, port: Optional[int], tools: list):
+            try:
+                vmcp_server = VirtualMcpServer(name, description, port, tools)
+                vmcp_server_manager.add_server(vmcp_server)
+                return {"message": f"vmcp_server '{name}' added"}
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @self.post("/vmcp_servers/add_server_from_search_term", tags=tags)
+        def add_vmcp_server_from_search_term(search_term: str, name: Optional[str] = None, description: Optional[str] = None, port: Optional[int] = None):
+            try:
+                vmcp_server_manager.add_server_from_search_term(search_term, name, description, port)
+                return {"message": f"vmcp_server for search term '{search_term}' added"}
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @self.delete("/vmcp_servers/{name}", tags=tags)
+        def remove_vmcp_server(name: str):
+            vmcp_server_manager.remove_server(name)
+            return {"message": f"vmcp_server '{name}' removed"}
+
+        @self.get("/vmcp_servers/", tags=tags)
+        def list_vmcp_servers():
+            return {"vmcp_servers": vmcp_server_manager.list_servers()}
+
+        @self.get("/vmcp_servers/{name}", tags=tags)
+        def get_vmcp_server_details(name: str):
+            try:
+                return vmcp_server_manager.get_server_details(name)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
 
     def tools_api(
         self, file_handler: FileHandler, descriptions: Description, tags: str
