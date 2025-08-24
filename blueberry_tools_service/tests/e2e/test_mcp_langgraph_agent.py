@@ -16,14 +16,13 @@ TEST_PROMPTS = [
 
 def get_chat_model() -> ChatOpenAI:
     """Initialize and return a ChatOpenAI model from environment settings."""
-
     rits_api_key = os.environ.get("RITS_API_KEY")
     if not rits_api_key:
         raise ValueError("RITS_API_KEY environment variable is not set.")
 
     return ChatOpenAI(
         model=os.environ.get("MODEL_NAME",
-                             "rits/meta-llama/llama-4-maverick-17b-128e-instruct-fp8"),  # using llama-4 as default
+                             "rits/meta-llama/llama-3-3-70b-instruct"),  # using llama-4 as default
         base_url=os.environ.get("BASE_MODEL_URL",
                                 "http://blueberry.sl.cloud9.ibm.com:4000/"),  # using blueberry proxy IP as default
         api_key=rits_api_key,
@@ -34,7 +33,6 @@ def get_chat_model() -> ChatOpenAI:
 @pytest.mark.asyncio
 async def test_mcp_mode():
     """Test the BSP server running in MCP mode via subprocess."""
-
     clean_test_tmp_dir()
 
     env = os.environ.copy()
@@ -74,7 +72,7 @@ async def test_mcp_mode():
         for tool in tool_names:
             assert tool in EXPECTED_TOOLS, f"Expected '{tool}' tool to be available"
 
-        agent = create_react_agent(get_chat_model(), tools)
+        agent = create_react_agent(get_chat_model(), tools, debug=True)
 
         for question, expected_answer in TEST_PROMPTS:
             response = await agent.ainvoke({"messages": question})
