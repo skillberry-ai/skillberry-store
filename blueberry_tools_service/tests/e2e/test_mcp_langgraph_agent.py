@@ -22,7 +22,7 @@ def get_chat_model() -> ChatOpenAI:
 
     return ChatOpenAI(
         model=os.environ.get("MODEL_NAME",
-                             "rits/meta-llama/llama-3-3-70b-instruct"),  # using llama-4 as default
+                             "rits/meta-llama/llama-3-3-70b-instruct"),
         base_url=os.environ.get("BASE_MODEL_URL",
                                 "http://blueberry.sl.cloud9.ibm.com:4000/"),  # using blueberry proxy IP as default
         api_key=rits_api_key,
