@@ -5,7 +5,9 @@ from typing import Any, Dict, Optional
 from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
 from blueberry_tools_service.modules.lifecycle import LifecycleState
 from blueberry_tools_service.modules.description import Description
-from blueberry_tools_service.modules.description_vector_index import DescriptionVectorIndex
+from blueberry_tools_service.modules.description_vector_index import (
+    DescriptionVectorIndex,
+)
 from blueberry_tools_service.tools.configure import get_descriptions_directory
 
 logger = logging.getLogger(__name__)
