@@ -2,19 +2,20 @@ import os
 import json
 import logging
 from typing import Any, Dict, Optional
-import requests
 from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
+from blueberry_tools_service.modules.lifecycle import LifecycleState
+from blueberry_tools_service.modules.description import Description
+from blueberry_tools_service.modules.description_vector_index import DescriptionVectorIndex
+from blueberry_tools_service.tools.configure import get_descriptions_directory
 
 logger = logging.getLogger(__name__)
 
 VMCP_SERVERS_FILE = os.environ.get("VMCP_SERVERS_FILE", "/tmp/vmcp_servers.json")
-BTS_URL = os.environ.get("BTS_URL", "http://localhost:8080")
 
 
 class VirtualMcpServerManager:
-    def __init__(self, bts_url: str = BTS_URL):
+    def __init__(self):
         self.servers: Dict[str, VirtualMcpServer] = {}
-        self.bts_url = bts_url
         logger.info(f"Loading vmcp_servers from {VMCP_SERVERS_FILE}")
         self.load_servers()
 
@@ -104,14 +105,18 @@ class VirtualMcpServerManager:
         name: Optional[str] = None,
         description: Optional[str] = None,
         port: Optional[int] = None,
+        max_results: int = 5,
     ):
         try:
             print(f"Starting add_server_from_search_term for: {search_term}")
-            response = requests.get(
-                f"http://localhost:8000/search/manifests?search_term={search_term}"
+            descriptions_directory = get_descriptions_directory()
+            descriptions = Description(
+                descriptions_directory=descriptions_directory,
+                vector_index=DescriptionVectorIndex,
             )
-            response.raise_for_status()
-            search_results = response.json()
+            search_results = descriptions.search_description(
+                search_term=search_term, k=max_results
+            )
             tools = [result["filename"] for result in search_results]
             print(f"Found tools: {tools}")
 

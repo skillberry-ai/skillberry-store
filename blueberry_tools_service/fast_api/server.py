@@ -142,7 +142,7 @@ class BTS(FastAPI):
                 "security, etc.)",
             },
             {
-                "name": "vmcp_servers",
+                "name": "virtual mcp servers",
                 "description": "Operations for Virtual MCP Servers",
             },
         ]
@@ -746,11 +746,12 @@ class BTS(FastAPI):
             name: Optional[str] = None,
             description: Optional[str] = None,
             port: Optional[int] = None,
+            max_results: int = 5,
         ):
             try:
                 print(f"FastAPI endpoint called with search_term: {search_term}")
                 vmcp_server_manager.add_server_from_search_term(
-                    search_term, name, description, port
+                    search_term, name, description, port, max_results
                 )
                 print(f"FastAPI endpoint completed for search_term: {search_term}")
                 return {"message": f"vmcp_server for search term '{search_term}' added"}
