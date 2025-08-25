@@ -42,7 +42,8 @@ def test_add_server_from_manifest_filter():
             name="Test Server",
             description="Test Description",
             port=8080,
-            tools=["tool1", "tool2"]
+            tools=["tool1", "tool2"],
+            bts_url="http://localhost:8000"
         )
         
         # Verify server was added to manager
@@ -76,7 +77,8 @@ def test_add_server_from_manifest_filter_auto_name():
             name=expected_name,
             description=expected_description,
             port=None,
-            tools=["tool3"]
+            tools=["tool3"],
+            bts_url="http://localhost:8000"
         )
         
         # Verify server was added to manager
