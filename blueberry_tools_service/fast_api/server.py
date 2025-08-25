@@ -731,7 +731,6 @@ class BTS(FastAPI):
             tags: FastAPI tags for grouping the endpoints in documentation.
         """
 
-
         bts_url = f"http://{self.settings.bts_host}:{self.settings.bts_port}"
         vmcp_server_manager = VirtualMcpServerManager(bts_url=bts_url)
 

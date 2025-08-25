@@ -20,7 +20,12 @@ class VirtualMcpServer:
     """
 
     def __init__(
-        self, name: str, description: str, port: Optional[int], tools: List[str], bts_url: str = None
+        self,
+        name: str,
+        description: str,
+        port: Optional[int],
+        tools: List[str],
+        bts_url: str = None,
     ):
         """
         Initializes and starts a new VirtualMcpServer instance.
@@ -85,8 +90,6 @@ class VirtualMcpServer:
         while not self._is_port_available(port):
             port += 1
         return port
-
-
 
     def list_tools(self):
         """

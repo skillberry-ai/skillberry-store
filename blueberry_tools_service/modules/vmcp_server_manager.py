@@ -27,7 +27,7 @@ class VirtualMcpServerManager:
 
         Args:
             bts_url: The BTS server URL to use for tool execution.
-            
+
         Loads existing virtual MCP servers from persistent storage.
         """
         self.servers: Dict[str, VirtualMcpServer] = {}
@@ -49,7 +49,11 @@ class VirtualMcpServerManager:
         """
         logger.info(f"Adding vmcp_server: {name}")
         server = VirtualMcpServer(
-            name=name, description=description, port=port, tools=tools, bts_url=self.bts_url
+            name=name,
+            description=description,
+            port=port,
+            tools=tools,
+            bts_url=self.bts_url,
         )
         self.servers[server.name] = server
         self.save_servers()
