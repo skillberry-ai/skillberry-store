@@ -723,10 +723,10 @@ class BTS(FastAPI):
 
     def virtual_mcp_server_api(self, tags: str):
         """Initialize virtual MCP server APIs with proper management functionality.
-        
+
         Sets up REST endpoints for creating, managing, and interacting with virtual MCP servers.
         Virtual MCP servers allow dynamic creation of MCP-compatible servers from tool collections.
-        
+
         Args:
             tags: FastAPI tags for grouping the endpoints in documentation.
         """
@@ -743,19 +743,19 @@ class BTS(FastAPI):
             name: str, description: str, port: Optional[int], tools: list
         ):
             """Add a new virtual MCP server.
-            
+
             Creates and starts a new virtual MCP server with the specified configuration.
             The server will expose the provided tools via the MCP protocol.
-            
+
             Args:
                 name: The name of the virtual MCP server.
                 description: A description of the virtual MCP server's purpose.
                 port: Optional port number (auto-assigned if not provided).
                 tools: List of tool names to include in the server.
-                
+
             Returns:
                 dict: Success message with the server name.
-                
+
             Raises:
                 HTTPException: If server creation fails (400 status code).
             """
@@ -774,43 +774,96 @@ class BTS(FastAPI):
             max_results: int = 5,
         ):
             """Create a virtual MCP server from a search term.
-            
+
             Searches for tools matching the search term and creates a virtual MCP server
             containing those tools. This allows dynamic server creation based on tool discovery.
-            
+
             Args:
                 search_term: The search term to find relevant tools.
                 name: Optional name for the virtual MCP server (auto-generated if None).
                 description: Optional description (auto-generated if None).
                 port: Optional port number (auto-assigned if None).
                 max_results: Maximum number of search results to include (default: 5).
-                
+
             Returns:
                 dict: Success message with the search term.
-                
+
             Raises:
                 HTTPException: If server creation fails (400 status code).
             """
             try:
-                print(f"FastAPI endpoint called with search_term: {search_term}")
+                logger.info(f"FastAPI endpoint called with search_term: {search_term}")
                 vmcp_server_manager.add_server_from_search_term(
                     search_term, name, description, port, max_results
                 )
-                print(f"FastAPI endpoint completed for search_term: {search_term}")
-                return {"message": f"virtual MCP server for search term '{search_term}' added"}
+                logger.info(
+                    f"FastAPI endpoint completed for search_term: {search_term}"
+                )
+                return {
+                    "message": f"virtual MCP server for search term '{search_term}' added"
+                }
             except Exception as e:
-                print(f"FastAPI endpoint exception: {e}")
+                logger.error(f"FastAPI endpoint exception: {e}")
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @self.post("/vmcp_servers/add_server_from_manifest_filter", tags=tags)
+        def add_vmcp_server_from_manifest_filter(
+            manifest_filter: str = ".",
+            lifecycle_state: LifecycleState = LifecycleState.ANY,
+            name: Optional[str] = None,
+            description: Optional[str] = None,
+            port: Optional[int] = None,
+        ):
+            """Create a virtual MCP server from filtered manifests.
+
+            Filters manifests based on the provided criteria and creates a virtual MCP server
+            containing those tools. This allows server creation based on manifest properties
+            and lifecycle states.
+
+            Args:
+                manifest_filter: Manifest properties to filter (default: ".").
+                lifecycle_state: Lifecycle state to filter (default: ANY).
+                name: Optional name for the virtual MCP server (auto-generated if None).
+                description: Optional description (auto-generated if None).
+                port: Optional port number (auto-assigned if None).
+
+            Returns:
+                dict: Success message with the filter criteria.
+
+            Raises:
+                HTTPException: If server creation fails (400 status code).
+            """
+            try:
+                logger.info(
+                    f"FastAPI endpoint called with manifest_filter: {manifest_filter}, lifecycle_state: {lifecycle_state}"
+                )
+                vmcp_server_manager.add_server_from_manifest_filter(
+                    manifest_filter,
+                    lifecycle_state,
+                    name,
+                    description,
+                    port,
+                    self.handle_get_manifests,
+                )
+                logger.info(
+                    f"FastAPI endpoint completed for manifest_filter: {manifest_filter}"
+                )
+                return {
+                    "message": f"virtual MCP server for manifest filter '{manifest_filter}' added"
+                }
+            except Exception as e:
+                logger.error(f"FastAPI endpoint exception: {e}")
                 raise HTTPException(status_code=400, detail=str(e))
 
         @self.delete("/vmcp_servers/{name}", tags=tags)
         def remove_vmcp_server(name: str):
             """Remove a virtual MCP server.
-            
+
             Stops and removes the specified virtual MCP server, cleaning up all resources.
-            
+
             Args:
                 name: The name of the virtual MCP server to remove.
-                
+
             Returns:
                 dict: Success message with the server name.
             """
@@ -820,9 +873,9 @@ class BTS(FastAPI):
         @self.get("/vmcp_servers/", tags=tags)
         def list_vmcp_servers():
             """List all virtual MCP servers.
-            
+
             Returns a list of all currently managed virtual MCP server names.
-            
+
             Returns:
                 dict: Dictionary containing a list of virtual MCP server names.
             """
@@ -831,16 +884,16 @@ class BTS(FastAPI):
         @self.get("/vmcp_servers/{name}", tags=tags)
         def get_vmcp_server_details(name: str):
             """Get detailed information about a virtual MCP server.
-            
+
             Retrieves comprehensive details about the specified virtual MCP server,
             including its configuration, port, and available tools.
-            
+
             Args:
                 name: The name of the virtual MCP server.
-                
+
             Returns:
                 dict: Detailed information about the virtual MCP server.
-                
+
             Raises:
                 HTTPException: If the virtual MCP server is not found (400 status code).
             """

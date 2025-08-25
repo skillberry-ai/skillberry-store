@@ -17,14 +17,14 @@ VMCP_SERVERS_FILE = os.environ.get("VMCP_SERVERS_FILE", "/tmp/vmcp_servers.json"
 
 class VirtualMcpServerManager:
     """Manages virtual MCP servers for the Blueberry Tools Service.
-    
+
     This class provides functionality to create, manage, and persist virtual MCP servers
     that can be dynamically created from tool search results or manually configured.
     """
-    
+
     def __init__(self):
         """Initialize the virtual MCP server manager.
-        
+
         Loads existing virtual MCP servers from persistent storage.
         """
         self.servers: Dict[str, VirtualMcpServer] = {}
@@ -33,30 +33,28 @@ class VirtualMcpServerManager:
 
     def add_server(self, name: str, description: str, port: Optional[int], tools: list):
         """Add a new virtual MCP server.
-        
+
         Args:
             name: The name of the virtual MCP server.
             description: A description of the virtual MCP server.
             port: The port number for the server (optional, auto-assigned if None).
             tools: List of tool names to include in the server.
-            
+
         Returns:
             VirtualMcpServer: The created virtual MCP server instance.
         """
-        print(f"Adding vmcp_server: {name}")
         logger.info(f"Adding vmcp_server: {name}")
         server = VirtualMcpServer(
             name=name, description=description, port=port, tools=tools
         )
         self.servers[server.name] = server
         self.save_servers()
-        print(f"Added and started new vmcp_server: {name} on port {server.port}")
         logger.info(f"Added and started new vmcp_server: {name} on port {server.port}")
         return server
 
     def remove_server(self, name: str):
         """Remove a virtual MCP server.
-        
+
         Args:
             name: The name of the virtual MCP server to remove.
         """
@@ -76,7 +74,7 @@ class VirtualMcpServerManager:
 
     def list_servers(self):
         """List all virtual MCP server names.
-        
+
         Returns:
             List[str]: A list of virtual MCP server names.
         """
@@ -85,10 +83,10 @@ class VirtualMcpServerManager:
 
     def get_server(self, name: str) -> VirtualMcpServer:
         """Get a virtual MCP server by name.
-        
+
         Args:
             name: The name of the virtual MCP server.
-            
+
         Returns:
             VirtualMcpServer: The virtual MCP server instance, or None if not found.
         """
@@ -97,13 +95,13 @@ class VirtualMcpServerManager:
 
     def get_server_details(self, name: str) -> Dict[str, Any]:
         """Get detailed information about a virtual MCP server.
-        
+
         Args:
             name: The name of the virtual MCP server.
-            
+
         Returns:
             Dict[str, Any]: A dictionary containing server details.
-            
+
         Raises:
             ValueError: If the virtual MCP server is not found.
         """
@@ -121,7 +119,7 @@ class VirtualMcpServerManager:
 
     def load_servers(self):
         """Load virtual MCP servers from persistent storage.
-        
+
         Loads server configurations from the JSON file and recreates server instances.
         If the file doesn't exist, starts with an empty server list.
         """
@@ -146,7 +144,7 @@ class VirtualMcpServerManager:
 
     def save_servers(self):
         """Save virtual MCP servers to persistent storage.
-        
+
         Serializes all server configurations to a JSON file for persistence.
         """
         data = []
@@ -169,22 +167,22 @@ class VirtualMcpServerManager:
         max_results: int = 5,
     ):
         """Create a virtual MCP server from a search term.
-        
+
         Searches for tools matching the search term and creates a virtual MCP server
         containing those tools.
-        
+
         Args:
             search_term: The search term to find relevant tools.
             name: Optional name for the virtual MCP server (auto-generated if None).
             description: Optional description for the server (auto-generated if None).
             port: Optional port number for the server (auto-assigned if None).
             max_results: Maximum number of search results to include (default: 5).
-            
+
         Raises:
             Exception: If server creation fails.
         """
         try:
-            print(f"Starting add_server_from_search_term for: {search_term}")
+            logger.info(f"Starting add_server_from_search_term for: {search_term}")
             descriptions_directory = get_descriptions_directory()
             descriptions = Description(
                 descriptions_directory=descriptions_directory,
@@ -194,7 +192,7 @@ class VirtualMcpServerManager:
                 search_term=search_term, k=max_results
             )
             tools = [result["filename"] for result in search_results]
-            print(f"Found tools: {tools}")
+            logger.info(f"Found tools: {tools}")
 
             if name is None:
                 name = f"Search Term Server - {search_term}"
@@ -210,10 +208,71 @@ class VirtualMcpServerManager:
                     f"Virtual MCP Server created from search term: {search_term}"
                 )
 
-            print(f"About to call add_server with name={name}, tools={tools}")
+            logger.info(f"About to call add_server with name={name}, tools={tools}")
             self.add_server(name=name, description=description, port=port, tools=tools)
-            print(f"Completed add_server_from_search_term")
+            logger.info(f"Completed add_server_from_search_term")
         except Exception as e:
-            print(f"Exception in add_server_from_search_term: {e}")
+            logger.error(f"Exception in add_server_from_search_term: {e}")
             logger.error(f"Failed to add vmcp_server from search term: {str(e)}")
+            raise
+
+    def add_server_from_manifest_filter(
+        self,
+        manifest_filter: str = ".",
+        lifecycle_state: LifecycleState = LifecycleState.ANY,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        port: Optional[int] = None,
+        get_manifests_func=None,
+    ):
+        """Create a virtual MCP server from filtered manifests.
+
+        Filters manifests based on the provided criteria and creates a virtual MCP server
+        containing those tools.
+
+        Args:
+            manifest_filter: Manifest properties to filter (default: ".").
+            lifecycle_state: Lifecycle state to filter (default: ANY).
+            name: Optional name for the virtual MCP server (auto-generated if None).
+            description: Optional description for the server (auto-generated if None).
+            port: Optional port number for the server (auto-assigned if None).
+            get_manifests_func: Function to get manifests (required).
+
+        Raises:
+            Exception: If server creation fails.
+            ValueError: If get_manifests_func is not provided.
+        """
+        try:
+            if get_manifests_func is None:
+                raise ValueError("get_manifests_func is required")
+
+            logger.info(
+                f"Starting add_server_from_manifest_filter with filter: {manifest_filter}, state: {lifecycle_state}"
+            )
+
+            manifests = get_manifests_func(manifest_filter, lifecycle_state)
+            tools = [manifest["name"] for manifest in manifests]
+            logger.info(f"Found tools from manifests: {tools}")
+
+            if name is None:
+                name = f"Manifest Filter Server - {manifest_filter}"
+                # Ensure name is unique
+                base_name = name
+                counter = 1
+                while name in self.servers:
+                    name = f"{base_name} ({counter})"
+                    counter += 1
+
+            if description is None:
+                description = (
+                    f"Virtual MCP Server created from manifest filter: {manifest_filter}, "
+                    f"lifecycle state: {lifecycle_state}"
+                )
+
+            logger.info(f"About to call add_server with name={name}, tools={tools}")
+            self.add_server(name=name, description=description, port=port, tools=tools)
+            logger.info(f"Completed add_server_from_manifest_filter")
+        except Exception as e:
+            logger.error(f"Exception in add_server_from_manifest_filter: {e}")
+            logger.error(f"Failed to add vmcp_server from manifest filter: {str(e)}")
             raise
