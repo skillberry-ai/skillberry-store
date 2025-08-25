@@ -1,5 +1,3 @@
-# Additional client utilities for tools that build from external JSON documentation
-
 import os
 import json
 from typing import List, Dict
@@ -9,18 +7,16 @@ from .base_client_utils import (
     python_manifest_from_function_docstring,
 )
 
-
 def python_manifest_from_json_record(json_rec: dict, module_path: str):
     """
-    Generate a Python manifest for a function whose description is
-    in a JSON record of the DOT project.
+    Generates a Python manifest for a function based on a JSON record from the DOT project.
 
     Args:
-        json_rec (dict): a JSON record extracted from the DOT project descriptions
-        module_path (str): the path to the Python module containing the function
+        json_rec (dict): A JSON record extracted from the DOT project descriptions.
+        module_path (str): The path to the Python module containing the function.
 
     Returns:
-        dict:   the manifest
+        dict: The generated manifest.
     """
     func_name = json_rec["name"]
     manifest = init_manifest(func_name, "python")
@@ -35,67 +31,56 @@ def python_manifest_from_json_record(json_rec: dict, module_path: str):
 
     return manifest
 
-
-def python_manifest_from_json_base(
-    json_base: List[List[Dict]], module_path: str, func_name: str
-):
+def python_manifest_from_json_base(json_base: List[List[Dict]], module_path: str, func_name: str):
     """
-    Generate a Python manifest for a function whose description is
-    in a JSON record inside a JSON base of the DOT project.
+    Generates a Python manifest for a function based on a JSON record inside a JSON base of the DOT project.
 
     Args:
-        json_base (List[List[Dict]]): a JSON base of DOT project function descriptions
-        module_path (str): the path to the Python module containing the function
-        func_name (str): the name of the function to generate a manifest for
+        json_base (List[List[Dict]]): A JSON base of DOT project function descriptions.
+        module_path (str): The path to the Python module containing the function.
+        func_name (str): The name of the function to generate a manifest for.
 
     Returns:
-        dict or None:   the manifest, if the function has a record in the JSON base. None otherwise.
+        dict or None: The generated manifest if the function has a record in the JSON base, otherwise None.
     """
-    # print (f"python_manifest_from_json_base: {json_base} {module_path} {func_name}")
     for json_file in json_base:
         for json_record in json_file:
             if json_record["name"] == func_name:
-                # print ("here")
                 return python_manifest_from_json_record(json_record, module_path)
     return None
 
-
-def python_manifest_from_docstring_or_json(
-    json_base: List[List[Dict]], module_path: str, func_name: str
-):
+def python_manifest_from_docstring_or_json(json_base: List[List[Dict]], module_path: str, func_name: str):
     """
-    Generate a Python manifest for a function whose description is
-    either in the function's docstring or in an accompanying JSON base (GIN).
+    Generates a Python manifest for a function based on either its docstring or a JSON base.
 
     Args:
-        json_base (List[List[Dict]]): a JSON base of DOT project function descriptions
-        module_path (str): the path to the Python module containing the function
-        func_name (str): the name of the function to generate a manifest for
+        json_base (List[List[Dict]]): A JSON base of DOT project function descriptions.
+        module_path (str): The path to the Python module containing the function.
+        func_name (str): The name of the function to generate a manifest for.
 
     Returns:
-        dict or None:   the manifest, if the function has proper docstring or matching JSON record. None otherwise.
+        dict or None: The generated manifest if the function has a proper docstring or a matching JSON record, otherwise None.
     """
     docstring = extract_docstring(module_path, func_name)
     manifest = None
-    if docstring != None:
-        manifest = python_manifest_from_function_docstring(
-            module_path, func_name, docstring
-        )
-    if manifest == None and json_base != None:
+    if docstring is not None:
+        manifest = python_manifest_from_function_docstring(module_path, func_name, docstring)
+    if manifest is None and json_base is not None:
         manifest = python_manifest_from_json_base(json_base, module_path, func_name)
     return manifest
 
-
 def load_json_base(json_path: str):
     """
-    Load a JSON base of the LakeHouse project
+    Loads a JSON base from a specified directory.
 
     Args:
-        json_path (str): a path to a folder containing the JSON files
+        json_path (str): The path to the directory containing JSON files.
 
     Returns:
-        list:   the JSON base as a list of JSON data from the folder,
-                each loaded from a different file
+        list: A list of JSON data loaded from the files in the directory.
+
+    Raises:
+        Exception: If the directory is not found or if there's an error parsing the JSON files.
     """
     json_base = []
     try:
@@ -109,9 +94,7 @@ def load_json_base(json_path: str):
                     except json.JSONDecodeError:
                         raise Exception(f"Could not decode JSON in file: {filename}")
                     except Exception as e:
-                        raise Exception(
-                            f"An error occurred while processing file: {filename} - {e}"
-                        )
+                        raise Exception(f"An error occurred while processing file: {filename} - {e}")
     except FileNotFoundError:
         raise Exception(f"Error: Folder not found: {json_path}")
     except Exception as e:

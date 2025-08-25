@@ -15,8 +15,13 @@ model = ChatOpenAI(
     temperature=0.7,
 )
 
-
 async def main():
+    """
+    The main asynchronous function that connects to the BTS server and creates a reactive LangGraph agent.
+
+    Returns:
+        None
+    """
     # Create and connect a MultiServerMCPClient to the BTS server
     async with MultiServerMCPClient() as client:
         await client.connect_to_server(
@@ -27,7 +32,7 @@ async def main():
 
         # Retrieve the tools exposed by the connected MCP server(s)
         tools = client.get_tools()
-        print(f"🔧 Tools list:{  [tool.name for tool in tools]}")
+        print(f"🔧 Tools list:{[tool.name for tool in tools]}")
 
         # Create a reactive LangGraph agent using the MCP tools
         agent = create_react_agent(model, tools)
@@ -36,7 +41,6 @@ async def main():
         response = await agent.ainvoke({"messages": "what's the answer for (10 + 5)?"})
         for m in response["messages"]:
             m.pretty_print()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
