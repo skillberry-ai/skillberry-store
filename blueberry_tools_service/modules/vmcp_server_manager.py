@@ -22,12 +22,16 @@ class VirtualMcpServerManager:
     that can be dynamically created from tool search results or manually configured.
     """
 
-    def __init__(self):
+    def __init__(self, bts_url: str = "http://localhost:8000"):
         """Initialize the virtual MCP server manager.
 
+        Args:
+            bts_url: The BTS server URL to use for tool execution.
+            
         Loads existing virtual MCP servers from persistent storage.
         """
         self.servers: Dict[str, VirtualMcpServer] = {}
+        self.bts_url = bts_url
         logger.info(f"Loading vmcp_servers from {VMCP_SERVERS_FILE}")
         self.load_servers()
 
@@ -45,7 +49,7 @@ class VirtualMcpServerManager:
         """
         logger.info(f"Adding vmcp_server: {name}")
         server = VirtualMcpServer(
-            name=name, description=description, port=port, tools=tools
+            name=name, description=description, port=port, tools=tools, bts_url=self.bts_url
         )
         self.servers[server.name] = server
         self.save_servers()
@@ -128,7 +132,7 @@ class VirtualMcpServerManager:
                 data = json.load(f)
                 for server_data in data:
                     try:
-                        server = VirtualMcpServer(**server_data)
+                        server = VirtualMcpServer(**server_data, bts_url=self.bts_url)
                         self.servers[server.name] = server
                         logger.info(f"Loaded vmcp_server: {server.name}")
                     except Exception as e:

@@ -19,10 +19,8 @@ class VirtualMcpServer:
         mcp (FastMCP): The underlying FastMCP instance.
     """
 
-    BTS_URL = "http://localhost:8000"  # Hardcoded local BTS URL
-
     def __init__(
-        self, name: str, description: str, port: Optional[int], tools: List[str]
+        self, name: str, description: str, port: Optional[int], tools: List[str], bts_url: str = None
     ):
         """
         Initializes and starts a new VirtualMcpServer instance.
@@ -39,6 +37,7 @@ class VirtualMcpServer:
         self.name = name
         self.description = description
         self.tools = tools
+        self.bts_url = bts_url or "http://localhost:8000"
 
         if port is None:
             self.port = self._find_available_port()
@@ -49,7 +48,6 @@ class VirtualMcpServer:
 
         print(f"Creating VirtualMcpServer '{name}' on port {self.port}")
         self.mcp = FastMCP(name=name, port=self.port)
-        self._register_tools()
         self._start_server()
         print(f"VirtualMcpServer '{name}' created and started on port {self.port}")
 
@@ -88,30 +86,7 @@ class VirtualMcpServer:
             port += 1
         return port
 
-    def _register_tools(self):
-        """
-        Registers tools with the FastMCP server.
-        """
-        for tool_uuid in self.tools:
-            self._register_tool(tool_uuid)
 
-    def _register_tool(self, tool_uuid: str):
-        """
-        Registers a tool with the FastMCP server using the tool decorator.
-
-        Args:
-            tool_uuid (str): The UUID of the tool.
-        """
-
-        @self.mcp.tool(name=tool_uuid)
-        def tool_proxy(a: int, b: int) -> str:
-            """Execute tool via BTS"""
-            response = requests.post(
-                f"{self.BTS_URL}/manifests/execute/{tool_uuid}", json={"a": a, "b": b}
-            )
-            response.raise_for_status()
-            result = response.json()
-            return str(result.get("return value", result))
 
     def list_tools(self):
         """
@@ -123,7 +98,7 @@ class VirtualMcpServer:
         tools = []
         for tool_uuid in self.tools:
             try:
-                response = requests.get(f"{self.BTS_URL}/manifests/{tool_uuid}")
+                response = requests.get(f"{self.bts_url}/manifests/{tool_uuid}")
                 response.raise_for_status()
                 manifest = response.json()
                 tools.append(self.manifest_to_tool(manifest))
@@ -146,7 +121,7 @@ class VirtualMcpServer:
             raise ValueError(f"Tool {tool_name} not found")
 
         response = requests.post(
-            f"{self.BTS_URL}/manifests/execute/{tool_name}", json=parameters
+            f"{self.bts_url}/manifests/execute/{tool_name}", json=parameters
         )
         response.raise_for_status()
         return response.json()

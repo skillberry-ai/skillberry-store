@@ -730,13 +730,10 @@ class BTS(FastAPI):
         Args:
             tags: FastAPI tags for grouping the endpoints in documentation.
         """
-        from blueberry_tools_service.modules.vmcp_server_manager import (
-            VirtualMcpServerManager,
-        )
-        from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
-        from fastapi import HTTPException
 
-        vmcp_server_manager = VirtualMcpServerManager()
+
+        bts_url = f"http://{self.settings.bts_host}:{self.settings.bts_port}"
+        vmcp_server_manager = VirtualMcpServerManager(bts_url=bts_url)
 
         @self.post("/vmcp_servers/add", tags=tags)
         def add_vmcp_server(
