@@ -6,6 +6,7 @@ import os
 from mcp.server.fastmcp import FastMCP
 import requests
 
+
 class VirtualMcpServer:
     """
     Represents a virtual MCP server.
@@ -20,7 +21,9 @@ class VirtualMcpServer:
 
     BTS_URL = "http://localhost:8000"  # Hardcoded local BTS URL
 
-    def __init__(self, name: str, description: str, port: Optional[int], tools: List[str]):
+    def __init__(
+        self, name: str, description: str, port: Optional[int], tools: List[str]
+    ):
         """
         Initializes and starts a new VirtualMcpServer instance.
 
@@ -36,14 +39,14 @@ class VirtualMcpServer:
         self.name = name
         self.description = description
         self.tools = tools
-        
+
         if port is None:
             self.port = self._find_available_port()
         else:
             self.port = port
             if not self._is_port_available(port):
                 raise ValueError(f"Port {port} is not available")
-        
+
         print(f"Creating VirtualMcpServer '{name}' on port {self.port}")
         self.mcp = FastMCP(name=name, port=self.port)
         self._register_tools()
@@ -79,7 +82,7 @@ class VirtualMcpServer:
         """
         if start_port is None:
             start_port = int(os.environ.get("VMCP_SERVERS_START_PORT", 10000))
-        
+
         port = start_port
         while not self._is_port_available(port):
             port += 1
@@ -99,10 +102,13 @@ class VirtualMcpServer:
         Args:
             tool_uuid (str): The UUID of the tool.
         """
+
         @self.mcp.tool(name=tool_uuid)
         def tool_proxy(a: int, b: int) -> str:
             """Execute tool via BTS"""
-            response = requests.post(f"{self.BTS_URL}/manifests/execute/{tool_uuid}", json={"a": a, "b": b})
+            response = requests.post(
+                f"{self.BTS_URL}/manifests/execute/{tool_uuid}", json={"a": a, "b": b}
+            )
             response.raise_for_status()
             result = response.json()
             return str(result.get("return value", result))
@@ -138,17 +144,19 @@ class VirtualMcpServer:
         """
         if tool_name not in self.tools:
             raise ValueError(f"Tool {tool_name} not found")
-        
-        response = requests.post(f"{self.BTS_URL}/manifests/execute/{tool_name}", json=parameters)
+
+        response = requests.post(
+            f"{self.BTS_URL}/manifests/execute/{tool_name}", json=parameters
+        )
         response.raise_for_status()
         return response.json()
-    
+
     def manifest_to_tool(self, manifest: dict):
         """
         Convert BTS manifest to MCP tool format.
         """
         from mcp import types
-        
+
         # Clean up extras before unpacking
         extras = manifest.copy()
         for key in ["name", "description", "params"]:
@@ -169,20 +177,23 @@ class VirtualMcpServer:
             transport (str): The transport to use. Defaults to "sse".
         """
         import threading
+
         def run_server():
             print(f"Starting FastMCP server '{self.name}' on port {self.port}")
             self.mcp.run(transport=transport)
             print(f"FastMCP server '{self.name}' started on port {self.port}")
-            logging.info(f"Virtual MCP server '{self.name}' running on port {self.port} with transport {transport}")
-        
+            logging.info(
+                f"Virtual MCP server '{self.name}' running on port {self.port} with transport {transport}"
+            )
+
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
-    
+
     def stop(self):
         """
         Stops the virtual MCP server.
         """
-        if hasattr(self, 'server_thread') and self.server_thread.is_alive():
+        if hasattr(self, "server_thread") and self.server_thread.is_alive():
             # FastMCP doesn't have a clean stop method, thread will terminate when process ends
             pass
 
@@ -194,8 +205,8 @@ class VirtualMcpServer:
             dict: A dictionary representation of the VirtualMcpServer.
         """
         return {
-            'name': self.name,
-            'description': self.description,
-            'port': self.port,
-            'tools': self.tools,
+            "name": self.name,
+            "description": self.description,
+            "port": self.port,
+            "tools": self.tools,
         }

@@ -144,7 +144,7 @@ class BTS(FastAPI):
             {
                 "name": "vmcp_servers",
                 "description": "Operations for Virtual MCP Servers",
-            }
+            },
         ]
 
         self.add_middleware(
@@ -722,14 +722,18 @@ class BTS(FastAPI):
             return {"message": f"Manifest '{uid}' deleted."}
 
     def virtual_mcp_server_api(self, tags: str):
-        from blueberry_tools_service.modules.vmcp_server_manager import VirtualMcpServerManager
+        from blueberry_tools_service.modules.vmcp_server_manager import (
+            VirtualMcpServerManager,
+        )
         from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
         from fastapi import HTTPException
 
         vmcp_server_manager = VirtualMcpServerManager()
 
         @self.post("/vmcp_servers/add", tags=tags)
-        def add_vmcp_server(name: str, description: str, port: Optional[int], tools: list):
+        def add_vmcp_server(
+            name: str, description: str, port: Optional[int], tools: list
+        ):
             try:
                 vmcp_server_manager.add_server(name, description, port, tools)
                 return {"message": f"vmcp_server '{name}' added"}
@@ -737,10 +741,17 @@ class BTS(FastAPI):
                 raise HTTPException(status_code=400, detail=str(e))
 
         @self.post("/vmcp_servers/add_server_from_search_term", tags=tags)
-        def add_vmcp_server_from_search_term(search_term: str, name: Optional[str] = None, description: Optional[str] = None, port: Optional[int] = None):
+        def add_vmcp_server_from_search_term(
+            search_term: str,
+            name: Optional[str] = None,
+            description: Optional[str] = None,
+            port: Optional[int] = None,
+        ):
             try:
                 print(f"FastAPI endpoint called with search_term: {search_term}")
-                vmcp_server_manager.add_server_from_search_term(search_term, name, description, port)
+                vmcp_server_manager.add_server_from_search_term(
+                    search_term, name, description, port
+                )
                 print(f"FastAPI endpoint completed for search_term: {search_term}")
                 return {"message": f"vmcp_server for search term '{search_term}' added"}
             except Exception as e:
