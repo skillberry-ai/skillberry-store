@@ -66,7 +66,7 @@ async def test_virtual_mcp_servers():
         # Step 3: List the MCP virtual servers to see that the virtual server exists
         response = requests.get("http://localhost:8000/vmcp_servers/")
         assert response.status_code == 200
-        vmcp_servers = response.json()["vmcp_servers"]
+        vmcp_servers = response.json()["virtual_mcp_servers"]
         assert f"Search Term Server - {search_term}" in vmcp_servers
 
         # Step 4: Get virtual MCP server details and invoke function
@@ -91,7 +91,7 @@ async def test_virtual_mcp_servers():
         # Verify the server is no longer in the list
         response = requests.get("http://localhost:8000/vmcp_servers/")
         assert response.status_code == 200
-        vmcp_servers_after_delete = response.json()["vmcp_servers"]
+        vmcp_servers_after_delete = response.json()["virtual_mcp_servers"]
         assert vmcp_server_name not in vmcp_servers_after_delete
     
     finally:
