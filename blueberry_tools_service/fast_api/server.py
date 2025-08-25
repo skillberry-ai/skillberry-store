@@ -722,6 +722,14 @@ class BTS(FastAPI):
             return {"message": f"Manifest '{uid}' deleted."}
 
     def virtual_mcp_server_api(self, tags: str):
+        """Initialize virtual MCP server APIs with proper management functionality.
+        
+        Sets up REST endpoints for creating, managing, and interacting with virtual MCP servers.
+        Virtual MCP servers allow dynamic creation of MCP-compatible servers from tool collections.
+        
+        Args:
+            tags: FastAPI tags for grouping the endpoints in documentation.
+        """
         from blueberry_tools_service.modules.vmcp_server_manager import (
             VirtualMcpServerManager,
         )
@@ -734,9 +742,26 @@ class BTS(FastAPI):
         def add_vmcp_server(
             name: str, description: str, port: Optional[int], tools: list
         ):
+            """Add a new virtual MCP server.
+            
+            Creates and starts a new virtual MCP server with the specified configuration.
+            The server will expose the provided tools via the MCP protocol.
+            
+            Args:
+                name: The name of the virtual MCP server.
+                description: A description of the virtual MCP server's purpose.
+                port: Optional port number (auto-assigned if not provided).
+                tools: List of tool names to include in the server.
+                
+            Returns:
+                dict: Success message with the server name.
+                
+            Raises:
+                HTTPException: If server creation fails (400 status code).
+            """
             try:
                 vmcp_server_manager.add_server(name, description, port, tools)
-                return {"message": f"vmcp_server '{name}' added"}
+                return {"message": f"virtual MCP server '{name}' added"}
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
@@ -748,28 +773,77 @@ class BTS(FastAPI):
             port: Optional[int] = None,
             max_results: int = 5,
         ):
+            """Create a virtual MCP server from a search term.
+            
+            Searches for tools matching the search term and creates a virtual MCP server
+            containing those tools. This allows dynamic server creation based on tool discovery.
+            
+            Args:
+                search_term: The search term to find relevant tools.
+                name: Optional name for the virtual MCP server (auto-generated if None).
+                description: Optional description (auto-generated if None).
+                port: Optional port number (auto-assigned if None).
+                max_results: Maximum number of search results to include (default: 5).
+                
+            Returns:
+                dict: Success message with the search term.
+                
+            Raises:
+                HTTPException: If server creation fails (400 status code).
+            """
             try:
                 print(f"FastAPI endpoint called with search_term: {search_term}")
                 vmcp_server_manager.add_server_from_search_term(
                     search_term, name, description, port, max_results
                 )
                 print(f"FastAPI endpoint completed for search_term: {search_term}")
-                return {"message": f"vmcp_server for search term '{search_term}' added"}
+                return {"message": f"virtual MCP server for search term '{search_term}' added"}
             except Exception as e:
                 print(f"FastAPI endpoint exception: {e}")
                 raise HTTPException(status_code=400, detail=str(e))
 
         @self.delete("/vmcp_servers/{name}", tags=tags)
         def remove_vmcp_server(name: str):
+            """Remove a virtual MCP server.
+            
+            Stops and removes the specified virtual MCP server, cleaning up all resources.
+            
+            Args:
+                name: The name of the virtual MCP server to remove.
+                
+            Returns:
+                dict: Success message with the server name.
+            """
             vmcp_server_manager.remove_server(name)
-            return {"message": f"vmcp_server '{name}' removed"}
+            return {"message": f"virtual MCP server '{name}' removed"}
 
         @self.get("/vmcp_servers/", tags=tags)
         def list_vmcp_servers():
-            return {"vmcp_servers": vmcp_server_manager.list_servers()}
+            """List all virtual MCP servers.
+            
+            Returns a list of all currently managed virtual MCP server names.
+            
+            Returns:
+                dict: Dictionary containing a list of virtual MCP server names.
+            """
+            return {"virtual_mcp_servers": vmcp_server_manager.list_servers()}
 
         @self.get("/vmcp_servers/{name}", tags=tags)
         def get_vmcp_server_details(name: str):
+            """Get detailed information about a virtual MCP server.
+            
+            Retrieves comprehensive details about the specified virtual MCP server,
+            including its configuration, port, and available tools.
+            
+            Args:
+                name: The name of the virtual MCP server.
+                
+            Returns:
+                dict: Detailed information about the virtual MCP server.
+                
+            Raises:
+                HTTPException: If the virtual MCP server is not found (400 status code).
+            """
             try:
                 return vmcp_server_manager.get_server_details(name)
             except Exception as e:
@@ -798,15 +872,10 @@ class BTS(FastAPI):
         ):
             """
             Adds a tool based on the type of the tool and provided content.
-
             A manifest for that tool is being generated and stored.
-
             As part of the addition, the description of the manifest is being embedded and stored in vector db.
-
             The manifest is assigned with a unique identifier which is returned.
-
             If tool_name is provided and tool_type is code/python the generated manifest will point to the referenced function.
-
             If kwargs are provided and tool_type is json/genai-lh the generated manifest will respect the provided content
 
             Notes on tool_type values:
@@ -820,9 +889,7 @@ class BTS(FastAPI):
             Raises:
 
                 HTTPException (400): If wrong parameter values supplied
-
                 HTTPException (409): If manifest already exist
-
                 HTTPException (500): Any other error
 
             """

@@ -16,12 +16,33 @@ VMCP_SERVERS_FILE = os.environ.get("VMCP_SERVERS_FILE", "/tmp/vmcp_servers.json"
 
 
 class VirtualMcpServerManager:
+    """Manages virtual MCP servers for the Blueberry Tools Service.
+    
+    This class provides functionality to create, manage, and persist virtual MCP servers
+    that can be dynamically created from tool search results or manually configured.
+    """
+    
     def __init__(self):
+        """Initialize the virtual MCP server manager.
+        
+        Loads existing virtual MCP servers from persistent storage.
+        """
         self.servers: Dict[str, VirtualMcpServer] = {}
         logger.info(f"Loading vmcp_servers from {VMCP_SERVERS_FILE}")
         self.load_servers()
 
     def add_server(self, name: str, description: str, port: Optional[int], tools: list):
+        """Add a new virtual MCP server.
+        
+        Args:
+            name: The name of the virtual MCP server.
+            description: A description of the virtual MCP server.
+            port: The port number for the server (optional, auto-assigned if None).
+            tools: List of tool names to include in the server.
+            
+        Returns:
+            VirtualMcpServer: The created virtual MCP server instance.
+        """
         print(f"Adding vmcp_server: {name}")
         logger.info(f"Adding vmcp_server: {name}")
         server = VirtualMcpServer(
@@ -34,6 +55,11 @@ class VirtualMcpServerManager:
         return server
 
     def remove_server(self, name: str):
+        """Remove a virtual MCP server.
+        
+        Args:
+            name: The name of the virtual MCP server to remove.
+        """
         if name in self.servers:
             logger.info(f"Removing vmcp_server: {name}")
             server = self.servers[name]
@@ -49,14 +75,38 @@ class VirtualMcpServerManager:
             logger.debug(f"vmcp_server {name} not found")
 
     def list_servers(self):
+        """List all virtual MCP server names.
+        
+        Returns:
+            List[str]: A list of virtual MCP server names.
+        """
         logger.debug("Listing vmcp_servers")
         return list(self.servers.keys())
 
     def get_server(self, name: str) -> VirtualMcpServer:
+        """Get a virtual MCP server by name.
+        
+        Args:
+            name: The name of the virtual MCP server.
+            
+        Returns:
+            VirtualMcpServer: The virtual MCP server instance, or None if not found.
+        """
         logger.debug(f"Getting vmcp_server: {name}")
         return self.servers.get(name)
 
     def get_server_details(self, name: str) -> Dict[str, Any]:
+        """Get detailed information about a virtual MCP server.
+        
+        Args:
+            name: The name of the virtual MCP server.
+            
+        Returns:
+            Dict[str, Any]: A dictionary containing server details.
+            
+        Raises:
+            ValueError: If the virtual MCP server is not found.
+        """
         logger.debug(f"Getting details of vmcp_server: {name}")
         server = self.get_server(name)
         if server:
@@ -70,6 +120,11 @@ class VirtualMcpServerManager:
             raise ValueError(f"vmcp_server '{name}' not found")
 
     def load_servers(self):
+        """Load virtual MCP servers from persistent storage.
+        
+        Loads server configurations from the JSON file and recreates server instances.
+        If the file doesn't exist, starts with an empty server list.
+        """
         try:
             with open(VMCP_SERVERS_FILE, "r") as f:
                 data = json.load(f)
@@ -90,6 +145,10 @@ class VirtualMcpServerManager:
             logger.error(f"Failed to load vmcp_servers. Error: {str(e)}")
 
     def save_servers(self):
+        """Save virtual MCP servers to persistent storage.
+        
+        Serializes all server configurations to a JSON file for persistence.
+        """
         data = []
         for server in self.servers.values():
             server_data = server.to_dict()
@@ -109,6 +168,21 @@ class VirtualMcpServerManager:
         port: Optional[int] = None,
         max_results: int = 5,
     ):
+        """Create a virtual MCP server from a search term.
+        
+        Searches for tools matching the search term and creates a virtual MCP server
+        containing those tools.
+        
+        Args:
+            search_term: The search term to find relevant tools.
+            name: Optional name for the virtual MCP server (auto-generated if None).
+            description: Optional description for the server (auto-generated if None).
+            port: Optional port number for the server (auto-assigned if None).
+            max_results: Maximum number of search results to include (default: 5).
+            
+        Raises:
+            Exception: If server creation fails.
+        """
         try:
             print(f"Starting add_server_from_search_term for: {search_term}")
             descriptions_directory = get_descriptions_directory()
