@@ -1,11 +1,20 @@
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from blueberry_tools_service.modules.vmcp_server_manager import VirtualMcpServerManager
 from blueberry_tools_service.modules.lifecycle import LifecycleState
 
 
-def test_add_server_from_manifest_filter():
+@patch('blueberry_tools_service.modules.vmcp_server_manager.VirtualMcpServer')
+def test_add_server_from_manifest_filter(mock_server_class):
     """Test adding a virtual MCP server from manifest filter."""
+    # Mock server instance
+    mock_server = Mock()
+    mock_server.name = "Test Server"
+    mock_server.description = "Test Description"
+    mock_server.port = 8080
+    mock_server.tools = ["tool1", "tool2"]
+    mock_server_class.return_value = mock_server
+    
     # Mock get_manifests function
     mock_get_manifests = Mock(return_value=[
         {"name": "tool1", "description": "Test tool 1"},
@@ -28,17 +37,26 @@ def test_add_server_from_manifest_filter():
     # Verify get_manifests was called with correct parameters
     mock_get_manifests.assert_called_once_with("test_filter", LifecycleState.APPROVED)
     
-    # Verify server was created
+    # Verify VirtualMcpServer was created with correct parameters
+    mock_server_class.assert_called_once_with(
+        name="Test Server",
+        description="Test Description",
+        port=8080,
+        tools=["tool1", "tool2"]
+    )
+    
+    # Verify server was added to manager
     assert "Test Server" in manager.servers
-    server = manager.get_server("Test Server")
-    assert server.name == "Test Server"
-    assert server.description == "Test Description"
-    assert server.port == 8080
-    assert server.tools == ["tool1", "tool2"]
+    assert manager.get_server("Test Server") == mock_server
 
 
-def test_add_server_from_manifest_filter_auto_name():
+@patch('blueberry_tools_service.modules.vmcp_server_manager.VirtualMcpServer')
+def test_add_server_from_manifest_filter_auto_name(mock_server_class):
     """Test adding a virtual MCP server with auto-generated name."""
+    mock_server = Mock()
+    mock_server.name = "Manifest Filter Server - auto_filter"
+    mock_server_class.return_value = mock_server
+    
     mock_get_manifests = Mock(return_value=[
         {"name": "tool3", "description": "Test tool 3"}
     ])
@@ -50,11 +68,19 @@ def test_add_server_from_manifest_filter_auto_name():
         get_manifests_func=mock_get_manifests
     )
     
-    # Verify server was created with auto-generated name
+    # Verify VirtualMcpServer was called with auto-generated values
     expected_name = "Manifest Filter Server - auto_filter"
+    expected_description = "Virtual MCP Server created from manifest filter: auto_filter, lifecycle state: LifecycleState.ANY"
+    
+    mock_server_class.assert_called_once_with(
+        name=expected_name,
+        description=expected_description,
+        port=None,
+        tools=["tool3"]
+    )
+    
+    # Verify server was added to manager
     assert expected_name in manager.servers
-    server = manager.get_server(expected_name)
-    assert "Virtual MCP Server created from manifest filter: auto_filter" in server.description
 
 
 def test_add_server_from_manifest_filter_missing_func():
