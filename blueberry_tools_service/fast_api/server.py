@@ -732,7 +732,7 @@ class BTS(FastAPI):
         """
 
         bts_url = f"http://{self.settings.bts_host}:{self.settings.bts_port}"
-        vmcp_server_manager = VirtualMcpServerManager(bts_url=bts_url)
+        vmcp_server_manager = VirtualMcpServerManager(bts_url=bts_url, app=self)
 
         @self.post("/vmcp_servers/add", tags=tags)
         def add_vmcp_server(
@@ -839,7 +839,6 @@ class BTS(FastAPI):
                     name,
                     description,
                     port,
-                    self.handle_get_manifests,
                 )
                 logger.info(
                     f"FastAPI endpoint completed for manifest_filter: {manifest_filter}"

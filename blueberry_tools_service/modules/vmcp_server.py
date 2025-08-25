@@ -26,6 +26,7 @@ class VirtualMcpServer:
         port: Optional[int],
         tools: List[str],
         bts_url: str = None,
+        app=None,
     ):
         """
         Initializes and starts a new VirtualMcpServer instance.
@@ -43,6 +44,7 @@ class VirtualMcpServer:
         self.description = description
         self.tools = tools
         self.bts_url = bts_url or "http://localhost:8000"
+        self.app = app
 
         if port is None:
             self.port = self._find_available_port()
@@ -53,6 +55,7 @@ class VirtualMcpServer:
 
         print(f"Creating VirtualMcpServer '{name}' on port {self.port}")
         self.mcp = FastMCP(name=name, port=self.port)
+        self._register_tools()
         self._start_server()
         print(f"VirtualMcpServer '{name}' created and started on port {self.port}")
 
@@ -98,16 +101,87 @@ class VirtualMcpServer:
         Returns:
             list: A list of tools.
         """
-        tools = []
-        for tool_uuid in self.tools:
-            try:
-                response = requests.get(f"{self.bts_url}/manifests/{tool_uuid}")
-                response.raise_for_status()
-                manifest = response.json()
-                tools.append(self.manifest_to_tool(manifest))
-            except Exception as e:
-                logging.warning(f"Failed to get manifest for tool {tool_uuid}: {e}")
-        return tools
+        if self.app:
+            # Use direct app method call like MCPToBTSProxy
+            manifests = self.app.handle_get_manifests()
+            tools = []
+            for manifest in manifests:
+                if manifest["name"] in self.tools:
+                    try:
+                        tools.append(self.manifest_to_tool(manifest))
+                    except Exception as e:
+                        logging.warning(f"Failed to convert manifest to tool: {e}")
+            return tools
+        else:
+            # Fallback to HTTP requests
+            tools = []
+            for tool_uuid in self.tools:
+                try:
+                    response = requests.get(f"{self.bts_url}/manifests/{tool_uuid}")
+                    response.raise_for_status()
+                    manifest = response.json()
+                    tools.append(self.manifest_to_tool(manifest))
+                except Exception as e:
+                    logging.warning(f"Failed to get manifest for tool {tool_uuid}: {e}")
+            return tools
+
+    def _register_tools(self):
+        """
+        Register tools with the FastMCP server.
+        """
+        tools = self.list_tools()
+        for tool in tools:
+            # Create a dynamic function with the correct signature based on the tool's parameters
+            def make_handler(tool_name, tool_schema):
+                # Extract parameter names from the tool schema
+                properties = tool_schema.get('inputSchema', {}).get('properties', {})
+                required = tool_schema.get('inputSchema', {}).get('required', [])
+                
+                # Create function signature dynamically
+                import inspect
+                params = []
+                for param_name, param_info in properties.items():
+                    if param_name in required:
+                        params.append(inspect.Parameter(param_name, inspect.Parameter.POSITIONAL_OR_KEYWORD))
+                    else:
+                        params.append(inspect.Parameter(param_name, inspect.Parameter.POSITIONAL_OR_KEYWORD, default=None))
+                
+                # Create the handler function
+                async def handler(*args, **kwargs):
+                    # Convert args and kwargs back to a dictionary
+                    param_names = list(properties.keys())
+                    parameters = {}
+                    
+                    # Handle positional arguments
+                    for i, arg in enumerate(args):
+                        if i < len(param_names):
+                            parameters[param_names[i]] = arg
+                    
+                    # Handle keyword arguments
+                    parameters.update(kwargs)
+                    
+                    # Pass parameters as a dictionary to match BTS expectations
+                    result = await self.invoke_tool(tool_name, parameters)
+                    # Extract the return value from BTS response format
+                    if isinstance(result, dict) and "return value" in result:
+                        return result["return value"]
+                    return str(result)
+                
+                # Set function metadata
+                handler.__name__ = tool_name
+                handler.__doc__ = tool.description
+                handler.__signature__ = inspect.Signature(params)
+                
+                return handler
+            
+            handler = make_handler(tool.name, tool.__dict__)
+            
+            # Use FastMCP's add_tool method
+            self.mcp.add_tool(
+                handler,
+                name=tool.name,
+                description=tool.description
+            )
 
     async def invoke_tool(self, tool_name: str, parameters: dict):
         """
@@ -123,11 +197,16 @@ class VirtualMcpServer:
         if tool_name not in self.tools:
             raise ValueError(f"Tool {tool_name} not found")
 
-        response = requests.post(
-            f"{self.bts_url}/manifests/execute/{tool_name}", json=parameters
-        )
-        response.raise_for_status()
-        return response.json()
+        if self.app:
+            # Use direct app method call like MCPToBTSProxy
+            return await self.app.handle_execute_manifest(tool_name, parameters)
+        else:
+            # Fallback to HTTP requests
+            response = requests.post(
+                f"{self.bts_url}/manifests/execute/{tool_name}", json=parameters
+            )
+            response.raise_for_status()
+            return response.json()
 
     def manifest_to_tool(self, manifest: dict):
         """

@@ -15,14 +15,18 @@ def test_add_server_from_manifest_filter():
         mock_server.tools = ["tool1", "tool2"]
         mock_server_class.return_value = mock_server
         
-        # Mock get_manifests function
-        mock_get_manifests = Mock(return_value=[
+        # Mock app with handle_get_manifests method
+        mock_app = Mock()
+        mock_app.handle_get_manifests.return_value = [
             {"name": "tool1", "description": "Test tool 1"},
             {"name": "tool2", "description": "Test tool 2"}
-        ])
+        ]
         
-        # Create manager instance
-        manager = VirtualMcpServerManager()
+        # Create manager instance with app
+        manager = VirtualMcpServerManager(app=mock_app)
+        
+        # Reset the mock to ignore calls from load_servers()
+        mock_server_class.reset_mock()
         
         # Test the method
         manager.add_server_from_manifest_filter(
@@ -31,11 +35,10 @@ def test_add_server_from_manifest_filter():
             name="Test Server",
             description="Test Description",
             port=8080,
-            get_manifests_func=mock_get_manifests
         )
         
-        # Verify get_manifests was called with correct parameters
-        mock_get_manifests.assert_called_once_with("test_filter", LifecycleState.APPROVED)
+        # Verify handle_get_manifests was called with correct parameters
+        mock_app.handle_get_manifests.assert_called_once_with("test_filter", LifecycleState.APPROVED)
         
         # Verify VirtualMcpServer was created with correct parameters
         mock_server_class.assert_called_once_with(
@@ -43,7 +46,8 @@ def test_add_server_from_manifest_filter():
             description="Test Description",
             port=8080,
             tools=["tool1", "tool2"],
-            bts_url="http://localhost:8000"
+            bts_url="http://localhost:8000",
+            app=mock_app
         )
         
         # Verify server was added to manager
@@ -58,38 +62,42 @@ def test_add_server_from_manifest_filter_auto_name():
         mock_server.name = "Manifest Filter Server - auto_filter"
         mock_server_class.return_value = mock_server
         
-        mock_get_manifests = Mock(return_value=[
+        mock_app = Mock()
+        mock_app.handle_get_manifests.return_value = [
             {"name": "tool3", "description": "Test tool 3"}
-        ])
+        ]
         
-        manager = VirtualMcpServerManager()
+        manager = VirtualMcpServerManager(app=mock_app)
+        
+        # Reset the mock to ignore calls from load_servers()
+        mock_server_class.reset_mock()
         
         manager.add_server_from_manifest_filter(
             manifest_filter="auto_filter",
-            get_manifests_func=mock_get_manifests
         )
         
         # Verify VirtualMcpServer was called with auto-generated values
         expected_name = "Manifest Filter Server - auto_filter"
-        expected_description = "Virtual MCP Server created from manifest filter: auto_filter, lifecycle state: LifecycleState.ANY"
+        expected_description = "Virtual MCP Server created from manifest filter: auto_filter, lifecycle state: any"
         
         mock_server_class.assert_called_once_with(
             name=expected_name,
             description=expected_description,
             port=None,
             tools=["tool3"],
-            bts_url="http://localhost:8000"
+            bts_url="http://localhost:8000",
+            app=mock_app
         )
         
         # Verify server was added to manager
         assert expected_name in manager.servers
 
 
-def test_add_server_from_manifest_filter_missing_func():
-    """Test error when get_manifests_func is not provided."""
+def test_add_server_from_manifest_filter_missing_app():
+    """Test error when app is not provided."""
     manager = VirtualMcpServerManager()
     
-    with pytest.raises(ValueError, match="get_manifests_func is required"):
+    with pytest.raises(ValueError, match="app is required for manifest filtering"):
         manager.add_server_from_manifest_filter(
             manifest_filter="test_filter"
         )

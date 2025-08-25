@@ -22,16 +22,18 @@ class VirtualMcpServerManager:
     that can be dynamically created from tool search results or manually configured.
     """
 
-    def __init__(self, bts_url: str = "http://localhost:8000"):
+    def __init__(self, bts_url: str = "http://localhost:8000", app=None):
         """Initialize the virtual MCP server manager.
 
         Args:
             bts_url: The BTS server URL to use for tool execution.
+            app: The BTS FastAPI app instance for direct method calls.
 
         Loads existing virtual MCP servers from persistent storage.
         """
         self.servers: Dict[str, VirtualMcpServer] = {}
         self.bts_url = bts_url
+        self.app = app
         logger.info(f"Loading vmcp_servers from {VMCP_SERVERS_FILE}")
         self.load_servers()
 
@@ -54,6 +56,7 @@ class VirtualMcpServerManager:
             port=port,
             tools=tools,
             bts_url=self.bts_url,
+            app=self.app,
         )
         self.servers[server.name] = server
         self.save_servers()
@@ -136,7 +139,7 @@ class VirtualMcpServerManager:
                 data = json.load(f)
                 for server_data in data:
                     try:
-                        server = VirtualMcpServer(**server_data, bts_url=self.bts_url)
+                        server = VirtualMcpServer(**server_data, bts_url=self.bts_url, app=self.app)
                         self.servers[server.name] = server
                         logger.info(f"Loaded vmcp_server: {server.name}")
                     except Exception as e:
@@ -231,7 +234,6 @@ class VirtualMcpServerManager:
         name: Optional[str] = None,
         description: Optional[str] = None,
         port: Optional[int] = None,
-        get_manifests_func=None,
     ):
         """Create a virtual MCP server from filtered manifests.
 
@@ -244,21 +246,20 @@ class VirtualMcpServerManager:
             name: Optional name for the virtual MCP server (auto-generated if None).
             description: Optional description for the server (auto-generated if None).
             port: Optional port number for the server (auto-assigned if None).
-            get_manifests_func: Function to get manifests (required).
 
         Raises:
             Exception: If server creation fails.
-            ValueError: If get_manifests_func is not provided.
+            ValueError: If app is not provided.
         """
         try:
-            if get_manifests_func is None:
-                raise ValueError("get_manifests_func is required")
+            if self.app is None:
+                raise ValueError("app is required for manifest filtering")
 
             logger.info(
                 f"Starting add_server_from_manifest_filter with filter: {manifest_filter}, state: {lifecycle_state}"
             )
 
-            manifests = get_manifests_func(manifest_filter, lifecycle_state)
+            manifests = self.app.handle_get_manifests(manifest_filter, lifecycle_state)
             tools = [manifest["name"] for manifest in manifests]
             logger.info(f"Found tools from manifests: {tools}")
 
@@ -274,7 +275,7 @@ class VirtualMcpServerManager:
             if description is None:
                 description = (
                     f"Virtual MCP Server created from manifest filter: {manifest_filter}, "
-                    f"lifecycle state: {lifecycle_state}"
+                    f"lifecycle state: {lifecycle_state.value}"
                 )
 
             logger.info(f"About to call add_server with name={name}, tools={tools}")
