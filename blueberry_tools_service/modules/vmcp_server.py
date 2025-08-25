@@ -134,54 +134,61 @@ class VirtualMcpServer:
             # Create a dynamic function with the correct signature based on the tool's parameters
             def make_handler(tool_name, tool_schema):
                 # Extract parameter names from the tool schema
-                properties = tool_schema.get('inputSchema', {}).get('properties', {})
-                required = tool_schema.get('inputSchema', {}).get('required', [])
-                
+                properties = tool_schema.get("inputSchema", {}).get("properties", {})
+                required = tool_schema.get("inputSchema", {}).get("required", [])
+
                 # Create function signature dynamically
                 import inspect
+
                 params = []
                 for param_name, param_info in properties.items():
                     if param_name in required:
-                        params.append(inspect.Parameter(param_name, inspect.Parameter.POSITIONAL_OR_KEYWORD))
+                        params.append(
+                            inspect.Parameter(
+                                param_name, inspect.Parameter.POSITIONAL_OR_KEYWORD
+                            )
+                        )
                     else:
-                        params.append(inspect.Parameter(param_name, inspect.Parameter.POSITIONAL_OR_KEYWORD, default=None))
-                
+                        params.append(
+                            inspect.Parameter(
+                                param_name,
+                                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                default=None,
+                            )
+                        )
+
                 # Create the handler function
                 async def handler(*args, **kwargs):
                     # Convert args and kwargs back to a dictionary
                     param_names = list(properties.keys())
                     parameters = {}
-                    
+
                     # Handle positional arguments
                     for i, arg in enumerate(args):
                         if i < len(param_names):
                             parameters[param_names[i]] = arg
-                    
+
                     # Handle keyword arguments
                     parameters.update(kwargs)
-                    
+
                     # Pass parameters as a dictionary to match BTS expectations
                     result = await self.invoke_tool(tool_name, parameters)
                     # Extract the return value from BTS response format
                     if isinstance(result, dict) and "return value" in result:
                         return result["return value"]
                     return str(result)
-                
+
                 # Set function metadata
                 handler.__name__ = tool_name
                 handler.__doc__ = tool.description
                 handler.__signature__ = inspect.Signature(params)
-                
+
                 return handler
-            
+
             handler = make_handler(tool.name, tool.__dict__)
-            
+
             # Use FastMCP's add_tool method
-            self.mcp.add_tool(
-                handler,
-                name=tool.name,
-                description=tool.description
-            )
+            self.mcp.add_tool(handler, name=tool.name, description=tool.description)
 
     async def invoke_tool(self, tool_name: str, parameters: dict):
         """

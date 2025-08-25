@@ -139,7 +139,9 @@ class VirtualMcpServerManager:
                 data = json.load(f)
                 for server_data in data:
                     try:
-                        server = VirtualMcpServer(**server_data, bts_url=self.bts_url, app=self.app)
+                        server = VirtualMcpServer(
+                            **server_data, bts_url=self.bts_url, app=self.app
+                        )
                         self.servers[server.name] = server
                         logger.info(f"Loaded vmcp_server: {server.name}")
                     except Exception as e:
