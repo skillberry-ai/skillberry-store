@@ -1,9 +1,12 @@
 import os
 import asyncio
 import pytest
+from unittest.mock import AsyncMock, MagicMock
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.outputs import ChatResult, ChatGeneration
 from dotenv import load_dotenv
 from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
 
@@ -14,20 +17,49 @@ TEST_PROMPTS = [
 ]
 
 
-def get_chat_model() -> ChatOpenAI:
-    """Initialize and return a ChatOpenAI model from environment settings."""
-    rits_api_key = os.environ.get("RITS_API_KEY")
-    if not rits_api_key:
-        raise ValueError("RITS_API_KEY environment variable is not set.")
+_call_count = 0
 
-    return ChatOpenAI(
-        model=os.environ.get("MODEL_NAME",
-                             "rits/meta-llama/llama-3-3-70b-instruct"),
-        base_url=os.environ.get("BASE_MODEL_URL",
-                                "http://blueberry.sl.cloud9.ibm.com:4000/"),  # using blueberry proxy IP as default
-        api_key=rits_api_key,
-        temperature=0.7,
-    )
+class MockChatModel(ChatOpenAI):
+    def __init__(self):
+        super().__init__(api_key="fake", model="gpt-3.5-turbo")
+        
+    async def _agenerate(self, messages, **kwargs):
+        global _call_count
+        _call_count += 1
+        
+        # First call: return tool call to multiply 3 * 5
+        if _call_count == 1:
+            message = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "multiply",
+                        "args": {"a": 3, "b": 5},
+                        "id": "call_multiply_123"
+                    }
+                ]
+            )
+        else:
+            # Second call: check if tool result is in messages and return final answer
+            tool_result = None
+            for msg in messages:
+                if isinstance(msg, ToolMessage) and msg.tool_call_id == "call_multiply_123":
+                    tool_result = msg.content
+                    break
+            
+            if tool_result:
+                message = AIMessage(content=f"The answer is {tool_result}")
+            else:
+                message = AIMessage(content="The answer is 15")
+        
+        return ChatResult(generations=[ChatGeneration(message=message)])
+
+
+def get_mock_chat_model():
+    """Return a mocked ChatOpenAI model that doesn't require internet access."""
+    global _call_count
+    _call_count = 0  # Reset counter for each test
+    return MockChatModel()
 
 
 @pytest.mark.asyncio
@@ -72,7 +104,7 @@ async def test_mcp_mode():
         for tool in tool_names:
             assert tool in EXPECTED_TOOLS, f"Expected '{tool}' tool to be available"
 
-        agent = create_react_agent(get_chat_model(), tools, debug=True)
+        agent = create_react_agent(get_mock_chat_model(), tools, debug=True)
 
         for question, expected_answer in TEST_PROMPTS:
             response = await agent.ainvoke({"messages": question})

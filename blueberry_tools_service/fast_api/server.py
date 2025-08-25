@@ -731,8 +731,7 @@ class BTS(FastAPI):
         @self.post("/vmcp_servers/add", tags=tags)
         def add_vmcp_server(name: str, description: str, port: Optional[int], tools: list):
             try:
-                vmcp_server = VirtualMcpServer(name, description, port, tools)
-                vmcp_server_manager.add_server(vmcp_server)
+                vmcp_server_manager.add_server(name, description, port, tools)
                 return {"message": f"vmcp_server '{name}' added"}
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
@@ -740,9 +739,12 @@ class BTS(FastAPI):
         @self.post("/vmcp_servers/add_server_from_search_term", tags=tags)
         def add_vmcp_server_from_search_term(search_term: str, name: Optional[str] = None, description: Optional[str] = None, port: Optional[int] = None):
             try:
+                print(f"FastAPI endpoint called with search_term: {search_term}")
                 vmcp_server_manager.add_server_from_search_term(search_term, name, description, port)
+                print(f"FastAPI endpoint completed for search_term: {search_term}")
                 return {"message": f"vmcp_server for search term '{search_term}' added"}
             except Exception as e:
+                print(f"FastAPI endpoint exception: {e}")
                 raise HTTPException(status_code=400, detail=str(e))
 
         @self.delete("/vmcp_servers/{name}", tags=tags)

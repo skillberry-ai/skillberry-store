@@ -1,6 +1,8 @@
 from typing import List, Optional
 import uuid
 import socket
+import logging
+import os
 from mcp.server.fastmcp import FastMCP
 import requests
 
@@ -20,7 +22,7 @@ class VirtualMcpServer:
 
     def __init__(self, name: str, description: str, port: Optional[int], tools: List[str]):
         """
-        Initializes a new VirtualMcpServer instance.
+        Initializes and starts a new VirtualMcpServer instance.
 
         Args:
             name (str): The name of the virtual MCP server.
@@ -42,7 +44,11 @@ class VirtualMcpServer:
             if not self._is_port_available(port):
                 raise ValueError(f"Port {port} is not available")
         
+        print(f"Creating VirtualMcpServer '{name}' on port {self.port}")
         self.mcp = FastMCP(name=name, port=self.port)
+        self._register_tools()
+        self._start_server()
+        print(f"VirtualMcpServer '{name}' created and started on port {self.port}")
 
     def _is_port_available(self, port: int) -> bool:
         """
@@ -61,36 +67,45 @@ class VirtualMcpServer:
             except socket.error:
                 return False
 
-    def _find_available_port(self, start_port: int = 10000) -> int:
+    def _find_available_port(self, start_port: int = None) -> int:
         """
         Finds the next available port starting from a given port.
 
         Args:
-            start_port (int): The port to start checking from. Defaults to 10000.
+            start_port (int): The port to start checking from. If None, uses VMCP_START_PORT env var or 10000.
 
         Returns:
             int: The available port.
         """
+        if start_port is None:
+            start_port = int(os.environ.get("VMCP_SERVERS_START_PORT", 10000))
+        
         port = start_port
         while not self._is_port_available(port):
             port += 1
         return port
 
-    def _create_tool_proxy(self, tool_uuid: str):
+    def _register_tools(self):
         """
-        Creates a tool proxy for a given tool UUID.
+        Registers tools with the FastMCP server.
+        """
+        for tool_uuid in self.tools:
+            self._register_tool(tool_uuid)
+
+    def _register_tool(self, tool_uuid: str):
+        """
+        Registers a tool with the FastMCP server using the tool decorator.
 
         Args:
             tool_uuid (str): The UUID of the tool.
-
-        Returns:
-            function: A proxy function that executes the tool.
         """
-        def tool_proxy(**kwargs):
-            response = requests.post(f"{self.BTS_URL}/manifests/execute/{tool_uuid}", json=kwargs)
+        @self.mcp.tool(name=tool_uuid)
+        def tool_proxy(a: int, b: int) -> str:
+            """Execute tool via BTS"""
+            response = requests.post(f"{self.BTS_URL}/manifests/execute/{tool_uuid}", json={"a": a, "b": b})
             response.raise_for_status()
-            return response.json()
-        return tool_proxy
+            result = response.json()
+            return str(result.get("return value", result))
 
     def list_tools(self):
         """
@@ -99,9 +114,18 @@ class VirtualMcpServer:
         Returns:
             list: A list of tools.
         """
-        return self.mcp.list_tools()
+        tools = []
+        for tool_uuid in self.tools:
+            try:
+                response = requests.get(f"{self.BTS_URL}/manifests/{tool_uuid}")
+                response.raise_for_status()
+                manifest = response.json()
+                tools.append(self.manifest_to_tool(manifest))
+            except Exception as e:
+                logging.warning(f"Failed to get manifest for tool {tool_uuid}: {e}")
+        return tools
 
-    def invoke_tool(self, tool_name: str, parameters: dict):
+    async def invoke_tool(self, tool_name: str, parameters: dict):
         """
         Invokes a tool on the virtual MCP server.
 
@@ -112,16 +136,55 @@ class VirtualMcpServer:
         Returns:
             result: The result of the tool invocation.
         """
-        return self.mcp.invoke_tool(tool_name, parameters)
-
-    def run(self, transport="sse"):
+        if tool_name not in self.tools:
+            raise ValueError(f"Tool {tool_name} not found")
+        
+        response = requests.post(f"{self.BTS_URL}/manifests/execute/{tool_name}", json=parameters)
+        response.raise_for_status()
+        return response.json()
+    
+    def manifest_to_tool(self, manifest: dict):
         """
-        Runs the virtual MCP server.
+        Convert BTS manifest to MCP tool format.
+        """
+        from mcp import types
+        
+        # Clean up extras before unpacking
+        extras = manifest.copy()
+        for key in ["name", "description", "params"]:
+            extras.pop(key, None)
+
+        return types.Tool(
+            name=str(manifest["name"]),
+            description=manifest.get("description"),
+            inputSchema=manifest["params"],
+            **extras,
+        )
+
+    def _start_server(self, transport="sse"):
+        """
+        Starts the virtual MCP server.
 
         Args:
             transport (str): The transport to use. Defaults to "sse".
         """
-        self.mcp.run(transport=transport)
+        import threading
+        def run_server():
+            print(f"Starting FastMCP server '{self.name}' on port {self.port}")
+            self.mcp.run(transport=transport)
+            print(f"FastMCP server '{self.name}' started on port {self.port}")
+            logging.info(f"Virtual MCP server '{self.name}' running on port {self.port} with transport {transport}")
+        
+        self.server_thread = threading.Thread(target=run_server, daemon=True)
+        self.server_thread.start()
+    
+    def stop(self):
+        """
+        Stops the virtual MCP server.
+        """
+        if hasattr(self, 'server_thread') and self.server_thread.is_alive():
+            # FastMCP doesn't have a clean stop method, thread will terminate when process ends
+            pass
 
     def to_dict(self):
         """

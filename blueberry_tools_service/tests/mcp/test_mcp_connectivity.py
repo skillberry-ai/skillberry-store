@@ -1,8 +1,16 @@
 import asyncio
 import httpx
 import pytest
+import socket
 
 from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
+
+
+def get_free_port():
+    """Get a free port number."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
 
 
 @pytest.mark.asyncio
@@ -10,10 +18,25 @@ async def test_mcp_mode():
     """Test the BTS server running in MCP mode via subprocess."""
 
     clean_test_tmp_dir()
+    
+    mcp_port = get_free_port()
+    
+    mcp_server_code = f"""
+from mcp.server.fastmcp import FastMCP
+mcp = FastMCP(name='MathServer', port={mcp_port})
 
+@mcp.tool()
+def multiply(a: float, b: float) -> float:
+    return a * b
+
+if __name__ == '__main__':
+    mcp.run(transport='sse')
+"""
+    
     mcp_server_proc = await asyncio.create_subprocess_exec(
         "python",
-        "blueberry_tools_service/contrib/mcp/server/server.py",
+        "-c",
+        mcp_server_code,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -35,7 +58,7 @@ async def test_mcp_mode():
     )
     try:
         await wait_until_server_ready()
-        await add_tool_manifest()
+        await add_tool_manifest(name="multiply", mcp_url=f"http://localhost:{mcp_port}/sse")
         # Add manifest via tools service
         async with httpx.AsyncClient() as client:
             # Execute the tool

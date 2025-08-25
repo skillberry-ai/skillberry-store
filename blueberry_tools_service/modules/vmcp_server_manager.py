@@ -17,14 +17,26 @@ class VirtualMcpServerManager:
         logger.info(f"Loading vmcp_servers from {VMCP_SERVERS_FILE}")
         self.load_servers()
 
-    def add_server(self, server: VirtualMcpServer):
-        logger.info(f"Adding vmcp_server: {server.name}")
+    def add_server(self, name: str, description: str, port: Optional[int], tools: list):
+        print(f"Adding vmcp_server: {name}")
+        logger.info(f"Adding vmcp_server: {name}")
+        server = VirtualMcpServer(name=name, description=description, port=port, tools=tools)
         self.servers[server.name] = server
         self.save_servers()
+        print(f"Added and started new vmcp_server: {name} on port {server.port}")
+        logger.info(f"Added and started new vmcp_server: {name} on port {server.port}")
+        return server
 
     def remove_server(self, name: str):
         if name in self.servers:
             logger.info(f"Removing vmcp_server: {name}")
+            server = self.servers[name]
+            # Stop the server before removing it
+            try:
+                server.stop()
+                logger.info(f"Stopped vmcp_server: {name}")
+            except Exception as e:
+                logger.warning(f"Failed to stop vmcp_server {name}: {str(e)}")
             del self.servers[name]
             self.save_servers()
         else:
@@ -81,10 +93,12 @@ class VirtualMcpServerManager:
 
     def add_server_from_search_term(self, search_term: str, name: Optional[str] = None, description: Optional[str] = None, port: Optional[int] = None):
         try:
+            print(f"Starting add_server_from_search_term for: {search_term}")
             response = requests.get(f"http://localhost:8000/search/manifests?search_term={search_term}")
             response.raise_for_status()
             search_results = response.json()
             tools = [result['filename'] for result in search_results]
+            print(f"Found tools: {tools}")
             
             if name is None:
                 name = f"Search Term Server - {search_term}"
@@ -98,8 +112,10 @@ class VirtualMcpServerManager:
             if description is None:
                 description = f"Virtual MCP Server created from search term: {search_term}"
             
-            server = VirtualMcpServer(name=name, description=description, port=port, tools=tools)
-            self.add_server(server)
-            logger.info(f"Added new vmcp_server: {name}")
+            print(f"About to call add_server with name={name}, tools={tools}")
+            self.add_server(name=name, description=description, port=port, tools=tools)
+            print(f"Completed add_server_from_search_term")
         except Exception as e:
+            print(f"Exception in add_server_from_search_term: {e}")
             logger.error(f"Failed to add vmcp_server from search term: {str(e)}")
+            raise
