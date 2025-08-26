@@ -53,11 +53,13 @@ class VirtualMcpServer:
             if not self._is_port_available(port):
                 raise ValueError(f"Port {port} is not available")
 
-        print(f"Creating VirtualMcpServer '{name}' on port {self.port}")
+        logging.info(f"Creating VirtualMcpServer '{name}' on port {self.port}")
         self.mcp = FastMCP(name=name, port=self.port)
         self._register_tools()
         self._start_server()
-        print(f"VirtualMcpServer '{name}' created and started on port {self.port}")
+        logging.info(
+            f"VirtualMcpServer '{name}' created and started on port {self.port}"
+        )
 
     def _is_port_available(self, port: int) -> bool:
         """
@@ -243,9 +245,9 @@ class VirtualMcpServer:
         import threading
 
         def run_server():
-            print(f"Starting FastMCP server '{self.name}' on port {self.port}")
+            logging.info(f"Starting FastMCP server '{self.name}' on port {self.port}")
             self.mcp.run(transport=transport)
-            print(f"FastMCP server '{self.name}' started on port {self.port}")
+            logging.info(f"FastMCP server '{self.name}' started on port {self.port}")
             logging.info(
                 f"Virtual MCP server '{self.name}' running on port {self.port} with transport {transport}"
             )
