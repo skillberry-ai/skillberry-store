@@ -16,11 +16,13 @@ This table lists the default ports, host URLs and overall service configuration 
 
 This table lists persistency configuration used by BTS service, along with the environment variables that can be used to override them.
 
-| Configuration             | Default value     | Environment Variables Override   | Notes
-|---------------------------|-------------------|----------------------------------|-------------------------------------|
-| Files folder (tools blob) | /tmp/files        | `BTS_DIRECTORY_PATH`             | Stores tool blobs (e.g. tools code) |
-| Manifests folder          | /tmp/manifest     | `BTS_MANIFEST_DIRECTORY`         | Stores tool manifests               |
-| Descriptions folder       | /tmp/descriptions | `BTS_DESCRIPTIONS_DIRECTORY`     | Stores tool embeddings information  |
+| Configuration             | Default value          | Environment Variables Override   | Notes
+|---------------------------|------------------------|----------------------------------|-------------------------------------|
+| Files folder (tools blob) | /tmp/files             | `BTS_DIRECTORY_PATH`             | Stores tool blobs (e.g. tools code) |
+| Manifests folder          | /tmp/manifest          | `BTS_MANIFEST_DIRECTORY`         | Stores tool manifests               |
+| Descriptions folder       | /tmp/descriptions      | `BTS_DESCRIPTIONS_DIRECTORY`     | Stores tool embeddings information  |
+| virtual mcp servers list  | /tmp/vmcp_servers.json | `VMCP_SERVERS_FILE`              | Stores virtual mcp servers          |
+
 
 > You can override the default values by setting the corresponding environment variables in your deployment configuration.
 

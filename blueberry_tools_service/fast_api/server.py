@@ -8,9 +8,9 @@ import uvicorn
 from mcp.server.sse import SseServerTransport
 from starlette.routing import Route, Mount
 
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal, List
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, BaseModel
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +21,8 @@ from blueberry_tools_service.fast_api.mcp_proxy import MCPToBTSProxy
 from blueberry_tools_service.modules.dictionary_checker import DictionaryChecker
 from blueberry_tools_service.modules.lifecycle import LifecycleState, LifecycleManager
 from blueberry_tools_service.modules.manifest import Manifest
+from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
+from blueberry_tools_service.modules.vmcp_server_manager import VirtualMcpServerManager
 from blueberry_tools_service.modules.description import Description
 from blueberry_tools_service.modules.description_vector_index import (
     DescriptionVectorIndex,
@@ -126,6 +128,7 @@ class BTS(FastAPI):
         self.manifest_api(
             file_handler=file_api(), descriptions=descriptions, tags=["manifest"]
         )
+        self.virtual_mcp_server_api(tags=["vmcp_servers"])
         self.tools_api(
             file_handler=file_api(), descriptions=descriptions, tags=["tools"]
         )
@@ -137,7 +140,11 @@ class BTS(FastAPI):
                 "name": "manifest",
                 "description": "Operations for manifest (tools manifest, programming language, packaging format, "
                 "security, etc.)",
-            }
+            },
+            {
+                "name": "virtual mcp servers",
+                "description": "Operations for Virtual MCP Servers",
+            },
         ]
 
         self.add_middleware(
@@ -185,16 +192,14 @@ class BTS(FastAPI):
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
     ):
-        """
-        Return a list of manifests matching the given lifecycle state and properties filter.
+        """Return a list of manifests matching the given lifecycle state and properties filter.
 
-        Parameters:
-            manifest_filter (str): manifest properties to filter (Optional)
-            lifecycle_state (LifecycleState): state to filter (Optional)
+        Args:
+            manifest_filter: Manifest properties to filter (Optional).
+            lifecycle_state: State to filter (Optional).
 
         Returns:
-            list (dict): A list of matched manifests in json format
-
+            list: A list of matched manifests in json format.
         """
         list_manifests_counter.inc()
 
@@ -228,19 +233,17 @@ class BTS(FastAPI):
     async def handle_execute_manifest(
         self, uid: str, parameters: Optional[Dict[str, Any]] = None
     ):
-        """
-        Invoke manifest function given its uid.
+        """Invoke manifest function given its uid.
 
-        Parameters:
-            uid (str): The unique identifier of the manifest
-            parameters (dict): List of key/val pair to be passed to method invocation (Optional)
+        Args:
+            uid: The unique identifier of the manifest.
+            parameters: List of key/val pair to be passed to method invocation (Optional).
 
         Returns:
-            dict: function output
+            dict: Function output.
 
         Raises:
-            HTTPException (404): If manifest/tool not found
-
+            HTTPException: If manifest/tool not found (404).
         """
         logger.info(f"Request to execute manifest: {uid} with parameters: {parameters}")
         execute_manifest_counter.labels(uid=uid).inc()
@@ -286,9 +289,12 @@ class BTS(FastAPI):
     def manifest_api(
         self, file_handler: FileHandler, descriptions: Description, tags: str
     ):
-        """
-        Initialize manifest apis with proper persistency and APIs.
+        """Initialize manifest APIs with proper persistency and APIs.
 
+        Args:
+            file_handler: File handler instance for file operations.
+            descriptions: Description instance for vector database operations.
+            tags: FastAPI tags for grouping the endpoints in documentation.
         """
         manifest_directory = get_manifest_directory()
         manifest = Manifest(manifest_directory=manifest_directory)
@@ -302,21 +308,16 @@ class BTS(FastAPI):
 
         @self.get("/manifests/{uid}", tags=tags)
         def get_manifest(uid: str):
-            """
-            Retrieve manifest for the given uid.
+            """Retrieve manifest for the given uid.
 
-            Parameters:
-
-                uid (str): The uid of the manifest
+            Args:
+                uid: The uid of the manifest.
 
             Returns:
-
-                dict: The manifest in json format
+                dict: The manifest in json format.
 
             Raises:
-
-                HTTPException (404): If manifest not found
-
+                HTTPException: If manifest not found (404).
             """
             logger.info(f"Request to read manifest for uid: {uid}")
             get_manifest_counter.inc()
@@ -330,25 +331,18 @@ class BTS(FastAPI):
 
         @self.get("/code/manifests/{uid}", tags=tags)
         def get_code_manifest(uid: str):
-            """
-            Retrieve manifest code for the given uid.
+            """Retrieve manifest code for the given uid.
 
             Note: supported for 'code' manifests only.
 
-            Parameters:
-
-                uid (str): The uid of the manifest
+            Args:
+                uid: The uid of the manifest.
 
             Returns:
-
-                str: The manifest code
+                str: The manifest code.
 
             Raises:
-
-                HTTPException (400): If manifest not from 'code' type
-
-                HTTPException (404): If manifest or code not found
-
+                HTTPException: If manifest not from 'code' type (400) or if manifest or code not found (404).
             """
             logger.info(f"Request to read manifest code for uid: {uid}")
             get_code_manifest_counter.inc()
@@ -379,27 +373,19 @@ class BTS(FastAPI):
             manifest_filter: str = ".",
             lifecycle_state: LifecycleState = LifecycleState.APPROVED,
         ):
-            """
-            Return a list of manifests that are similar to the given search term and are below the
-            similarity threshold matching the given lifecycle state.
+            """Return a list of manifests that are similar to the given search term.
 
-            Parameters:
+            Returns manifests that are below the similarity threshold and match the given lifecycle state.
 
-                search_term (str): search term
-
-                max_number_of_results (int): number of results to return
-
-                similarity_threshold (float): threshold to be used
-
-                manifest_filter (str): manifest properties to filter
-
-                lifecycle_state (LifecycleState): state to filter
+            Args:
+                search_term: Search term.
+                max_number_of_results: Number of results to return.
+                similarity_threshold: Threshold to be used.
+                manifest_filter: Manifest properties to filter.
+                lifecycle_state: State to filter.
 
             Returns:
-
-                list (dict): A list of matched description_vector keys and
-                            similarity score
-
+                list: A list of matched description_vector keys and similarity score.
             """
             logger.info(f"Request to search descriptions for term: {search_term}")
             search_manifest_counter.inc()
@@ -452,27 +438,21 @@ class BTS(FastAPI):
             json_description: str = None,
             code: Optional[UploadFile] = File(None),
         ):
-            """
+            """Returns a manifest representation for the given function name.
+
             TODO: this API will be deprecated and will be removed in future version. Use
             POST /tools/add instead.
-
-            Returns a manifest representation for the given function name.
 
             The manifest can either get generated out from the supplied json representation
             of the function or from function module code.
 
-            Parameters:
-
-                function_name (str): The name of the function
-
-                json_description (str): The description of the function in a json format
-
-                code (UploadFile): The module code
+            Args:
+                function_name: The name of the function.
+                json_description: The description of the function in a json format.
+                code: The module code.
 
             Returns:
-
-                dict: manifest representation
-
+                dict: Manifest representation.
             """
             manifest_as_dict = manifest.print_manifest(
                 function_name,
@@ -486,39 +466,27 @@ class BTS(FastAPI):
         async def add_manifest(
             file_manifest: str, file: Optional[UploadFile] = File(None)
         ):
-            """
+            """Adds manifest.
+
             NOTE: this API will be considered to be deprecated and planed to be removed
             in future version.
 
-            Adds manifest.
-
             Two types of manifests are supported: code and mcp.
-
             - code: manifest points to corresponding method in a file module
             - mcp:  manifest points to corresponding tool in a mcp server
 
             As part of the addition, the description of the manifest is being embedded and
-            stored in vector db.
+            stored in vector db. The manifest is assigned with a unique identifier.
 
-            The manifest is assigned with a unique identifier.
-
-            Parameters:
-
-                file_manifest (str): The manifest of the file (json format).
-
-                file (UploadFile): The file containing invocation code. Not applicable for
-                                manifest from type mcp
+            Args:
+                file_manifest: The manifest of the file (json format).
+                file: The file containing invocation code. Not applicable for manifest from type mcp.
 
             Returns:
-
-                dict: The unique identifier of the manifest
+                dict: The unique identifier of the manifest.
 
             Raises:
-
-                HTTPException (404): If mcp tool not found for this manifest
-
-                HTTPException (409): If manifest already exist
-
+                HTTPException: If mcp tool not found for this manifest (404) or if manifest already exist (409).
             """
             logger.info(f"Request to add manifest")
             add_manifest_counter.inc()
@@ -571,45 +539,33 @@ class BTS(FastAPI):
         async def execute_manifest(
             uid: str, parameters: Optional[Dict[str, Any]] = None
         ):
-            """
-            Invoke manifest function given its uid.
+            """Invoke manifest function given its uid.
 
-            Parameters:
-
-                uid (str): The unique identifier of the manifest
-
-                parameters (dict): List of key/val pair to be passed to method invocation (Optional)
+            Args:
+                uid: The unique identifier of the manifest.
+                parameters: List of key/val pair to be passed to method invocation (Optional).
 
             Returns:
-
-                dict: function output
+                dict: Function output.
 
             Raises:
-
-                HTTPException (404): If manifest/tool not found
-
+                HTTPException: If manifest/tool not found (404).
             """
             return await self.handle_execute_manifest(uid, parameters)
 
         @self.post("/manifests/update/{uid}", tags=tags)
         def update_manifest(uid: str, new_manifest: Dict[str, Any]):
-            """
-            Update the manifest for the given uid.
+            """Update the manifest for the given uid.
 
-            Parameters:
-
-                uid (str): The uid of the manifest
-
-                new_manifest (dict): the new manifest to update with
+            Args:
+                uid: The uid of the manifest.
+                new_manifest: The new manifest to update with.
 
             Returns:
-
-                dict: manifest update message
+                dict: Manifest update message.
 
             Raises:
-
-                HTTPException (404): If manifest not found
-
+                HTTPException: If manifest not found (404).
             """
             logger.info(f"Request to update manifest for uid: {uid}")
             update_manifests_counter.inc()
@@ -627,20 +583,14 @@ class BTS(FastAPI):
             manifest_filter: str = ".",
             lifecycle_state: LifecycleState = LifecycleState.ANY,
         ):
-            """
-            Delete the manifests removing their descriptions from vector db.
+            """Delete the manifests removing their descriptions from vector db.
 
-            Parameters:
-
-                manifest_filter (str): manifest properties to filter (Optional)
-
-                lifecycle_state (LifecycleState): state to filter (Optional)
+            Args:
+                manifest_filter: Manifest properties to filter (Optional).
+                lifecycle_state: State to filter (Optional).
 
             Returns:
-
-                dict: manifest deletion message with a list of deleted
-                      manifest uids
-
+                dict: Manifest deletion message with a list of deleted manifest uids.
             """
             logger.info(f"Request to delete manifests")
             manifest_as_dict_entities = manifest.list_manifests()
@@ -677,21 +627,16 @@ class BTS(FastAPI):
 
         @self.delete("/manifests/{uid}", tags=tags)
         def delete_manifest(uid: str):
-            """
-            Delete the manifest removing its description from vector db.
+            """Delete the manifest removing its description from vector db.
 
-            Parameters:
-
-                uid (str): The uid of the manifest
+            Args:
+                uid: The uid of the manifest.
 
             Returns:
-
-                dict: manifest deletion message
+                dict: Manifest deletion message.
 
             Raises:
-
-                HTTPException (404): If manifest not found
-
+                HTTPException: If manifest not found (404).
             """
             logger.info(f"Request to delete manifest: {uid}")
             delete_manifest_counter.inc()
@@ -714,12 +659,194 @@ class BTS(FastAPI):
 
             return {"message": f"Manifest '{uid}' deleted."}
 
+    def virtual_mcp_server_api(self, tags: str):
+        """Initialize virtual MCP server APIs with proper management functionality.
+
+        Sets up REST endpoints for creating, managing, and interacting with virtual MCP servers.
+        Virtual MCP servers allow dynamic creation of MCP-compatible servers from tool collections.
+
+        Args:
+            tags: FastAPI tags for grouping the endpoints in documentation.
+        """
+
+        bts_url = f"http://{self.settings.bts_host}:{self.settings.bts_port}"
+        vmcp_server_manager = VirtualMcpServerManager(bts_url=bts_url, app=self)
+
+        class VmcpServerRequest(BaseModel):
+            name: str
+            description: str
+            port: Optional[int] = None
+            tools: List[str]
+
+        @self.post("/vmcp_servers/add", tags=tags)
+        def add_vmcp_server(request: VmcpServerRequest):
+            """Add a new virtual MCP server.
+
+            Creates and starts a new virtual MCP server with the specified configuration.
+            The server will expose the provided tools via the MCP protocol.
+
+            Args:
+                request: The virtual MCP server configuration.
+
+            Returns:
+                dict: Success message with the server name.
+
+            Raises:
+                HTTPException: If server creation fails (400 status code).
+            """
+            try:
+                vmcp_server_manager.add_server(
+                    request.name, request.description, request.port, request.tools
+                )
+                return {"message": f"virtual MCP server '{request.name}' added"}
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @self.post("/vmcp_servers/add_server_from_search_term", tags=tags)
+        def add_vmcp_server_from_search_term(
+            search_term: str,
+            name: Optional[str] = None,
+            description: Optional[str] = None,
+            port: Optional[int] = None,
+            max_results: int = 5,
+        ):
+            """Create a virtual MCP server from a search term.
+
+            Searches for tools matching the search term and creates a virtual MCP server
+            containing those tools. This allows dynamic server creation based on tool discovery.
+
+            Args:
+                search_term: The search term to find relevant tools.
+                name: Optional name for the virtual MCP server (auto-generated if None).
+                description: Optional description (auto-generated if None).
+                port: Optional port number (auto-assigned if None).
+                max_results: Maximum number of search results to include (default: 5).
+
+            Returns:
+                dict: Success message with the search term.
+
+            Raises:
+                HTTPException: If server creation fails (400 status code).
+            """
+            try:
+                logger.info(f"FastAPI endpoint called with search_term: {search_term}")
+                vmcp_server_manager.add_server_from_search_term(
+                    search_term, name, description, port, max_results
+                )
+                logger.info(
+                    f"FastAPI endpoint completed for search_term: {search_term}"
+                )
+                return {
+                    "message": f"virtual MCP server for search term '{search_term}' added"
+                }
+            except Exception as e:
+                logger.error(f"FastAPI endpoint exception: {e}")
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @self.post("/vmcp_servers/add_server_from_manifest_filter", tags=tags)
+        def add_vmcp_server_from_manifest_filter(
+            manifest_filter: str = ".",
+            lifecycle_state: LifecycleState = LifecycleState.ANY,
+            name: Optional[str] = None,
+            description: Optional[str] = None,
+            port: Optional[int] = None,
+        ):
+            """Create a virtual MCP server from filtered manifests.
+
+            Filters manifests based on the provided criteria and creates a virtual MCP server
+            containing those tools. This allows server creation based on manifest properties
+            and lifecycle states.
+
+            Args:
+                manifest_filter: Manifest properties to filter (default: ".").
+                lifecycle_state: Lifecycle state to filter (default: ANY).
+                name: Optional name for the virtual MCP server (auto-generated if None).
+                description: Optional description (auto-generated if None).
+                port: Optional port number (auto-assigned if None).
+
+            Returns:
+                dict: Success message with the filter criteria.
+
+            Raises:
+                HTTPException: If server creation fails (400 status code).
+            """
+            try:
+                logger.info(
+                    f"FastAPI endpoint called with manifest_filter: {manifest_filter}, lifecycle_state: {lifecycle_state}"
+                )
+                vmcp_server_manager.add_server_from_manifest_filter(
+                    manifest_filter,
+                    lifecycle_state,
+                    name,
+                    description,
+                    port,
+                )
+                logger.info(
+                    f"FastAPI endpoint completed for manifest_filter: {manifest_filter}"
+                )
+                return {
+                    "message": f"virtual MCP server for manifest filter '{manifest_filter}' added"
+                }
+            except Exception as e:
+                logger.error(f"FastAPI endpoint exception: {e}")
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @self.delete("/vmcp_servers/{name}", tags=tags)
+        def remove_vmcp_server(name: str):
+            """Remove a virtual MCP server.
+
+            Stops and removes the specified virtual MCP server, cleaning up all resources.
+
+            Args:
+                name: The name of the virtual MCP server to remove.
+
+            Returns:
+                dict: Success message with the server name.
+            """
+            vmcp_server_manager.remove_server(name)
+            return {"message": f"virtual MCP server '{name}' removed"}
+
+        @self.get("/vmcp_servers/", tags=tags)
+        def list_vmcp_servers():
+            """List all virtual MCP servers.
+
+            Returns a list of all currently managed virtual MCP server names.
+
+            Returns:
+                dict: Dictionary containing a list of virtual MCP server names.
+            """
+            return {"virtual_mcp_servers": vmcp_server_manager.list_servers()}
+
+        @self.get("/vmcp_servers/{name}", tags=tags)
+        def get_vmcp_server_details(name: str):
+            """Get detailed information about a virtual MCP server.
+
+            Retrieves comprehensive details about the specified virtual MCP server,
+            including its configuration, port, and available tools.
+
+            Args:
+                name: The name of the virtual MCP server.
+
+            Returns:
+                dict: Detailed information about the virtual MCP server.
+
+            Raises:
+                HTTPException: If the virtual MCP server is not found (400 status code).
+            """
+            try:
+                return vmcp_server_manager.get_server_details(name)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
     def tools_api(
         self, file_handler: FileHandler, descriptions: Description, tags: str
     ):
-        """
-        Initialize tools apis with proper persistency and APIs.
+        """Initialize tools APIs with proper persistency and APIs.
 
+        Args:
+            file_handler: File handler instance for file operations.
+            descriptions: Description instance for vector database operations.
+            tags: FastAPI tags for grouping the endpoints in documentation.
         """
         manifest_directory = get_manifest_directory()
         manifest = Manifest(manifest_directory=manifest_directory)
@@ -735,35 +862,31 @@ class BTS(FastAPI):
                 description="Additional key/val pairs as JSON string interpreted by the tool_type.",
             ),
         ):
-            """
-            Adds a tool based on the type of the tool and provided content.
+            """Adds a tool based on the type of the tool and provided content.
 
             A manifest for that tool is being generated and stored.
-
             As part of the addition, the description of the manifest is being embedded and stored in vector db.
-
             The manifest is assigned with a unique identifier which is returned.
 
             If tool_name is provided and tool_type is code/python the generated manifest will point to the referenced function.
-
-            If kwargs are provided and tool_type is json/genai-lh the generated manifest will respect the provided content
+            If kwargs are provided and tool_type is json/genai-lh the generated manifest will respect the provided content.
 
             Notes on tool_type values:
             - code/python: manifest is created out from tool code docstring
             - json/genai-lh: manifest is created out from the additional key/val pairs
 
-            Returns:
+            Args:
+                tool_type: Type of the tool.
+                tool: The tool file to upload.
+                update: Whether to update if tool already exists.
+                tool_name: Optional name for the tool.
+                kwargs: Additional key/val pairs as JSON string interpreted by the tool_type.
 
-                dict: The unique identifier of the manifest representing the tool
+            Returns:
+                dict: The unique identifier of the manifest representing the tool.
 
             Raises:
-
-                HTTPException (400): If wrong parameter values supplied
-
-                HTTPException (409): If manifest already exist
-
-                HTTPException (500): Any other error
-
+                HTTPException: If wrong parameter values supplied (400), if manifest already exist (409), or any other error (500).
             """
             # TODO: 400 should come from pydantic validation
             try:
@@ -832,9 +955,10 @@ class BTS(FastAPI):
 
 
 def descriptions_api():
-    """
-    Initialize descriptions apis with proper persistency/db and APIs.
+    """Initialize descriptions APIs with proper persistency/db and APIs.
 
+    Returns:
+        Description: Description instance configured with vector index.
     """
     descriptions_directory = get_descriptions_directory()
     descriptions = Description(
@@ -845,9 +969,10 @@ def descriptions_api():
 
 
 def file_api():
-    """
-    Initialize file apis with proper persistency and APIs.
+    """Initialize file APIs with proper persistency and APIs.
 
+    Returns:
+        FileHandler: File handler instance configured with files directory.
     """
     files_directory_path = get_files_directory_path()
     file_handler = FileHandler(files_directory_path)
@@ -857,6 +982,14 @@ def file_api():
 def custom_openapi(app: FastAPI, openapi_tags):
     if app.openapi_schema:
         return app.openapi_schema
+
+    # Normalize docstrings
+    for route in app.routes:
+        if hasattr(route, "endpoint"):
+            doc = route.endpoint.__doc__
+            if doc:
+                route.operation_id = route.operation_id or route.name
+                route.description = doc.strip().replace("\n", "  \n")
 
     openapi_schema = get_openapi(
         title="blueberry",
