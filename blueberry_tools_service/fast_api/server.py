@@ -8,9 +8,9 @@ import uvicorn
 from mcp.server.sse import SseServerTransport
 from starlette.routing import Route, Mount
 
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal, List
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, BaseModel
 
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -672,20 +672,21 @@ class BTS(FastAPI):
         bts_url = f"http://{self.settings.bts_host}:{self.settings.bts_port}"
         vmcp_server_manager = VirtualMcpServerManager(bts_url=bts_url, app=self)
 
+        class VmcpServerRequest(BaseModel):
+            name: str
+            description: str
+            port: Optional[int] = None
+            tools: List[str]
+
         @self.post("/vmcp_servers/add", tags=tags)
-        def add_vmcp_server(
-            name: str, description: str, port: Optional[int], tools: list
-        ):
+        def add_vmcp_server(request: VmcpServerRequest):
             """Add a new virtual MCP server.
 
             Creates and starts a new virtual MCP server with the specified configuration.
             The server will expose the provided tools via the MCP protocol.
 
             Args:
-                name: The name of the virtual MCP server.
-                description: A description of the virtual MCP server's purpose.
-                port: Optional port number (auto-assigned if not provided).
-                tools: List of tool names to include in the server.
+                request: The virtual MCP server configuration.
 
             Returns:
                 dict: Success message with the server name.
@@ -694,8 +695,10 @@ class BTS(FastAPI):
                 HTTPException: If server creation fails (400 status code).
             """
             try:
-                vmcp_server_manager.add_server(name, description, port, tools)
-                return {"message": f"virtual MCP server '{name}' added"}
+                vmcp_server_manager.add_server(
+                    request.name, request.description, request.port, request.tools
+                )
+                return {"message": f"virtual MCP server '{request.name}' added"}
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
