@@ -1024,14 +1024,6 @@ def custom_openapi(app: FastAPI, openapi_tags):
     if app.openapi_schema:
         return app.openapi_schema
 
-    # Normalize docstrings
-    for route in app.routes:
-        if hasattr(route, "endpoint"):
-            doc = route.endpoint.__doc__
-            if doc:
-                route.operation_id = route.operation_id or route.name
-                route.description = doc.strip().replace("\n", "  \n")
-
     openapi_schema = get_openapi(
         title="blueberry",
         summary="Towards hallucination-less AI systems",
