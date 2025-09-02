@@ -140,16 +140,34 @@ def extract_function_and_imports(
 
 
 class FileExecutor:
-    def __init__(self, name: str, file_content: AnyStr, file_manifest: dict):
+    def __init__(
+        self,
+        name: str,
+        file_content: AnyStr,
+        file_manifest: dict,
+        dependent_file_contents: List[str] = None,
+        dependent_manifests_as_dict: List[Dict] = None,
+    ):
         """
         Initialize the PythonExecutor with the directory path.
+
         The executor runtime is determined by the environment variable CODE_EXEC_RUNTIME.
         If the variable is set to "podman", the executor will use Podman.
         If the variable is set to "docker", the executor will use Docker.
         If the variable is not set or has an invalid value, an HTTPException will be raised.
+
+        Args:
+            name (str): the name of the execution
+            file_content (str): the code of the tool
+            file_manifest (str): the manifest of the tool
+            dependent_file_contents (list): list of dependant (if any) tools code
+            dependent_manifests_as_dict (list): list of dependant (if any) tools manifests
+
         """
         self.name = name
         self.content = file_content
+        self.dependent_file_contents = dependent_file_contents or []
+        self.dependent_manifests_as_dict = dependent_manifests_as_dict or []
 
         try:
             self.manifest = file_manifest
@@ -332,9 +350,36 @@ class FileExecutor:
                 f"parameter_definitions:{parameter_definitions}\n"
                 f"function_imports:{function_imports}\n"
             )
+
+            #
+            # Handle the case for a manifest that needs
+            # other manifest(s) for its execution
+            #
+            for i, _ in enumerate(self.dependent_manifests_as_dict):
+                dm_name = self.dependent_manifests_as_dict[i]["name"]
+                (
+                    df_name,
+                    _,
+                    df_imports,
+                ) = extract_function_and_imports(
+                    content=self.dependent_file_contents[i],
+                    function_name=dm_name,
+                )
+                if df_name is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"No function definition {dm_name} found in the file",
+                    )
+
+                # it is ok to have dup imports
+                function_imports.extend(df_imports)
+
             # generate the wrapper around the function_name
             wrapper_code = generate_wrapper_any_types(
-                str(self.content), str(function_name), dict(parameters)
+                str(self.content),
+                str(function_name),
+                dict(parameters),
+                dependent_codes_str=self.dependent_file_contents,
             )
 
             with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
@@ -392,29 +437,32 @@ class FileExecutor:
             )
 
 
-def generate_wrapper_any_types(code_str: str, func_name: str, parameters: dict) -> str:
+def generate_wrapper_any_types(
+    code_str: str, func_name: str, parameters: dict, dependent_codes_str: list[str]
+) -> str:
+    # Parse the main code to find the function definition
     tree = ast.parse(code_str)
 
     func_def = None
     for node in tree.body:
-        if isinstance(node, ast.FunctionDef):
+        if isinstance(node, ast.FunctionDef) and node.name == func_name:
             func_def = node
-            if func_def.name == func_name:
-                break
+            break
 
     if func_def is None:
         raise ValueError("No function definition found in the code.")
 
+    # Prepare the function call string
     arg_str = ", ".join(f"{key}={repr(value)}" for key, value in parameters.items())
     func_name_call_code = f"{func_name}({arg_str})"
 
+    # Main wrapper code
     main_code = f"""
 import json
 
 def main():
-    
     result = {func_name_call_code}
-    
+
     if isinstance(result, str):
         print(result)
     else:
@@ -424,5 +472,18 @@ if __name__ == "__main__":
     main()
 """
 
-    full_code = "\n" + code_str.strip() + "\n\n" + textwrap.dedent(main_code)
+    # Combine all dependency code strings
+    dependent_code_combined = "\n\n".join(
+        textwrap.dedent(dep.strip()) for dep in dependent_codes_str
+    )
+
+    # Final full code
+    full_code = (
+        "\n"
+        + dependent_code_combined
+        + "\n\n"
+        + code_str.strip()
+        + "\n\n"
+        + textwrap.dedent(main_code)
+    )
     return full_code
