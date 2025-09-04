@@ -43,4 +43,5 @@ export BTS_POST_WRITE_MANIFEST_COMMAND="git -C $BTS_DIRECTORY_BASE add . && git 
 export BTS_POST_DELETE_MANIFEST_COMMAND="git -C $BTS_DIRECTORY_BASE add . && git -C $BTS_DIRECTORY_BASE commit -m 'Delete tool {filename}' && git -C $BTS_DIRECTORY_BASE push origin main"
 ```
 
-For a complete end to end example refer [here](../contrib/examples/github/end2end.sh)
+For a complete end to end example refer [here](../blueberry_tools_service/contrib/examples/github/end2end.sh)
+
