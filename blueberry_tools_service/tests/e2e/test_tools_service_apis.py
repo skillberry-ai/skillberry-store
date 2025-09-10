@@ -349,7 +349,7 @@ def test_get_manifests(run_bts):
         ]
 )
 @pytest.mark.asyncio
-async def test_tools_add_and_subtract(run_bts, func_name, file_name):
+async def test_add_tool_add_subtract(run_bts, func_name, file_name):
     """
     Add tools 'add' and 'subtract'.
 
@@ -373,11 +373,11 @@ async def test_tools_add_and_subtract(run_bts, func_name, file_name):
 @pytest.mark.parametrize(
         "func_name, file_name, dependent_manifest_uids", 
         [
-            ("calc", "calc.py", ["add", "subtract"])
+            ("calc_add_subtract", "calc_add_subtract.py", ["add", "subtract"])
         ]
 )
 @pytest.mark.asyncio
-async def test_tools_add_calc(run_bts, func_name, file_name, dependent_manifest_uids):
+async def test_add_tool_calc_add_subtract(run_bts, func_name, file_name, dependent_manifest_uids):
     """
     Add manifest from the proper module.
 
@@ -407,8 +407,73 @@ async def test_tools_add_calc(run_bts, func_name, file_name, dependent_manifest_
         assert api_response["uid"] == func_name, f"Should receive uid: {func_name}"
 
 
+@pytest.mark.parametrize(
+        "func_name, file_name, dependent_manifest_uids", 
+        [
+            ("calc", "calc.py", ["calc_add_subtract"]),
+
+            # for a negative test were we look for module not found error
+            ("calc_import_typo", "calc_import_typo.py", ["calc_add_subtract"]),
+        ]
+)
 @pytest.mark.asyncio
-async def test_execute_calc(run_bts):
+async def test_add_tool_calc(run_bts, func_name, file_name, dependent_manifest_uids):
+    """
+    Add manifest from the proper module.
+
+    """
+    module_path = impresources.files(resources_package) / "e2e" / "example_functions" / file_name
+    file_blob = base_client_utils.read_file_to_bytes(module_path)
+
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+
+        docstring = base_client_utils.extract_docstring(module_path, func_name)
+        manifest = base_client_utils.python_manifest_from_function_docstring(
+            module_path, func_name, docstring
+        )
+        assert manifest is not None, f"Manifest could not get created for {func_name}"
+
+        manifest["dependent_manifest_uids"] = dependent_manifest_uids
+
+        manifest_str = json.dumps(manifest)
+        api_response = api_instance.add_manifest_manifests_add_post(
+            manifest_str, file=file_blob
+        )
+        assert api_response.get("uid", None), "Should receive 'uid' key"
+        assert api_response["uid"] == func_name, f"Should receive uid: {func_name}"
+
+
+@pytest.mark.parametrize("uid, operation, num1, num2, expected",
+                         [
+                             ("calc", "+", 5, 8, '13'),
+                             ("calc", "*", 5, 8, '40.0'),
+                        ]
+                        ) 
+@pytest.mark.asyncio
+async def test_execute_calc(run_bts, uid, operation, num1, num2, expected):
+    """
+    Execute a manifest that is dependant on others.
+
+    """
+    configuration = blueberry_tools_service_sdk.Configuration(
+        host="http://localhost:8000"
+    )
+    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+        arguments = {"operation": operation, "num1": num1, "num2": num2}
+        api_response = api_instance.execute_manifest_manifests_execute_uid_post(
+            uid, arguments
+        )
+        assert api_response.get("return value", None) == expected, f"Should get {expected}"
+
+
+@pytest.mark.parametrize("uid", ["calc_import_typo"]) 
+@pytest.mark.asyncio
+async def test_execute_calc_negative(run_bts, uid):
     """
     Execute a manifest that is dependant on others.
 
@@ -419,10 +484,11 @@ async def test_execute_calc(run_bts):
     with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
         api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
         arguments = {"operation": "+", "num1": 5, "num2": 8}
-        api_response = api_instance.execute_manifest_manifests_execute_uid_post(
-            "calc", arguments
-        )
-        assert api_response.get("return value", None) == '13', "Should get 13"
+        with pytest.raises(ServiceException, match=".*ModuleNotFoundError.*"):
+            api_response = api_instance.execute_manifest_manifests_execute_uid_post(
+                uid, arguments
+            )
+            assert api_response.get("return value", None) == '13', "Should get 13"
 
 
 @pytest.mark.parametrize("uid", ["subtract"])
@@ -441,8 +507,9 @@ def test_delete_subtract(run_bts, uid):
         ), f"Should receive deletion message for {uid}"
 
 
+@pytest.mark.parametrize("uid", ["calc"]) 
 @pytest.mark.asyncio
-async def test_execute_calc_negative(run_bts):
+async def test_execute_calc_negative2(run_bts, uid):
     """
     Execute a manifest that is dependant on others. Negative test.
 
@@ -455,5 +522,5 @@ async def test_execute_calc_negative(run_bts):
         arguments = {"operation": "+", "num1": 5, "num2": 8}
         with pytest.raises(NotFoundException, match="Manifest.*subtract.*not found"):
             api_instance.execute_manifest_manifests_execute_uid_post(
-                "calc", arguments
+                uid, arguments
             )

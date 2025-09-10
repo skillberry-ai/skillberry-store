@@ -1,6 +1,8 @@
+import operator
+
 def add(a: int, b: int) -> int:
     '''
-    Adds two integer numbers and returns the result.
+    Adds two integer numbers using the operator module and returns the result.
 
     Args:
         a (int): The first number to be added.
@@ -9,4 +11,4 @@ def add(a: int, b: int) -> int:
     Returns:
         int: The result of adding a and b.
     '''
-    return a + b
+    return operator.add(a, b)

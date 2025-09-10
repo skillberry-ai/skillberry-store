@@ -256,43 +256,57 @@ class BTS(FastAPI):
         if not manifest_as_dict:
             raise HTTPException(status_code=404, detail="Manifest/file not found")
 
-        name = manifest_as_dict["name"]
         dependent_manifests_as_dict = []
         dependent_file_contents = []
 
+        name = manifest_as_dict["name"]
+
         # TODO: enum mcp/code
         if manifest_as_dict.get("packaging_format") == "code":
+
             module_name = manifest_as_dict["module_name"]
             # note: if not found 404 is raised
             content = file_handler.read_file(module_name, raw_content=True)
 
-            #
-            # Handle the case for a manifest that needs
-            # other manifest(s) for its execution
-            #
-            dependent_manifests_uids = manifest_as_dict.get(
-                "dependent_manifest_uids", []
-            )
-            for dmu in dependent_manifests_uids:
-                dmn_uid = dmu
-                dm_as_dict = manifest.read_manifest(f"{dmn_uid}.json")
-                if not dm_as_dict:
+            def process_manifest(
+                manifest_uid, dependent_file_contents, dependent_manifests_as_dict
+            ):
+                """
+                Internal recursive function to iterate though the dependent manifests
+
+                """
+                manifest_as_dict = manifest.read_manifest(f"{manifest_uid}.json")
+                if not manifest_as_dict:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Manifest/file {dmn_uid}.json not found",
+                        detail=f"Manifest/file {manifest_uid}.json not found",
                     )
 
-                assert (
-                    dm_as_dict.get("packaging_format") == "code"
-                ), "Dependant manifest must be from type 'code'"
+                if manifest_as_dict.get("packaging_format") != "code":
+                    raise ValueError(
+                        f"Manifest {manifest_uid} must be from type 'code'"
+                    )
 
-                # FIXME: module can contain other methods
-                #        as well which may lead to duplicates; where
-                #        to sanity check?
-                dependent_file_contents.append(
-                    file_handler.read_file(dm_as_dict["module_name"], raw_content=True)
+                module_name = manifest_as_dict["module_name"]
+                # note: if not found 404 is raised
+                content = file_handler.read_file(module_name, raw_content=True)
+
+                # code and manifest should be stored under same index
+                dependent_file_contents.append(content)
+                dependent_manifests_as_dict.append(manifest_as_dict)
+
+                # Recursively process dependent manifests
+                dependent_uids = manifest_as_dict.get("dependent_manifest_uids", [])
+                for d_uid in dependent_uids:
+                    process_manifest(
+                        d_uid, dependent_file_contents, dependent_manifests_as_dict
+                    )
+
+            dependent_uids = manifest_as_dict.get("dependent_manifest_uids", [])
+            for d_uid in dependent_uids:
+                process_manifest(
+                    d_uid, dependent_file_contents, dependent_manifests_as_dict
                 )
-                dependent_manifests_as_dict.append(dm_as_dict)
 
         # TODO: enum mcp/code
         if manifest_as_dict.get("packaging_format") == "mcp":

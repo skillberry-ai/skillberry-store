@@ -1,12 +1,14 @@
+import operator
+
 def subtract(a: int, b: int) -> int:
     '''
-    Subtract two integer numbers and returns the result.
+    Subtracts two integer numbers using the operator module and returns the result.
 
     Args:
         a (int): The first number to subtract.
         b (int): The second number to subtract.
 
     Returns:
-        int: The result of subtracting a and b.
+        int: The result of subtracting b from a.
     '''
-    return a - b
+    return operator.sub(a, b)

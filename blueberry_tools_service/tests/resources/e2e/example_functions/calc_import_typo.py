@@ -1,6 +1,6 @@
-import numpy as np
+import numpyy as np
 
-def calc(operation: str, num1: float, num2: float) -> float:
+def calc_import_typo(operation: str, num1: float, num2: float) -> float:
     '''
     Perform a basic arithmetic operation on two numbers.
     Uses NumPy for multiplication, and delegates addition and subtraction.
@@ -14,7 +14,7 @@ def calc(operation: str, num1: float, num2: float) -> float:
         float: The result of the operation.
     '''
     if operation == '*':
-        return float(np.multiply(num1, num2))
+        return np.multiply(num1, num2)
     elif operation in ('+', '-'):
         return calc_add_subtract(operation, num1, num2)
     else:
