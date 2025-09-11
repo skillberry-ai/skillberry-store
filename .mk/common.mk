@@ -45,25 +45,22 @@ else
 	endif
 endif
 
-# Try to find a suitable AWK implementation
+# Platform-specific variables
 ifeq ($(OS),Windows_NT)
-    # Windows: try gawk first, then awk
-    ifneq (, $(shell where gawk 2> NUL))
-        AWK := gawk
-    else ifneq (, $(shell where awk 2> NUL))
-        AWK := awk
-    else
-        $(error "Neither gawk nor awk found. Please install one and ensure it's in your PATH.")
-    endif
+    WHICH_CMD := where
+    NULL_DEV := NUL
 else
-    # Unix-like systems: try gawk first, then awk
-    ifneq (, $(shell which gawk 2> /dev/null))
-        AWK := gawk
-    else ifneq (, $(shell which awk 2> /dev/null))
-        AWK := awk
-    else
-        $(error "Neither gawk nor awk found. Please install one and ensure it's in your PATH.")
-    endif
+    WHICH_CMD := which
+    NULL_DEV := /dev/null
+endif
+
+# Try to find a suitable AWK implementation
+ifneq (, $(shell $(WHICH_CMD) gawk 2> $(NULL_DEV)))
+    AWK := gawk
+else ifneq (, $(shell $(WHICH_CMD) awk 2> $(NULL_DEV)))
+    AWK := awk
+else
+    $(error "Neither gawk nor awk found. Please install one and ensure it's in your PATH.")
 endif
 
 .PHONY: help
