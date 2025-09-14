@@ -16,6 +16,7 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 default_mcp_server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8080/sse")
+execute_python_locally = os.getenv("EXECUTE_PYTHON_LOCALLY")
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +176,6 @@ class FileExecutor:
             logger.error(f"Error parsing manifest: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing manifest: {e}")
 
-        self.client = docker.from_env()
-
         try:
             self.client = docker.from_env()
         except ImportError:
@@ -225,7 +224,10 @@ class FileExecutor:
     async def execute_python_file(self, parameters):
 
         if self.manifest.get("packaging_format") == "code":
-            return_value = self.execute_python_file_using_docker(parameters)
+            if execute_python_locally:
+                return_value = self.execute_python_file_locally(parameters)
+            else:
+                return_value = self.execute_python_file_using_docker(parameters)
         elif self.manifest.get("packaging_format") == "mcp":
             return_value = await self.execute_python_file_in_mcp_server(parameters)
         else:
@@ -323,64 +325,66 @@ class FileExecutor:
                 status_code=500, detail=f"Error executing Python file: {e}"
             )
 
+    def _prepare_python_execution(self, parameters):
+        """
+        Common preparation for Python execution (both local and Docker)
+        """
+        (
+            function_name,
+            parameter_definitions,
+            function_imports,
+        ) = extract_function_and_imports(
+            content=self.content, function_name=self.manifest["name"]
+        )
+        
+        if function_name is None:
+            raise HTTPException(
+                status_code=400, detail="No function definition found in the file"
+            )
+
+        logging.info(
+            f"=== executing function with imports === \n"
+            f"function_name: {function_name}\n"
+            f"parameter_definitions:{parameter_definitions}\n"
+            f"function_imports:{function_imports}\n"
+        )
+
+        # Handle dependent manifests
+        for i, _ in enumerate(self.dependent_manifests_as_dict):
+            dm_name = self.dependent_manifests_as_dict[i]["name"]
+            (
+                df_name,
+                _,
+                df_imports,
+            ) = extract_function_and_imports(
+                content=self.dependent_file_contents[i],
+                function_name=dm_name,
+            )
+            if df_name is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No function definition {dm_name} found in the file",
+                )
+            function_imports.extend(df_imports)
+
+        # Generate wrapper code
+        wrapper_code = generate_wrapper_any_types(
+            str(self.content),
+            str(function_name),
+            dict(parameters),
+            dependent_codes_str=self.dependent_file_contents,
+        )
+        
+        return function_name, function_imports, wrapper_code
+
     def execute_python_file_using_docker(self, parameters):
         """
         Executes a Python file using docker
         """
-
         logger.info(f"Executing python code using a Docker container")
 
         try:
-            (
-                function_name,
-                parameter_definitions,
-                function_imports,
-            ) = extract_function_and_imports(
-                content=self.content, function_name=self.manifest["name"]
-            )
-            # format docker command from function name and parameters
-            if function_name is None:
-                raise HTTPException(
-                    status_code=400, detail="No function definition found in the file"
-                )
-
-            logging.info(
-                f"=== executing function with imports === \n"
-                f"function_name: {function_name}\n"
-                f"parameter_definitions:{parameter_definitions}\n"
-                f"function_imports:{function_imports}\n"
-            )
-
-            #
-            # Handle the case for a manifest that needs
-            # other manifest(s) for its execution
-            #
-            for i, _ in enumerate(self.dependent_manifests_as_dict):
-                dm_name = self.dependent_manifests_as_dict[i]["name"]
-                (
-                    df_name,
-                    _,
-                    df_imports,
-                ) = extract_function_and_imports(
-                    content=self.dependent_file_contents[i],
-                    function_name=dm_name,
-                )
-                if df_name is None:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"No function definition {dm_name} found in the file",
-                    )
-
-                # it is ok to have dup imports
-                function_imports.extend(df_imports)
-
-            # generate the wrapper around the function_name
-            wrapper_code = generate_wrapper_any_types(
-                str(self.content),
-                str(function_name),
-                dict(parameters),
-                dependent_codes_str=self.dependent_file_contents,
-            )
+            function_name, function_imports, wrapper_code = self._prepare_python_execution(parameters)
 
             with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
                 temp_file.write(wrapper_code)
@@ -428,13 +432,89 @@ class FileExecutor:
             )
 
             return_value = container.decode().replace("\n", "")
-            logger.info(f"Python code executed successfully: {return_value}")
+            logger.info(f"Function '{function_name}' executed using docker successfully: {return_value}")
             return {"return value": f"{return_value}"}
         except Exception as e:
             logger.error(f"Error executing Python file: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error executing Python file: {e}"
             )
+
+    def execute_python_file_locally(self, parameters):
+        """
+        Executes a Python file using exec() in the same process
+        """
+        import io
+        import sys
+        import subprocess
+        from contextlib import redirect_stdout, redirect_stderr
+        
+        logger.info(f"Executing python code using exec() in current process")
+
+        try:
+            function_name, function_imports, wrapper_code = self._prepare_python_execution(parameters)
+
+            # Try to install missing packages
+            if function_imports:
+                self._ensure_packages_installed(function_imports)
+
+            # Capture stdout and stderr
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+            
+            try:
+                with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                    exec(wrapper_code)
+                
+                return_value = stdout_capture.getvalue().strip()
+                error_output = stderr_capture.getvalue().strip()
+                
+                if error_output:
+                    raise HTTPException(
+                        status_code=500, 
+                        detail=f"Python execution failed: {error_output}"
+                    )
+                
+                logger.info(f"Function '{function_name}' executed locally successfully: {return_value}")
+                return {"return value": return_value}
+                
+            except Exception as exec_error:
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Python execution failed: {str(exec_error)}"
+                )
+                
+        except Exception as e:
+            logger.error(f"Error executing Python file locally: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error executing Python file locally: {e}"
+            )
+
+    def _ensure_packages_installed(self, function_imports):
+        """
+        Try to ensure required packages are installed
+        """
+        import subprocess
+        import sys
+        
+        function_imports = [fi.split(".")[0] for fi in function_imports if fi]
+        
+        for module_name in function_imports:
+            try:
+                __import__(module_name)
+            except ImportError:
+                logger.info(f"Attempting to install missing package: {module_name}")
+                package_name = get_distribution(module_name) or module_name
+                try:
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", package_name],
+                        check=True,
+                        capture_output=True,
+                        timeout=30
+                    )
+                    logger.info(f"Successfully installed: {package_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to install {package_name}: {e}")
 
 
 def generate_wrapper_any_types(
