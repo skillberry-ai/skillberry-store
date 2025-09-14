@@ -103,9 +103,9 @@ def extract_function_and_imports(
     try:
         tree = ast.parse(content)
         first_found_function_name: Optional[str] = None
-        parameters: List[Tuple[str, str, str]] = (
-            []
-        )  # (param_name, param_type, "positional"/"optional")
+        parameters: List[
+            Tuple[str, str, str]
+        ] = []  # (param_name, param_type, "positional"/"optional")
         imports: List[Tuple[str, str]] = []
 
         for node in ast.walk(tree):
@@ -336,7 +336,7 @@ class FileExecutor:
         ) = extract_function_and_imports(
             content=self.content, function_name=self.manifest["name"]
         )
-        
+
         if function_name is None:
             raise HTTPException(
                 status_code=400, detail="No function definition found in the file"
@@ -352,11 +352,7 @@ class FileExecutor:
         # Handle dependent manifests
         for i, _ in enumerate(self.dependent_manifests_as_dict):
             dm_name = self.dependent_manifests_as_dict[i]["name"]
-            (
-                df_name,
-                _,
-                df_imports,
-            ) = extract_function_and_imports(
+            (df_name, _, df_imports,) = extract_function_and_imports(
                 content=self.dependent_file_contents[i],
                 function_name=dm_name,
             )
@@ -374,7 +370,7 @@ class FileExecutor:
             dict(parameters),
             dependent_codes_str=self.dependent_file_contents,
         )
-        
+
         return function_name, function_imports, wrapper_code
 
     def execute_python_file_using_docker(self, parameters):
@@ -384,7 +380,11 @@ class FileExecutor:
         logger.info(f"Executing python code using a Docker container")
 
         try:
-            function_name, function_imports, wrapper_code = self._prepare_python_execution(parameters)
+            (
+                function_name,
+                function_imports,
+                wrapper_code,
+            ) = self._prepare_python_execution(parameters)
 
             with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
                 temp_file.write(wrapper_code)
@@ -432,7 +432,9 @@ class FileExecutor:
             )
 
             return_value = container.decode().replace("\n", "")
-            logger.info(f"Function '{function_name}' executed using docker successfully: {return_value}")
+            logger.info(
+                f"Function '{function_name}' executed using docker successfully: {return_value}"
+            )
             return {"return value": f"{return_value}"}
         except Exception as e:
             logger.error(f"Error executing Python file: {e}")
@@ -448,11 +450,15 @@ class FileExecutor:
         import sys
         import subprocess
         from contextlib import redirect_stdout, redirect_stderr
-        
+
         logger.info(f"Executing python code using exec() in current process")
 
         try:
-            function_name, function_imports, wrapper_code = self._prepare_python_execution(parameters)
+            (
+                function_name,
+                function_imports,
+                wrapper_code,
+            ) = self._prepare_python_execution(parameters)
 
             # Try to install missing packages
             if function_imports:
@@ -461,29 +467,31 @@ class FileExecutor:
             # Capture stdout and stderr
             stdout_capture = io.StringIO()
             stderr_capture = io.StringIO()
-            
+
             try:
                 with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
                     exec(wrapper_code)
-                
+
                 return_value = stdout_capture.getvalue().strip()
                 error_output = stderr_capture.getvalue().strip()
-                
+
                 if error_output:
                     raise HTTPException(
-                        status_code=500, 
-                        detail=f"Python execution failed: {error_output}"
+                        status_code=500,
+                        detail=f"Python execution failed: {error_output}",
                     )
-                
-                logger.info(f"Function '{function_name}' executed locally successfully: {return_value}")
+
+                logger.info(
+                    f"Function '{function_name}' executed locally successfully: {return_value}"
+                )
                 return {"return value": return_value}
-                
+
             except Exception as exec_error:
                 raise HTTPException(
-                    status_code=500, 
-                    detail=f"Python execution failed: {str(exec_error)}"
+                    status_code=500,
+                    detail=f"Python execution failed: {str(exec_error)}",
                 )
-                
+
         except Exception as e:
             logger.error(f"Error executing Python file locally: {e}")
             raise HTTPException(
@@ -496,9 +504,9 @@ class FileExecutor:
         """
         import subprocess
         import sys
-        
+
         function_imports = [fi.split(".")[0] for fi in function_imports if fi]
-        
+
         for module_name in function_imports:
             try:
                 __import__(module_name)
@@ -510,7 +518,7 @@ class FileExecutor:
                         [sys.executable, "-m", "pip", "install", package_name],
                         check=True,
                         capture_output=True,
-                        timeout=30
+                        timeout=30,
                     )
                     logger.info(f"Successfully installed: {package_name}")
                 except Exception as e:

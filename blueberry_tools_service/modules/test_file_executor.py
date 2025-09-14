@@ -1073,7 +1073,7 @@ async def test_execute_both_modes(executor_instance_add, parameters, expected):
     with patch.dict(os.environ, {}, clear=True):
         result_docker = await executor_instance_add.execute_file(parameters)
         assert result_docker["return value"] == expected
-    
+
     # Test local mode
     with patch.dict(os.environ, {"EXECUTE_PYTHON_LOCALLY": "true"}):
         result_local = await executor_instance_add.execute_file(parameters)
