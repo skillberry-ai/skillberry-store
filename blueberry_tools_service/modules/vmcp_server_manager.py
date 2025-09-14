@@ -8,7 +8,8 @@ from blueberry_tools_service.modules.description import Description
 from blueberry_tools_service.modules.description_vector_index import (
     DescriptionVectorIndex,
 )
-from blueberry_tools_service.tools.configure import get_descriptions_directory
+from blueberry_tools_service.modules.manifest import Manifest
+from blueberry_tools_service.tools.configure import get_descriptions_directory, get_manifest_directory
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,16 @@ class VirtualMcpServerManager:
         self.servers: Dict[str, VirtualMcpServer] = {}
         self.bts_url = bts_url
         self.app = app
+        
+        # Initialize manifest and description handlers
+        manifest_directory = get_manifest_directory()
+        descriptions_directory = get_descriptions_directory()
+        self.manifest = Manifest(manifest_directory=manifest_directory)
+        self.descriptions = Description(
+            descriptions_directory=descriptions_directory,
+            vector_index=DescriptionVectorIndex,
+        )
+        
         logger.info(f"Loading vmcp_servers from {VMCP_SERVERS_FILE}")
         self.load_servers()
 
@@ -59,6 +70,12 @@ class VirtualMcpServerManager:
             app=self.app,
         )
         self.servers[server.name] = server
+        
+        # Create manifest for the VirtualMcpServer
+        manifest_data = server.to_manifest()
+        self.manifest.write_manifest(f"{name}.json", manifest_data)
+        self.descriptions.write_description(name, description)
+        
         self.save_servers()
         logger.info(f"Added and started new vmcp_server: {name} on port {server.port}")
         return server
@@ -78,6 +95,17 @@ class VirtualMcpServerManager:
                 logger.info(f"Stopped vmcp_server: {name}")
             except Exception as e:
                 logger.warning(f"Failed to stop vmcp_server {name}: {str(e)}")
+            
+            # Remove manifest and description
+            try:
+                self.descriptions.delete_description(name)
+            except Exception as e:
+                logger.warning(f"Failed to delete description for vmcp_server {name}: {str(e)}")
+            try:
+                self.manifest.delete_manifest(f"{name}.json")
+            except Exception as e:
+                logger.warning(f"Failed to delete manifest for vmcp_server {name}: {str(e)}")
+            
             del self.servers[name]
             self.save_servers()
         else:
@@ -143,6 +171,13 @@ class VirtualMcpServerManager:
                             **server_data, bts_url=self.bts_url, app=self.app
                         )
                         self.servers[server.name] = server
+                        
+                        # Ensure manifest exists for loaded server
+                        if not self.manifest.read_manifest(f"{server.name}.json"):
+                            manifest_data = server.to_manifest()
+                            self.manifest.write_manifest(f"{server.name}.json", manifest_data)
+                            self.descriptions.write_description(server.name, server.description)
+                        
                         logger.info(f"Loaded vmcp_server: {server.name}")
                     except Exception as e:
                         logger.error(
