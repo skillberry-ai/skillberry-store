@@ -1,4 +1,6 @@
 import pytest
+import os
+from unittest.mock import patch
 
 from blueberry_tools_service.modules.file_executor import FileExecutor
 
@@ -1040,3 +1042,39 @@ async def test_execute_describe_date(
     # pytest -vs to print
     print(result)
     assert result["return value"] == expected
+
+
+@pytest.mark.parametrize(
+    "parameters,expected",
+    [
+        ({"date_str": "January 1, 2022"}, "2022-01-01"),
+        ({"date_str": "2022-01-01"}, "2022-01-01"),
+    ],
+    ids=["test_one", "test_two"],
+)
+@pytest.mark.asyncio
+async def test_execute_date_converter_from(
+    executor_instance_date_converter_from, parameters, expected
+):
+    result = await executor_instance_date_converter_from.execute_file(parameters)
+    print(result)
+    assert result["return value"] == expected
+
+
+# Test both Docker and local execution modes
+@pytest.mark.parametrize(
+    "parameters,expected",
+    [({"a": 5, "b": 8}, "13"), ({"a": -5, "b": 2}, "-3")],
+    ids=["test_docker", "test_local"],
+)
+@pytest.mark.asyncio
+async def test_execute_both_modes(executor_instance_add, parameters, expected):
+    # Test Docker mode (default)
+    with patch.dict(os.environ, {}, clear=True):
+        result_docker = await executor_instance_add.execute_file(parameters)
+        assert result_docker["return value"] == expected
+
+    # Test local mode
+    with patch.dict(os.environ, {"EXECUTE_PYTHON_LOCALLY": "true"}):
+        result_local = await executor_instance_add.execute_file(parameters)
+        assert result_local["return value"] == expected

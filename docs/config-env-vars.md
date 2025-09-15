@@ -10,6 +10,7 @@ This table lists the default ports, host URLs and overall service configuration 
 | Prometheus metric port   | 8090          | `PROMETHEUS_METRICS_PORT`        | BTS prometheus endpoint (used for scraping metrics)         |
 | Open telemetric port     | None          | `OTEL_TRACES_PORT`               | Must be set for OpenTelemetry tracing to work               |
 | Observability enablement | True          | `OBSERVABILITY`                  | If False - disable observability (telemetry and prometheus) |
+| Python execution mode    | False         | `EXECUTE_PYTHON_LOCALLY`         | If True - use local exec() instead of Docker |
 
 > You can override the default values by setting the corresponding environment variables in your deployment configuration.
 
