@@ -276,3 +276,22 @@ class VirtualMcpServer:
             "port": self.port,
             "tools": self.tools,
         }
+
+    def to_manifest(self):
+        """
+        Converts the VirtualMcpServer instance to a manifest format for search.
+
+        Returns:
+            dict: A manifest representation of the VirtualMcpServer.
+        """
+        return {
+            "name": self.name,
+            "description": self.description,
+            "programming_language": "vmcp_server",
+            "packaging_format": "vmcp_server",
+            "version": "1.0.0",
+            "state": "approved",
+            "uid": self.name,
+            "port": self.port,
+            "tools": self.tools,
+        }
