@@ -1061,20 +1061,26 @@ async def test_execute_date_converter_from(
     assert result["return value"] == expected
 
 
-# Test both Docker and local execution modes
 @pytest.mark.parametrize(
-    "parameters,expected",
-    [({"a": 5, "b": 8}, "13"), ({"a": -5, "b": 2}, "-3")],
-    ids=["test_docker", "test_local"],
+    "execute_locally,params,expected",
+    [
+        (True, {"a": 5, "b": 8}, "13"),
+        (True, {"a": -5, "b": 2}, "-3"),
+        (False, {"a": 5, "b": 8}, "13"),
+        (False, {"a": -5, "b": 2}, "-3"),
+    ],
+    ids=["local_add", "local_sub", "docker_add", "docker_sub"],
 )
 @pytest.mark.asyncio
-async def test_execute_both_modes(executor_instance_add, parameters, expected):
-    # Test Docker mode (default)
-    with patch.dict(os.environ, {}, clear=True):
-        result_docker = await executor_instance_add.execute_file(parameters)
-        assert result_docker["return value"] == expected
-
-    # Test local mode
-    with patch.dict(os.environ, {"EXECUTE_PYTHON_LOCALLY": "true"}):
-        result_local = await executor_instance_add.execute_file(parameters)
-        assert result_local["return value"] == expected
+async def test_execute_modes(manifest_test_tool, file_content_add, execute_locally, params, expected):
+    executor = FileExecutor(
+        name=manifest_test_tool["name"],
+        file_content=file_content_add,
+        file_manifest=manifest_test_tool,
+        dependent_file_contents=[],
+        dependent_manifests_as_dict=[],
+        execute_python_locally=execute_locally,
+    )
+    
+    result = await executor.execute_file(params)
+    assert result["return value"] == expected

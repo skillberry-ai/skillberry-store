@@ -16,7 +16,6 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 default_mcp_server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8080/sse")
-execute_python_locally = os.getenv("EXECUTE_PYTHON_LOCALLY")
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +147,7 @@ class FileExecutor:
         file_manifest: dict,
         dependent_file_contents: List[str] = None,
         dependent_manifests_as_dict: List[Dict] = None,
+        execute_python_locally: bool = None,
     ):
         """
         Initialize the PythonExecutor with the directory path.
@@ -163,12 +163,14 @@ class FileExecutor:
             file_manifest (str): the manifest of the tool
             dependent_file_contents (list): list of dependant (if any) tools code
             dependent_manifests_as_dict (list): list of dependant (if any) tools manifests
+            execute_python_locally (bool): Should execute using local mode
 
         """
         self.name = name
         self.content = file_content
         self.dependent_file_contents = dependent_file_contents or []
         self.dependent_manifests_as_dict = dependent_manifests_as_dict or []
+        self.execute_python_locally = execute_python_locally if execute_python_locally is not None else bool(os.getenv("EXECUTE_PYTHON_LOCALLY"))
 
         try:
             self.manifest = file_manifest
@@ -224,7 +226,8 @@ class FileExecutor:
     async def execute_python_file(self, parameters):
 
         if self.manifest.get("packaging_format") == "code":
-            if execute_python_locally:
+            # Check environment variable dynamically
+            if self.execute_python_locally:
                 return_value = self.execute_python_file_locally(parameters)
             else:
                 return_value = self.execute_python_file_using_docker(parameters)
@@ -386,10 +389,14 @@ class FileExecutor:
                 wrapper_code,
             ) = self._prepare_python_execution(parameters)
 
+            # Log the wrapper code for debugging
+            logger.info(f"Generated wrapper code for Docker:\n{wrapper_code}")
+            
             with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
                 temp_file.write(wrapper_code)
                 temp_file_path = temp_file.name
                 logger.info(f"tmp container python file name {temp_file_path}")
+                logger.info(f"Wrapper code length: {len(wrapper_code)}")
 
             if function_imports:
                 packages_to_install = []
@@ -464,16 +471,32 @@ class FileExecutor:
             if function_imports:
                 self._ensure_packages_installed(function_imports)
 
+            # Log the wrapper code for debugging
+            logger.info(f"Generated wrapper code:\n{wrapper_code}")
+            logger.info(f"Parameters passed: {parameters}")
+
             # Capture stdout and stderr
             stdout_capture = io.StringIO()
             stderr_capture = io.StringIO()
+            execution_success = False
+            exec_result = None
 
             try:
                 with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-                    exec(wrapper_code)
+                    exec_globals = {}
+                    try:
+                        exec(wrapper_code, exec_globals)
+                        execution_success = True
+                    except Exception as exec_inner_error:
+                        logger.error(f"Inner exec error: {exec_inner_error}")
+                        raise exec_inner_error
 
                 return_value = stdout_capture.getvalue().strip()
                 error_output = stderr_capture.getvalue().strip()
+
+                logger.info(f"Execution success: {execution_success}")
+                logger.info(f"Return value: '{return_value}'")
+                logger.info(f"Error output: '{error_output}'")
 
                 if error_output:
                     raise HTTPException(
@@ -481,15 +504,23 @@ class FileExecutor:
                         detail=f"Python execution failed: {error_output}",
                     )
 
+                # If no output but execution succeeded, this might indicate a silent failure
+                if not return_value and execution_success:
+                    logger.warning("Function executed but produced no output - this might indicate a silent error")
+                    return_value = "Function executed successfully (no output)"
+
                 logger.info(
                     f"Function '{function_name}' executed locally successfully: {return_value}"
                 )
                 return {"return value": return_value}
 
             except Exception as exec_error:
+                error_output = stderr_capture.getvalue().strip()
+                logger.error(f"Execution failed: {str(exec_error)}")
+                logger.error(f"Error output: '{error_output}'")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Python execution failed: {str(exec_error)}",
+                    detail=f"Python execution failed: {str(exec_error)} | stderr: {error_output}",
                 )
 
         except Exception as e:
@@ -549,15 +580,21 @@ def generate_wrapper_any_types(
 import json
 
 def main():
-    result = {func_name_call_code}
-
-    if isinstance(result, str):
-        print(result)
-    else:
-        print(json.dumps(result))
+    try:
+        result = {func_name_call_code}
+        if isinstance(result, str):
+            print(result)
+        else:
+            print(json.dumps(result))
+    except Exception as e:
+        print(f"EXCEPTION: {{e}}")
+        raise e
 
 if __name__ == "__main__":
     main()
+    exit(0)
+    
+main()
 """
 
     # Combine all dependency code strings
