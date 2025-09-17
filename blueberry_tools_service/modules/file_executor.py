@@ -170,7 +170,11 @@ class FileExecutor:
         self.content = file_content
         self.dependent_file_contents = dependent_file_contents or []
         self.dependent_manifests_as_dict = dependent_manifests_as_dict or []
-        self.execute_python_locally = execute_python_locally if execute_python_locally is not None else bool(os.getenv("EXECUTE_PYTHON_LOCALLY"))
+        self.execute_python_locally = (
+            execute_python_locally
+            if execute_python_locally is not None
+            else bool(os.getenv("EXECUTE_PYTHON_LOCALLY"))
+        )
 
         try:
             self.manifest = file_manifest
@@ -391,7 +395,7 @@ class FileExecutor:
 
             # Log the wrapper code for debugging
             logger.info(f"Generated wrapper code for Docker:\n{wrapper_code}")
-            
+
             with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
                 temp_file.write(wrapper_code)
                 temp_file_path = temp_file.name
@@ -506,7 +510,9 @@ class FileExecutor:
 
                 # If no output but execution succeeded, this might indicate a silent failure
                 if not return_value and execution_success:
-                    logger.warning("Function executed but produced no output - this might indicate a silent error")
+                    logger.warning(
+                        "Function executed but produced no output - this might indicate a silent error"
+                    )
                     return_value = "Function executed successfully (no output)"
 
                 logger.info(

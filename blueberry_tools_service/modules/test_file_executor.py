@@ -1072,7 +1072,9 @@ async def test_execute_date_converter_from(
     ids=["local_add", "local_sub", "docker_add", "docker_sub"],
 )
 @pytest.mark.asyncio
-async def test_execute_modes(manifest_test_tool, file_content_add, execute_locally, params, expected):
+async def test_execute_modes(
+    manifest_test_tool, file_content_add, execute_locally, params, expected
+):
     executor = FileExecutor(
         name=manifest_test_tool["name"],
         file_content=file_content_add,
@@ -1081,6 +1083,6 @@ async def test_execute_modes(manifest_test_tool, file_content_add, execute_local
         dependent_manifests_as_dict=[],
         execute_python_locally=execute_locally,
     )
-    
+
     result = await executor.execute_file(params)
     assert result["return value"] == expected
