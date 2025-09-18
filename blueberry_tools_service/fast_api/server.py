@@ -16,6 +16,7 @@ from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from fastapi_mcp import FastApiMCP
 
 from blueberry_tools_service.fast_api.mcp_proxy import MCPToBTSProxy
 from blueberry_tools_service.modules.dictionary_checker import DictionaryChecker
@@ -132,6 +133,11 @@ class BTS(FastAPI):
         self.tools_api(
             file_handler=file_api(), descriptions=descriptions, tags=["tools"]
         )
+        self.health_api(tags=["health"])
+
+        # Mount MCP server
+        mcp_server = FastApiMCP(self)
+        mcp_server.mount_sse(mount_path="/control_sse")
 
     def configure_fastapi(self):
         """Configures CORS middleware and OpenAPI documentation settings."""
@@ -1007,6 +1013,18 @@ class BTS(FastAPI):
             descriptions.write_description(tool_name, manifest_as_dict["description"])
 
             return {"uid": uid}
+
+    def health_api(self, tags: str):
+        """Initialize health check API endpoint."""
+
+        @self.get("/health", tags=tags)
+        def health_check():
+            """Health check endpoint.
+
+            Returns:
+                dict: Health status of the service.
+            """
+            return {"status": "healthy"}
 
 
 def descriptions_api():

@@ -11,9 +11,10 @@ This service implements a smart tools repository for agentic workflows.
 - **Tools Persistence**: Support persistence of tools into filesystem, GitHub repos etc.
 - **Observability**: Provide metrics and traces for operational and behavioural analysis of tools usage.
 - **OpenAPI frontend**: FastAPI endpoint to interact and manage tools (using tools-manifest artifacts)
-- **MCP frontend**: Expose the tools in [MCP](https://github.com/modelcontextprotocol) format.
+- **MCP frontend**: Expose virtual [MCP](https://github.com/modelcontextprotocol)  servers for any subset of the tools or all of them.
 - **Support Multiple MCP backends**: Consume and route additional tools from multiple backend MCP servers.
 - **Agentic Framework Integration**: Connect to different agentic frameworks via the MCP frontend.
+- **MCP control API**: Exposes an MCP server API for each of the available REST operations ( e.g., add tools, semantic search etc.)
 
 
 ## Quickstart 🚀
@@ -131,6 +132,11 @@ Open a browser against `http://127.0.0.1:8000/docs` .
 ## Engage with the Service through a Python Client 🐍
 
 The service can be consumed via blueberry tools service sdk. Refer to [blueberry-sdk](https://github.ibm.com/Blueberry/blueberry-sdk) for installation and usage.
+
+## Engage with the Service via MCP 📜
+
+Each control API function is available as an MCP tool to be used by agentic AI workflows.  
+To access use an MCP client against `http://127.0.0.1:8000/control_sse` .  
 
 ## Run BTS in MCP Server Mode 🖥️
 

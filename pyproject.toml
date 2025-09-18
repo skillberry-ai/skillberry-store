@@ -21,6 +21,7 @@ dependencies = [
   "docstring-parser>=0.16",
   "email-validator>=2.2.0",
   "fastapi>=0.115.12",
+  "fastapi-mcp>=0.3.7",
   "fastapi-versioning>=0.10.0",
   "fastembed>=0.7.1",
   "filelock>=3.17.0",

@@ -3,6 +3,9 @@ import httpx
 import pytest
 import socket
 
+from mcp.client.sse import sse_client
+from mcp.client.session import ClientSession
+
 from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
 
 
@@ -92,3 +95,47 @@ if __name__ == '__main__':
         if mcp_server_proc.stderr:
             await mcp_server_proc.stderr.read()
 
+
+@pytest.mark.asyncio
+async def test_mcp_fastapi_integration():
+    """Test the BTS server running in MCP mode via subprocess."""
+
+    clean_test_tmp_dir()
+    
+    # Check if the BTS server is already running, if so, exit with an error
+    try:
+        await wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=1)
+        raise SystemExit(
+            "BTS Server is already running, stop it and re-run the test. exiting !!!"
+        )
+        return
+    except TimeoutError:
+        pass
+
+    main_proc = await asyncio.create_subprocess_exec(
+        "python", "-m", "blueberry_tools_service.main",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        await wait_until_server_ready()
+        async with sse_client("http://127.0.0.1:8000/control_sse") as (read, write):
+            async with ClientSession(read, write) as session:
+                # Initialize MCP session
+                await session.initialize()
+                
+                # List available tools
+                tools = await session.list_tools()
+                
+                # Check if health tool is available
+                tool_names = [tool.name for tool in tools.tools]
+                assert "health_check_health_get" in tool_names
+
+    finally:
+        # Cleanup: kill server process
+        main_proc.kill()
+        # Read to avoid transport issues
+        if main_proc.stdout:
+            await main_proc.stdout.read()
+        if main_proc.stderr:
+            await main_proc.stderr.read()
