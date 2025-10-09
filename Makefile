@@ -122,7 +122,7 @@ install_dev_requirements: # Install dev requirements
 .PHONY: run install_requirements
 run: install_requirements ## Run the tools service
 	@if [ -f $(TOOLS_SERVICE_SENTINEL) ]; then \
-		echo "Blueberry Tools Service is already running"; \
+		echo "Blueberry Tools Service is already running. Check the TOOLS_SERVICE_SENTINEL file (default /tmp/tools-service.pid)"; \
 	else \
 		echo "Starting Blueberry Tools Service"; \
 		blueberry_tools_service/contrib/scripts/start-service.sh /tmp/tools-service.log $(TOOLS_SERVICE_SENTINEL) python -m blueberry_tools_service.main; \
