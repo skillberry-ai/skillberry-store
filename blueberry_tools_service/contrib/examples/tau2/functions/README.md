@@ -62,9 +62,9 @@ pip install -e .
 tau2 domain airline
 ```
 
-## Blueberry (BTS, BTM, BTA)
+## Blueberry (SBS, BTM, SBA)
 
-### Start BTS
+### Start SBS
 
 Stores tau-2 tools and invoke them
 
@@ -74,23 +74,23 @@ EXECUTE_PYTHON_LOCALLY=True make run
 
 ### Start BTM
 
-Currently not being used but is a pre-req for BTA
+Currently not being used but is a pre-req for SBA
 
 ```
 make run
 ```
 
-### Start BTA
+### Start SBA
 
-This BTA version sends all tau-2 tools to LLM along with the prompt. LLM returns the best tool to
+This SBA version sends all tau-2 tools to LLM along with the prompt. LLM returns the best tool to
 invoke along with slot filling
 
 * Clone
 
   ```
   cd ~
-  git clone git@github.ibm.com:WEIT/blueberry-tools-agent.git
-  cd blueberry-tools-agent
+  git clone git@github.ibm.com:Blueberry/skillberry-dev-agent.git
+  cd skillberry-dev-agent
   git checkout tau-2
   ```
 
@@ -104,7 +104,7 @@ invoke along with slot filling
 
 ### Tau2 client
 
-Tau2 client kicks-off the scenarios (tasks). It "Forwards" agent prompts to BTA via
+Tau2 client kicks-off the scenarios (tasks). It "Forwards" agent prompts to SBA via
 `/chat/completions` endpoint
 
 * venv
