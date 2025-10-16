@@ -109,23 +109,19 @@ Tau2 client kicks-off the scenarios (tasks). It "Forwards" agent prompts to SBA 
 * venv
 
   ```
-  python3 -m venv ~/virtual/tau2-bench
+  using same venv of Tau2 environment server
   ```
 
-* clone
+* cd
 
   ```
-  cd ~
-  git clone git@github.ibm.com:Blueberry/skillberry-dev-tau2.git
-  cd skillberry-dev-tau2
-  git checkout rits
+  cd ~/skillberry-dev-tau2
   ```
 
-* install
+* source
 
   ```
-  source  ~/virtual/tau2-bench-client/bin/activate
-  pip install -e .
+  source  ~/virtual/tau2-bench/bin/activate
   ```
 
 * run
