@@ -39,14 +39,13 @@ server itself
 python3 -m venv ~/virtual/tau2-bench
 ```
 
-
 ### Clone
 
 ```
 cd ~
-git clone https://github.com/sierra-research/tau2-bench.git
-cd tau2-bench
-git checkout 5ba9e3e56db57c5e4114bf7f901291f09b2c5619
+git clone git@github.ibm.com:Blueberry/skillberry-dev-tau2.git
+cd skillberry-dev-tau2
+git checkout rits
 ```
 
 ### Install
@@ -110,18 +109,17 @@ Tau2 client kicks-off the scenarios (tasks). It "Forwards" agent prompts to SBA 
 * venv
 
   ```
-  python3 -m venv ~/virtual/tau2-bench-client
+  python3 -m venv ~/virtual/tau2-bench
   ```
 
 * clone
 
   ```
   cd ~
-  git clone git@github.ibm.com:WEIT/tau2-bench.git tau2-bench-client
-  cd tau2-bench-client
-  git checkout f0860fa3095985bfd884107ddb35fa322166edf5
+  git clone git@github.ibm.com:Blueberry/skillberry-dev-tau2.git
+  cd skillberry-dev-tau2
+  git checkout rits
   ```
-
 
 * install
 
