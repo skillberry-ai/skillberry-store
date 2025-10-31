@@ -1,19 +1,37 @@
 # Tau-2 tools
 
-Follow instructions below for setting up tau2/skillberry and running the simulator.
+Follow instructions in the below order for setting up Tau-2/Skillberry and running the simulator
 
-An updated BTA is being used as the agent. It sends all tau-2 tools to LLM on every prompt it receives
+The following repositories will be used:
+
+* skillberry-dev-tau2
+* skillberry-dev-tools-service
+* skillberry-dev-agent
 
 ## Load tools into SBS
 
 Clone this repository and run `init.sh` to load the tools into SBS
 
-**Note:** ensure to use this repository for the SBS/BTS
+venv
+
+```
+python3 -m venv ~/virtual/skillberry-dev-tools-service
+```
+
+clone
 
 ```
 cd ~
-git clone git@github.ibm.com:Blueberry/skillberry-dev-tools-service.git
-cd skillberry-dev-tools-service/blueberry_tools_service/contrib/examples/tau2/functions
+git clone git@github.ibm.com:WEIT/skillberry-dev-tools-service.git
+cd skillberry-dev-tools-service
+git checkout sba-envmanager
+```
+
+run
+
+```
+source ~/virtual/skillberry-dev-tools-service/bin/activate
+cd blueberry_tools_service/contrib/examples/tau2/functions
 ./init.sh
 ```
 
@@ -25,119 +43,133 @@ The script does the following:
 * creates MCP server for these tools
 * shutoff SBS
 
-_Tip_: set BTS_HOST, BTS_PORT according to your environment
+_Tip_: set BTS_HOST, BTS_PORT, BTS_DIRECTORY_PATH, BTS_MANIFEST_DIRECTORY, BTS_DESCRIPTIONS_DIRECTORY,  according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/Blueberry/blueberry-tools-service/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
 
-## Tau2 environment server
+## Tau-2 environment server
 
 The environment server exposes domain specific (e.g. airline) tools as API endpoints. Each
 of these tools can be invoked via POST API. The state is being maintained by the environment
 server itself 
 
-### venv
+venv
 
 ```
 python3 -m venv ~/virtual/tau2-bench
 ```
 
-### Clone
+clone
 
 ```
 cd ~
-git clone git@github.ibm.com:Blueberry/skillberry-dev-tau2.git
+git clone git@github.ibm.com:WEIT/skillberry-dev-tau2.git
 cd skillberry-dev-tau2
-git checkout rits
+git checkout rits_skillberry-sba-envmanager
 ```
 
-### Install
+install
 
 ```
-source  ~/virtual/tau2-bench/bin/activate
+source ~/virtual/tau2-bench/bin/activate
 pip install -e .
 ```
 
-### Run
+run
 
 ```
-tau2 domain airline
+python scripts/start_tau2_environment_manager.py
 ```
 
-## Blueberry (SBS, BTM, SBA)
+## Skillberry (SBS, BTM, SBA)
+
+The skillberry services will be used by the Tau-2 simulator
 
 ### Start SBS
 
-Stores tau-2 tools and invoke them
-
 ```
+cd ~/skillberry-dev-tools-service
+source ~/virtual/skillberry-dev-tools-service/bin/activate
 EXECUTE_PYTHON_LOCALLY=True make run
 ```
+
+_Tip_: pass additional environment variables according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/Blueberry/blueberry-tools-service/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
 
 ### Start BTM
 
 Currently not being used but is a pre-req for SBA
 
+venv
+
 ```
+python3 -m venv ~/virtual/blueberry-tools-maker
+```
+
+clone
+
+```
+cd ~
+git clone git@github.ibm.com:Blueberry/blueberry-tools-maker.git
+cd blueberry-tools-maker
+```
+
+run
+
+```
+source ~/virtual/blueberry-tools-maker/bin/activate
 make run
 ```
 
 ### Start SBA
 
-This SBA version sends all tau-2 tools to LLM along with the prompt. LLM returns the best tool to
+This SBA version sends Tau-2 tools to LLM along with the prompt. LLM returns the best tool to
 invoke along with slot filling
 
-* Clone
+venv
 
-  ```
-  cd ~
-  git clone git@github.ibm.com:Blueberry/skillberry-dev-agent.git
-  cd skillberry-dev-agent
-  git checkout tau-2
-  ```
+```
+python3 -m venv ~/virtual/skillberry-dev-agent
+```
 
-* Run
+clone
 
-  ```
-  make run
-  ```
+```
+cd ~
+git clone git@github.ibm.com:WEIT/skillberry-dev-agent.git
+cd skillberry-dev-agent
+git checkout tau-2
+```
+
+run
+
+```
+source ~/virtual/skillberry-dev-agent/bin/activate
+make run
+```
 
 ## Simulation
 
-### Tau2 client
+### Tau-2 client
 
-Tau2 client kicks-off the scenarios (tasks). It "Forwards" agent prompts to SBA via
+Tau-2 simulator client kicks-off the scenarios (tasks). It "Forwards" agent prompts to SBA via
 `/chat/completions` endpoint
 
-* venv
+run
 
-  ```
-  using same venv of Tau2 environment server
-  ```
+```
+cd ~/skillberry-dev-tau2
+source  ~/virtual/tau2-bench/bin/activate
+tau2 run --domain airline_skillberry --agent-llm ibm/skillberry-local --user-llm rits/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 --num-trials 1  --task-ids 1 --max-concurrency 1 
+```
 
-* cd
+_notes_: consider saving the file according to a descriptive format name `--save-to vanilla|skillberry-<date>-task-<ids>-<trials>` e.g.
 
-  ```
-  cd ~/skillberry-dev-tau2
-  ```
+`vanilla-29-10-2025-17-31-task-1-30`, `skillbery-30-10-2025-14-30-task-1_5_2_6-30`
 
-* source
-
-  ```
-  source  ~/virtual/tau2-bench/bin/activate
-  ```
-
-* run
-
-  ```
-  tau2 run --domain airline --agent-llm ibm/skillberry-local --user-llm rits/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 --num-trials 1 --num-tasks 1 --agent llm_agent
-  ```
-
-  Tip: use `task-ids` to trigger specific tasks e.g `--task-ids 2` 
-
-## View tau-2 simulation result
-
-In "Tau2 client" terminal run
+## View Tau-2 simulation result
 
 ```
 tau2 view
 ```
 
-and follow on screen instructions
+follow on screen instructions
+
+_notes:_ to view a specific simulation file pass `--file <file name>.json`

@@ -190,7 +190,7 @@ class FileExecutor:
                 detail=f"Docker SDK for Python not found. Please install the Docker SDK for Python.",
             )
 
-    async def execute_file(self, parameters: Dict[str, Any]) -> dict:
+    async def execute_file(self, parameters: Dict[str, Any], env_id = None) -> dict:
         """
         Executes dynamically based on manifest and parameters.
 
@@ -203,17 +203,17 @@ class FileExecutor:
         logger.info(f"Executing: {self.name} with parameters: {parameters}")
 
         try:
-            return await self.based_on_programming_language(parameters=parameters)
+            return await self.based_on_programming_language(parameters=parameters, env_id=env_id)
         except Exception as e:
             logger.error(f"Error executing file: {e}")
             raise HTTPException(status_code=500, detail=f"Error executing file: {e}")
 
-    def based_on_programming_language(self, parameters):
+    def based_on_programming_language(self, parameters, env_id=None):
         """
         Switches based on the programming_language field in the manifest.
         """
         if self.manifest.get("programming_language") == "python":
-            return self.execute_python_file(parameters=parameters)
+            return self.execute_python_file(parameters=parameters, env_id=env_id)
         elif self.manifest.get("programming_language") == "bash":
             return self.execute_bash_file(parameters=parameters)
         else:
@@ -227,14 +227,14 @@ class FileExecutor:
         """
         raise HTTPException(status_code=400, detail="Not implemented")
 
-    async def execute_python_file(self, parameters):
+    async def execute_python_file(self, parameters, env_id=None):
 
         if self.manifest.get("packaging_format") == "code":
             # Check environment variable dynamically
             if self.execute_python_locally:
-                return_value = self.execute_python_file_locally(parameters)
+                return_value = self.execute_python_file_locally(parameters, env_id=env_id)
             else:
-                return_value = self.execute_python_file_using_docker(parameters)
+                return_value = self.execute_python_file_using_docker(parameters, env_id=env_id)
         elif self.manifest.get("packaging_format") == "mcp":
             return_value = await self.execute_python_file_in_mcp_server(parameters)
         else:
@@ -380,7 +380,7 @@ class FileExecutor:
 
         return function_name, function_imports, wrapper_code
 
-    def execute_python_file_using_docker(self, parameters):
+    def execute_python_file_using_docker(self, parameters, env_id=None):
         """
         Executes a Python file using docker
         """
@@ -453,7 +453,7 @@ class FileExecutor:
                 status_code=500, detail=f"Error executing Python file: {e}"
             )
 
-    def execute_python_file_locally(self, parameters):
+    def execute_python_file_locally(self, parameters, env_id=None):
         """
         Executes a Python file using exec() in the same process
         """
@@ -476,7 +476,7 @@ class FileExecutor:
                 self._ensure_packages_installed(function_imports)
 
             # Log the wrapper code for debugging
-            logger.info(f"Generated wrapper code:\n{wrapper_code}")
+            # logger.info(f"Generated wrapper code:\n{wrapper_code}")
             logger.info(f"Parameters passed: {parameters}")
 
             # Capture stdout and stderr
@@ -487,7 +487,11 @@ class FileExecutor:
 
             try:
                 with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-                    exec_globals = {}
+                    logging.info(f"@@@@@@@@@@@@@@@@")
+                    logging.info(f"Set exec_globals with env_id: {env_id}")
+                    logging.info(f"@@@@@@@@@@@@@@@@")
+                    
+                    exec_globals = {"env_id": env_id}
                     try:
                         exec(wrapper_code, exec_globals)
                         execution_success = True

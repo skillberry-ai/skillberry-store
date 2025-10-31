@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any, Literal, List
 from pydantic_settings import BaseSettings
 from pydantic import Field, BaseModel
 
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -237,7 +237,8 @@ class BTS(FastAPI):
         return manifest_as_dict_entities
 
     async def handle_execute_manifest(
-        self, uid: str, parameters: Optional[Dict[str, Any]] = None
+        self, uid: str, parameters: Optional[Dict[str, Any]] = None,
+        env_id = None
     ):
         """Invoke manifest function given its uid.
 
@@ -333,7 +334,7 @@ class BTS(FastAPI):
             dependent_file_contents=dependent_file_contents,
             dependent_manifests_as_dict=dependent_manifests_as_dict,
         )
-        result = await file_executor.execute_file(parameters=parameters)
+        result = await file_executor.execute_file(parameters=parameters, env_id=env_id)
 
         duration = time() - start_time
         execute_successfully_manifest_counter.labels(uid=uid).inc()
@@ -598,7 +599,7 @@ class BTS(FastAPI):
 
         @self.post("/manifests/execute/{uid}", tags=tags)
         async def execute_manifest(
-            uid: str, parameters: Optional[Dict[str, Any]] = None
+            uid: str, request: Request, parameters: Optional[Dict[str, Any]] = None
         ):
             """Invoke manifest function given its uid.
 
@@ -612,7 +613,14 @@ class BTS(FastAPI):
             Raises:
                 HTTPException: If manifest/tool not found (404).
             """
-            return await self.handle_execute_manifest(uid, parameters)
+
+            headers = request.headers
+            env_id = headers.get("env_id")
+            logging.info(f"@@@@@@@@@@@@@@@@")
+            logging.info(f"Headers env_id: {env_id}")
+            logging.info(f"@@@@@@@@@@@@@@@@")
+
+            return await self.handle_execute_manifest(uid, parameters, env_id=env_id)
 
         @self.post("/manifests/update/{uid}", tags=tags)
         def update_manifest(uid: str, new_manifest: Dict[str, Any]):
