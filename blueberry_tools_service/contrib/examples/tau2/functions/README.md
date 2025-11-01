@@ -22,9 +22,8 @@ clone
 
 ```
 cd ~
-git clone git@github.ibm.com:WEIT/skillberry-dev-tools-service.git
+git clone git@github.ibm.com:Blueberry/skillberry-dev-tools-service.git
 cd skillberry-dev-tools-service
-git checkout sba-envmanager
 ```
 
 run
@@ -61,9 +60,8 @@ clone
 
 ```
 cd ~
-git clone git@github.ibm.com:WEIT/skillberry-dev-tau2.git
+git clone git@github.ibm.com:Blueberry/skillberry-dev-tau2.git
 cd skillberry-dev-tau2
-git checkout rits_skillberry-sba-envmanager
 ```
 
 install
@@ -133,9 +131,8 @@ clone
 
 ```
 cd ~
-git clone git@github.ibm.com:WEIT/skillberry-dev-agent.git
+git clone git@github.ibm.com:Blueberry/skillberry-dev-agent.git
 cd skillberry-dev-agent
-git checkout tau-2
 ```
 
 run
