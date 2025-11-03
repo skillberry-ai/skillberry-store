@@ -182,13 +182,14 @@ class FileExecutor:
             logger.error(f"Error parsing manifest: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing manifest: {e}")
 
-        try:
-            self.client = docker.from_env()
-        except ImportError:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Docker SDK for Python not found. Please install the Docker SDK for Python.",
-            )
+        if not self.execute_python_locally:
+            try:
+                self.client = docker.from_env()
+            except ImportError:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Docker SDK for Python not found. Please install the Docker SDK for Python.",
+                )
 
     async def execute_file(self, parameters: Dict[str, Any], env_id = None) -> dict:
         """
@@ -394,7 +395,7 @@ class FileExecutor:
             ) = self._prepare_python_execution(parameters)
 
             # Log the wrapper code for debugging
-            logger.info(f"Generated wrapper code for Docker:\n{wrapper_code}")
+            # logger.info(f"Generated wrapper code for Docker:\n{wrapper_code}")
 
             with tempfile.NamedTemporaryFile(delete=False, mode="w") as temp_file:
                 temp_file.write(wrapper_code)
