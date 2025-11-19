@@ -8,7 +8,7 @@ The following repositories will be used:
 * skillberry-dev-tools-service
 * skillberry-dev-agent
 
-## Load tools into SBS
+## Load (primitive) tools into SBS
 
 Clone this repository and run `init.sh` to load the tools into SBS
 
@@ -38,11 +38,10 @@ The script does the following:
 
 * starts SBS in the background
 * resets SBS state (i.e. delete its tools and MCP servers)
-* loads the tools
-* creates MCP server for these tools
+* loads the primitive tools
 * shutoff SBS
 
-_Tip_: set BTS_HOST, BTS_PORT, BTS_DIRECTORY_PATH, BTS_MANIFEST_DIRECTORY, BTS_DESCRIPTIONS_DIRECTORY,  according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/Blueberry/blueberry-tools-service/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
+_Tip_: pass additional environment variables according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/Blueberry/blueberry-tools-service/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
 
 ## Tau-2 environment server
 
@@ -93,7 +92,7 @@ _Tip_: pass additional environment variables according to your environment. Refe
 
 ### Start BTM
 
-Currently not being used but is a pre-req for SBA
+Currently not being used but is a pre-requisite for SBA
 
 venv
 
@@ -154,12 +153,12 @@ run
 ```
 cd ~/skillberry-dev-tau2
 source  ~/virtual/tau2-bench/bin/activate
-tau2 run --domain airline_skillberry --agent-llm ibm/skillberry-local --user-llm rits/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 --num-trials 1  --task-ids 1 --max-concurrency 1 
+tau2 run --domain airline_skillberry --agent-llm ibm/skillberry-local --user-llm rits/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 --num-trials 30  --task-ids 9 --max-concurrency 1 
 ```
 
 _notes_: consider saving the file according to a descriptive format name `--save-to vanilla|skillberry-<date>-task-<ids>-<trials>` e.g.
 
-`vanilla-29-10-2025-17-31-task-1-30`, `skillbery-30-10-2025-14-30-task-1_5_2_6-30`
+`vanilla-29-10-2025-17-31-task-9-30`, `skillbery-30-10-2025-14-30-task-9-30`
 
 ## View Tau-2 simulation result
 
@@ -169,4 +168,4 @@ tau2 view
 
 follow on screen instructions
 
-_notes:_ to view a specific simulation file pass `--file <file name>.json`
+_note:_ to view a specific simulation file pass `--file <file name>.json`

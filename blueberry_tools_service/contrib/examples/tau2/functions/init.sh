@@ -11,7 +11,7 @@ BASE_PATH="http://$BTS_HOST:$BTS_PORT"
 
 # Configurable health check interval and timeout (in seconds)
 HEALTH_CHECK_INTERVAL=2
-HEALTH_CHECK_TIMEOUT=60
+HEALTH_CHECK_TIMEOUT=180
 
 BETWEEN_TIME=5
 
@@ -56,18 +56,6 @@ export EXAMPLESPATH=$BTS_HOME/blueberry_tools_service/contrib/examples
 
 (cd "$(dirname "$0")/$UP_FIVE_LEVELS" && make ARGS="tau2/functions/functions.py book_reservation calculate cancel_reservation get_reservation_details get_user_details list_all_airports search_direct_flight search_onestop_flight send_certificate update_reservation_baggages update_reservation_flights update_reservation_passengers get_flight_status transfer_to_human_agents" load_tools)
 
-# 3. Create MCP server with tau2 tools
-
-curl -v -X POST "$BASE_PATH/vmcp_servers/add" \
-  -H "accept: application/json" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "tau2-tools",
-    "description": "MCP",
-    "port": 8005,
-    "tools": ["book_reservation", "calculate", "cancel_reservation", "get_reservation_details", "get_user_details", "list_all_airports", "search_direct_flight", "search_onestop_flight", "send_certificate", "update_reservation_baggages", "update_reservation_flights", "update_reservation_passengers", "get_flight_status", "transfer_to_human_agents"]
-  }'
-
 sleep $BETWEEN_TIME
 
 # Stop SBS
@@ -75,4 +63,3 @@ sleep $BETWEEN_TIME
 
 echo "${bold}Done!${normal}"
 echo "${bold}Please check the SBS FastAPI UI to verify the tools were loaded successfully.${normal}"
-echo "${bold}Please check the SBS FastAPI UI to verify the MCP server created successfully.${normal}"
