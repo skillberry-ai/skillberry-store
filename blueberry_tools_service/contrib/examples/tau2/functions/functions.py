@@ -5,8 +5,6 @@ import os
 
 # Define the URL
 base_url = "http://0.0.0.0:8004"
-global env_id
-#env_id = os.getenv("env_id")
 tools_url = f"{base_url}/{env_id}/tools"
 
 
