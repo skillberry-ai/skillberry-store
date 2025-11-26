@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-client"
+version = "0.1.0"
+description = "A flexible, extensible framework for working with any large-language-model (LLM) provider in a uniform way"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [
+  { name = "Skillberry team, Haifa lab, IBM Research AI", email = "osher.elhadad@ibm.com" }
+]
+keywords = ["llm", "openai", "watsonx", "litellm", "ai", "machine-learning"]
+
+# Core dependencies - minimal set required for base functionality
+dependencies = [
+    "pydantic>=2.0.0",
+    "jsonschema>=4.0.0",
+]
+
+[project.optional-dependencies]
+# LiteLLM provider (default)
+litellm = [
+    "litellm>=1.0.0",
+]
+
+# OpenAI provider (includes Azure OpenAI)
+openai = [
+    "openai>=1.0.0",
+]
+
+# IBM WatsonX AI provider
+watsonx = [
+    "ibm-watsonx-ai>=1.0.0",
+]
+
+# RITS provider (uses LiteLLM)
+rits = [
+    "litellm>=1.0.0",
+]
+
+# Ollama provider (uses LiteLLM)
+ollama = [
+    "litellm>=1.0.0",
+]
+
+# All providers
+all = [
+    "litellm>=1.0.0",
+    "openai>=1.0.0",
+    "ibm-watsonx-ai>=1.0.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["llm_client*"]
