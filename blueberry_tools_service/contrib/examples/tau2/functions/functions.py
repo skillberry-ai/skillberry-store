@@ -289,10 +289,7 @@ def get_flight_status(flight_number: str, date: str):
 
 def transfer_to_human_agents(summary: str) -> str:
     """
-    Transfer the user to a human agent, with a summary of the user's issue.
-    Only transfer if
-        -  the user explicitly asks for a human agent
-        -  given the policy and the available tools, you cannot solve the user's issue.
+    Transfer the user to a human agent, with a summary of the user's issue. Only transfer if (1) the user explicitly asks for a human agent (2) given the policy and the available tools, you cannot solve the user's issue.
 
     Args:
         summary (str): A summary of the user's issue.
