@@ -16,17 +16,9 @@ A flexible, extensible framework for working with any large-language-model (LLM)
 
 ## Installation
 
-### Basic Installation
-
-Install with minimal dependencies (core functionality only):
-
-```bash
-pip install llm-client
-```
-
 ### Installation with Providers
 
-Install with specific provider support:
+Install with specific provider support (first clone this repository to your machine):
 
 #### LiteLLM (Recommended Default)
 
@@ -34,7 +26,11 @@ Install with specific provider support:
 pip install llm-client[litellm]
 ```
 
-Provides access to 100+ LLM providers through a unified interface.
+If you are using MacOS run this instead:
+
+```bash
+pip install "llm-client[litellm]"
+```
 
 #### OpenAI / Azure OpenAI
 
