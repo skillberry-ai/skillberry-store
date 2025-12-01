@@ -51,7 +51,7 @@ class VirtualMcpServerManager:
         logger.info(f"Loading vmcp_servers from {VMCP_SERVERS_FILE}")
         self.load_servers()
 
-    def add_server(self, name: str, description: str, port: Optional[int], tools: list):
+    def add_server(self, name: str, description: str, port: Optional[int], tools: list, env_id: str = None) -> VirtualMcpServer:
         """Add a new virtual MCP server.
 
         Args:
@@ -62,6 +62,10 @@ class VirtualMcpServerManager:
 
         Returns:
             VirtualMcpServer: The created virtual MCP server instance.
+
+        Raises:
+            HTTPException: If error occurred
+
         """
         logger.info(f"Adding vmcp_server: {name}")
         server = VirtualMcpServer(
@@ -71,6 +75,7 @@ class VirtualMcpServerManager:
             tools=tools,
             bts_url=self.bts_url,
             app=self.app,
+            env_id=env_id
         )
         self.servers[server.name] = server
 

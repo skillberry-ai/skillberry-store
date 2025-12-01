@@ -27,6 +27,7 @@ class VirtualMcpServer:
         tools: List[str],
         bts_url: str = None,
         app=None,
+        env_id=None,
     ):
         """
         Initializes and starts a new VirtualMcpServer instance.
@@ -45,6 +46,7 @@ class VirtualMcpServer:
         self.tools = tools
         self.bts_url = bts_url or "http://localhost:8000"
         self.app = app
+        self.env_id = env_id
 
         if port is None:
             self.port = self._find_available_port()
@@ -173,8 +175,17 @@ class VirtualMcpServer:
                     # Handle keyword arguments
                     parameters.update(kwargs)
 
+                    logging.info(f"@@@@@ handler: env_id: {self.env_id}  @@@@@")
+
                     # Pass parameters as a dictionary to match BTS expectations
-                    result = await self.invoke_tool(tool_name, parameters)
+                    try:
+                        result = await self.invoke_tool(tool_name, parameters, self.env_id)
+                    except Exception as e:
+                        logging.info(f"@@@@@ handler: Error '{str(e)}'  @@@@@")
+                        return {
+                            "return value": f"{str(e)}"
+                        }
+
                     # Extract the return value from BTS response format
                     if isinstance(result, dict) and "return value" in result:
                         return result["return value"]
@@ -192,7 +203,7 @@ class VirtualMcpServer:
             # Use FastMCP's add_tool method
             self.mcp.add_tool(handler, name=tool.name, description=tool.description)
 
-    async def invoke_tool(self, tool_name: str, parameters: dict):
+    async def invoke_tool(self, tool_name: str, parameters: dict, env_id):
         """
         Invokes a tool on the virtual MCP server.
 
@@ -208,7 +219,7 @@ class VirtualMcpServer:
 
         if self.app:
             # Use direct app method call like MCPToBTSProxy
-            return await self.app.handle_execute_manifest(tool_name, parameters)
+            return await self.app.handle_execute_manifest(tool_name, parameters, env_id=env_id)
         else:
             # Fallback to HTTP requests
             response = requests.post(

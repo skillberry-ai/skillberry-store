@@ -2,13 +2,13 @@ import json
 import logging
 import os
 from time import time
+from typing import Optional, Dict, Any, Literal, List
 
 import uvicorn
 
 from mcp.server.sse import SseServerTransport
 from starlette.routing import Route, Mount
 
-from typing import Optional, Dict, Any, Literal, List
 from pydantic_settings import BaseSettings
 from pydantic import Field, BaseModel
 
@@ -22,7 +22,6 @@ from blueberry_tools_service.fast_api.mcp_proxy import MCPToBTSProxy
 from blueberry_tools_service.modules.dictionary_checker import DictionaryChecker
 from blueberry_tools_service.modules.lifecycle import LifecycleState, LifecycleManager
 from blueberry_tools_service.modules.manifest import Manifest
-from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
 from blueberry_tools_service.modules.vmcp_server_manager import VirtualMcpServerManager
 from blueberry_tools_service.modules.description import Description
 from blueberry_tools_service.modules.description_vector_index import (
@@ -37,6 +36,7 @@ from blueberry_tools_service.tools.configure import (
     get_manifest_directory,
     configure_logging,
 )
+from blueberry_tools_service.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
 from blueberry_tools_service.fast_api.server_utils import (
     get_mcp_tools,
     mcp_json_converter,
@@ -605,6 +605,7 @@ class BTS(FastAPI):
 
             Args:
                 uid: The unique identifier of the manifest.
+                request: Represents an incoming fast api request object.
                 parameters: List of key/val pair to be passed to method invocation (Optional).
 
             Returns:
@@ -612,13 +613,21 @@ class BTS(FastAPI):
 
             Raises:
                 HTTPException: If manifest/tool not found (404).
-            """
 
+            """
+            # TODO: BEGIN common skillberry library
             headers = request.headers
-            env_id = headers.get("env_id")
+            logging.info("!!!!!!!!!!!!!!!!!")
+            logging.info(f"headers: {headers}")
+            logging.info("!!!!!!!!!!!!!!!!!")
+
+            skillberry_context = unflatten_keys(headers).get(SKILLBERRY_CONTEXT.lower())
             logging.info(f"@@@@@@@@@@@@@@@@")
-            logging.info(f"Headers env_id: {env_id}")
+            logging.info(f"skillberery_context: {skillberry_context}")
             logging.info(f"@@@@@@@@@@@@@@@@")
+            # TODO: END common skillberry library
+
+            env_id = skillberry_context["env_id"]
 
             return await self.handle_execute_manifest(uid, parameters, env_id=env_id)
 
@@ -748,14 +757,15 @@ class BTS(FastAPI):
             tools: List[str]
 
         @self.post("/vmcp_servers/add", tags=tags)
-        def add_vmcp_server(request: VmcpServerRequest):
+        def add_vmcp_server(vmcp_server_request: VmcpServerRequest, request: Request):
             """Add a new virtual MCP server.
 
             Creates and starts a new virtual MCP server with the specified configuration.
             The server will expose the provided tools via the MCP protocol.
 
             Args:
-                request: The virtual MCP server configuration.
+                vmcp_server_request: The virtual MCP server configuration.
+                request: Represents an incoming request object.
 
             Returns:
                 dict: Success message with the server name.
@@ -763,11 +773,28 @@ class BTS(FastAPI):
             Raises:
                 HTTPException: If server creation fails (400 status code).
             """
+            headers = request.headers
+            logging.info("!!!!!!!!!!!!!!!!!")
+            logging.info(f"headers: {headers}")
+            logging.info("!!!!!!!!!!!!!!!!!")
+
+            skillberry_context = unflatten_keys(headers).get(SKILLBERRY_CONTEXT.lower())
+            logging.info(f"@@@@@@@@@@@@@@@@")
+            logging.info(f"skillberery_context: {skillberry_context}")            
+            logging.info(f"@@@@@@@@@@@@@@@@")
+
+            env_id = skillberry_context["env_id"]
+            # task_id = skillberry_context["task_id"]
+
             try:
                 vmcp_server_manager.add_server(
-                    request.name, request.description, request.port, request.tools
+                    vmcp_server_request.name,
+                    vmcp_server_request.description,
+                    vmcp_server_request.port,
+                    vmcp_server_request.tools,
+                    env_id=env_id
                 )
-                return {"message": f"virtual MCP server '{request.name}' added"}
+                return {"message": f"virtual MCP server '{vmcp_server_request.name}' added"}
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 

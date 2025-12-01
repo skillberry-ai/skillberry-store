@@ -141,6 +141,8 @@ source ~/virtual/skillberry-dev-agent/bin/activate
 make run
 ```
 
+_notes:_ If you wish BTA to use MCP - prefix `BTA_MCP=True` to make run   
+
 ## Simulation
 
 ### Tau-2 client
