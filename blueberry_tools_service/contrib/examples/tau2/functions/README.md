@@ -155,7 +155,7 @@ run
 ```
 cd ~/skillberry-dev-tau2
 source  ~/virtual/tau2-bench/bin/activate
-tau2 run --domain airline_skillberry --agent-llm ibm/skillberry-local --user-llm rits/meta-llama/llama-4-maverick-17b-128e-instruct-fp8 --num-trials 30  --task-ids 9 --max-concurrency 1 
+tau2 run --domain airline_skillberry --agent-llm ibm/skillberry-local --user-llm meta-llama/llama-4-maverick-17b-128e-instruct-fp8 --num-trials 30  --task-ids 9 --max-concurrency 1 
 ```
 
 _notes_: consider saving the file according to a descriptive format name `--save-to vanilla|skillberry-<date>-task-<ids>-<trials>` e.g.
