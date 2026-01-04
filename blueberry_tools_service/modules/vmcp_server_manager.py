@@ -1,18 +1,20 @@
-import os
 import json
 import logging
+import os
+import threading
+
 from typing import Any, Dict, Optional
-from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
-from blueberry_tools_service.modules.lifecycle import LifecycleState
+
 from blueberry_tools_service.modules.description import Description
-from blueberry_tools_service.modules.description_vector_index import (
-    DescriptionVectorIndex,
-)
+from blueberry_tools_service.modules.description_vector_index import DescriptionVectorIndex
+from blueberry_tools_service.modules.lifecycle import LifecycleState
 from blueberry_tools_service.modules.manifest import Manifest
+from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
 from blueberry_tools_service.tools.configure import (
     get_descriptions_directory,
     get_manifest_directory,
 )
+
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ class VirtualMcpServerManager:
 
         logger.info(f"Loading vmcp_servers from {VMCP_SERVERS_FILE}")
         self.load_servers()
+        self._lock = threading.RLock()
 
     def add_server(self, name: str, description: str, port: Optional[int], tools: list, env_id: str = None) -> VirtualMcpServer:
         """Add a new virtual MCP server.
@@ -68,25 +71,26 @@ class VirtualMcpServerManager:
 
         """
         logger.info(f"Adding vmcp_server: {name}")
-        server = VirtualMcpServer(
-            name=name,
-            description=description,
-            port=port,
-            tools=tools,
-            bts_url=self.bts_url,
-            app=self.app,
-            env_id=env_id
-        )
-        self.servers[server.name] = server
+        with self._lock:
+            server = VirtualMcpServer(
+                name=name,
+                description=description,
+                port=port,
+                tools=tools,
+                bts_url=self.bts_url,
+                app=self.app,
+                env_id=env_id
+            )
+            self.servers[server.name] = server
 
-        # Create manifest for the VirtualMcpServer
-        manifest_data = server.to_manifest()
-        self.manifest.write_manifest(f"{name}.json", manifest_data)
-        self.descriptions.write_description(name, description)
+            # Create manifest for the VirtualMcpServer
+            manifest_data = server.to_manifest()
+            self.manifest.write_manifest(f"{name}.json", manifest_data)
+            self.descriptions.write_description(name, description)
 
-        self.save_servers()
-        logger.info(f"Added and started new vmcp_server: {name} on port {server.port}")
-        return server
+            self.save_servers()
+            logger.info(f"Added and started new vmcp_server: {name} on port {server.port}")
+            return server
 
     def remove_server(self, name: str):
         """Remove a virtual MCP server.
@@ -94,34 +98,35 @@ class VirtualMcpServerManager:
         Args:
             name: The name of the virtual MCP server to remove.
         """
-        if name in self.servers:
-            logger.info(f"Removing vmcp_server: {name}")
-            server = self.servers[name]
-            # Stop the server before removing it
-            try:
-                server.stop()
-                logger.info(f"Stopped vmcp_server: {name}")
-            except Exception as e:
-                logger.warning(f"Failed to stop vmcp_server {name}: {str(e)}")
+        with self._lock:
+            if name in self.servers:
+                logger.info(f"Removing vmcp_server: {name}")
+                server = self.servers[name]
+                # Stop the server before removing it
+                try:
+                    server.stop()
+                    logger.info(f"Stopped vmcp_server: {name}")
+                except Exception as e:
+                    logger.warning(f"Failed to stop vmcp_server {name}: {str(e)}")
 
-            # Remove manifest and description
-            try:
-                self.descriptions.delete_description(name)
-            except Exception as e:
-                logger.warning(
-                    f"Failed to delete description for vmcp_server {name}: {str(e)}"
-                )
-            try:
-                self.manifest.delete_manifest(f"{name}.json")
-            except Exception as e:
-                logger.warning(
-                    f"Failed to delete manifest for vmcp_server {name}: {str(e)}"
-                )
+                # Remove manifest and description
+                try:
+                    self.descriptions.delete_description(name)
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to delete description for vmcp_server {name}: {str(e)}"
+                    )
+                try:
+                    self.manifest.delete_manifest(f"{name}.json")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to delete manifest for vmcp_server {name}: {str(e)}"
+                    )
 
-            del self.servers[name]
-            self.save_servers()
-        else:
-            logger.debug(f"vmcp_server {name} not found")
+                del self.servers[name]
+                self.save_servers()
+            else:
+                logger.debug(f"vmcp_server {name} not found")
 
     def list_servers(self):
         """List all virtual MCP server names.
@@ -130,7 +135,8 @@ class VirtualMcpServerManager:
             List[str]: A list of virtual MCP server names.
         """
         logger.debug("Listing vmcp_servers")
-        return list(self.servers.keys())
+        with self._lock:
+            return list(self.servers.keys())
 
     def get_server(self, name: str) -> VirtualMcpServer:
         """Get a virtual MCP server by name.
@@ -142,7 +148,8 @@ class VirtualMcpServerManager:
             VirtualMcpServer: The virtual MCP server instance, or None if not found.
         """
         logger.debug(f"Getting vmcp_server: {name}")
-        return self.servers.get(name)
+        with self._lock:
+            return self.servers.get(name)
 
     def get_server_details(self, name: str) -> Dict[str, Any]:
         """Get detailed information about a virtual MCP server.
@@ -157,16 +164,17 @@ class VirtualMcpServerManager:
             ValueError: If the virtual MCP server is not found.
         """
         logger.debug(f"Getting details of vmcp_server: {name}")
-        server = self.get_server(name)
-        if server:
-            return {
-                "name": server.name,
-                "description": server.description,
-                "port": server.port,
-                "tools": server.tools,
-            }
-        else:
-            raise ValueError(f"vmcp_server '{name}' not found")
+        with self._lock:
+            server = self.get_server(name)
+            if server:
+                return {
+                    "name": server.name,
+                    "description": server.description,
+                    "port": server.port,
+                    "tools": server.tools,
+                }
+            else:
+                raise ValueError(f"vmcp_server '{name}' not found")
 
     def load_servers(self):
         """Load virtual MCP servers from persistent storage.

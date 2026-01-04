@@ -1,10 +1,12 @@
-from typing import List, Optional
-import uuid
-import socket
 import logging
 import os
-from mcp.server.fastmcp import FastMCP
+import socket
+
 import requests
+from pydantic import Field
+from typing import Annotated, Any, List, Optional
+
+from mcp.server.fastmcp import FastMCP
 
 
 class VirtualMcpServer:
@@ -103,7 +105,7 @@ class VirtualMcpServer:
         Lists the tools registered with the virtual MCP server.
 
         Returns:
-            list: A list of tools.
+            List (mcp.types.Tool): A list of tools 
         """
         if self.app:
             # Use direct app method call like MCPToBTSProxy
@@ -139,30 +141,57 @@ class VirtualMcpServer:
             def make_handler(tool_name, tool_schema):
                 # Extract parameter names from the tool schema
                 properties = tool_schema.get("inputSchema", {}).get("properties", {})
+                logging.info (f"@@@@@ make_handler: {tool_name} '{properties}' @@@@@") # OK..
                 required = tool_schema.get("inputSchema", {}).get("required", [])
 
                 # Create function signature dynamically
                 import inspect
 
-                params = []
-                for param_name, param_info in properties.items():
-                    if param_name in required:
-                        params.append(
-                            inspect.Parameter(
-                                param_name, inspect.Parameter.POSITIONAL_OR_KEYWORD
+                try:
+                    annotations = {}
+                    params = []
+                    for param_name, param_info in properties.items():
+                        logging.info (f"@@@@@ param_info: {param_info} @@@@@")
+                        description = param_info["description"]
+                        _type = param_info["type"]
+
+                        # annotate the parameter so that is appears inside MCP tool
+                        # i.e. when being retrieved via MCP client
+                        annotated_type = Annotated[
+                            manifest_param_type_to_python_type(_type),
+                            Field(title=description, description=description)
+                        ]
+                        annotations[param_name] = annotated_type
+
+                        if param_name in required:
+                            params.append(
+                                inspect.Parameter(
+                                    param_name, inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                    annotation=annotated_type
+                                )
                             )
-                        )
-                    else:
-                        params.append(
-                            inspect.Parameter(
-                                param_name,
-                                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                                default=None,
+                        else:
+                            params.append(
+                                inspect.Parameter(
+                                    param_name,
+                                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                    default=None,
+                                    annotation=annotated_type
+                                )
                             )
-                        )
+                except Exception as e:
+                    logging.error (f"Error converting tool {tool_name} parameters into MCP format: {str(e)}")
+                    raise
 
                 # Create the handler function
                 async def handler(*args, **kwargs):
+                    """
+                    Invocation function of the MCP tool.
+
+                    Note: same return_value interpretation logic as defined
+                    in BTA 'define_tool_dynamically' method.
+
+                    """
                     # Convert args and kwargs back to a dictionary
                     param_names = list(properties.keys())
                     parameters = {}
@@ -179,22 +208,28 @@ class VirtualMcpServer:
 
                     # Pass parameters as a dictionary to match BTS expectations
                     try:
-                        result = await self.invoke_tool(tool_name, parameters, self.env_id)
+                        return_value = await self.invoke_tool(tool_name, parameters, self.env_id)
                     except Exception as e:
                         logging.info(f"@@@@@ handler: Error '{str(e)}'  @@@@@")
-                        return {
-                            "return value": f"{str(e)}"
-                        }
+                        # BTA @tool invocation logic
+                        cleaned_return_value = f"EXCEPTION:Error executing tool: {e}"
+                        logging.info (f"cleaned_return_value: {cleaned_return_value}")
+                        return cleaned_return_value
 
-                    # Extract the return value from BTS response format
-                    if isinstance(result, dict) and "return value" in result:
-                        return result["return value"]
-                    return str(result)
+                    logging.info (f"return_value from invoke_tool: {return_value}")
+                    # BTA @tool invocation logic
+                    return_value = return_value["return value"]
+                    # BTA @tool invocation logic
+                    cleaned_return_value = return_value.strip().replace('"', '')
+                    logging.info (f'====> returning response from the function: {cleaned_return_value}')
+                    return cleaned_return_value
 
                 # Set function metadata
                 handler.__name__ = tool_name
                 handler.__doc__ = tool.description
                 handler.__signature__ = inspect.Signature(params)
+                handler.__annotations__ = annotations
+                logging.info(f"@@@@@@ handler.__signature__ {handler.__signature__}  @@@@@@")
 
                 return handler
 
@@ -306,3 +341,36 @@ class VirtualMcpServer:
             "port": self.port,
             "tools": self.tools,
         }
+
+
+def manifest_param_type_to_python_type(manifest_param_type: str) -> Any:
+    """
+    Helper utility to map manifest 'properties' type into a Pythonic type.
+
+    This method is being used to properly annotate manifest into an MCP tool.
+    Inspired from https://github.ibm.com/Blueberry/blueberry-tools-agent/blob/main/agents/remote_tools_wrapper.py#L98
+
+    Parameters:
+        manifest_param_type (str): a type value of a manifest parameter
+
+    """
+    # Mapping manifest properties types to Python types
+    type_mapping = {
+        "string": str,
+        "str": str,
+        "number": float,
+        "float": float,
+        "integer": int,
+        "int": int,
+        "bool": bool,
+        "boolean": bool,
+        "object": dict,
+        "list": list,
+        "array": list,
+        # "datetime": datetime,
+        "null": None,
+        "any": object,  # 'any' can be mapped to object or str, depending on use case
+    }
+
+    # Return the corresponding Python type as a string
+    return type_mapping.get(manifest_param_type, object)
