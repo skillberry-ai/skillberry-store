@@ -1,243 +1,37 @@
+# Root Makefile for all Skillberry projects. 
+# 0. Make sure you have git subtree installed and enabled
+# 1. Copy this file from skillberry-common/Makefile.default to your project root as Makefile
+# 2. Create folder .mk in your project root
+# 3. Create .mk/local.mk (copy from skillberry-common/.mk/local.mk.default). Set the mandatory defs.
+# 4. Customize additional content if needed.
 
-.DEFAULT_GOAL := help
+SB_COMMON_REPO ?= git@github.ibm.com:skillberry-staging/skillberry-common.git
+SB_COMMON_BRANCH ?= main
+SB_COMMON_REMOTE ?= skillberry-common
+SB_COMMON_PATH ?= skillberry-common
 
-ARCH := $(shell uname -m)
+include $(SB_COMMON_PATH)/Makefile
+include .mk/local.mk
 
+# If the Makefile of skillberry-common is not available, install skillberry-common folder with the contents of skillberry-common repo from branch main (defaults)
+$(SB_COMMON_PATH)/Makefile: 
+	@echo "Setting remote for $(SB_COMMON_REMOTE)"
+	@git remote add -f $(SB_COMMON_REMOTE) $(SB_COMMON_REPO) 2>/dev/null || true
+	@echo "Adding $(SB_COMMON_REMOTE) under relative path $(SB_COMMON_PATH)"
+	@git subtree add --prefix $(SB_COMMON_PATH) $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH) 
 
-# 
-# In blueberry every tag/release is created in a separate branch (to have dedicated toml with
-# proper @ to sdk). So we implement our logic to maintain git format for 'git describe --always --dirty'
-# - i.e. 0.5.3 or 0.5.3-5-gc9b7ddd or 0.5.3-5-gc9b7ddd-dirty
-# 
-_LATEST_RELEASE=$(shell git branch -r | grep 'branch-' | sed 's|.*/branch-||' | sort -V | tail -n 1 | head -n 1)
+fetch-common:
+	@echo "Fetching common content from $(SB_COMMON_REMOTE)"
+	@git fetch $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH)
 
-#
-# _LATEST_RELEASE is the actual tag e.g. 0.5.3
-#
-ifeq ($(_LATEST_RELEASE),)
-	#
-	# Latest release does not exist
-	#
+status-common:
+	@echo "Computing delta of common from $(SB_COMMON_REMOTE)"
+	@$(SB_COMMON_PATH)/scripts/subtree-delta.sh $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH) $(SB_COMMON_PATH)
 
-	_CURRENT_COMMIT=$(shell git rev-parse --short=7 HEAD)
-	# sets with "dirty" if there are uncommitted changes
-	_DIRTY=$(shell git diff --quiet || echo "-dirty")
-	# e.g. gc9b7ddd, gc9b7ddd-dirty
-	BUILD_VERSION="g$(_CURRENT_COMMIT)$(_DIRTY)"
-else
-	# Find the common ancestor (branch point)
-	# TODO: confirm _BASE_COMMIT not needed and remove 
-	# _BASE_COMMIT=$(shell git merge-base origin/main origin/branch-$(_LATEST_RELEASE))
+pull-common:
+	@echo "Pulling common content from $(SB_COMMON_REMOTE)"
+	@git subtree pull --prefix $(SB_COMMON_PATH) $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH) 
 
-	#
-	# Count commits in main after the branch point
-	# tag is git global - can be safely used
-	#
-	_COMMIT_COUNT=$(shell git rev-list --count $(_LATEST_RELEASE)..HEAD)
-
-	_CURRENT_COMMIT=$(shell git rev-parse --short=7 HEAD)
-
-	_DIRTY=$(shell git diff --quiet || echo "-dirty")
-
-	ifeq ($(_COMMIT_COUNT),0)
-		# e.g. 0.4
-		BUILD_VERSION="$(_LATEST_RELEASE)$(_DIRTY)"
-	else
-		# e.g. 0.4-70-gc9b7ddd
-		BUILD_VERSION="$(_LATEST_RELEASE)-$(_COMMIT_COUNT)-g$(_CURRENT_COMMIT)$(_DIRTY)"
-	endif
-endif
-
-
-BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
-
-DOCKER_REPOSITORY_NAME ?= us.icr.io/research3
-IMAGE_NAME = blueberry-tools-service
-
-DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
-DOCKER_VERSION = $(BUILD_VERSION)
-
-DOCKER := docker
-
-TOOLS_SERVICE_SENTINEL=/tmp/tools-service.pid
-
-DOCKER_FILE := Dockerfile
-
-BTS_PORT := $(or $(shell echo $$BTS_PORT), 8000) 
-BTS_HOST := $(or $(shell echo $$BTS_HOST), 0.0.0.0)
-
-AWK := awk
-OS := $(shell uname -s)
-
-ifeq ($(OS),Windows_NT)
-	AWK = gawk
-	ifeq (, $(shell where gawk 2> NUL))
-		$(error "gawk not found. Please install it and ensure it's in your PATH.")
-	endif
-else
-	ifeq ($(shell uname -s), Darwin)
-		AWK = gawk
-		ifeq (, $(shell which gawk 2> /dev/null))
-			$(error "gawk not found. Please install it and ensure it's in your PATH.")
-		endif
-	endif
-endif
-
-ifeq ($(ARCH), arm64)
-	DOCKER_FILE := Dockerfile-$(ARCH)
-endif
-
-
-.PHONY: help
-help: ## Display this help.
-	@$(AWK) 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
-
-git_hooks_setup:
-	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
-	    echo "Setting up Git hooks..."; \
-	    git config core.hooksPath .githooks; \
-	    chmod +x .githooks/*; \
-	else \
-	    echo "Skipping git_hooks_setup: not inside a Git repository."; \
-	fi
-
-.PHONY: update_git_version
-update_git_version:
-	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
-	    echo "Writing git version to blueberry_tools_service/fast_api/git_version.py"; \
-	    echo "__git_version__ = \"$(BUILD_VERSION)\"" > blueberry_tools_service/fast_api/git_version.py; \
-	else \
-	    echo "Skipping update_git_version: not inside a Git repository."; \
-	fi
-
-.PHONY: install_requirements
-install_requirements: update_git_version git_hooks_setup # Install requirements
-	@PIP_CONFIG_FILE=./pip.conf pip install -e .
-
-install_dev_requirements: # Install dev requirements
-	@pip install -e ".[dev]"
-
-##@ Setup & teardown as a process
-
-.PHONY: run install_requirements
-run: install_requirements ## Run the tools service
-	@if [ -f $(TOOLS_SERVICE_SENTINEL) ]; then \
-		echo "Blueberry Tools Service is already running. Check the TOOLS_SERVICE_SENTINEL file (default /tmp/tools-service.pid)"; \
-	else \
-		echo "Starting Blueberry Tools Service"; \
-		blueberry_tools_service/contrib/scripts/start-service.sh /tmp/tools-service.log $(TOOLS_SERVICE_SENTINEL) python -m blueberry_tools_service.main; \
-	fi
-
-stop: $(TOOLS_SERVICE_SENTINEL) ## Stop the tools service
-	@echo "Stopping Blueberry Tools Service"
-	@blueberry_tools_service/contrib/scripts/stop-service.sh $(TOOLS_SERVICE_SENTINEL)
-
-clean:  ## Clean temporary files
-	@rm -f $(TOOLS_SERVICE_SENTINEL)
-	-rm -rf __pycache__ .pytest_cache
-	@echo "Clean blueberry-tools-service /tmp directory"
-	+rm -rf /tmp/manifest
-	+rm -rf /tmp/descriptions
-	+rm -rf /tmp/files
-
-	rm -rf build dist *.egg-info	
-
-##@ Docker
-
-# Check whether docker is aliased to podman
-# I is assumed that the user is using zsh or bash and alias is defined in ~/.zshrc or ~/.bashrc
-# Check that either Docker or Podman is installed
-# Check if the user has aliased Docker to Podman in their shell configuration file
-# If the user has aliased Docker to Podman, set the DOCKER variable to podman 
-# If the user has not aliased Docker to Podman, set the DOCKER variable to docker
-docker_check:
-	@echo "Checking whether Docker or Podman is installed..."
-	@if ! command -v docker > /dev/null && ! command -v podman > /dev/null; then \
-        echo "Neither Docker nor Podman is installed. Please install Docker or Podman (or both)."; \
-        exit 1; \
-    fi
-
-	@echo "Checking for Docker or Podman aliases..."
-# Search the shell configuration file to check for aliases
-# This assumes you are using zsh or bash
-# If you are using a different shell, you may need to adjust this accordingly
-
-# Check for Docker alias in shell configuration files
-ifeq ($(shell grep -q "alias docker='podman'" ~/.zshrc && echo found),found)
-DOCKER := podman
-endif
-
-ifeq ($(shell grep -q "alias docker='podman'" ~/.bashrc && echo found),found)
-DOCKER := podman
-endif
-
-ifeq ($(shell grep -q "alias docker='podman'" ~/.bash_profile && echo found),found)
-DOCKER := podman
-endif
-
-ifeq ($(shell grep -q "alias docker='podman'" ~/.profile && echo found),found)
-DOCKER := podman
-endif
-
-# Print the value of DOCKER
-@echo "Using Docker: $(DOCKER)"
-
-.PHONY: docker_build 
-docker_build: docker_check update_git_version ## Build docker image for arm64 and amd64
-	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
-	@echo "Building Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
-	@echo "Build version: $(BUILD_VERSION)"
-	@echo "Build date: $(BUILD_DATE)"
-	@echo "Building for $(ARCH) using the Docker file $(DOCKER_FILE): $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
-	@if [ "$(DOCKER)" = "docker" ]; then \
-		DOCKER_BUILDKIT=1 $(DOCKER) buildx build --file $(DOCKER_FILE) --load --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) -t $(DOCKER_NAME):latest .; \
-	elif [ "$(DOCKER)" = "podman" ]; then \
-		$(DOCKER) build --no-cache=true --file $(DOCKER_FILE) --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) -t $(DOCKER_NAME):latest .; \
-    else \
-		echo "Unsupported Docker version: $(DOCKER)"; \
-		echo "Please use Docker or Podman"; \
-		exit 1; \
-	fi
-
-.PHONY: docker_run
-docker_run: docker_check docker_stop ## Run the docker image
-	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env \
-		-e BTS_HOST=$(strip $(BTS_HOST)) -e BTS_PORT=$(strip $(BTS_PORT)) \
-		-d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp \
-		--network=host \
-		$(DOCKER_NAME):$(DOCKER_VERSION)
-	@echo "Docker container started: $(IMAGE_NAME)"
-	
-
-.PHONY: docker_rm
-docker_rm: docker_stop clean ## Remove the docker container, image, and temporary files
-	@echo "Removing Docker container: $(IMAGE_NAME)"
-	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
-	@echo "Removing Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
-	$(DOCKER) rmi -f $(DOCKER_NAME):$(DOCKER_VERSION) > /dev/null 2>&1 || true
-	@echo "Removing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
-
-
-.PHONY: docker_clean
-docker_clean: docker_stop clean ## Remove the docker container and temporary files, but keeping the image
-	@echo "Removing Docker container: $(IMAGE_NAME)"
-	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
-
-.PHONY: docker_stop
-docker_stop: docker_check ## Stop the docker image
-	@echo "Stopping Docker container: $(IMAGE_NAME)"
-	$(DOCKER) stop $(IMAGE_NAME) > /dev/null 2>&1 || true
-	$(DOCKER) rm $(IMAGE_NAME) > /dev/null 2>&1 || true
-	
-# make sure that you are login into the appropriate Docker registry with required credentials
-# before running this command
-.PHONY: docker_push
-docker_push: docker_check docker_build ## Push docker image into the registry
-	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
-	$(DOCKER) push $(DOCKER_NAME):$(DOCKER_VERSION)
-	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):latest"
-	$(DOCKER) push $(DOCKER_NAME):latest
-
-include .mk/development.mk
-include .mk/ci.mk
-
+push-common:
+	@echo "Pushing common update to $(SB_COMMON_REMOTE)"
+	@git subtree push --prefix $(SB_COMMON_PATH) $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH)
