@@ -1,4 +1,7 @@
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL ?= help
+
+ARCH := $(shell uname -m)
+OS := $(shell uname -s)
 
 # Set BUILD_VERSION variable
 #
@@ -63,16 +66,31 @@ else
     $(error "Neither gawk nor awk found. Please install one and ensure it's in your PATH.")
 endif
 
+BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
+
+DOCKER_REPOSITORY_NAME ?= us.icr.io/research3
+IMAGE_NAME = SERVICE_NAME
+
+DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
+DOCKER_VERSION = $(BUILD_VERSION)
+
+DOCKER := docker
+
+SERVICE_SENTINEL=/tmp/$(SERVICE_NAME)-service.pid
+
+DOCKER_FILE := Dockerfile
+
+ifeq ($(ARCH), arm64)
+	DOCKER_FILE := Dockerfile-$(ARCH)
+endif
+
+
 .PHONY: help
 help: ## Display this help.
 	@$(AWK) 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 print_build_version:
 	@echo $(BUILD_VERSION)
-
-git_hooks_setup:
-	@git config core.hooksPath .githooks
-	@chmod +x .githooks/*
 
 .PHONY: check-venv
 check-venv:
@@ -98,3 +116,4 @@ check-rits-watsonx-envs:
 	else \
 		echo "RITS_API_KEY is set. Proceeding..."; \
 	fi
+
