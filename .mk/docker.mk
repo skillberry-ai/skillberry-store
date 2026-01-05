@@ -21,20 +21,28 @@ docker_check:
 # If you are using a different shell, you may need to adjust this accordingly
 
 # Check for Docker alias in shell configuration files
+ifneq (,$(wildcard "~/.zshrc"))
 ifeq ($(shell grep -q "alias docker='podman'" ~/.zshrc && echo found),found)
 DOCKER := podman
 endif
+endif
 
+ifneq (,$(wildcard "~/.bashrc"))
 ifeq ($(shell grep -q "alias docker='podman'" ~/.bashrc && echo found),found)
 DOCKER := podman
 endif
+endif
 
+ifneq (,$(wildcard "~/.bash_profile"))
 ifeq ($(shell grep -q "alias docker='podman'" ~/.bash_profile && echo found),found)
 DOCKER := podman
 endif
+endif
 
+ifneq (,$(wildcard "~/.profile"))
 ifeq ($(shell grep -q "alias docker='podman'" ~/.profile && echo found),found)
 DOCKER := podman
+endif
 endif
 
 # Print the value of DOCKER
