@@ -7,7 +7,7 @@ VERSION_LOCATION = location for saving git version in your project, e.g., bluebe
 # CUSTOM Makefile stuff here
 
 # Uncomment additional Makefiles of your project from the respective categories - if you have them 
-#include dev.mk
-#include process.mk
-#include docker.mk
-#include ci.mk
+#include .mk/dev.mk
+#include .mk/process.mk
+#include .mk/docker.mk
+#include .mk/ci.mk
