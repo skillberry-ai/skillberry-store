@@ -1,5 +1,6 @@
+##@ Development
 
-test-e2e: install_dev_requirements ## Test end-to-end the tools service (installs tools service sdk)
+test-e2e: install_dev_requirements ## Test end-to-end the tools service (installs sdk)
 	pytest -s blueberry_tools_service/tests/e2e
 
 lint: install_requirements install_dev_requirements ## List the tools-service
