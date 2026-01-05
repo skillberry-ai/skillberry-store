@@ -9,7 +9,7 @@ export BTS_HOST := $(or $(shell echo $$BTS_HOST), 0.0.0.0)
 
 SERVICE_DOCKER_SETUP := "-e BTS_HOST=$(strip $(BTS_HOST)) -e BTS_PORT=$(strip $(BTS_PORT))"
 
-include dev.mk
-include process.mk
-#include docker.mk
-#include ci.mk
+include .mk/dev.mk
+include .mk/process.mk
+#include .mk/docker.mk
+#include .mk/ci.mk
