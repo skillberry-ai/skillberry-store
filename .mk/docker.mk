@@ -1,4 +1,4 @@
-##@ Docker
+##@ Docker container management
 
 SERVICE_DOCKER_SETUP ?= ""
 
