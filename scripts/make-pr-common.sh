@@ -6,11 +6,10 @@ set -euo pipefail
 #
 # Creates a PR in the "common" repo based on subtree changes in SB_COMMON_PATH.
 #
-# Inputs (env vars):
+# Inputs (arguments):
 #   SB_COMMON_REMOTE   - git remote name for the common repo (must exist)
 #   SB_COMMON_BRANCH   - base branch in common repo (e.g., main)
 #   SB_COMMON_PATH     - subtree folder path (e.g., skillberry-common)
-#   PR_COMMON_BRANCH_PREFIX (optional) - prefix for new branches (default: pr/common)
 #
 # Behavior:
 #   - No fetch is performed. Uses local refs for SB_COMMON_REMOTE/SB_COMMON_BRANCH.
@@ -20,9 +19,39 @@ set -euo pipefail
 #   - Uses GH_REPO to target the common repo without needing --repo.
 # ------------------------------------------------------------------------------
 
-: "${SB_COMMON_REMOTE:?Missing env var SB_COMMON_REMOTE}"
-: "${SB_COMMON_BRANCH:?Missing env var SB_COMMON_BRANCH}"
-: "${SB_COMMON_PATH:?Missing env var SB_COMMON_PATH}"
+usage() {
+  cat <<'EOF'
+Usage:
+  make-pr-common.sh <REMOTE> <BRANCH> <PATH>
+
+Args:
+  REMOTE  - git remote name used for the subtree (e.g., upstream-libfoo)
+  BRANCH  - branch name on that remote (e.g., main)
+  PATH  - path to the subtree directory in this repo (e.g., third_party/libfoo)
+
+Creates a PR of the PATH-specific split of commits compared to the head of BRANCH in REMOTE.
+
+Examples:
+  make-pr-common.sh upstream-libfoo main third_party/libfoo
+  make-pr-common.sh vendor-libbar master deps/libbar
+EOF
+}
+
+# Accept -h/--help as well as missing args
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -ne 3 ]]; then
+  usage >&2
+  exit 2
+fi
+
+SB_COMMON_REMOTE="$1"
+SB_COMMON_BRANCH="$2"
+SB_COMMON_PATH="$3"
+
 PR_COMMON_BRANCH_PREFIX="${PR_COMMON_BRANCH_PREFIX:-pr/common}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
