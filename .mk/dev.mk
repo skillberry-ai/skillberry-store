@@ -44,4 +44,9 @@ update_git_version:
 	    echo "Skipping update_git_version: not inside a Git repository."; \
 	fi
 
+.PHONY: pr
+# Optional: set TARGET_BRANCH on the make command line:
+#   make pr TARGET_BRANCH=main
+pr:	## Create a PR to branch (def: current). Usage: make pr [TARGET_BRANCH=<branch>]
+	@$(SB_COMMON_PATH)/scripts/make-pr.sh $(TARGET_BRANCH)
 
