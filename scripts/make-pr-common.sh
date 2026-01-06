@@ -68,6 +68,30 @@ need_cmd gh
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "Not inside a git repository"
 cd "$REPO_ROOT"
 
+BRANCH=""
+BASE_REF=""
+REMOTE_PUSHED=0
+PR_CREATED=0
+
+cleanup() {
+  # Don't let cleanup errors mask the original failure
+  set +e
+
+  # If PR wasn't created but we pushed the remote branch, delete it
+  if [[ "$PR_CREATED" -eq 0 && "$REMOTE_PUSHED" -eq 1 && -n "$BRANCH" ]]; then
+    echo "==> PR was not created; deleting remote branch ${SB_COMMON_REMOTE}/${BRANCH}"
+    # Delete remote branch (ignore failures)
+    git push "$SB_COMMON_REMOTE" --delete "$BRANCH" >/dev/null 2>&1 || true
+  fi
+
+  # Always delete local PR branch if it exists
+  if [[ -n "$BRANCH" ]] && git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
+    echo "==> Deleting local branch ${BRANCH}"
+    git branch -D "$BRANCH" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+
 # Ensure the remote exists (per requirement: assume it exists; fail if missing)
 git remote get-url "$SB_COMMON_REMOTE" >/dev/null 2>&1 \
   || die "git remote '$SB_COMMON_REMOTE' does not exist"
@@ -97,6 +121,7 @@ BRANCH="${PR_COMMON_BRANCH_PREFIX}/${USER_SLUG}/${TS}"
 
 echo "==> Pushing subtree '${SB_COMMON_PATH}' to ${SB_COMMON_REMOTE}:${BRANCH}"
 git subtree push --prefix "$SB_COMMON_PATH" "$SB_COMMON_REMOTE" "$BRANCH"
+REMOTE_PUSHED=1
 
 # Derive GH_REPO from SB_COMMON_REMOTE URL
 # Supports:
@@ -119,5 +144,6 @@ GH_REPO="$REPO" gh pr create \
   --base "$SB_COMMON_BRANCH" \
   --head "$BRANCH" \
   -e
+PR_CREATED=1
 
 echo "==> Done."
