@@ -36,6 +36,6 @@ for sec, items in sections.items():
     if not items:
         continue
     print(f"{BOLD}{sec}{RESET}")
-    for tgt, doc in items:
+    for tgt, doc in sorted(items):
         print(f"  {CYAN}{tgt:<20}{RESET} {doc}")
     print()
