@@ -17,7 +17,5 @@ push-common:	## Push local commits in common folder to common repo - NOT RECOMME
 	@git subtree push --prefix $(SB_COMMON_PATH) $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH)
 
 pr-common:		## Create a PR for common repo based on local changes in common folder
-    @SB_COMMON_REMOTE='$(SB_COMMON_REMOTE)' \
-      SB_COMMON_BRANCH='$(SB_COMMON_BRANCH)' \
-      SB_COMMON_PATH='$(SB_COMMON_PATH)' \
-      $(SB_COMMON_PATH)/scripts/make-pr-common.sh
+	@echo "Creating PR for common repo from local commits"
+	@$(SB_COMMON_PATH)/scripts/make-pr-common.sh $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH) $(SB_COMMON_PATH)
