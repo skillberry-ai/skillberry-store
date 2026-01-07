@@ -3,6 +3,10 @@
 ARCH := $(shell uname -m)
 OS := $(shell uname -s)
 
+.DEFAULT:	# Any unimplemented target or dependency will fail here
+	@echo "Unimplemented target: $@"
+	@false
+
 # Set BUILD_VERSION variable
 #
 # In SkillBerry every tag/release is created in a separate branch (to have dedicated toml with
@@ -68,22 +72,9 @@ endif
 
 BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
 
-DOCKER_REPOSITORY_NAME ?= us.icr.io/research3
-IMAGE_NAME = SERVICE_NAME
-
-DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
-DOCKER_VERSION = $(BUILD_VERSION)
-
-DOCKER := docker
-
-SERVICE_SENTINEL=/tmp/$(SERVICE_NAME)-service.pid
-
-DOCKER_FILE := Dockerfile
-
 ifeq ($(ARCH), arm64)
 	DOCKER_FILE := Dockerfile-$(ARCH)
 endif
-
 
 .PHONY: help
 help: ## Display this help.

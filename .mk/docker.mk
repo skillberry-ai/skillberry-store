@@ -1,5 +1,15 @@
 ##@ Docker container management
 
+DOCKER_REPOSITORY_NAME ?= us.icr.io/research3
+IMAGE_NAME = SERVICE_NAME
+
+DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
+DOCKER_VERSION = $(BUILD_VERSION)
+
+DOCKER := docker
+
+DOCKER_FILE := Dockerfile
+
 SERVICE_DOCKER_SETUP ?= ""
 
 # Check whether docker is aliased to podman

@@ -1,25 +1,30 @@
 ##@ Setup & teardown as a process
 
+SERVICE_SENTINEL=/tmp/$(SERVICE_NAME)-service.pid
+SERVICE_LOG=/tmp/$(SERVICE_NAME).log
+
 .PHONY: run stop clean clean_service_data
 
-run: install_requirements ## Run the service
+run: install_requirements ## Run the service (idempotent)
 	@if [ -f $(SERVICE_SENTINEL) ]; then \
-		echo "Blueberry Tools Service is already running. Check the TOOLS_SERVICE_SENTINEL file (default /tmp/tools-service.pid)"; \
+		echo "$(SERVICE_NAME) service is already running. Check the SERVICE_SENTINEL file ($(SERVICE_SENTINEL))"; \
 	else \
 		echo "Starting $(SERVICE_NAME) Service"; \
-		$(SB_COMMON_PATH)/scripts/start-service.sh /tmp/$(SERVICE_NAME).log $(SERVICE_SENTINEL) python -m $(SERVICE_ENTRY_MODULE); \
+		$(SB_COMMON_PATH)/scripts/start-service.sh $(SERVICE_LOG) $(SERVICE_SENTINEL) python -m $(SERVICE_ENTRY_MODULE); \
 	fi
 
-stop: $(SERVICE_SENTINEL) ## Stop the service
-	@echo "Stopping Blueberry Tools Service"
-	@$(SB_COMMON_PATH)/scripts/stop-service.sh $(TOOLS_SERVICE_SENTINEL)
+stop: ## Stop the service (idempotent)
+	@if [ -f $(SERVICE_SENTINEL) ]; then \
+		echo "Stopping Blueberry Tools Service"; \
+		$(SB_COMMON_PATH)/scripts/stop-service.sh $(TOOLS_SERVICE_SENTINEL); \
+	else \
+		echo "$(SERVICE_NAME) service is already stopped. Missing SERVICE_SENTINEL file ($(SERVICE_SENTINEL))"
 
-clean: clean_service_data
+clean: stop clean_service_data	## Clean all runtime data of the stopped service
 	@rm -f $(SERVICE_SENTINEL)
+	@rm -f $(SERVICE_LOG)
 	-rm -rf __pycache__ .pytest_cache
 	rm -rf build dist *.egg-info	
-	$(MAKE) clean_service_data
 
-clean_service_data:	stop ## Clean service-specific data - override in your service local.mk if needed
-	@echo "No service-specific data to remove"
+# clean_service_data is unimplemented, because it is service-specific
 
