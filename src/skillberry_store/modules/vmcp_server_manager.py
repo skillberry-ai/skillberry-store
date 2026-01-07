@@ -62,6 +62,7 @@ class VirtualMcpServerManager:
             description: A description of the virtual MCP server.
             port: The port number for the server (optional, auto-assigned if None).
             tools: List of tool names to include in the server.
+            env_id: A string representing the environment id to be used for this server (Optional).
 
         Returns:
             VirtualMcpServer: The created virtual MCP server instance.

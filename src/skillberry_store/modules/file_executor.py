@@ -484,7 +484,6 @@ class FileExecutor:
             stdout_capture = io.StringIO()
             stderr_capture = io.StringIO()
             execution_success = False
-            exec_result = None
 
             try:
                 with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
@@ -492,7 +491,7 @@ class FileExecutor:
                     logging.info(f"Set exec_globals with env_id: {env_id}")
                     logging.info(f"@@@@@@@@@@@@@@@@")
                     
-                    exec_globals = {"env_id": env_id}
+                    exec_globals = {"env_id": env_id} if env_id is not None else {}
                     try:
                         exec(wrapper_code, exec_globals)
                         execution_success = True

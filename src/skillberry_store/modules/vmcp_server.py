@@ -39,6 +39,7 @@ class VirtualMcpServer:
             description (str): A description of the virtual MCP server.
             port (Optional[int]): The port for the virtual MCP server. If None, an available port will be found.
             tools (List[str]): A list of tool UUIDs to register with the virtual MCP server.
+            env_id (str): A string representing the environment id to be used for this server (Optional).
 
         Raises:
             ValueError: If the specified port is not available.
@@ -238,13 +239,14 @@ class VirtualMcpServer:
             # Use FastMCP's add_tool method
             self.mcp.add_tool(handler, name=tool.name, description=tool.description)
 
-    async def invoke_tool(self, tool_name: str, parameters: dict, env_id):
+    async def invoke_tool(self, tool_name: str, parameters: dict, env_id: str):
         """
         Invokes a tool on the virtual MCP server.
 
         Args:
             tool_name (str): The name of the tool to invoke.
             parameters (dict): The parameters for the tool invocation.
+            env_id (str): A string representing the environment id to be used for this server (Optional).
 
         Returns:
             result: The result of the tool invocation.

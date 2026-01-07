@@ -245,6 +245,7 @@ class SBS(FastAPI):
         Args:
             uid: The unique identifier of the manifest.
             parameters: List of key/val pair to be passed to method invocation (Optional).
+            env_id: A string representing the environment id to be used for this server (Optional).
 
         Returns:
             dict: Function output.
@@ -627,7 +628,7 @@ class SBS(FastAPI):
             logging.info(f"@@@@@@@@@@@@@@@@")
             # TODO: END common skillberry library
 
-            env_id = skillberry_context["env_id"]
+            env_id = skillberry_context.get("env_id") if skillberry_context is not None else None
 
             return await self.handle_execute_manifest(uid, parameters, env_id=env_id)
 
@@ -783,7 +784,7 @@ class SBS(FastAPI):
             logging.info(f"skillberery_context: {skillberry_context}")            
             logging.info(f"@@@@@@@@@@@@@@@@")
 
-            env_id = skillberry_context["env_id"]
+            env_id = skillberry_context.get("env_id") if skillberry_context is not None else None
             # task_id = skillberry_context["task_id"]
 
             try:
