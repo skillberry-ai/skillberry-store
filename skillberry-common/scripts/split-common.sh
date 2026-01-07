@@ -17,7 +17,7 @@ Behavior:
   - Ensures we are in a git repo and not in detached HEAD
   - Computes split SHA via: git subtree split -P <path> --rejoin
   - If split SHA is ancestor of <remote>/<branch>, roll back the --rejoin commit and abort
-  - Otherwise create/update branch: <CURRENT_BRANCH>/<SB_COMMON_REMOTE>/<USERNAME> pointing to split SHA
+  - Otherwise create/update branch: split/<CURRENT_BRANCH>/<SB_COMMON_REMOTE>/<USERNAME> pointing to split SHA
   - Prints "Done" on success
 EOF
 }
@@ -114,7 +114,7 @@ if [[ -z "$GIT_USERNAME" ]]; then
 fi
 GIT_USERNAME="$(sanitize_ref_component "${GIT_USERNAME:-unknown}")"
 
-NEW_BRANCH="${CURRENT_BRANCH}/${SB_COMMON_REMOTE}/${GIT_USERNAME}"
+NEW_BRANCH="splitbr/${CURRENT_BRANCH}/${SB_COMMON_REMOTE}/${GIT_USERNAME}"
 
 git check-ref-format --branch "$NEW_BRANCH" >/dev/null 2>&1 \
   || die "Computed branch name is not a valid git ref: '$NEW_BRANCH'"
