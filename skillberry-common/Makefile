@@ -1,4 +1,6 @@
-# Common Makefile defs and targets, arranged by categories
+# Included Makefile defs and targets, arranged by categories
+
+SB_COMMON_PATH ?= .
 
 #$(info SB_COMMON_PATH = $(SB_COMMON_PATH))
 
