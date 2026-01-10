@@ -1,7 +1,8 @@
 # ----------- MANDATORY IDENTIFIERS ------------------
-SERVICE_NAME = skillberry-store
-SERVICE_ENTRY_MODULE = blueberry_tools_service.main
-VERSION_LOCATION = blueberry_tools_service/fast_api/git_version.py
+SERVICE_NAME := skillberry-store
+SERVICE_PORT := 8000
+SERVICE_ENTRY_MODULE := blueberry_tools_service.main
+VERSION_LOCATION := blueberry_tools_service/fast_api/git_version.py
 # ----------------------------------------------------
 
 export BTS_PORT := $(or $(shell echo $$BTS_PORT), 8000) 

@@ -3,10 +3,20 @@ FROM public.ecr.aws/docker/library/python:3.11
 # Define build arguments
 ARG BUILD_VERSION=latest
 ARG BUILD_DATE
+ARG SERVICE_NAME
+ARG SERVICE_PORT
+ARG SERVICE_ENTRY_MODULE
 
 # Label the image with metadata
 LABEL version="$BUILD_VERSION"
 LABEL date="$BUILD_DATE"
+
+# Persist into the image runtime environment
+ENV BUILD_VERSION=$BUILD_VERSION \
+    BUILD_DATE=$BUILD_DATE \
+    SERVICE_NAME=$SERVICE_NAME \
+    SERVICE_PORT=$SERVICE_PORT \
+    SERVICE_ENTRY_MODULE=$SERVICE_ENTRY_MODULE
 
 # Set the working directory
 WORKDIR /app
@@ -18,7 +28,7 @@ RUN PIP_CONFIG_FILE=./pip.conf pip3 install --no-cache-dir .
 # RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Expose a port (change if needed)
-EXPOSE 8000
+EXPOSE $SERVICE_PORT
 
 # Set the entrypoint command (adjust if running FastAPI, Flask, Django, etc.)
-CMD ["sh", "-c", "echo \"Starting blueberry tools-service (version $BUILD_VERSION built on $BUILD_DATE)\" && echo \"\" && python -m blueberry_tools_service.main"]
+CMD ["sh", "-c", "echo \"Starting $SERVICE_NAME service (version $BUILD_VERSION built on $BUILD_DATE)\" && echo \"\" && python -m $SERVICE_ENTRY_MODULE"]
