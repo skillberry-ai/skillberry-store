@@ -1,7 +1,12 @@
 ##@ Docker container management
 
-DOCKER_REPOSITORY_NAME ?= us.icr.io/research3
-IMAGE_NAME = SERVICE_NAME
+DOCKER_HOST ?= skillberry-1.vpc.cloud9.ibm.com:8800
+# change DOCKER_PROJECT to "skillberry" for public images
+DOCKER_PROJECT ?= skillberry-dev
+
+DOCKER_REPOSITORY_NAME = $(DOCKER_HOST)/$(DOCKER_PROJECT)
+IMAGE_NAME = $(SERVICE_NAME)
+IID_FILE = .$(IMAGE_NAME)-image
 
 DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
 DOCKER_VERSION = $(BUILD_VERSION)
@@ -59,21 +64,51 @@ endif
 @echo "Using Docker: $(DOCKER)"
 
 .PHONY: docker_build 
-docker_build: docker_check update_git_version ## Build docker image for arm64 and amd64
+docker_build: docker_check update_git_version 
 	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "Build date: $(BUILD_DATE)"
 	@echo "Building for $(ARCH) using the Docker file $(DOCKER_FILE): $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
 	@if [ "$(DOCKER)" = "docker" ]; then \
-		DOCKER_BUILDKIT=1 $(DOCKER) buildx build --file $(DOCKER_FILE) --load --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) -t $(DOCKER_NAME):latest .; \
+		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
+		--file $(DOCKER_FILE) \
+		--load \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg BUILD_DATE="$(BUILD_DATE)" \
+		--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
+		--build-arg SERVICE_PORT="$(SERVICE_PORT)" \
+		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+		-t $(DOCKER_NAME):$(DOCKER_VERSION) \
+		-t $(DOCKER_NAME):latest \
+		--iidfile $(IID_FILE) \
+		.; \
 	elif [ "$(DOCKER)" = "podman" ]; then \
-		$(DOCKER) build --no-cache=true --file $(DOCKER_FILE) --build-arg BUILD_VERSION=$(BUILD_VERSION) --build-arg BUILD_DATE="$(BUILD_DATE)" -t $(DOCKER_NAME):$(DOCKER_VERSION) -t $(DOCKER_NAME):latest .; \
+		$(DOCKER) build --no-cache=true \
+		--file $(DOCKER_FILE) \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg BUILD_DATE="$(BUILD_DATE)" \
+		--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
+		--build-arg SERVICE_PORT="$(SERVICE_PORT)" \
+		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+		-t $(DOCKER_NAME):$(DOCKER_VERSION) \
+		-t $(DOCKER_NAME):latest \
+		--iidfile $(IID_FILE) \
+		.; \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
 		exit 1; \
 	fi
+
+# make sure that you are login into the appropriate Docker registry with required credentials
+# before running this command
+.PHONY: docker_push
+docker_push: docker_check $(IID_FILE) ## Push docker image into the registry
+	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
+	$(DOCKER) push $(DOCKER_NAME):$(DOCKER_VERSION)
+	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):latest"
+	$(DOCKER) push $(DOCKER_NAME):latest
 
 .PHONY: docker_run
 docker_run: docker_check docker_stop ## Run the docker image
@@ -105,11 +140,3 @@ docker_stop: docker_check ## Stop the docker image
 	$(DOCKER) stop $(IMAGE_NAME) > /dev/null 2>&1 || true
 	$(DOCKER) rm $(IMAGE_NAME) > /dev/null 2>&1 || true
 	
-# make sure that you are login into the appropriate Docker registry with required credentials
-# before running this command
-.PHONY: docker_push
-docker_push: docker_check docker_build ## Push docker image into the registry
-	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
-	$(DOCKER) push $(DOCKER_NAME):$(DOCKER_VERSION)
-	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):latest"
-	$(DOCKER) push $(DOCKER_NAME):latest
