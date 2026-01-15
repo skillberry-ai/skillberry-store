@@ -154,7 +154,10 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# stamp files for make
+.stamps/
+
 .idea/
 .vscode/
 
-blueberry_tools_service/fast_api/git_version.py
+src/skillberry_store/fast_api/git_version.py
