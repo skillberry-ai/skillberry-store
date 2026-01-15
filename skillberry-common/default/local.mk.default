@@ -1,5 +1,11 @@
 # ----------- MANDATORY IDENTIFIERS ------------------
-SERVICE_NAME = your project's service if there is such, e.g., skillberry-store
+# Names: No spaces, letter start, letters, digits, hyphen, underscore
+# Python path names: also no hyphen
+ASSET_NAME := your asset name here, e.g., skillberry-store
+VERSION_LOCATION := relative path to location of git version module e.g., src/skillberry_store/fast_api/git_version.py
+# If this project is a service, define these service settings as well
+SERVICE_NAME := $(ASSET_NAME)
+SERVICE_PORT := Your service port, e.g., 8000 
 SERVICE_ENTRY_MODULE = your service entry module name, e.g., blueberry_tools_service.main
 VERSION_LOCATION = location for saving git version in your project, e.g., blueberry_tools_service/fast_api/git_version.py
 # ----------------------------------------------------
