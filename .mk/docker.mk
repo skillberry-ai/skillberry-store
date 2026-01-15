@@ -6,7 +6,6 @@ DOCKER_PROJECT ?= skillberry-dev
 
 DOCKER_REPOSITORY_NAME = $(DOCKER_HOST)/$(DOCKER_PROJECT)
 IMAGE_NAME = $(SERVICE_NAME)
-IID_FILE = .$(IMAGE_NAME)-image
 
 DOCKER_NAME = $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME)
 DOCKER_VERSION = $(BUILD_VERSION)
@@ -64,7 +63,10 @@ endif
 @echo "Using Docker: $(DOCKER)"
 
 .PHONY: docker_build 
-docker_build: docker_check update_git_version 
+docker_build: docker_check update_git_version .stamps/docker_build
+
+# We actually build a new image only if the code changed
+.stamps/docker_build: .stamps/code_scan
 	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
 	@echo "Build version: $(BUILD_VERSION)"
@@ -81,8 +83,8 @@ docker_build: docker_check update_git_version
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 		-t $(DOCKER_NAME):$(DOCKER_VERSION) \
 		-t $(DOCKER_NAME):latest \
-		--iidfile $(IID_FILE) \
 		.; \
+		touch .stamps/docker_build; \
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		$(DOCKER) build --no-cache=true \
 		--file $(DOCKER_FILE) \
@@ -93,8 +95,8 @@ docker_build: docker_check update_git_version
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 		-t $(DOCKER_NAME):$(DOCKER_VERSION) \
 		-t $(DOCKER_NAME):latest \
-		--iidfile $(IID_FILE) \
 		.; \
+		touch .stamps/docker_build; \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
@@ -104,14 +106,14 @@ docker_build: docker_check update_git_version
 # make sure that you are login into the appropriate Docker registry with required credentials
 # before running this command
 .PHONY: docker_push
-docker_push: docker_check $(IID_FILE) ## Push docker image into the registry
+docker_push: docker_check docker_build ## Push docker image into the registry
 	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
 	$(DOCKER) push $(DOCKER_NAME):$(DOCKER_VERSION)
 	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):latest"
 	$(DOCKER) push $(DOCKER_NAME):latest
 
 .PHONY: docker_run
-docker_run: docker_check docker_stop ## Run the docker image
+docker_run: docker_build docker_check docker_stop ## Run the docker image
 	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env \
 		$(SERVICE_DOCKER_SETUP) \
 		-d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp \

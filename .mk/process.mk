@@ -10,7 +10,7 @@ run: install_requirements ## Run the service (idempotent)
 		echo "$(SERVICE_NAME) service is already running. Check the SERVICE_SENTINEL file ($(SERVICE_SENTINEL))"; \
 	else \
 		rc=0; \
-		echo "Starting $(SERVICE_NAME) Service"; \
+		echo "Starting $(SERVICE_NAME) service (version $(BUILD_VERSION) built on $(BUILD_DATE))"; \
 		$(SB_COMMON_PATH)/scripts/start-service.sh $(SERVICE_LOG) $(SERVICE_SENTINEL) python -m $(SERVICE_ENTRY_MODULE) || rc=$$?; \
 		echo "Service $(SERVICE_NAME) terminated with exit code: $$rc" ; \
 	fi

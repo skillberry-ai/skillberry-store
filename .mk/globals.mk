@@ -7,6 +7,9 @@ OS := $(shell uname -s)
 	@echo "Unimplemented target: $@"
 	@false
 
+# Create the .stamps directory (idempotent)
+_ := $(shell mkdir -p .stamps)
+
 # Set BUILD_VERSION variable
 #
 # In SkillBerry every tag/release is created in a separate branch (to have dedicated toml with
@@ -107,4 +110,5 @@ check-rits-watsonx-envs:
 	else \
 		echo "RITS_API_KEY is set. Proceeding..."; \
 	fi
+
 

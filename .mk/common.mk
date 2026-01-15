@@ -17,5 +17,5 @@ push-common:	## Direct push local commits in common folder to common repo - NOT 
 	@git subtree push --prefix $(SB_COMMON_PATH) $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH) --rejoin
 
 split-common:	## Split a common-only branch to PR back to common repo (+REPLACE=y to override)
-	@echo "Creating PR for common repo from local commits"
+	@echo "Creating PR branch for common repo from local commits"
 	@$(SB_COMMON_PATH)/scripts/split-common.sh $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH) $(SB_COMMON_PATH) $(REPLACE)
