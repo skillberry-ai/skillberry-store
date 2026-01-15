@@ -1,7 +1,7 @@
 [project]
-name = "blueberry-tools-service"
+name = "skillberry-store"
 version = "0.1.0"
-description = "Blueberry Tools Service"
+description = "SkillBerry Store service"
 authors = [{ name = "Eran Raichstein", email = "eranra@il.ibm.com" }, { name = "David Breitgand", email = "davidbr@il.ibm.com" }, { name = "Avi Weit", email = "weit@il.ibm.com" }]
 dependencies = [
   "annotated-types>=0.7.0",
@@ -126,16 +126,18 @@ dev = [
   "blueberry-tools-service-sdk @ git+ssh://git@github.ibm.com/Blueberry/blueberry-sdk.git#subdirectory=blueberry_tools_service_sdk"
 ]
 
+[tool.uv.sources]
+llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
+
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["blueberry_tools_service*"]
+where = ["src"]
 
 [project.scripts]
-bts = "blueberry_tools_service.main:main"
+sbs = "skillberry_store.main:main"
 
 [tool.setuptools]
 include-package-data = true

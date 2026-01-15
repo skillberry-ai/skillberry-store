@@ -1,4 +1,4 @@
-# Blueberry-tools-service (a.k.a., BTS)
+# Blueberry-tools-service (a.k.a., SBS)
 
 This service implements a smart tools repository for agentic workflows.
 
@@ -100,16 +100,16 @@ make run
 
 *Notes:*
 
-  * By default, BTS runs on host `0.0.0.0` and port `8000` publishing its metrics on port `8090`. To change, set the environment variables BTS_PORT/BTS_HOST/PROMETHEUS_METRICS_PORT
+  * By default, SBS runs on host `0.0.0.0` and port `8000` publishing its metrics on port `8090`. To change, set the environment variables SBS_PORT/SBS_HOST/PROMETHEUS_METRICS_PORT
   * To disable observability all together, set environment variable `OBSERVABILITY` with `False` 
 
 ## Loading example tools into the Service 📂
 
-- Set the home directory and the EXAMPLESPATH for blueberry-tools-service environment variables 🌐
+- Set the home directory and the EXAMPLESPATH for skillberry-store environment variables 🌐
 
 ```bash
-export BTS_HOME=$(pwd)
-export EXAMPLESPATH=$BTS_HOME/blueberry_tools_service/contrib/examples
+export SBS_HOME=$(pwd)
+export EXAMPLESPATH=$SBS_HOME/src/skillberry_store/contrib/examples
 ```
 
 - Load example tools:
@@ -138,24 +138,24 @@ The service can be consumed via blueberry tools service sdk. Refer to [blueberry
 Each control API function is available as an MCP tool to be used by agentic AI workflows.  
 To access use an MCP client against `http://127.0.0.1:8000/control_sse` .  
 
-## Run BTS in MCP Server Mode 🖥️
+## Run SBS in MCP Server Mode 🖥️
 
-To run BTS in MCP server mode, allowing it to connect to any agent framework that supports MCP, set the MCP_MODE variable:
+To run SBS in MCP server mode, allowing it to connect to any agent framework that supports MCP, set the MCP_MODE variable:
 
 ```bash
 MCP_MODE=True make run
 ```
 
-### Examples of using BTS with Agentic Frameworks 🤖
+### Examples of using SBS with Agentic Frameworks 🤖
 
-Follow the steps outlined in [Run BTS with Agent Frameworks](blueberry_tools_service/contrib/examples/agent_framework/agent_framework.md).
-> Note: the example makes use of BTS in MCP mode
+Follow the steps outlined in [Run SBS with Agent Frameworks](src/skillberry_store/contrib/examples/agent_framework/agent_framework.md).
+> Note: the example makes use of SBS in MCP mode
 
 ### Support Multiple MCP Backends
 
-Follow the steps outlined in [Connecting MCP as a backend](blueberry_tools_service/contrib/mcp/README.md).
+Follow the steps outlined in [Connecting MCP as a backend](src/skillberry_store/contrib/mcp/README.md).
 
-## Run BTS with GitHub backend
+## Run SBS with GitHub backend
 
 Follow the steps outlined in [Github backend](docs/github_using_hooks.md).
 
@@ -169,7 +169,7 @@ docker run --rm --name prometheus --network="host" -p 9090:9090 -v /tmp/promethe
 ```
 
 Metrics are available in Prometheus at http://localhost:9090.
-> Note: Application metrics are prefixed with `bts_`.
+> Note: Application metrics are prefixed with `SBS_`.
 
 ### To start a local Jaeger server execute:
 ```bash
