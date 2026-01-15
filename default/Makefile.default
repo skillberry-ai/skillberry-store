@@ -1,8 +1,8 @@
 # Root Makefile for all Skillberry projects. 
 # 0. Make sure you have git subtree and gh CLI installed
-# 1. Copy this file from skillberry-common/Makefile.default to your project root as Makefile
+# 1. Copy this file from skillberry-common/default/Makefile.default to your project root as Makefile
 # 2. Create folder .mk in your project root
-# 3. Create .mk/local.mk (copy from skillberry-common/.mk/local.mk.default). Set the mandatory defs.
+# 3. Create .mk/local.mk (copy from skillberry-common/default/local.mk.default). Set the mandatory defs.
 # 4. Customize additional content if needed.
 
 SB_COMMON_REPO := git@github.ibm.com:skillberry-staging/skillberry-common.git
