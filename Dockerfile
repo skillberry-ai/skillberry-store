@@ -21,14 +21,19 @@ ENV BUILD_VERSION=$BUILD_VERSION \
 # Set the working directory
 WORKDIR /app
 
+# Create the venv
+RUN python -m venv /app/.venv
+
+# Make the venv “default” for every later RUN and at runtime
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:${PATH}"
+
 # Copy the application
 COPY . .
-RUN pip3 install --no-cache-dir --upgrade pip
-RUN PIP_CONFIG_FILE=./pip.conf pip3 install --no-cache-dir .
-# RUN pip3 install --no-cache-dir -r requirements.txt
+RUN make install_requirements
 
 # Expose a port (change if needed)
 EXPOSE $SERVICE_PORT
 
 # Set the entrypoint command (adjust if running FastAPI, Flask, Django, etc.)
-CMD ["sh", "-c", "echo \"Starting $SERVICE_NAME service (version $BUILD_VERSION built on $BUILD_DATE)\" && echo \"\" && python -m $SERVICE_ENTRY_MODULE"]
+CMD ["sh", "-c", "make run"]
