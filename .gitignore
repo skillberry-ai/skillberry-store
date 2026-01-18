@@ -161,3 +161,5 @@ cython_debug/
 .vscode/
 
 src/skillberry_store/fast_api/git_version.py
+
+.stamps/
