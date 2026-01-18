@@ -6,8 +6,8 @@ VERSION_LOCATION := relative path to location of git version module e.g., src/sk
 # If this project is a service, define these service settings as well
 SERVICE_NAME := $(ASSET_NAME)
 SERVICE_PORT := Your service port, e.g., 8000 
-SERVICE_ENTRY_MODULE = your service entry module name, e.g., blueberry_tools_service.main
-VERSION_LOCATION = location for saving git version in your project, e.g., blueberry_tools_service/fast_api/git_version.py
+SERVICE_ENTRY_MODULE = your service entry module name, e.g., skillberry_store.main
+VERSION_LOCATION = location for saving git version in your project, e.g., skillberry_store/fast_api/git_version.py
 # ----------------------------------------------------
 
 # CUSTOM Makefile stuff here

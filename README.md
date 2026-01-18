@@ -14,7 +14,7 @@ Common development utilities and Makefile targets for SkillBerry projects.
 
 Add as a git submodule to your project:
 ```bash
-git submodule add https://github.ibm.com/blueberry/skillberry-dev-common.git
+git submodule add https://github.ibm.com/skillberry/skillberry-common.git
 ```
 
 ## Usage
