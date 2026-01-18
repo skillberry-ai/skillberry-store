@@ -4,7 +4,7 @@ import os
 
 
 # Define the URL
-base_url = "http://0.0.0.0:8004"
+base_url = "http://127.0.0.1:8004"
 tools_url = f"{base_url}/{env_id}/tools"
 
 

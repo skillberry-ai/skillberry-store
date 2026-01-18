@@ -12,7 +12,7 @@ uv run server/server.py
 ```
 
 This will start the MCP server at the following URL:
-**`http://0.0.0.0:8080`**
+**`http://127.0.0.1:8080`**
 
 ### 2. Run the  Service Tool
 Make sure the **Skillberry Store service** is running by executing the following command in the **skillberry-store** root folder:

@@ -76,7 +76,7 @@ run
 python scripts/start_tau2_environment_manager.py
 ```
 
-## Skillberry (SBS, BTM, SBA)
+## Skillberry (SBS, SBM, SBA)
 
 The skillberry services will be used by the Tau-2 simulator
 
@@ -90,7 +90,7 @@ EXECUTE_PYTHON_LOCALLY=True make run
 
 _Tip_: pass additional environment variables according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/skillberry/skillberry-store/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
 
-### Start BTM
+### Start SBM
 
 Currently not being used but is a pre-requisite for SBA
 

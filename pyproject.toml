@@ -123,7 +123,7 @@ dependencies = [
 # Development dependencies
 dev = [
   "black>=22.3.0",
-  "skillberry-store-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-store-sdk.git#subdirectory=skillberry_store_sdk"
+  "skillberry-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-sdk.git#subdirectory=skillberry_store_sdk"
 ]
 
 [tool.uv.sources]
