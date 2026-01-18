@@ -79,7 +79,7 @@ class ShellHook:
         """
 
         # we will use the environment variables to get the command templates
-        environment_variable = f"BTS_{hook_id.upper()}_COMMAND"
+        environment_variable = f"SBS_{hook_id.upper()}_COMMAND"
         try:
             command_templates = os.environ.get(environment_variable)
             if command_templates is None:

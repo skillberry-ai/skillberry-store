@@ -8,7 +8,7 @@
     - Contribute a tool artifact
     - Delete a tool artifact
     - **A Note**: a tool artifact added to the service is pending QA assurance process by the Tool Maintainer persona, before it becomes available for execution 
-- Repo Admin: a user with special priviliges who configures the Blueberry Tools Service via a specialized admin interface: 
+- Repo Admin: a user with special priviliges who configures the Skillberry Store service via a specialized admin interface: 
     - Manages permissions for clients 
     - Manages configuration parameters 
 - Tool Maintainer: a human or AI user who approves
@@ -48,7 +48,7 @@ The manifest includes:
 - **Note:**: not all attributes of the manifest will be supported in the first version.
 
 ## Usage Stories
-### As Contributor, I wish to insert a new tool artifact into the Blueberry tools service
+### As Contributor, I wish to insert a new tool artifact into the Skillberry store service
 
 ### As Contributor, I wish to upgrade an existing tool to a new version 
 

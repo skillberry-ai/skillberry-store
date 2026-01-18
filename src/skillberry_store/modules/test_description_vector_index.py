@@ -3,7 +3,7 @@ import pytest
 import numpy as np
 import faiss
 from fastembed import TextEmbedding
-from blueberry_tools_service.modules.description_vector_index import (
+from skillberry_store.modules.description_vector_index import (
     DescriptionVectorIndex,
 )
 

@@ -2,7 +2,7 @@ import pytest
 import os
 from unittest.mock import patch
 
-from blueberry_tools_service.modules.file_executor import FileExecutor
+from skillberry_store.modules.file_executor import FileExecutor
 
 
 @pytest.fixture

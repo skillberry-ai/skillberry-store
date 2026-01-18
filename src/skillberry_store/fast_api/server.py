@@ -18,37 +18,37 @@ from fastapi.openapi.utils import get_openapi
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from fastapi_mcp import FastApiMCP
 
-from blueberry_tools_service.fast_api.mcp_proxy import MCPToBTSProxy
-from blueberry_tools_service.modules.dictionary_checker import DictionaryChecker
-from blueberry_tools_service.modules.lifecycle import LifecycleState, LifecycleManager
-from blueberry_tools_service.modules.manifest import Manifest
-from blueberry_tools_service.modules.vmcp_server_manager import VirtualMcpServerManager
-from blueberry_tools_service.modules.description import Description
-from blueberry_tools_service.modules.description_vector_index import (
+from skillberry_store.fast_api.mcp_proxy import MCPToSBSProxy
+from skillberry_store.modules.dictionary_checker import DictionaryChecker
+from skillberry_store.modules.lifecycle import LifecycleState, LifecycleManager
+from skillberry_store.modules.manifest import Manifest
+from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
+from skillberry_store.modules.description import Description
+from skillberry_store.modules.description_vector_index import (
     DescriptionVectorIndex,
 )
-from blueberry_tools_service.modules.file_handler import FileHandler
-from blueberry_tools_service.modules.file_executor import FileExecutor
-from blueberry_tools_service.modules.tool_type import ToolType
-from blueberry_tools_service.tools.configure import (
+from skillberry_store.modules.file_handler import FileHandler
+from skillberry_store.modules.file_executor import FileExecutor
+from skillberry_store.modules.tool_type import ToolType
+from skillberry_store.tools.configure import (
     get_files_directory_path,
     get_descriptions_directory,
     get_manifest_directory,
     configure_logging,
 )
-from blueberry_tools_service.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
-from blueberry_tools_service.fast_api.server_utils import (
+from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
+from skillberry_store.fast_api.server_utils import (
     get_mcp_tools,
     mcp_json_converter,
     mcp_content,
 )
 
 try:
-    from blueberry_tools_service.fast_api.git_version import __git_version__
+    from skillberry_store.fast_api.git_version import __git_version__
 except:
     __git_version__ = "unknown"
 
-from blueberry_tools_service.fast_api.observability import (
+from skillberry_store.fast_api.observability import (
     observability_setup,
     OTEL_TRACES_PORT,
 )
@@ -104,11 +104,11 @@ execute_successfully_manifest_latency = Histogram(
 )
 
 
-class BTSettings(BaseSettings):
-    """Configuration settings for the BTS server."""
+class SBSettings(BaseSettings):
+    """Configuration settings for the SBS server."""
 
-    bts_host: str = Field("0.0.0.0", env="BTS_HOST")
-    bts_port: int = Field(8000, env="BTS_PORT")
+    bts_host: str = Field("0.0.0.0", env="SBS_HOST")
+    bts_port: int = Field(8000, env="SBS_PORT")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         "INFO", env="UVICORN_LOG_LEVEL"
     )
@@ -116,12 +116,12 @@ class BTSettings(BaseSettings):
     observability: bool = Field(True, env="OBSERVABILITY")
 
 
-class BTS(FastAPI):
+class SBS(FastAPI):
     def __init__(self, **settings: Any):
-        """Initialize the BTS server with FastAPI and custom settings."""
+        """Initialize the SBS server with FastAPI and custom settings."""
 
         super().__init__()
-        self.settings = BTSettings(**settings)
+        self.settings = SBSettings(**settings)
         self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
         self.logger = logging.getLogger(__name__)
@@ -169,11 +169,11 @@ class BTS(FastAPI):
 
     def run(self):
         """Starts the FastAPI app using Uvicorn, and sets up SSE proxy routes if MCP mode is enabled."""
-        self.logger.info("Starting BTS server")
+        self.logger.info("Starting SBS server")
         if self.settings.mcp_mode:
-            self.logger.info("BTS server run in MCP mode with transport SSE")
+            self.logger.info("SBS server run in MCP mode with transport SSE")
 
-            proxy = MCPToBTSProxy(self)
+            proxy = MCPToSBSProxy(self)
             sse = SseServerTransport("/messages/")
 
             async def handle_sse(request):
@@ -1092,7 +1092,7 @@ def custom_openapi(app: FastAPI, openapi_tags):
         return app.openapi_schema
 
     openapi_schema = get_openapi(
-        title="blueberry",
+        title="skillberry",
         summary="Towards hallucination-less AI systems",
         version=__git_version__,
         tags=openapi_tags,

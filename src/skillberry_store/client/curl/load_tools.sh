@@ -1,20 +1,20 @@
 #!/bin/bash
 
 #
-# An example script to load tools into blueberry-tools-service.
+# An example script to load tools into skillberry-store.
 #
 # Before running this script, make sure you have the following:
 # - Python 3.x installed
-# - The blueberry-tools-service repo cloned and BTS_HOME environment variable set to the root of the repo
-# - The blueberry-tools-service server running locally on port 8000
+# - The skillberry-store repo cloned and SBS_HOME environment variable set to the root of the repo
+# - The skillberry-store server running locally on port 8000
 # - The tools file (e.g., genai/transformations/client-win-functions.py) is available in the EXAMPLESPATH directory
-# - The tools file contains the functions (i.e., tools) you want to load into the blueberry-tools-service
+# - The tools file contains the functions (i.e., tools) you want to load into the skillberry-store
 # - The tools file is in the correct format and contains the necessary metadata for each tool
 # 
 # Environment Variables:
 # 
-# $> export BTS_HOME=/your/path/to/blueberry-tools-service
-# $> export EXAMPLESPATH=/your/path/to/blueberry-tools-service/contrib/examples/you/example/path
+# $> export SBS_HOME=/your/path/to/skillberry-store
+# $> export EXAMPLESPATH=/your/path/to/skillberry-store/contrib/examples/you/example/path
 # 
 # Usage:
 # - If the script is called from the command line:
@@ -28,18 +28,18 @@ SLEEP_TIME=1
 bold=$(tput bold)
 normal=$(tput sgr0)
 
-# make sure that BTS_HOME is set
-# BTS_HOME is the path to the root of blueberry-tools-service repo
-if [ -z "${BTS_HOME}" ]; then
-    echo "BTS_HOME is not set. Please set it accordingly."
+# make sure that SBS_HOME is set
+# SBS_HOME is the path to the root of skillberry-store repo
+if [ -z "${SBS_HOME}" ]; then
+    echo "SBS_HOME is not set. Please set it accordingly."
     exit 1
 fi
 
-# Check if BTS_HOME is set to a valid directory
-if [ -d "${BTS_HOME}" ]; then
-    echo "BTS_HOME is set to: ${BTS_HOME}"
+# Check if SBS_HOME is set to a valid directory
+if [ -d "${SBS_HOME}" ]; then
+    echo "SBS_HOME is set to: ${SBS_HOME}"
 else
-    echo "BTS_HOME is not a valid directory."
+    echo "SBS_HOME is not a valid directory."
     exit 1
 fi
 
@@ -51,12 +51,12 @@ if [ $# -lt 2 ]; then
 fi
 
 # Set the temporary manifests directory
-BTS_MFT_DIR="${BTS_HOME}/tmp-manifests"
+SBS_MFT_DIR="${SBS_HOME}/tmp-manifests"
 
 # Check if the temporary manifests directory exists
-if [ ! -d "${BTS_MFT_DIR}" ]; then
-    echo "Creating tmp directory for manifests ${BTS_MFT_DIR}..."
-    mkdir -p "${BTS_MFT_DIR}"
+if [ ! -d "${SBS_MFT_DIR}" ]; then
+    echo "Creating tmp directory for manifests ${SBS_MFT_DIR}..."
+    mkdir -p "${SBS_MFT_DIR}"
 fi
 
 #declare -a values=("GetYear" "GetQuarter" "GetCurrencySymbol" "ParseDealSize")
@@ -96,10 +96,10 @@ shift # Shift the first argument (the tools file) so that $@ contains only the t
 # and generate the manifests for each tool
 for value in "$@"; do
     echo "${bold}Generating manifest: '$value' file...${normal}"
-    file_manifest="${BTS_MFT_DIR}/manifest-${value}.json"
+    file_manifest="${SBS_MFT_DIR}/manifest-${value}.json"
     echo "Manifest file: $file_manifest"
 
-    python -m blueberry_tools_service.client.utils.manifest_ds ${TOOLS_FILE} ${value} > $file_manifest
+    python -m skillberry_store.client.utils.manifest_ds ${TOOLS_FILE} ${value} > $file_manifest
     sleep $SLEEP_TIME
     
     echo "${bold}Adding manifest: '$value'...${normal}"
@@ -116,6 +116,6 @@ for value in "$@"; do
    rm -f $file_manifest
 done
 echo "${bold}Done!${normal}"
-echo "${bold}Please check the blueberry-tools-service UI to verify the manifests were loaded successfully.${normal}"
+echo "${bold}Please check the skillberry-store UI to verify the manifests were loaded successfully.${normal}"
 echo "${bold}If you encounter any issues, please check the logs for more information.${normal}"
 echo "${bold}If you want to load more tools, please set the EXAMPLESPATH environment variable, change the tools list, and run this script again.${normal}"

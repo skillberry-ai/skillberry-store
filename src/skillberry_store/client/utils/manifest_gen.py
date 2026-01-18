@@ -1,5 +1,5 @@
-from blueberry_tools_service.client.utils import base_client_utils
-from blueberry_tools_service.client.utils import json_client_utils
+from skillberry_store.client.utils import base_client_utils
+from skillberry_store.client.utils import json_client_utils
 import argparse
 import os
 

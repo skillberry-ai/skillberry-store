@@ -13,7 +13,7 @@ logging.getLogger("opentelemetry").setLevel(logging.ERROR)
 
 PROMETHEUS_METRICS_PORT = int(os.getenv("PROMETHEUS_METRICS_PORT", 8090))
 OTEL_TRACES_PORT = int(os.getenv("OTEL_TRACES_PORT", 0))
-OTEL_SERVICE_NAME = "blueberry-tools-service"
+OTEL_SERVICE_NAME = "skillberry-store"
 
 
 def observability_setup():

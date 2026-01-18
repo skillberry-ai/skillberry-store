@@ -14,8 +14,8 @@ uv run server/server.py
 This will start the MCP server at the following URL:
 **`http://0.0.0.0:8080`**
 
-### 2. Run the Blueberry Service Tool
-Make sure the **Blueberry Service Tool** is running by executing the following command in the **Blueberry-tools-service** root folder:
+### 2. Run the  Service Tool
+Make sure the **Skillberry Store service** is running by executing the following command in the **skillberry-store** root folder:
 
 ```sh
 make run

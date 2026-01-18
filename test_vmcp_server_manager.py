@@ -1,16 +1,16 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, Mock
-from blueberry_tools_service.fast_api.server import BTS
+from skillberry_store.fast_api.server import SBS
 
 
 def test_vmcp_server_manager_searchable_via_fastapi():
     """Test that VirtualMcpServerManager instances are searchable via FastAPI endpoints."""
-    with patch('blueberry_tools_service.fast_api.server.Manifest') as mock_manifest_server, \
-         patch('blueberry_tools_service.fast_api.server.Description') as mock_description_server, \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.VirtualMcpServer') as mock_vmcp_server, \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.Manifest') as mock_manifest_manager, \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.Description') as mock_description_manager:
+    with patch('skillberry_store.fast_api.server.Manifest') as mock_manifest_server, \
+         patch('skillberry_store.fast_api.server.Description') as mock_description_server, \
+         patch('skillberry_store.modules.vmcp_server_manager.VirtualMcpServer') as mock_vmcp_server, \
+         patch('skillberry_store.modules.vmcp_server_manager.Manifest') as mock_manifest_manager, \
+         patch('skillberry_store.modules.vmcp_server_manager.Description') as mock_description_manager:
         
         # Mock server manifest instance for FastAPI server
         mock_manifest_server_instance = Mock()
@@ -38,7 +38,7 @@ def test_vmcp_server_manager_searchable_via_fastapi():
         mock_vmcp_server.return_value = mock_server
         
         # Create FastAPI test client
-        app = BTS()
+        app = SBS()
         client = TestClient(app)
         
         # Add a virtual MCP server

@@ -4,13 +4,13 @@ import pytest
 import requests
 from mcp import ClientSession
 from mcp.client.sse import sse_client
-from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
-from blueberry_tools_service.modules.tool_type import ToolType
+from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
+from skillberry_store.modules.tool_type import ToolType
 
 
 @pytest.mark.asyncio
 async def test_virtual_mcp_servers():
-    """Test the BTS server virtual MCP server"""
+    """Test the SBS server virtual MCP server"""
     clean_test_tmp_dir()
     
     # Clean up old virtual MCP servers file
@@ -22,7 +22,7 @@ async def test_virtual_mcp_servers():
 
     env["MCP_MODE"] = "true"
     main_proc = await asyncio.create_subprocess_exec(
-        "python", "-m", "blueberry_tools_service.main",
+        "python", "-m", "skillberry_store.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=env,

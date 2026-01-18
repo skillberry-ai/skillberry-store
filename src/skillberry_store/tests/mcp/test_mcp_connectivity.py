@@ -6,7 +6,7 @@ import socket
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
-from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
+from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
 
 
 def get_free_port():
@@ -18,7 +18,7 @@ def get_free_port():
 
 @pytest.mark.asyncio
 async def test_mcp_mode():
-    """Test the BTS server running in MCP mode via subprocess."""
+    """Test the SBS server running in MCP mode via subprocess."""
 
     clean_test_tmp_dir()
     
@@ -44,18 +44,18 @@ if __name__ == '__main__':
         stderr=asyncio.subprocess.PIPE,
     )
 
-    # Check if the BTS server is already running, if so, exit with an error
+    # Check if the SBS server is already running, if so, exit with an error
     try:
         await wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=1)
         raise SystemExit(
-            "BTS Server is already running, stop it and re-run the test. exiting !!!"
+            "SBS Server is already running, stop it and re-run the test. exiting !!!"
         )
         return
     except TimeoutError:
         pass
 
     main_proc = await asyncio.create_subprocess_exec(
-        "python", "-m", "blueberry_tools_service.main",
+        "python", "-m", "skillberry_store.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -98,22 +98,22 @@ if __name__ == '__main__':
 
 @pytest.mark.asyncio
 async def test_mcp_fastapi_integration():
-    """Test the BTS server running in MCP mode via subprocess."""
+    """Test the SBS server running in MCP mode via subprocess."""
 
     clean_test_tmp_dir()
     
-    # Check if the BTS server is already running, if so, exit with an error
+    # Check if the SBS server is already running, if so, exit with an error
     try:
         await wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=1)
         raise SystemExit(
-            "BTS Server is already running, stop it and re-run the test. exiting !!!"
+            "SBS Server is already running, stop it and re-run the test. exiting !!!"
         )
         return
     except TimeoutError:
         pass
 
     main_proc = await asyncio.create_subprocess_exec(
-        "python", "-m", "blueberry_tools_service.main",
+        "python", "-m", "skillberry_store.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

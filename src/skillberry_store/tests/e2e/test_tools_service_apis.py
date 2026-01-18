@@ -5,13 +5,13 @@ import json
 import pytest
 import pytest_asyncio
 
-from blueberry_tools_service.client.utils import base_client_utils, json_client_utils
-from blueberry_tools_service.modules.manifest import python_manifest_from_json_description
-from blueberry_tools_service.tests import resources as resources_package
-from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready
+from skillberry_store.client.utils import base_client_utils, json_client_utils
+from skillberry_store.modules.manifest import python_manifest_from_json_description
+from skillberry_store.tests import resources as resources_package
+from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready
 
-import blueberry_tools_service_sdk
-from blueberry_tools_service_sdk.exceptions import NotFoundException, ServiceException
+import skillberry_store_sdk
+from skillberry_store_sdk.exceptions import NotFoundException, ServiceException
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -26,7 +26,7 @@ async def run_bts(request):
     print("setup called")
     clean_test_tmp_dir()
     main_proc = await asyncio.create_subprocess_exec(
-        "python", "-m", "blueberry_tools_service.main",
+        "python", "-m", "skillberry_store.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=os.path.dirname(
@@ -76,11 +76,11 @@ async def test_add_manifest(run_bts, func_name):
     module_path = impresources.files(resources_package) / "e2e" / "transformations.py"
     file_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         manifest = json_client_utils.python_manifest_from_json_base(
             [json_descriptions], module_path, func_name
@@ -107,11 +107,11 @@ async def test_tools_add(run_bts, func_name):
     module_path = impresources.files(resources_package) / "e2e" / "client-win-functions.py"
     tool_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ToolsApi(api_client)
 
         api_response = api_instance.tools_add_tools_add_post(
             "code/python", tool_blob, tool_name=func_name
@@ -131,11 +131,11 @@ async def test_tools_add_no_tool_name(run_bts):
     module_path = impresources.files(resources_package) / "e2e" / "client-win-functions.py"
     tool_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ToolsApi(api_client)
 
         # tool_name not supplied - first function is added
         api_response = api_instance.tools_add_tools_add_post(
@@ -159,11 +159,11 @@ async def test_tools_add_genai(run_bts, func_name):
     module_path = impresources.files(resources_package) / "e2e" / "transformations.py"
     tool_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ToolsApi(api_client)
 
         json_description_str = json.dumps(json_description)
         api_response = api_instance.tools_add_tools_add_post(
@@ -182,11 +182,11 @@ async def test_tools_add(run_bts):
     module_path = impresources.files(resources_package) / "e2e" / "client-win-functions.py"
     tool_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ToolsApi(api_client)
         with pytest.raises(ServiceException, match="Missing docstring description"):
             api_instance.tools_add_tools_add_post(
                 "code/python", tool_blob, tool_name="DocstringNoDescription"
@@ -202,11 +202,11 @@ async def test_tools_add(run_bts):
     module_path = impresources.files(resources_package) / "e2e" / "client-win-functions.py"
     tool_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ToolsApi(api_client)
         with pytest.raises(ServiceException, match="Missing docstring parameters"):
             api_instance.tools_add_tools_add_post(
                 "code/python", tool_blob, tool_name="DocstringParameterIndentationError"
@@ -218,11 +218,11 @@ def test_search_manifests(run_bts):
     Search manifests.
 
     """
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         api_response = api_instance.search_manifest_search_manifests_get(
             "A tool that returns the quarter of the year."
@@ -240,11 +240,11 @@ def test_get_manifest(run_bts, uid: str):
     Retrieve single manifest.
 
     """
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         api_response = api_instance.get_manifest_manifests_uid_get(uid)
         assert api_response.get("uid", None), "Should receive 'uid' key"
@@ -259,11 +259,11 @@ def test_list_manifests(run_bts, expected: int = 4):
         expected (int): the number of expected manifests to assert
 
     """
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         api_response = api_instance.get_manifests_manifests_get()
         assert (
@@ -273,11 +273,11 @@ def test_list_manifests(run_bts, expected: int = 4):
 
 @pytest.mark.parametrize("uid", ["GetQuarter"])
 def test_delete_manifest(run_bts, uid):
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         api_response = api_instance.delete_manifest_manifests_uid_delete(uid)
 
@@ -293,12 +293,12 @@ def test_get_manifest2(run_bts, uid: str):
     Retrieve single manifest.
 
     """
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
         try:
-            api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+            api_instance = skillberry_store_sdk.ManifestApi(api_client)
             api_instance.get_manifest_manifests_uid_get(uid)
             assert False, f"Should not find uid: {uid}"
 
@@ -307,11 +307,11 @@ def test_get_manifest2(run_bts, uid: str):
 
 
 def test_delete_manifests_wildcard(run_bts):
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         api_response = api_instance.delete_manifests_manifests_delete(manifest_filter="name:Get*")
 
@@ -327,11 +327,11 @@ def test_get_manifests(run_bts):
     Retrieve single manifest.
 
     """
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         api_response = api_instance.get_manifests_manifests_get()
         assert len(api_response) == 1, "Should receive exactly one manifest"
@@ -357,11 +357,11 @@ async def test_add_tool_add_subtract(run_bts, func_name, file_name):
     module_path = impresources.files(resources_package) / "e2e" / "example_functions" / file_name
     tool_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ToolsApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ToolsApi(api_client)
 
         api_response = api_instance.tools_add_tools_add_post(
             "code/python", tool_blob, tool_name=func_name
@@ -385,11 +385,11 @@ async def test_add_tool_calc_add_subtract(run_bts, func_name, file_name, depende
     module_path = impresources.files(resources_package) / "e2e" / "example_functions" / file_name
     file_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         docstring = base_client_utils.extract_docstring(module_path, func_name)
         manifest = base_client_utils.python_manifest_from_function_docstring(
@@ -425,11 +425,11 @@ async def test_add_tool_calc(run_bts, func_name, file_name, dependent_manifest_u
     module_path = impresources.files(resources_package) / "e2e" / "example_functions" / file_name
     file_blob = base_client_utils.read_file_to_bytes(module_path)
 
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         docstring = base_client_utils.extract_docstring(module_path, func_name)
         manifest = base_client_utils.python_manifest_from_function_docstring(
@@ -459,11 +459,11 @@ async def test_execute_calc(run_bts, uid, operation, num1, num2, expected):
     Execute a manifest that is dependant on others.
 
     """
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
         arguments = {"operation": operation, "num1": num1, "num2": num2}
         api_response = api_instance.execute_manifest_manifests_execute_uid_post(
             uid, arguments
@@ -478,11 +478,11 @@ async def test_execute_calc_negative(run_bts, uid):
     Execute a manifest that is dependant on others.
 
     """
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
         arguments = {"operation": "+", "num1": 5, "num2": 8}
         with pytest.raises(ServiceException, match=".*ModuleNotFoundError.*"):
             api_response = api_instance.execute_manifest_manifests_execute_uid_post(
@@ -493,11 +493,11 @@ async def test_execute_calc_negative(run_bts, uid):
 
 @pytest.mark.parametrize("uid", ["subtract"])
 def test_delete_subtract(run_bts, uid):
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
 
         api_response = api_instance.delete_manifest_manifests_uid_delete(uid)
 
@@ -514,11 +514,11 @@ async def test_execute_calc_negative2(run_bts, uid):
     Execute a manifest that is dependant on others. Negative test.
 
     """
-    configuration = blueberry_tools_service_sdk.Configuration(
+    configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
-    with blueberry_tools_service_sdk.ApiClient(configuration) as api_client:
-        api_instance = blueberry_tools_service_sdk.ManifestApi(api_client)
+    with skillberry_store_sdk.ApiClient(configuration) as api_client:
+        api_instance = skillberry_store_sdk.ManifestApi(api_client)
         arguments = {"operation": "+", "num1": 5, "num2": 8}
         with pytest.raises(NotFoundException, match="Manifest.*subtract.*not found"):
             api_instance.execute_manifest_manifests_execute_uid_post(

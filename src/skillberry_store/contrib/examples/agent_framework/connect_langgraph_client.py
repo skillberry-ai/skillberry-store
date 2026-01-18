@@ -17,12 +17,12 @@ model = ChatOpenAI(
 
 async def main():
     """
-    The main asynchronous function that connects to the BTS server and creates a reactive LangGraph agent.
+    The main asynchronous function that connects to the SBS server and creates a reactive LangGraph agent.
 
     Returns:
         None
     """
-    # Create and connect a MultiServerMCPClient to the BTS server
+    # Create and connect a MultiServerMCPClient to the SBS server
     async with MultiServerMCPClient() as client:
         await client.connect_to_server(
             "multi-mcp",

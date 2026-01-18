@@ -9,10 +9,10 @@ SERVICE_PORT := 8000
 SERVICE_ENTRY_MODULE := skillberry_store.main
 # ----------------------------------------------------
 
-export BTS_PORT := $(or $(shell echo $$BTS_PORT), 8000) 
-export BTS_HOST := $(or $(shell echo $$BTS_HOST), 0.0.0.0)
+export SBS_PORT := $(or $(shell echo $$SBS_PORT), 8000) 
+export SBS_HOST := $(or $(shell echo $$SBS_HOST), 0.0.0.0)
 
-SERVICE_DOCKER_SETUP := "-e BTS_HOST=$(strip $(BTS_HOST)) -e BTS_PORT=$(strip $(BTS_PORT))"
+SERVICE_DOCKER_SETUP := "-e SBS_HOST=$(strip $(SBS_HOST)) -e SBS_PORT=$(strip $(SBS_PORT))"
 
 include .mk/dev.mk
 include .mk/process.mk

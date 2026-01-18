@@ -4,7 +4,7 @@ from unittest import mock
 
 import pytest
 
-from blueberry_tools_service.tools.shell_hook import ShellHook
+from skillberry_store.tools.shell_hook import ShellHook
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def shell_hook():
 
 
 def test_get_command_template_exists(shell_hook):
-    with mock.patch.dict(os.environ, {"BTS_TEST_COMMAND": "echo hello {name}"}):
+    with mock.patch.dict(os.environ, {"SBS_TEST_COMMAND": "echo hello {name}"}):
         template = shell_hook.get_command_template("test")
         assert template == "echo hello {name}"
 
@@ -25,7 +25,7 @@ def test_get_command_template_missing(shell_hook):
 
 
 def test_execute_success(shell_hook):
-    with mock.patch.dict(os.environ, {"BTS_TEST_COMMAND": "echo Hello {name}"}):
+    with mock.patch.dict(os.environ, {"SBS_TEST_COMMAND": "echo Hello {name}"}):
         with mock.patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=["echo", "Hello world"],
@@ -40,7 +40,7 @@ def test_execute_success(shell_hook):
 
 
 def test_execute_command_failure(shell_hook):
-    with mock.patch.dict(os.environ, {"BTS_FAIL_COMMAND": "false"}):
+    with mock.patch.dict(os.environ, {"SBS_FAIL_COMMAND": "false"}):
         with mock.patch("subprocess.run") as mock_run:
             mock_run.side_effect = subprocess.CalledProcessError(
                 returncode=1, cmd="false", output="", stderr="Simulated failure"

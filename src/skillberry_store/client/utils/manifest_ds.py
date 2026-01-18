@@ -1,4 +1,4 @@
-from blueberry_tools_service.client.utils import base_client_utils
+from skillberry_store.client.utils import base_client_utils
 import argparse
 
 def main():

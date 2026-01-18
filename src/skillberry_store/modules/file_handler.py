@@ -5,7 +5,7 @@ from typing import List, Dict
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from blueberry_tools_service.tools.shell_hook import ShellHook
+from skillberry_store.tools.shell_hook import ShellHook
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.outputs import ChatResult, ChatGeneration
 from dotenv import load_dotenv
-from blueberry_tools_service.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
+from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
 
 load_dotenv()
 EXPECTED_TOOLS = ["multiply"]
@@ -70,7 +70,7 @@ async def test_mcp_mode():
     env = os.environ.copy()
 
     mcp_server_proc = await asyncio.create_subprocess_exec(
-        "python", "blueberry_tools_service/contrib/mcp/server/server.py",
+        "python", "skillberry_store/contrib/mcp/server/server.py",
         cwd=os.path.dirname(
             os.path.abspath(__file__).rstrip("/tests/e2e/test_mcp_langgraph_agent.py")),
         env=env
@@ -78,7 +78,7 @@ async def test_mcp_mode():
 
     env["MCP_MODE"] = "true"
     main_proc = await asyncio.create_subprocess_exec(
-        "python", "-m", "blueberry_tools_service.main",
+        "python", "-m", "skillberry_store.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         env=env,

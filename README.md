@@ -1,4 +1,4 @@
-# Blueberry-tools-service (a.k.a., SBS)
+# Skillberry-store service (a.k.a., SBS)
 
 This service implements a smart tools repository for agentic workflows.
 
@@ -34,9 +34,9 @@ make docker_run
 To interact with the UI, navigate to [http://localhost:8000/docs](http://localhost:8000/docs).
 This will open the documentation interface where you can explore the available endpoints and test them directly.
 
-### Using the blueberry SDK 🔌
+### Using the skillberry SDK 🔌
 
-For more detailed information and programmatic usage, refer to the [Blueberry SDK](https://github.ibm.com/Blueberry/blueberry-sdk).
+For more detailed information and programmatic usage, refer to the [Skillberry SDK](https://github.ibm.com/skillberry/skillberry-store-sdk).
 
 ## Prerequisites 🛠️
 
@@ -87,8 +87,8 @@ See [DESIGN_REQUIREMENTS.md](DESIGN_REQUIREMENTS.md)
 ## Local installation 📦
 
 ```bash
-git clone git@github.ibm.com:Blueberry/blueberry-tools-service.git
-cd blueberry-tools-service
+git clone git@github.ibm.com:skillberry/skillberry-store.git
+cd skillberry-store
 make install_requirements
 ```
 
@@ -131,7 +131,7 @@ Open a browser against `http://127.0.0.1:8000/docs` .
 
 ## Engage with the Service through a Python Client 🐍
 
-The service can be consumed via blueberry tools service sdk. Refer to [blueberry-sdk](https://github.ibm.com/Blueberry/blueberry-sdk) for installation and usage.
+The service can be consumed via skillberry store service sdk. Refer to [skillberry-store-sdk](https://github.ibm.com/skillberry/skillberry-store-sdk) for installation and usage.
 
 ## Engage with the Service via MCP 📜
 
@@ -164,7 +164,7 @@ Follow the steps outlined in [Github backend](docs/github_using_hooks.md).
 
 ### To start a local Prometheus server execute:
 ```bash
-echo -e "global:\n  scrape_interval: 5s\nscrape_configs:\n  - job_name: \"blueberry-tools-service\"\n    static_configs:\n      - targets: [\"localhost:8090\"]\n    metric_relabel_configs:\n      - source_labels: [__name__]\n        regex: '.*_created'\n        action: drop" > /tmp/prometheus.yml
+echo -e "global:\n  scrape_interval: 5s\nscrape_configs:\n  - job_name: \"skillberry-store\"\n    static_configs:\n      - targets: [\"localhost:8090\"]\n    metric_relabel_configs:\n      - source_labels: [__name__]\n        regex: '.*_created'\n        action: drop" > /tmp/prometheus.yml
 docker run --rm --name prometheus --network="host" -p 9090:9090 -v /tmp/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus --config.file=/etc/prometheus/prometheus.yml
 ```
 

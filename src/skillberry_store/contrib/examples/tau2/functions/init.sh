@@ -4,9 +4,9 @@
 UP_FIVE_LEVELS="../../../../.."
 
 # Configurable host, port, and base path
-BTS_HOST="localhost"
-BTS_PORT=8000
-BASE_PATH="http://$BTS_HOST:$BTS_PORT"
+SBS_HOST="localhost"
+SBS_PORT=8000
+BASE_PATH="http://$SBS_HOST:$SBS_PORT"
 
 
 # Configurable health check interval and timeout (in seconds)
@@ -51,8 +51,8 @@ curl -X DELETE "$BASE_PATH/vmcp_servers/tau2-tools" \
   -H "accept: application/json"
 
 # 2. Load tau2 tools
-export BTS_HOME="$(pwd)/$UP_FIVE_LEVELS"
-export EXAMPLESPATH=$BTS_HOME/blueberry_tools_service/contrib/examples
+export SBS_HOME="$(pwd)/$UP_FIVE_LEVELS"
+export EXAMPLESPATH=$SBS_HOME/skillberry_store/contrib/examples
 
 (cd "$(dirname "$0")/$UP_FIVE_LEVELS" && make ARGS="tau2/functions/functions.py book_reservation calculate cancel_reservation get_reservation_details get_user_details list_all_airports search_direct_flight search_onestop_flight send_certificate update_reservation_baggages update_reservation_flights update_reservation_passengers get_flight_status transfer_to_human_agents" load_tools)
 

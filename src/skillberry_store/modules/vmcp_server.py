@@ -108,7 +108,7 @@ class VirtualMcpServer:
             List (mcp.types.Tool): A list of tools 
         """
         if self.app:
-            # Use direct app method call like MCPToBTSProxy
+            # Use direct app method call like MCPToSBSProxy
             manifests = self.app.handle_get_manifests()
             tools = []
             for manifest in manifests:
@@ -206,7 +206,7 @@ class VirtualMcpServer:
 
                     logging.info(f"@@@@@ handler: env_id: {self.env_id}  @@@@@")
 
-                    # Pass parameters as a dictionary to match BTS expectations
+                    # Pass parameters as a dictionary to match SBS expectations
                     try:
                         return_value = await self.invoke_tool(tool_name, parameters, self.env_id)
                     except Exception as e:
@@ -253,7 +253,7 @@ class VirtualMcpServer:
             raise ValueError(f"Tool {tool_name} not found")
 
         if self.app:
-            # Use direct app method call like MCPToBTSProxy
+            # Use direct app method call like MCPToSBSProxy
             return await self.app.handle_execute_manifest(tool_name, parameters, env_id=env_id)
         else:
             # Fallback to HTTP requests
@@ -265,7 +265,7 @@ class VirtualMcpServer:
 
     def manifest_to_tool(self, manifest: dict):
         """
-        Convert BTS manifest to MCP tool format.
+        Convert SBS manifest to MCP tool format.
         """
         from mcp import types
 
@@ -348,7 +348,7 @@ def manifest_param_type_to_python_type(manifest_param_type: str) -> Any:
     Helper utility to map manifest 'properties' type into a Pythonic type.
 
     This method is being used to properly annotate manifest into an MCP tool.
-    Inspired from https://github.ibm.com/Blueberry/blueberry-tools-agent/blob/main/agents/remote_tools_wrapper.py#L98
+    Inspired from https://github.ibm.com/skillberry/skillberry-agent/blob/main/agents/remote_tools_wrapper.py#L98
 
     Parameters:
         manifest_param_type (str): a type value of a manifest parameter

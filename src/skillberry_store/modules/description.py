@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional, Any
 
 from fastapi import HTTPException
-from blueberry_tools_service.modules.description_vector_index import (
+from skillberry_store.modules.description_vector_index import (
     DescriptionVectorIndex,
 )
 

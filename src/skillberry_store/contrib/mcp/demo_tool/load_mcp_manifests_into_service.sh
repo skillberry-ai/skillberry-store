@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #
-# Script to load mcp tools into tools-service to be used by Blueberry.
+# Script to load mcp tools into tools-service to be used by Skillberry.
 #
 # Pre-requisite:
 #

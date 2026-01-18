@@ -66,8 +66,6 @@ verify_venv:
 	else \
 		uv pip install -e .[$(ODEPS)]; \
 	fi
-	@echo $$PWD
-	@ls -la .
 	@touch .stamps/install_requirements-$(ODEPS)
 
 

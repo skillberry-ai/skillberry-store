@@ -22,7 +22,7 @@ clone
 
 ```
 cd ~
-git clone git@github.ibm.com:Blueberry/skillberry-dev-tools-service.git
+git clone git@github.ibm.com:skillberry/skillberry-dev-tools-service.git
 cd skillberry-dev-tools-service
 ```
 
@@ -30,7 +30,7 @@ run
 
 ```
 source ~/virtual/skillberry-dev-tools-service/bin/activate
-cd blueberry_tools_service/contrib/examples/tau2/functions
+cd skillberry_store/contrib/examples/tau2/functions
 ./init.sh
 ```
 
@@ -41,7 +41,7 @@ The script does the following:
 * loads the primitive tools
 * shutoff SBS
 
-_Tip_: pass additional environment variables according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/Blueberry/blueberry-tools-service/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
+_Tip_: pass additional environment variables according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/skillberry/skillberry-store/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
 
 ## Tau-2 environment server
 
@@ -59,7 +59,7 @@ clone
 
 ```
 cd ~
-git clone git@github.ibm.com:Blueberry/skillberry-dev-tau2.git
+git clone git@github.ibm.com:skillberry/skillberry-dev-tau2.git
 cd skillberry-dev-tau2
 ```
 
@@ -88,7 +88,7 @@ source ~/virtual/skillberry-dev-tools-service/bin/activate
 EXECUTE_PYTHON_LOCALLY=True make run
 ```
 
-_Tip_: pass additional environment variables according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/Blueberry/blueberry-tools-service/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
+_Tip_: pass additional environment variables according to your environment. Refer to SBS env var configurations [here](https://github.ibm.com/skillberry/skillberry-store/blob/main/docs/config-env-vars.md) for the full list of customizable parameters via env variables
 
 ### Start BTM
 
@@ -97,21 +97,21 @@ Currently not being used but is a pre-requisite for SBA
 venv
 
 ```
-python3 -m venv ~/virtual/blueberry-tools-maker
+python3 -m venv ~/virtual/skillberry-maker
 ```
 
 clone
 
 ```
 cd ~
-git clone git@github.ibm.com:Blueberry/blueberry-tools-maker.git
-cd blueberry-tools-maker
+git clone git@github.ibm.com:skillberry/skillberry-maker.git
+cd skillberry-maker
 ```
 
 run
 
 ```
-source ~/virtual/blueberry-tools-maker/bin/activate
+source ~/virtual/skillberry-maker/bin/activate
 make run
 ```
 
@@ -130,7 +130,7 @@ clone
 
 ```
 cd ~
-git clone git@github.ibm.com:Blueberry/skillberry-dev-agent.git
+git clone git@github.ibm.com:skillberry/skillberry-dev-agent.git
 cd skillberry-dev-agent
 ```
 

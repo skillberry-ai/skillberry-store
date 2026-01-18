@@ -3,7 +3,7 @@ import logging
 from typing import Any
 from mcp import server, types
 from mcp.client.session import ClientSession
-from blueberry_tools_service.tools.configure import configure_logging
+from skillberry_store.tools.configure import configure_logging
 from dataclasses import dataclass
 from fastapi import FastAPI
 
@@ -15,18 +15,18 @@ class ToolMapping:
     tool: types.Tool
 
 
-class MCPToBTSProxy(server.Server):
-    """An MCP Proxy Server that convert the requests to BTS."""
+class MCPToSBSProxy(server.Server):
+    """An MCP Proxy Server that convert the requests to SBS."""
 
     def __init__(self, app: FastAPI):
-        super().__init__("MCP-BTS Proxy")
+        super().__init__("MCP-SBS Proxy")
         self._register_request_handlers()
         configure_logging()
         self.app = app
         self.logger = logging.getLogger(__name__)
 
     async def _list_tools(self, _: Any) -> types.ServerResult:
-        """Send a list of the tools from BTS."""
+        """Send a list of the tools from SBS."""
         manifests_list = self.app.handle_get_manifests()
 
         self.logger.info(f"Found {len(manifests_list)} manifests")
@@ -42,7 +42,7 @@ class MCPToBTSProxy(server.Server):
         return types.ListToolsResult(tools=tools)
 
     async def _call_tool(self, req: types.CallToolRequest) -> types.ServerResult:
-        """Invoke a tool using the appropriate manifest in BTS."""
+        """Invoke a tool using the appropriate manifest in SBS."""
         result = await self.app.handle_execute_manifest(
             req.params.name, req.params.arguments
         )

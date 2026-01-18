@@ -1,23 +1,23 @@
 ##@ Development
 
 test-e2e: install_dev_requirements ## Test end-to-end the tools service (installs sdk)
-	pytest -s blueberry_tools_service/tests/e2e
+	pytest -s skillberry_store/tests/e2e
 
 lint: install_requirements install_dev_requirements ## List the tools-service
-	black --check --diff --color blueberry_tools_service/modules blueberry_tools_service/tools blueberry_tools_service/fast_api blueberry_tools_service/utils || \
-		(echo "Lint Failed. Please run 'black blueberry_tools_service/modules blueberry_tools_service/tools blueberry_tools_service/fast_api blueberry_tools_service/utils' to fix the issues" && exit 1)
+	black --check --diff --color skillberry_store/modules skillberry_store/tools skillberry_store/fast_api skillberry_store/utils || \
+		(echo "Lint Failed. Please run 'black skillberry_store/modules skillberry_store/tools skillberry_store/fast_api skillberry_store/utils' to fix the issues" && exit 1)
 
 # To run this target:
 # make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
 load_tools: install_requirements ## Load tools into the service
 	@echo "Loading tools into $(SERVICE_NAME)"
-	./blueberry_tools_service/client/curl/load_tools.sh $(ARGS)
+	./skillberry_store/client/curl/load_tools.sh $(ARGS)
 
 # To run this target:
 # make ARGS="ClientWinMVP/json ClientWinMVP/functions/transformations.py number_str_cleanup date_transformer full_address_concat GetYear GetQuarter GetCurrency GetDealAmount identity" load_tools_json
 load_tools_json: install_requirements ## Load tools into the service using json files
 	@echo "Loading tools-json into $(SERVICE_NAME)"
-	./blueberry_tools_service/client/curl/load_tools_json.sh $(ARGS)
+	./skillberry_store/client/curl/load_tools_json.sh $(ARGS)
 
 
 
@@ -38,17 +38,17 @@ release: check-git-main check-git-clean install_requirements  ## Release a new v
 	@echo "===> Generating git tag $(RELEASE_VERSION) and creating GitHub release"
 	@git checkout -b branch-$(RELEASE_VERSION)
 	@echo "===> Generated release branch $(RELEASE_VERSION)"
-	sed -i "s|blueberry-tools-service-sdk @ git+ssh://git@github.ibm.com/Blueberry/blueberry-sdk.git#subdirectory=blueberry_tools_service_sdk|blueberry-tools-service-sdk @ git+ssh://git@github.ibm.com/Blueberry/blueberry-sdk.git@$$RELEASE_VERSION#subdirectory=blueberry_tools_service_sdk|" pyproject.toml 
+	sed -i "s|skillberry-store-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-store-sdk.git#subdirectory=skillberry_store_sdk|skillberry-store-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-store-sdk.git@$$RELEASE_VERSION#subdirectory=skillberry_store_sdk|" pyproject.toml 
 	git add pyproject.toml && \
 	if git diff --cached --quiet; then \
-	  		echo "!!! No updates to commit in blueberry-tools-service !!!"; \
+	  		echo "!!! No updates to commit in skillberry-store !!!"; \
 	else \
-		echo "!!! Updates detected in blueberry-tools-service, committing... !!!"; \
-		git config --get user.name >/dev/null || git config user.name "Blueberry CI process" && \
-		git config --get user.email >/dev/null || git config user.email "blueberry.ci@blueberry.ai" && \
+		echo "!!! Updates detected in skillberry-store, committing... !!!"; \
+		git config --get user.name >/dev/null || git config user.name "Skillberry CI process" && \
+		git config --get user.email >/dev/null || git config user.email "skillberry.ci@skillberry.ai" && \
 		git commit -m "Update tools_service toml file with $(RELEASE_VERSION)" && \
 		git push origin branch-$(RELEASE_VERSION) && \
-		echo "Pushed updated toml file to blueberry-tools-service repository (origin branch-$(RELEASE_VERSION))"; \
+		echo "Pushed updated toml file to skillberry-store repository (origin branch-$(RELEASE_VERSION))"; \
 	fi
 
 
@@ -94,34 +94,34 @@ release: check-git-main check-git-clean install_requirements  ## Release a new v
 	@echo "=> Release $(RELEASE_VERSION) created successfully"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 
-update_bts_sdk: ## Update the BTS SDK
-	rm -rf /tmp/blueberry-sdk || true
-	@echo "==> Updating BTS SDK..."
+update_bts_sdk: ## Update the SBS SDK
+	rm -rf /tmp/skillberry-store-sdk || true
+	@echo "==> Updating SBS SDK..."
 	make docker_run
 	timeout 120 bash -c 'until curl -sf http://localhost:8000/docs > /dev/null;\
- 						 do echo "Waiting for Blueberry BTS service..."; sleep 5; done'
-	@echo "Blueberry BTS started (using docker)"
+ 						 do echo "Waiting for Skillberry SBS service..."; sleep 5; done'
+	@echo "Skillberry SBS started (using docker)"
 	@cd /tmp && \
-	git clone git@github.ibm.com:Blueberry/blueberry-sdk.git && \
-	echo "Cloned blueberry-sdk repository into /tmp/blueberry-sdk" && \
-	cd blueberry-sdk && \
+	git clone git@github.ibm.com:skillberry/skillberry-store-sdk.git && \
+	echo "Cloned skillberry-store-sdk repository into /tmp/skillberry-store-sdk" && \
+	cd skillberry-store-sdk && \
 	python -m venv venv && \
 	source venv/bin/activate && \
 	echo "Activated virtual environment" && \
-	make generate_blueberry_tools_service_sdk && \
-	echo "Blueberry SDK updated successfully" && \
+	make generate_skillberry_store_sdk && \
+	echo "Skillberry Store SDK updated successfully" && \
 	git add . && \
 	if git diff --cached --quiet; then \
-	  		echo "!!! No updates to commit in blueberry-sdk !!!"; \
+	  		echo "!!! No updates to commit in skillberry-store-sdk !!!"; \
 	else \
-		echo "!!! Updates detected in blueberry-sdk, committing... !!!"; \
-		git config --get user.name >/dev/null || git config user.name "Blueberry CI process" && \
-		git config --get user.email >/dev/null || git config user.email "blueberry.ci@blueberry.ai" && \
+		echo "!!! Updates detected in skillberry-store-sdk, committing... !!!"; \
+		git config --get user.name >/dev/null || git config user.name "Skillberry CI process" && \
+		git config --get user.email >/dev/null || git config user.email "skillberry.ci@skillberry.ai" && \
 		git commit -m "Update tools_service_sdk SDK $$(date '+%Y-%m-%d %H:%M:%S')" && \
 		git push origin main && \
-		echo "Pushed updated SDK to blueberry-sdk repository (origin main)"; \
+		echo "Pushed updated SDK to skillberry-store-sdk repository (origin main)"; \
 	fi
 	make docker_stop
-	echo "BTS service stopped"
+	echo "SBS service stopped"
 	@echo "==> SDK update completed successfully"
 

@@ -1,16 +1,16 @@
 import pytest
 from unittest.mock import Mock, patch, mock_open
-from blueberry_tools_service.modules.vmcp_server_manager import VirtualMcpServerManager
-from blueberry_tools_service.modules.lifecycle import LifecycleState
+from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
+from skillberry_store.modules.lifecycle import LifecycleState
 
 
 def test_add_server_from_manifest_filter():
     """Test adding a virtual MCP server from manifest filter."""
-    with patch('blueberry_tools_service.modules.vmcp_server_manager.VirtualMcpServer') as mock_server_class, \
+    with patch('skillberry_store.modules.vmcp_server_manager.VirtualMcpServer') as mock_server_class, \
          patch('builtins.open', mock_open()) as mock_file, \
          patch('os.path.exists', return_value=False), \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.Manifest') as mock_manifest, \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.Description') as mock_description:
+         patch('skillberry_store.modules.vmcp_server_manager.Manifest') as mock_manifest, \
+         patch('skillberry_store.modules.vmcp_server_manager.Description') as mock_description:
         
         # Mock server instance
         mock_server = Mock()
@@ -72,11 +72,11 @@ def test_add_server_from_manifest_filter():
 
 def test_add_server_from_manifest_filter_auto_name():
     """Test adding a virtual MCP server with auto-generated name."""
-    with patch('blueberry_tools_service.modules.vmcp_server_manager.VirtualMcpServer') as mock_server_class, \
+    with patch('skillberry_store.modules.vmcp_server_manager.VirtualMcpServer') as mock_server_class, \
          patch('builtins.open', mock_open()) as mock_file, \
          patch('os.path.exists', return_value=False), \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.Manifest') as mock_manifest, \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.Description') as mock_description:
+         patch('skillberry_store.modules.vmcp_server_manager.Manifest') as mock_manifest, \
+         patch('skillberry_store.modules.vmcp_server_manager.Description') as mock_description:
         
         mock_server = Mock()
         mock_server.name = "Manifest Filter Server - auto_filter"
@@ -127,8 +127,8 @@ def test_add_server_from_manifest_filter_missing_app():
     """Test error when app is not provided."""
     with patch('builtins.open', mock_open()) as mock_file, \
          patch('os.path.exists', return_value=False), \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.Manifest') as mock_manifest, \
-         patch('blueberry_tools_service.modules.vmcp_server_manager.Description') as mock_description:
+         patch('skillberry_store.modules.vmcp_server_manager.Manifest') as mock_manifest, \
+         patch('skillberry_store.modules.vmcp_server_manager.Description') as mock_description:
         
         manager = VirtualMcpServerManager()
         

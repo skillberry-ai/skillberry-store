@@ -8,10 +8,10 @@ from docstring_parser import Docstring
 
 from fastapi import HTTPException
 
-from blueberry_tools_service.client.utils import base_client_utils, json_client_utils
-from blueberry_tools_service.modules.tool_type import ToolType
-from blueberry_tools_service.tools.shell_hook import ShellHook
-from blueberry_tools_service.utils.python_utils import (
+from skillberry_store.client.utils import base_client_utils, json_client_utils
+from skillberry_store.modules.tool_type import ToolType
+from skillberry_store.tools.shell_hook import ShellHook
+from skillberry_store.utils.python_utils import (
     extract_docstring,
     get_function_node,
 )

@@ -5,12 +5,12 @@ import threading
 
 from typing import Any, Dict, Optional
 
-from blueberry_tools_service.modules.description import Description
-from blueberry_tools_service.modules.description_vector_index import DescriptionVectorIndex
-from blueberry_tools_service.modules.lifecycle import LifecycleState
-from blueberry_tools_service.modules.manifest import Manifest
-from blueberry_tools_service.modules.vmcp_server import VirtualMcpServer
-from blueberry_tools_service.tools.configure import (
+from skillberry_store.modules.description import Description
+from skillberry_store.modules.description_vector_index import DescriptionVectorIndex
+from skillberry_store.modules.lifecycle import LifecycleState
+from skillberry_store.modules.manifest import Manifest
+from skillberry_store.modules.vmcp_server import VirtualMcpServer
+from skillberry_store.tools.configure import (
     get_descriptions_directory,
     get_manifest_directory,
 )
@@ -22,7 +22,7 @@ VMCP_SERVERS_FILE = os.environ.get("VMCP_SERVERS_FILE", "/tmp/vmcp_servers.json"
 
 
 class VirtualMcpServerManager:
-    """Manages virtual MCP servers for the Blueberry Tools Service.
+    """Manages virtual MCP servers for the Skillberry Store service.
 
     This class provides functionality to create, manage, and persist virtual MCP servers
     that can be dynamically created from tool search results or manually configured.
@@ -32,8 +32,8 @@ class VirtualMcpServerManager:
         """Initialize the virtual MCP server manager.
 
         Args:
-            bts_url: The BTS server URL to use for tool execution.
-            app: The BTS FastAPI app instance for direct method calls.
+            bts_url: The SBS server URL to use for tool execution.
+            app: The SBS FastAPI app instance for direct method calls.
 
         Loads existing virtual MCP servers from persistent storage.
         """

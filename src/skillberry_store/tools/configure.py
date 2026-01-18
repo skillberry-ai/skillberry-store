@@ -99,7 +99,7 @@ def get_files_directory_path():
     Returns:
         str: The resolved directory path.
     """
-    env_path = os.getenv("BTS_DIRECTORY_PATH")
+    env_path = os.getenv("SBS_DIRECTORY_PATH")
     if env_path:
         logger.info(f"Using directory path from environment: {env_path}")
         return env_path
@@ -115,7 +115,7 @@ def get_descriptions_directory():
     """
     Get the directory path for descriptions.
     """
-    env_path = os.getenv("BTS_DESCRIPTIONS_DIRECTORY")
+    env_path = os.getenv("SBS_DESCRIPTIONS_DIRECTORY")
     if env_path:
         logger.info(f"Using descriptions directory from environment: {env_path}")
         return env_path
@@ -128,7 +128,7 @@ def get_metadata_directory():
     """
     Get the directory path for metadata.
     """
-    env_path = os.getenv("BTS_METADATA_DIRECTORY")
+    env_path = os.getenv("SBS_METADATA_DIRECTORY")
     if env_path:
         logger.info(f"Using metadata directory from environment: {env_path}")
         return env_path
@@ -141,7 +141,7 @@ def get_manifest_directory():
     """
     Get the directory path for manifest.
     """
-    env_path = os.getenv("BTS_MANIFEST_DIRECTORY")
+    env_path = os.getenv("SBS_MANIFEST_DIRECTORY")
     if env_path:
         logger.info(f"Using manifest directory from environment: {env_path}")
         return env_path
