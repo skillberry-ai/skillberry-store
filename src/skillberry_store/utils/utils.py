@@ -2,7 +2,6 @@ from typing import Dict, Any
 
 import logging
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +55,7 @@ def flatten_keys(data: Dict[str, Any]) -> Dict[str, Any]:
             result[prefix] = value
 
     for main_key, value in data.items():
-            recurse(main_key, value)
+        recurse(main_key, value)
 
     return result
 
@@ -97,10 +96,11 @@ def unflatten_keys(data: Dict[str, Any]) -> Dict[str, Any]:
 
     for key, value in data.items():
         try:
-            parts = key.split('-')
-            main_key = '-'.join(parts[:2])  # Combine first two segments
-            sub_parts = parts[2:]           # Remaining segments for nesting
-            if not sub_parts: raise
+            parts = key.split("-")
+            main_key = "-".join(parts[:2])  # Combine first two segments
+            sub_parts = parts[2:]  # Remaining segments for nesting
+            if not sub_parts:
+                raise
 
             if main_key not in result:
                 result[main_key] = {}
@@ -114,19 +114,19 @@ def unflatten_keys(data: Dict[str, Any]) -> Dict[str, Any]:
                         current[part] = {}
                     current = current[part]
         except:
-            logger.info(
-                f"unflatten_keys: Error handling key: {key}. Ignoring...")
+            logger.info(f"unflatten_keys: Error handling key: {key}. Ignoring...")
             continue
     return result
 
 
-if __name__ == '__main__':
-    unflatten_keys({
-        'x-stainless-lang': 'python',
-        'x-stainless-package-version': '2.8.1',
-        'x-stainless-os': 'Linux',
-        'x-stainless-arch': 'x64',
-        'x-stainless-runtime': 'CPython',
-        'x-stainless-runtime-version': '3.12.3'
-    }
+if __name__ == "__main__":
+    unflatten_keys(
+        {
+            "x-stainless-lang": "python",
+            "x-stainless-package-version": "2.8.1",
+            "x-stainless-os": "Linux",
+            "x-stainless-arch": "x64",
+            "x-stainless-runtime": "CPython",
+            "x-stainless-runtime-version": "3.12.3",
+        }
     )

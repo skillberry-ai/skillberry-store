@@ -62,7 +62,8 @@ def test_add_server_from_manifest_filter():
             port=8080,
             tools=["tool1", "tool2"],
             bts_url="http://localhost:8000",
-            app=mock_app
+            app=mock_app,
+            env_id=None
         )
         
         # Verify server was added to manager
@@ -116,7 +117,8 @@ def test_add_server_from_manifest_filter_auto_name():
             port=None,
             tools=["tool3"],
             bts_url="http://localhost:8000",
-            app=mock_app
+            app=mock_app,
+            env_id=None
         )
         
         # Verify server was added to manager

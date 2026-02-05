@@ -19,6 +19,9 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from fastapi_mcp import FastApiMCP
 
 from skillberry_store.fast_api.mcp_proxy import MCPToSBSProxy
+from skillberry_store.fast_api.skills_api import register_skills_api
+from skillberry_store.fast_api.snippets_api import register_snippets_api
+from skillberry_store.fast_api.tools_api import register_tools_api
 from skillberry_store.modules.dictionary_checker import DictionaryChecker
 from skillberry_store.modules.lifecycle import LifecycleState, LifecycleManager
 from skillberry_store.modules.manifest import Manifest
@@ -33,7 +36,11 @@ from skillberry_store.modules.tool_type import ToolType
 from skillberry_store.tools.configure import (
     get_files_directory_path,
     get_descriptions_directory,
+    get_tools_descriptions_directory,
+    get_snippets_descriptions_directory,
+    get_skills_descriptions_directory,
     get_manifest_directory,
+    get_snippets_directory,
     configure_logging,
 )
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
@@ -126,6 +133,9 @@ class SBS(FastAPI):
         configure_logging(logging._nameToLevel[self.settings.log_level])
         self.logger = logging.getLogger(__name__)
         descriptions = descriptions_api()
+        tools_descriptions = tools_descriptions_api()
+        snippets_descriptions = snippets_descriptions_api()
+        skills_descriptions = skills_descriptions_api()
         self.manifest_api(
             file_handler=file_api(), descriptions=descriptions, tags=["manifest"]
         )
@@ -133,6 +143,13 @@ class SBS(FastAPI):
         self.tools_api(
             file_handler=file_api(), descriptions=descriptions, tags=["tools"]
         )
+        register_skills_api(
+            self, tags="skills", skills_descriptions=skills_descriptions
+        )
+        register_snippets_api(
+            self, tags="snippets", snippets_descriptions=snippets_descriptions
+        )
+        register_tools_api(self, tags="tools", tools_descriptions=tools_descriptions)
         self.health_api(tags=["health"])
 
         # Mount MCP server
@@ -150,6 +167,10 @@ class SBS(FastAPI):
             {
                 "name": "virtual mcp servers",
                 "description": "Operations for Virtual MCP Servers",
+            },
+            {
+                "name": "snippets",
+                "description": "Operations for managing text snippets",
             },
         ]
 
@@ -237,8 +258,7 @@ class SBS(FastAPI):
         return manifest_as_dict_entities
 
     async def handle_execute_manifest(
-        self, uid: str, parameters: Optional[Dict[str, Any]] = None,
-        env_id = None
+        self, uid: str, parameters: Optional[Dict[str, Any]] = None, env_id=None
     ):
         """Invoke manifest function given its uid.
 
@@ -628,7 +648,11 @@ class SBS(FastAPI):
             logging.info(f"@@@@@@@@@@@@@@@@")
             # TODO: END common skillberry library
 
-            env_id = skillberry_context.get("env_id") if skillberry_context is not None else None
+            env_id = (
+                skillberry_context.get("env_id")
+                if skillberry_context is not None
+                else None
+            )
 
             return await self.handle_execute_manifest(uid, parameters, env_id=env_id)
 
@@ -781,10 +805,14 @@ class SBS(FastAPI):
 
             skillberry_context = unflatten_keys(headers).get(SKILLBERRY_CONTEXT.lower())
             logging.info(f"@@@@@@@@@@@@@@@@")
-            logging.info(f"skillberery_context: {skillberry_context}")            
+            logging.info(f"skillberery_context: {skillberry_context}")
             logging.info(f"@@@@@@@@@@@@@@@@")
 
-            env_id = skillberry_context.get("env_id") if skillberry_context is not None else None
+            env_id = (
+                skillberry_context.get("env_id")
+                if skillberry_context is not None
+                else None
+            )
             # task_id = skillberry_context["task_id"]
 
             try:
@@ -793,9 +821,11 @@ class SBS(FastAPI):
                     vmcp_server_request.description,
                     vmcp_server_request.port,
                     vmcp_server_request.tools,
-                    env_id=env_id
+                    env_id=env_id,
                 )
-                return {"message": f"virtual MCP server '{vmcp_server_request.name}' added"}
+                return {
+                    "message": f"virtual MCP server '{vmcp_server_request.name}' added"
+                }
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
@@ -1075,6 +1105,48 @@ def descriptions_api():
         vector_index=DescriptionVectorIndex,
     )
     return descriptions
+
+
+def tools_descriptions_api():
+    """Initialize tools descriptions APIs with proper persistency/db and APIs.
+
+    Returns:
+        Description: Description instance configured with vector index for tools.
+    """
+    tools_descriptions_directory = get_tools_descriptions_directory()
+    tools_descriptions = Description(
+        descriptions_directory=tools_descriptions_directory,
+        vector_index=DescriptionVectorIndex,
+    )
+    return tools_descriptions
+
+
+def snippets_descriptions_api():
+    """Initialize snippets descriptions APIs with proper persistency/db and APIs.
+
+    Returns:
+        Description: Description instance configured with vector index for snippets.
+    """
+    snippets_descriptions_directory = get_snippets_descriptions_directory()
+    snippets_descriptions = Description(
+        descriptions_directory=snippets_descriptions_directory,
+        vector_index=DescriptionVectorIndex,
+    )
+    return snippets_descriptions
+
+
+def skills_descriptions_api():
+    """Initialize skills descriptions APIs with proper persistency/db and APIs.
+
+    Returns:
+        Description: Description instance configured with vector index for skills.
+    """
+    skills_descriptions_directory = get_skills_descriptions_directory()
+    skills_descriptions = Description(
+        descriptions_directory=skills_descriptions_directory,
+        vector_index=DescriptionVectorIndex,
+    )
+    return skills_descriptions
 
 
 def file_api():

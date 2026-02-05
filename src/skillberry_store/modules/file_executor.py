@@ -102,9 +102,9 @@ def extract_function_and_imports(
     try:
         tree = ast.parse(content)
         first_found_function_name: Optional[str] = None
-        parameters: List[
-            Tuple[str, str, str]
-        ] = []  # (param_name, param_type, "positional"/"optional")
+        parameters: List[Tuple[str, str, str]] = (
+            []
+        )  # (param_name, param_type, "positional"/"optional")
         imports: List[Tuple[str, str]] = []
 
         for node in ast.walk(tree):
@@ -191,7 +191,7 @@ class FileExecutor:
                     detail=f"Docker SDK for Python not found. Please install the Docker SDK for Python.",
                 )
 
-    async def execute_file(self, parameters: Dict[str, Any], env_id = None) -> dict:
+    async def execute_file(self, parameters: Dict[str, Any], env_id=None) -> dict:
         """
         Executes dynamically based on manifest and parameters.
 
@@ -204,7 +204,9 @@ class FileExecutor:
         logger.info(f"Executing: {self.name} with parameters: {parameters}")
 
         try:
-            return await self.based_on_programming_language(parameters=parameters, env_id=env_id)
+            return await self.based_on_programming_language(
+                parameters=parameters, env_id=env_id
+            )
         except Exception as e:
             logger.error(f"Error executing file: {e}")
             raise HTTPException(status_code=500, detail=f"Error executing file: {e}")
@@ -233,9 +235,13 @@ class FileExecutor:
         if self.manifest.get("packaging_format") == "code":
             # Check environment variable dynamically
             if self.execute_python_locally:
-                return_value = self.execute_python_file_locally(parameters, env_id=env_id)
+                return_value = self.execute_python_file_locally(
+                    parameters, env_id=env_id
+                )
             else:
-                return_value = self.execute_python_file_using_docker(parameters, env_id=env_id)
+                return_value = self.execute_python_file_using_docker(
+                    parameters, env_id=env_id
+                )
         elif self.manifest.get("packaging_format") == "mcp":
             return_value = await self.execute_python_file_in_mcp_server(parameters)
         else:
@@ -360,7 +366,11 @@ class FileExecutor:
         # Handle dependent manifests
         for i, _ in enumerate(self.dependent_manifests_as_dict):
             dm_name = self.dependent_manifests_as_dict[i]["name"]
-            (df_name, _, df_imports,) = extract_function_and_imports(
+            (
+                df_name,
+                _,
+                df_imports,
+            ) = extract_function_and_imports(
                 content=self.dependent_file_contents[i],
                 function_name=dm_name,
             )
@@ -490,7 +500,7 @@ class FileExecutor:
                     logging.info(f"@@@@@@@@@@@@@@@@")
                     logging.info(f"Set exec_globals with env_id: {env_id}")
                     logging.info(f"@@@@@@@@@@@@@@@@")
-                    
+
                     exec_globals = {"env_id": env_id} if env_id is not None else {}
                     try:
                         exec(wrapper_code, exec_globals)

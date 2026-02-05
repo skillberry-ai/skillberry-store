@@ -111,7 +111,7 @@ async def test_mcp_mode():
             for m in response["messages"]:
                 m.pretty_print()
             assert any(
-                expected_answer.lower() in m.content.lower()
+                expected_answer.lower() in (m.content.lower() if isinstance(m.content, str) else "")
                 for m in response["messages"]
             ), f"Expected answer to include '{expected_answer}'"
 

@@ -9,7 +9,7 @@ from urllib.parse import quote
 def clean_test_tmp_dir():
     """Removes temporary directories used by the tools service."""
 
-    for path in ["/tmp/manifest", "/tmp/descriptions", "/tmp/files"]:
+    for path in ["/tmp/manifest", "/tmp/descriptions", "/tmp/files", "/tmp/snippets", "/tmp/tools"]:
         if os.path.exists(path):
             print(f"Removing: {path}")
             shutil.rmtree(path, ignore_errors=False)

@@ -124,6 +124,19 @@ def get_descriptions_directory():
     return default_path
 
 
+def get_tools_descriptions_directory():
+    """
+    Get the directory path for tool descriptions.
+    """
+    env_path = os.getenv("SBS_TOOLS_DESCRIPTIONS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using tools descriptions directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/tools_descriptions"
+    logger.info(f"Using default tools descriptions directory: {default_path}")
+    return default_path
+
+
 def get_metadata_directory():
     """
     Get the directory path for metadata.
@@ -147,4 +160,71 @@ def get_manifest_directory():
         return env_path
     default_path = "/tmp/manifest"
     logger.info(f"Using default manifest directory: {default_path}")
+    return default_path
+
+
+def get_snippets_directory():
+    """
+    Get the directory path for snippets.
+    """
+    env_path = os.getenv("SBS_SNIPPETS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using snippets directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/snippets"
+    logger.info(f"Using default snippets directory: {default_path}")
+    return default_path
+
+
+def get_skills_directory():
+    """
+    Get the directory path for skills.
+    """
+    env_path = os.getenv("SBS_SKILLS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using skills directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/skills"
+    logger.info(f"Using default skills directory: {default_path}")
+    return default_path
+
+
+def get_tools_directory():
+    """
+    Get the directory path for tools.
+    """
+    env_path = os.getenv("SBS_TOOLS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using tools directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/tools"
+    logger.info(f"Using default tools directory: {default_path}")
+    return default_path
+
+
+def get_snippets_descriptions_directory():
+    """
+    Get the directory path for snippet descriptions.
+    """
+    env_path = os.getenv("SBS_SNIPPETS_DESCRIPTIONS_DIRECTORY")
+    if env_path:
+        logger.info(
+            f"Using snippets descriptions directory from environment: {env_path}"
+        )
+        return env_path
+    default_path = "/tmp/snippets_descriptions"
+    logger.info(f"Using default snippets descriptions directory: {default_path}")
+    return default_path
+
+
+def get_skills_descriptions_directory():
+    """
+    Get the directory path for skill descriptions.
+    """
+    env_path = os.getenv("SBS_SKILLS_DESCRIPTIONS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using skills descriptions directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/skills_descriptions"
+    logger.info(f"Using default skills descriptions directory: {default_path}")
     return default_path

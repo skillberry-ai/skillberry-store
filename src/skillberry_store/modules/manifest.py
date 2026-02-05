@@ -16,7 +16,6 @@ from skillberry_store.utils.python_utils import (
     get_function_node,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
