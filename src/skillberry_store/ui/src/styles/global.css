@@ -1,0 +1,92 @@
+/* Copyright 2025 IBM Corp. */
+/* Licensed under the Apache License, Version 2.0 */
+
+:root {
+  font-family: 'RedHatDisplay', 'Overpass', overpass, helvetica, arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--pf-v5-global--BackgroundColor--200);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--pf-v5-global--BorderColor--300);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pf-v5-global--BorderColor--400);
+}
+
+/* Code block styling */
+pre {
+  background-color: var(--pf-v5-global--BackgroundColor--dark-100);
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+code {
+  font-family: 'Red Hat Mono', 'Courier New', monospace;
+  font-size: 0.875rem;
+}
+
+/* Utility classes */
+.text-muted {
+  color: var(--pf-v5-global--Color--200);
+}
+
+.text-small {
+  font-size: 0.875rem;
+}
+
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Loading spinner container */
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--pf-v5-global--Color--200);
+}
+
+/* Card hover effect */
+.pf-v5-c-card:hover {
+  box-shadow: var(--pf-v5-global--BoxShadow--md);
+  transition: box-shadow 0.2s ease-in-out;
+}

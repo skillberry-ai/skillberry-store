@@ -1,0 +1,81 @@
+// Copyright 2025 IBM Corp.
+// Licensed under the Apache License, Version 2.0
+
+export interface Tool {
+  uuid: string;
+  name: string;
+  description: string;
+  state?: 'unknown' | 'any' | 'new' | 'checked' | 'approved';
+  tags?: string[];
+  version?: string;
+  module_name?: string;
+  programming_language?: string;
+  packaging_format?: string;
+  params?: {
+    type?: string;
+    properties?: Record<string, any>;
+    required?: string[];
+    optional?: string[];
+  };
+  returns?: {
+    type?: string;
+    description?: string;
+  };
+  author?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Skill {
+  uuid: string;
+  name: string;
+  description: string;
+  tools?: string[];
+  snippets?: string[];
+  tags?: string[];
+  version?: string;
+  author?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Snippet {
+  uuid: string;
+  name: string;
+  description: string;
+  content: string;
+  state?: 'unknown' | 'any' | 'new' | 'checked' | 'approved';
+  content_type?: string;
+  tags?: string[];
+  version?: string;
+  author?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VMCPServer {
+  name: string;
+  description: string;
+  port: number;
+  tools: string[];
+  status?: 'running' | 'stopped' | 'error';
+  created_at?: string;
+}
+
+export interface SearchResult {
+  name: string;
+  similarity_score: number;
+}
+
+export interface ExecutionResult {
+  result?: any;
+  error?: string;
+  stdout?: string;
+  stderr?: string;
+  execution_time?: number;
+}
+
+export interface ApiError {
+  detail: string;
+  status?: number;
+}
