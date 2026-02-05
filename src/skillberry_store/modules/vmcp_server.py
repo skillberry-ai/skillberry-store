@@ -106,7 +106,7 @@ class VirtualMcpServer:
         Lists the tools registered with the virtual MCP server.
 
         Returns:
-            List (mcp.types.Tool): A list of tools 
+            List (mcp.types.Tool): A list of tools
         """
         if self.app:
             # Use direct app method call like MCPToSBSProxy
@@ -142,7 +142,9 @@ class VirtualMcpServer:
             def make_handler(tool_name, tool_schema):
                 # Extract parameter names from the tool schema
                 properties = tool_schema.get("inputSchema", {}).get("properties", {})
-                logging.info (f"@@@@@ make_handler: {tool_name} '{properties}' @@@@@") # OK..
+                logging.info(
+                    f"@@@@@ make_handler: {tool_name} '{properties}' @@@@@"
+                )  # OK..
                 required = tool_schema.get("inputSchema", {}).get("required", [])
 
                 # Create function signature dynamically
@@ -152,7 +154,7 @@ class VirtualMcpServer:
                     annotations = {}
                     params = []
                     for param_name, param_info in properties.items():
-                        logging.info (f"@@@@@ param_info: {param_info} @@@@@")
+                        logging.info(f"@@@@@ param_info: {param_info} @@@@@")
                         description = param_info["description"]
                         _type = param_info["type"]
 
@@ -160,15 +162,16 @@ class VirtualMcpServer:
                         # i.e. when being retrieved via MCP client
                         annotated_type = Annotated[
                             manifest_param_type_to_python_type(_type),
-                            Field(title=description, description=description)
+                            Field(title=description, description=description),
                         ]
                         annotations[param_name] = annotated_type
 
                         if param_name in required:
                             params.append(
                                 inspect.Parameter(
-                                    param_name, inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                                    annotation=annotated_type
+                                    param_name,
+                                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                    annotation=annotated_type,
                                 )
                             )
                         else:
@@ -177,11 +180,13 @@ class VirtualMcpServer:
                                     param_name,
                                     inspect.Parameter.POSITIONAL_OR_KEYWORD,
                                     default=None,
-                                    annotation=annotated_type
+                                    annotation=annotated_type,
                                 )
                             )
                 except Exception as e:
-                    logging.error (f"Error converting tool {tool_name} parameters into MCP format: {str(e)}")
+                    logging.error(
+                        f"Error converting tool {tool_name} parameters into MCP format: {str(e)}"
+                    )
                     raise
 
                 # Create the handler function
@@ -209,20 +214,24 @@ class VirtualMcpServer:
 
                     # Pass parameters as a dictionary to match SBS expectations
                     try:
-                        return_value = await self.invoke_tool(tool_name, parameters, self.env_id)
+                        return_value = await self.invoke_tool(
+                            tool_name, parameters, self.env_id
+                        )
                     except Exception as e:
                         logging.info(f"@@@@@ handler: Error '{str(e)}'  @@@@@")
                         # BTA @tool invocation logic
                         cleaned_return_value = f"EXCEPTION:Error executing tool: {e}"
-                        logging.info (f"cleaned_return_value: {cleaned_return_value}")
+                        logging.info(f"cleaned_return_value: {cleaned_return_value}")
                         return cleaned_return_value
 
-                    logging.info (f"return_value from invoke_tool: {return_value}")
+                    logging.info(f"return_value from invoke_tool: {return_value}")
                     # BTA @tool invocation logic
                     return_value = return_value["return value"]
                     # BTA @tool invocation logic
-                    cleaned_return_value = return_value.strip().replace('"', '')
-                    logging.info (f'====> returning response from the function: {cleaned_return_value}')
+                    cleaned_return_value = return_value.strip().replace('"', "")
+                    logging.info(
+                        f"====> returning response from the function: {cleaned_return_value}"
+                    )
                     return cleaned_return_value
 
                 # Set function metadata
@@ -230,7 +239,9 @@ class VirtualMcpServer:
                 handler.__doc__ = tool.description
                 handler.__signature__ = inspect.Signature(params)
                 handler.__annotations__ = annotations
-                logging.info(f"@@@@@@ handler.__signature__ {handler.__signature__}  @@@@@@")
+                logging.info(
+                    f"@@@@@@ handler.__signature__ {handler.__signature__}  @@@@@@"
+                )
 
                 return handler
 
@@ -256,7 +267,9 @@ class VirtualMcpServer:
 
         if self.app:
             # Use direct app method call like MCPToSBSProxy
-            return await self.app.handle_execute_manifest(tool_name, parameters, env_id=env_id)
+            return await self.app.handle_execute_manifest(
+                tool_name, parameters, env_id=env_id
+            )
         else:
             # Fallback to HTTP requests
             response = requests.post(

@@ -1,11 +1,13 @@
 ##@ Development
 
-test-e2e: install_dev_requirements ## Test end-to-end the tools service (installs sdk)
-	pytest -s skillberry_store/tests/e2e
+test-e2e: ## Test end-to-end the tools service (installs sdk)
+	@$(MAKE) install_requirements ODEPS=dev
+	pytest -s src/skillberry_store/tests/e2e
 
-lint: install_requirements install_dev_requirements ## List the tools-service
-	black --check --diff --color skillberry_store/modules skillberry_store/tools skillberry_store/fast_api skillberry_store/utils || \
-		(echo "Lint Failed. Please run 'black skillberry_store/modules skillberry_store/tools skillberry_store/fast_api skillberry_store/utils' to fix the issues" && exit 1)
+lint: ## List the tools-service
+	@$(MAKE) install_requirements ODEPS=dev
+	black --check --diff --color src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils || \
+		(echo "Lint Failed. Please run 'black src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils' to fix the issues" && exit 1)
 
 # To run this target:
 # make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools

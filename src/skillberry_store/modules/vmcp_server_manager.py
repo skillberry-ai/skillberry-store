@@ -15,7 +15,6 @@ from skillberry_store.tools.configure import (
     get_manifest_directory,
 )
 
-
 logger = logging.getLogger(__name__)
 
 VMCP_SERVERS_FILE = os.environ.get("VMCP_SERVERS_FILE", "/tmp/vmcp_servers.json")
@@ -54,7 +53,14 @@ class VirtualMcpServerManager:
         self.load_servers()
         self._lock = threading.RLock()
 
-    def add_server(self, name: str, description: str, port: Optional[int], tools: list, env_id: str = None) -> VirtualMcpServer:
+    def add_server(
+        self,
+        name: str,
+        description: str,
+        port: Optional[int],
+        tools: list,
+        env_id: str = None,
+    ) -> VirtualMcpServer:
         """Add a new virtual MCP server.
 
         Args:
@@ -80,7 +86,7 @@ class VirtualMcpServerManager:
                 tools=tools,
                 bts_url=self.bts_url,
                 app=self.app,
-                env_id=env_id
+                env_id=env_id,
             )
             self.servers[server.name] = server
 
@@ -90,7 +96,9 @@ class VirtualMcpServerManager:
             self.descriptions.write_description(name, description)
 
             self.save_servers()
-            logger.info(f"Added and started new vmcp_server: {name} on port {server.port}")
+            logger.info(
+                f"Added and started new vmcp_server: {name} on port {server.port}"
+            )
             return server
 
     def remove_server(self, name: str):

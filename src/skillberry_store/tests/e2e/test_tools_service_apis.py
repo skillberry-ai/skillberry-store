@@ -1,52 +1,16 @@
-import asyncio
 import os
 from importlib import resources as impresources
 import json
 import pytest
-import pytest_asyncio
 
 from skillberry_store.client.utils import base_client_utils, json_client_utils
 from skillberry_store.modules.manifest import python_manifest_from_json_description
 from skillberry_store.tests import resources as resources_package
-from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready
+from skillberry_store.tests.e2e.fixtures import run_sbs
 
 import skillberry_store_sdk
 from skillberry_store_sdk.exceptions import NotFoundException, ServiceException
 
-
-@pytest_asyncio.fixture(scope="module")
-async def run_bts(request):
-    """
-    This method is responsible for setup and teardown.
-
-    Setup - runs the tools service.
-    Teardown - terminates the service and remove its resources.
-
-    """
-    print("setup called")
-    clean_test_tmp_dir()
-    main_proc = await asyncio.create_subprocess_exec(
-        "python", "-m", "skillberry_store.main",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=os.path.dirname(
-            os.path.abspath(__file__).rstrip("/tests/e2e/test_tools_service_apis.py")),
-    )
-    await wait_until_server_ready(timeout=60)
-
-    yield
-
-    print("teardown called")
-    # Cleanup: kill server process
-    main_proc.kill()
-
-    # Read to avoid transport issues
-    if main_proc.stdout:
-        await main_proc.stdout.read()
-    if main_proc.stderr:
-        await main_proc.stderr.read()
-
-    clean_test_tmp_dir()
 
 
 def load_json_resource(resource_name: str) -> dict:
@@ -65,7 +29,7 @@ def load_json_resource(resource_name: str) -> dict:
 
 @pytest.mark.parametrize("func_name", ["GetCurrency", "GetYear", "GetQuarter", "identity"])
 @pytest.mark.asyncio
-async def test_add_manifest(run_bts, func_name):
+async def test_add_manifest(run_sbs, func_name):
     """
     Add manifest from the proper json file and module.
 
@@ -97,7 +61,7 @@ async def test_add_manifest(run_bts, func_name):
 
 @pytest.mark.parametrize("func_name", ["GetYear", "GetQuarter"])
 @pytest.mark.asyncio
-async def test_tools_add(run_bts, func_name):
+async def test_tools_add(run_sbs, func_name):
     """
     Add tools from the proper module.
 
@@ -121,7 +85,7 @@ async def test_tools_add(run_bts, func_name):
 
 
 @pytest.mark.asyncio
-async def test_tools_add_no_tool_name(run_bts):
+async def test_tools_add_no_tool_name(run_sbs):
     """
     Add tools from the proper module.
 
@@ -147,7 +111,7 @@ async def test_tools_add_no_tool_name(run_bts):
 
 @pytest.mark.parametrize("func_name", ["GetCurrency", "GetYear", "GetQuarter", "identity"])
 @pytest.mark.asyncio
-async def test_tools_add_genai(run_bts, func_name):
+async def test_tools_add_genai(run_sbs, func_name):
     """
     Add tools from the proper json file and module.
 
@@ -174,7 +138,7 @@ async def test_tools_add_genai(run_bts, func_name):
 
 
 @pytest.mark.asyncio
-async def test_tools_add(run_bts):
+async def test_tools_add(run_sbs):
     """
     Add tools from the proper module. Negative test.
 
@@ -194,7 +158,7 @@ async def test_tools_add(run_bts):
 
 
 @pytest.mark.asyncio
-async def test_tools_add(run_bts):
+async def test_tools_add(run_sbs):
     """
     Add tools from the proper module. Negative test.
 
@@ -213,7 +177,7 @@ async def test_tools_add(run_bts):
             )
 
 
-def test_search_manifests(run_bts):
+def test_search_manifests(run_sbs):
     """
     Search manifests.
 
@@ -235,7 +199,7 @@ def test_search_manifests(run_bts):
 
 
 @pytest.mark.parametrize("uid", ["GetCurrency", "GetYear", "GetQuarter", "identity"])
-def test_get_manifest(run_bts, uid: str):
+def test_get_manifest(run_sbs, uid: str):
     """
     Retrieve single manifest.
 
@@ -251,7 +215,7 @@ def test_get_manifest(run_bts, uid: str):
         assert api_response["uid"] == uid, f"Should receive uid: {uid}"
 
 
-def test_list_manifests(run_bts, expected: int = 4):
+def test_list_manifests(run_sbs, expected: int = 4):
     """
     List manifests.
 
@@ -272,7 +236,7 @@ def test_list_manifests(run_bts, expected: int = 4):
 
 
 @pytest.mark.parametrize("uid", ["GetQuarter"])
-def test_delete_manifest(run_bts, uid):
+def test_delete_manifest(run_sbs, uid):
     configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
@@ -288,7 +252,7 @@ def test_delete_manifest(run_bts, uid):
 
 
 @pytest.mark.parametrize("uid", ["GetQuarter"])
-def test_get_manifest2(run_bts, uid: str):
+def test_get_manifest2(run_sbs, uid: str):
     """
     Retrieve single manifest.
 
@@ -306,7 +270,7 @@ def test_get_manifest2(run_bts, uid: str):
             pass
 
 
-def test_delete_manifests_wildcard(run_bts):
+def test_delete_manifests_wildcard(run_sbs):
     configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
@@ -322,7 +286,7 @@ def test_delete_manifests_wildcard(run_bts):
         assert actual in (expected1, expected2), f"Should receive deletion message for GetCurrency and GetYear"
 
 
-def test_get_manifests(run_bts):
+def test_get_manifests(run_sbs):
     """
     Retrieve single manifest.
 
@@ -349,7 +313,7 @@ def test_get_manifests(run_bts):
         ]
 )
 @pytest.mark.asyncio
-async def test_add_tool_add_subtract(run_bts, func_name, file_name):
+async def test_add_tool_add_subtract(run_sbs, func_name, file_name):
     """
     Add tools 'add' and 'subtract'.
 
@@ -377,7 +341,7 @@ async def test_add_tool_add_subtract(run_bts, func_name, file_name):
         ]
 )
 @pytest.mark.asyncio
-async def test_add_tool_calc_add_subtract(run_bts, func_name, file_name, dependent_manifest_uids):
+async def test_add_tool_calc_add_subtract(run_sbs, func_name, file_name, dependent_manifest_uids):
     """
     Add manifest from the proper module.
 
@@ -417,7 +381,7 @@ async def test_add_tool_calc_add_subtract(run_bts, func_name, file_name, depende
         ]
 )
 @pytest.mark.asyncio
-async def test_add_tool_calc(run_bts, func_name, file_name, dependent_manifest_uids):
+async def test_add_tool_calc(run_sbs, func_name, file_name, dependent_manifest_uids):
     """
     Add manifest from the proper module.
 
@@ -454,7 +418,7 @@ async def test_add_tool_calc(run_bts, func_name, file_name, dependent_manifest_u
                         ]
                         ) 
 @pytest.mark.asyncio
-async def test_execute_calc(run_bts, uid, operation, num1, num2, expected):
+async def test_execute_calc(run_sbs, uid, operation, num1, num2, expected):
     """
     Execute a manifest that is dependant on others.
 
@@ -473,7 +437,7 @@ async def test_execute_calc(run_bts, uid, operation, num1, num2, expected):
 
 @pytest.mark.parametrize("uid", ["calc_import_typo"]) 
 @pytest.mark.asyncio
-async def test_execute_calc_negative(run_bts, uid):
+async def test_execute_calc_negative(run_sbs, uid):
     """
     Execute a manifest that is dependant on others.
 
@@ -492,7 +456,7 @@ async def test_execute_calc_negative(run_bts, uid):
 
 
 @pytest.mark.parametrize("uid", ["subtract"])
-def test_delete_subtract(run_bts, uid):
+def test_delete_subtract(run_sbs, uid):
     configuration = skillberry_store_sdk.Configuration(
         host="http://localhost:8000"
     )
@@ -509,7 +473,7 @@ def test_delete_subtract(run_bts, uid):
 
 @pytest.mark.parametrize("uid", ["calc"]) 
 @pytest.mark.asyncio
-async def test_execute_calc_negative2(run_bts, uid):
+async def test_execute_calc_negative2(run_sbs, uid):
     """
     Execute a manifest that is dependant on others. Negative test.
 

@@ -212,6 +212,9 @@ class FileHandler:
                 raise HTTPException(
                     status_code=404, detail=f"File '{filename}' not found."
                 )
+        except HTTPException:
+            # Re-raise HTTPException without modification
+            raise
         except Exception as e:
             ShellHook().execute(
                 "post_fail_" + inspect.stack()[0].function,

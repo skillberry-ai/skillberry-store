@@ -2,6 +2,13 @@ import pytest
 
 from llm_client.llm import get_llm
 
+# Check if litellm is available
+try:
+    import litellm
+    LITELLM_AVAILABLE = True
+except ImportError:
+    LITELLM_AVAILABLE = False
+
 
 class TestAutoFromEnvLLMProvider:
     """Test selection of LLM providers from environment variables.
@@ -16,6 +23,7 @@ class TestAutoFromEnvLLMProvider:
         with pytest.raises(ValueError):
             client = get_llm("auto_from_env")()
 
+    @pytest.mark.skipif(not LITELLM_AVAILABLE, reason="litellm not installed")
     def test_selecting_litellm_watsonx(self, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "litellm.watsonx")
         monkeypatch.delenv("MODEL_NAME", raising=False)
@@ -33,6 +41,7 @@ class TestAutoFromEnvLLMProvider:
         target_provider = get_llm("litellm.watsonx")
         assert isinstance(client._chosen_provider, target_provider)
 
+    @pytest.mark.skipif(not LITELLM_AVAILABLE, reason="litellm not installed")
     def test_selecting_litellm_ollama(self, monkeypatch):
         monkeypatch.setenv("LLM_PROVIDER", "litellm.ollama")
         monkeypatch.delenv("MODEL_NAME", raising=False)
