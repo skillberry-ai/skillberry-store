@@ -116,6 +116,7 @@ class SBSettings(BaseSettings):
 
     bts_host: str = Field("0.0.0.0", env="SBS_HOST")
     bts_port: int = Field(8000, env="SBS_PORT")
+    ui_port: int = Field(3000, env="SBS_UI_PORT")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         "INFO", env="UVICORN_LOG_LEVEL"
     )
@@ -140,9 +141,6 @@ class SBS(FastAPI):
             file_handler=file_api(), descriptions=descriptions, tags=["manifest"]
         )
         self.virtual_mcp_server_api(tags=["vmcp_servers"])
-        self.tools_api(
-            file_handler=file_api(), descriptions=descriptions, tags=["tools"]
-        )
         register_skills_api(
             self, tags="skills", skills_descriptions=skills_descriptions
         )
@@ -964,121 +962,6 @@ class SBS(FastAPI):
                 return vmcp_server_manager.get_server_details(name)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
-
-    def tools_api(
-        self, file_handler: FileHandler, descriptions: Description, tags: str
-    ):
-        """Initialize tools APIs with proper persistency and APIs.
-
-        Args:
-            file_handler: File handler instance for file operations.
-            descriptions: Description instance for vector database operations.
-            tags: FastAPI tags for grouping the endpoints in documentation.
-        """
-        manifest_directory = get_manifest_directory()
-        manifest = Manifest(manifest_directory=manifest_directory)
-
-        @self.post("/tools/add", tags=tags)
-        async def tools_add(
-            tool_type: ToolType,
-            tool: UploadFile,
-            update: bool = True,
-            tool_name: Optional[str] = None,
-            kwargs: Optional[str] = Form(
-                "",
-                description="Additional key/val pairs as JSON string interpreted by the tool_type.",
-            ),
-        ):
-            """Adds a tool based on the type of the tool and provided content.
-
-            A manifest for that tool is being generated and stored.
-            As part of the addition, the description of the manifest is being embedded and stored in vector db.
-            The manifest is assigned with a unique identifier which is returned.
-
-            If tool_name is provided and tool_type is code/python the generated manifest will point to the referenced function.
-            If kwargs are provided and tool_type is json/genai-lh the generated manifest will respect the provided content.
-
-            Notes on tool_type values:
-            - code/python: manifest is created out from tool code docstring
-            - json/genai-lh: manifest is created out from the additional key/val pairs
-
-            Args:
-                tool_type: Type of the tool.
-                tool: The tool file to upload.
-                update: Whether to update if tool already exists.
-                tool_name: Optional name for the tool.
-                kwargs: Additional key/val pairs as JSON string interpreted by the tool_type.
-
-            Returns:
-                dict: The unique identifier of the manifest representing the tool.
-
-            Raises:
-                HTTPException: If wrong parameter values supplied (400), if manifest already exist (409), or any other error (500).
-            """
-            # TODO: 400 should come from pydantic validation
-            try:
-                parsed_kwargs = json.loads(kwargs) if kwargs else {}
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail=f"Invalid JSON in kwargs.")
-            if tool_type not in [ToolType.CODE_PYTHON, ToolType.JSON_GENAI_LH]:
-                raise HTTPException(
-                    status_code=400, detail=f"ToolType: {tool_type} not supported"
-                )
-            if tool_type == ToolType.JSON_GENAI_LH:
-                if not parsed_kwargs:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="kwargs is mandatory for tool_type json/genai-lh",
-                    )
-            tool_bytes = tool.file.read()
-
-            try:
-                manifest_as_dict = manifest.create_manifest(
-                    tool_type,
-                    tool_bytes,
-                    tool_name=tool_name,
-                    parsed_kwargs=parsed_kwargs,
-                )
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500, detail=f"Error generating manifest: {str(e)}"
-                )
-
-            tool_name = manifest_as_dict["name"]
-            manifest_as_dict_entities = manifest.list_manifests()
-
-            if list(
-                filter(lambda m: m["name"] == tool_name, manifest_as_dict_entities)
-            ):
-                if update is True:
-                    logger.info(f"Updating tool {tool_name}..")
-                    try:
-                        descriptions.delete_description(tool_name)
-                    except Exception as e:
-                        # just log and continue
-                        logger.warning(f"Failed to delete description: {e}")
-                    try:
-                        manifest.delete_manifest(f"{tool_name}.json")
-                    except Exception as e:
-                        # just log and continue
-                        logger.warning(f"Failed to delete manifest: {e}")
-                else:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Manifest '{tool_name}' already exists.",
-                    )
-
-            # Note: currently uid is tool_name
-            uid = tool_name
-            manifest_as_dict["uid"] = uid
-
-            module_name = manifest_as_dict["module_name"]
-            file_handler.write_file(tool_bytes, filename=module_name)
-
-            manifest.write_manifest(f"{tool_name}.json", manifest_as_dict)
-            descriptions.write_description(tool_name, manifest_as_dict["description"])
-
-            return {"uid": uid}
 
     def health_api(self, tags: str):
         """Initialize health check API endpoint."""

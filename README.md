@@ -1,6 +1,6 @@
 # Skillberry-store service (a.k.a., SBS)
 
-This service implements a smart tools repository for agentic workflows.
+This service implements a smart skills repository for agentic workflows. Manage, execute, and organize your skills, tools and snippets with powerful search and lifecycle management.
 
 ## Features ✨
 
@@ -31,8 +31,22 @@ make docker_run
 
 ### Interacting with the UI 👨‍💻
 
-To interact with the UI, navigate to [http://localhost:8000/docs](http://localhost:8000/docs).
-This will open the documentation interface where you can explore the available endpoints and test them directly.
+The Skillberry Store now includes a modern web UI that starts automatically with the backend:
+
+- **Web UI**: [http://localhost:3000](http://localhost:3000) - Modern React-based interface
+- **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs) - OpenAPI/Swagger interface
+
+The Web UI provides:
+- Visual management of Tools, Skills, Snippets, and VMCP Servers
+- Search and filtering capabilities
+- Tool execution with parameter input
+- Code viewing and editing
+- Real-time updates
+
+To disable the UI and run only the backend:
+```bash
+ENABLE_UI=false make run
+```
 
 ### Using the skillberry SDK 🔌
 
@@ -101,7 +115,45 @@ make run
 *Notes:*
 
   * By default, SBS runs on host `0.0.0.0` and port `8000` publishing its metrics on port `8090`. To change, set the environment variables SBS_PORT/SBS_HOST/PROMETHEUS_METRICS_PORT
-  * To disable observability all together, set environment variable `OBSERVABILITY` with `False` 
+  * To disable observability all together, set environment variable `OBSERVABILITY` with `False`
+  * The Web UI starts automatically on port `3000`. To disable it, set `ENABLE_UI=false`
+  * On first run, the UI will automatically install its dependencies (requires Node.js 18+)
+
+## Web UI Features 🎨
+
+The Skillberry Store includes a modern React-based web interface with:
+
+- **Tools Management**: Create, view, execute, and delete tools with file upload support
+- **Skills Management**: Organize tools and snippets into reusable skills
+- **Snippets Management**: Store and manage code snippets with syntax highlighting
+- **VMCP Servers**: Create and manage virtual MCP servers for tool subsets
+- **Search & Filter**: Semantic search across all resources
+- **Real-time Updates**: Automatic refresh of data using TanStack Query
+- **Responsive Design**: Built with PatternFly (IBM's design system)
+
+### UI Technology Stack
+
+- React 18 + TypeScript
+- Vite (fast development server)
+- PatternFly (IBM design system)
+- TanStack Query (data fetching)
+- React Router (navigation)
+
+### UI Development
+
+To work on the UI separately:
+
+```bash
+cd src/skillberry_store/ui
+npm install
+npm run dev
+```
+
+The UI source code is located in `src/skillberry_store/ui/` and includes:
+- `src/pages/` - Page components for each section
+- `src/components/` - Reusable UI components
+- `src/services/` - API client layer
+- `src/types/` - TypeScript type definitions
 
 ## Loading example tools into the Service 📂
 

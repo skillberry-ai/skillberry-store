@@ -6,17 +6,20 @@ import uuid
 from typing import Optional, Type, TypeVar, Annotated, Dict, Any
 from inspect import Parameter, Signature
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.file_executor import FileExecutor
 from skillberry_store.modules.description import Description
-from skillberry_store.schemas.tool_schema import ToolSchema
+from skillberry_store.schemas.tool_schema import ToolSchema, ToolParamsSchema, ToolReturnsSchema
+from skillberry_store.schemas.manifest_schema import ManifestState
 from skillberry_store.tools.configure import (
     get_tools_directory,
     get_files_directory_path,
 )
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
+from skillberry_store.utils.python_utils import extract_docstring
 
 logger = logging.getLogger(__name__)
 
@@ -171,15 +174,15 @@ def register_tools_api(
                 status_code=500, detail=f"Error retrieving tool: {str(e)}"
             )
 
-    @app.get("/tools/{name}/module", tags=[tags])
+    @app.get("/tools/{name}/module", tags=[tags], response_class=PlainTextResponse)
     def get_tool_module(name: str):
-        """Get the module file for a specific tool.
+        """Get the module file content for a specific tool.
 
         Args:
             name: The name of the tool.
 
         Returns:
-            FileResponse: The module file content.
+            PlainTextResponse: The module file content as plain text.
 
         Raises:
             HTTPException: If tool not found (404), module not specified (404),
@@ -205,9 +208,10 @@ def register_tools_api(
                     detail=f"Tool '{name}' does not have a module file specified",
                 )
 
-            # Return the module file
+            # Return the module file content as plain text
             logger.info(f"Retrieving module file: {module_name}")
-            return file_handler.read_file(module_name, raw_content=False)
+            module_content = file_handler.read_file(module_name, raw_content=True)
+            return PlainTextResponse(content=module_content, media_type="text/plain")
 
         except HTTPException:
             raise
@@ -446,6 +450,163 @@ def register_tools_api(
             return filtered_matched_entities
         except Exception as e:
             logger.error(f"Error searching tools: {e}")
+
+    @app.post("/tools/add", tags=[tags])
+    async def add_tool_from_python(
+        tool: UploadFile = File(...),
+        tool_name: Optional[str] = None,
+        update: bool = False,
+    ):
+        """Add a tool by automatically extracting parameters from Python code docstring.
+
+        This endpoint uploads a Python file and automatically generates a tool manifest
+        by parsing the function's docstring. The docstring must follow standard Python
+        documentation conventions (Google, NumPy, or Sphinx style).
+
+        Args:
+            tool: The Python file to upload containing the function.
+            tool_name: Optional name of the specific function to extract. If not provided,
+                      the first function in the file will be used.
+            update: Whether to update if a tool with the same name already exists.
+
+        Returns:
+            dict: Success message with the tool name, uuid, and module_name.
+
+        Raises:
+            HTTPException: If file is not Python (400), tool already exists (409),
+                          or any other error occurs (500).
+        """
+        logger.info(f"Request to add tool from Python file: {tool.filename}")
+
+        # Validate that the uploaded file is a Python file
+        if not tool.filename or not tool.filename.endswith('.py'):
+            raise HTTPException(
+                status_code=400,
+                detail="Only Python (.py) files are supported. Please upload a valid Python file."
+            )
+
+        try:
+            # Read the uploaded file content
+            tool_bytes = await tool.read()
+            
+            # Extract function name and docstring from the Python code
+            try:
+                # extract_docstring returns (func_name, docstring_obj) tuple
+                func_name, docstring_obj = extract_docstring(tool_bytes, tool_name=tool_name)  # type: ignore
+                logger.info(f"Extracted function '{func_name}' from uploaded file")
+            except Exception as e:
+                logger.error(f"Failed to extract docstring: {e}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to parse Python code or extract docstring: {str(e)}. "
+                           "Ensure the function has a properly formatted docstring with parameters."
+                )
+
+            # Build the tool schema from the docstring
+            # Extract description
+            description = docstring_obj.short_description  # type: ignore
+            if not description:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Function docstring must include a description."
+                )
+
+            # Extract parameters from docstring
+            params_properties = {}
+            required_params = []
+            
+            for param in docstring_obj.params:  # type: ignore
+                params_properties[param.arg_name] = {
+                    "type": param.type_name if param.type_name else "string",
+                    "description": param.description if param.description else ""
+                }
+                required_params.append(param.arg_name)
+            
+            # Extract return information
+            returns_schema = None
+            if docstring_obj.returns:  # type: ignore
+                returns_schema = ToolReturnsSchema(
+                    type=docstring_obj.returns.type_name if docstring_obj.returns.type_name else None,  # type: ignore
+                    description=docstring_obj.returns.description if docstring_obj.returns.description else None  # type: ignore
+                )
+
+            # Check if tool already exists
+            existing_tools = tool_handler.list_files()
+            tool_filename = f"{func_name}.json"
+
+            if tool_filename in existing_tools:
+                if not update:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Tool '{func_name}' already exists. Set update=true to overwrite."
+                    )
+                logger.info(f"Updating existing tool: {func_name}")
+                
+                # Delete old description if updating
+                if tools_descriptions:
+                    try:
+                        tools_descriptions.delete_description(func_name)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete old description: {e}")
+
+            # Generate UUID
+            tool_uuid = str(uuid.uuid4())
+            logger.info(f"Generated UUID for tool '{func_name}': {tool_uuid}")
+
+            # Save the module file
+            module_filename = tool.filename if tool.filename else f"{func_name}.py"
+            file_handler.write_file(tool_bytes, filename=module_filename)
+            logger.info(f"Saved module file: {module_filename}")
+
+            # Create the tool schema
+            params_schema = ToolParamsSchema(
+                type="object",
+                properties=params_properties,
+                required=required_params,
+                optional=[]
+            )
+            
+            tool_schema = ToolSchema(
+                name=func_name,
+                description=description,
+                uuid=tool_uuid,
+                module_name=module_filename,
+                programming_language="python",
+                packaging_format="code",
+                version="0.0.1",
+                state=ManifestState.APPROVED,
+                params=params_schema,
+                returns=returns_schema
+            )
+
+            # Save the manifest
+            tool_json = json.dumps(tool_schema.to_dict(), indent=4)
+            tool_handler.write_file_content(tool_filename, tool_json)
+            logger.info(f"Saved manifest: {tool_filename}")
+
+            # Write description for search capability
+            if tools_descriptions:
+                tools_descriptions.write_description(func_name, description)
+                logger.info(f"Tool description saved for: {func_name}")
+
+            logger.info(f"Tool '{func_name}' added successfully")
+            return {
+                "message": f"Tool '{func_name}' added successfully.",
+                "name": func_name,
+                "uuid": tool_uuid,
+                "module_name": module_filename,
+                "parameters": params_properties,
+                "description": description,
+            }
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error adding tool: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error adding tool: {str(e)}"
+            )
             raise HTTPException(
                 status_code=500, detail=f"Error searching tools: {str(e)}"
             )
