@@ -41,6 +41,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         2. Clearing VMCP servers persistent storage
         3. Removing all data directories
         4. Recreating empty directories
+        5. Resetting in-memory vector indexes
 
         Use with caution as this operation is irreversible.
 
@@ -127,6 +128,32 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                 logger.error(error_msg)
                 failed_dirs.append({"name": dir_name, "path": dir_path, "error": str(e)})
 
+        # Step 4: Reset in-memory vector indexes
+        vector_indexes_reset = False
+        try:
+            if hasattr(app, 'state'):
+                # Reinitialize all description instances with empty vector indexes
+                if hasattr(app.state, 'descriptions'):
+                    app.state.descriptions.load_index()
+                    logger.info("Reset descriptions vector index")
+                
+                if hasattr(app.state, 'tools_descriptions'):
+                    app.state.tools_descriptions.load_index()
+                    logger.info("Reset tools_descriptions vector index")
+                
+                if hasattr(app.state, 'snippets_descriptions'):
+                    app.state.snippets_descriptions.load_index()
+                    logger.info("Reset snippets_descriptions vector index")
+                
+                if hasattr(app.state, 'skills_descriptions'):
+                    app.state.skills_descriptions.load_index()
+                    logger.info("Reset skills_descriptions vector index")
+                
+                vector_indexes_reset = True
+                logger.info("All in-memory vector indexes reset successfully")
+        except Exception as e:
+            logger.warning(f"Failed to reset vector indexes: {str(e)}")
+
         if failed_dirs:
             raise HTTPException(
                 status_code=500,
@@ -135,6 +162,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                     "deleted": deleted_dirs,
                     "failed": failed_dirs,
                     "vmcp_servers_stopped": vmcp_stopped,
+                    "vector_indexes_reset": vector_indexes_reset,
                 },
             )
 
@@ -144,6 +172,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             "deleted_directories": deleted_dirs,
             "total_deleted": len(deleted_dirs),
             "vmcp_servers_stopped": vmcp_stopped,
+            "vector_indexes_reset": vector_indexes_reset,
         }
 
     @app.get("/health", tags=[tags])
