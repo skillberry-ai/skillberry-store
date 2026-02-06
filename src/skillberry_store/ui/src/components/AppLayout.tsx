@@ -36,7 +36,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { id: 'skills', label: 'Skills', path: '/skills' },
     { id: 'tools', label: 'Tools', path: '/tools' },
     { id: 'snippets', label: 'Snippets', path: '/snippets' },
-    { id: 'vmcp-servers', label: 'VMCP Servers', path: '/vmcp-servers' },
+    { id: 'vmcp-servers', label: 'Virtual MCP Servers', path: '/vmcp-servers' },
   ];
 
   const masthead = (
@@ -101,7 +101,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             
             <Divider style={{ margin: '0.5rem 0' }} />
             
-            {/* VMCP Servers */}
+            {/* Virtual MCP Servers */}
             <NavItem
               key="vmcp-servers"
               itemId="vmcp-servers"
@@ -109,7 +109,19 @@ export function AppLayout({ children }: AppLayoutProps) {
                        location.pathname.startsWith('/vmcp-servers')}
               onClick={() => navigate('/vmcp-servers')}
             >
-              VMCP Servers
+              Virtual MCP Servers
+            </NavItem>
+
+            <Divider style={{ margin: '0.5rem 0' }} />
+
+            {/* Admin */}
+            <NavItem
+              key="admin"
+              itemId="admin"
+              isActive={location.pathname === '/admin'}
+              onClick={() => navigate('/admin')}
+            >
+              Admin
             </NavItem>
           </NavList>
         </Nav>

@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getTagColor } from '../utils/tagColors';
 import {
   PageSection,
   Title,
@@ -268,7 +269,7 @@ export function ToolDetailPage() {
                       <DescriptionListDescription>
                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                           {tool.tags.map((tag) => (
-                            <Label key={tag} color="blue">{tag}</Label>
+                            <Label key={tag} color={getTagColor(tag)}>{tag}</Label>
                           ))}
                         </div>
                       </DescriptionListDescription>

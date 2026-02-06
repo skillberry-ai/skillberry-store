@@ -4,8 +4,6 @@ from typing import Any, Dict, List
 from pydantic import Field
 
 from .manifest_schema import ManifestSchema
-from .tool_schema import ToolSchema
-from .snippet_schema import SnippetSchema
 
 
 class SkillSchema(ManifestSchema):
@@ -13,17 +11,17 @@ class SkillSchema(ManifestSchema):
     Pydantic schema for a skill.
     
     This schema extends ManifestSchema and represents the structure of a skill
-    in the skillberry-store system. A skill is an ordered collection of tools 
-    and snippets that work together provide the agent a skill.
+    in the skillberry-store system. A skill is an ordered collection of tools
+    and snippets referenced by their UUIDs.
     """
     
-    tools: List[ToolSchema] = Field(
+    tool_uuids: List[str] = Field(
         default_factory=list,
-        description="Ordered list of tools that comprise this skill"
+        description="Ordered list of tool UUIDs that comprise this skill"
     )
-    snippets: List[SnippetSchema] = Field(
+    snippet_uuids: List[str] = Field(
         default_factory=list,
-        description="Ordered list of snippets that comprise this skill"
+        description="Ordered list of snippet UUIDs that comprise this skill"
     )
     
     def to_dict(self) -> Dict[str, Any]:

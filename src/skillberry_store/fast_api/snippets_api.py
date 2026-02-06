@@ -3,8 +3,8 @@
 import json
 import logging
 import uuid
-from typing import Optional
-from fastapi import FastAPI, HTTPException
+from typing import Optional, Annotated
+from fastapi import FastAPI, HTTPException, Query
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
@@ -30,11 +30,14 @@ def register_snippets_api(
     snippet_handler = FileHandler(snippets_directory)
 
     @app.post("/snippets/", tags=[tags])
-    def create_snippet(snippet: SnippetSchema):
+    def create_snippet(snippet: Annotated[SnippetSchema, Query()]):
         """Create a new snippet.
+        
+        The form fields are dynamically generated from SnippetSchema.
+        Any changes to SnippetSchema will automatically reflect in this API.
 
         Args:
-            snippet: The snippet schema containing content and metadata.
+            snippet: The snippet schema containing content and metadata (auto-generated from SnippetSchema).
                     If uuid is not provided, it will be automatically generated.
 
         Returns:

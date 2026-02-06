@@ -3,13 +3,13 @@
 import json
 import logging
 import uuid
-from typing import Optional
-from fastapi import FastAPI, HTTPException
+from typing import Optional, Annotated
+from fastapi import FastAPI, HTTPException, Query
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
 from skillberry_store.schemas.skill_schema import SkillSchema
-from skillberry_store.tools.configure import get_skills_directory
+from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +28,62 @@ def register_skills_api(
     """
     skills_directory = get_skills_directory()
     skill_handler = FileHandler(skills_directory)
+    tools_handler = FileHandler(get_tools_directory())
+    snippets_handler = FileHandler(get_snippets_directory())
+    
+    def populate_skill_objects(skill_dict):
+        """Populate full tool and snippet objects from UUIDs."""
+        # Populate tools
+        if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
+            tools = []
+            for tool_uuid in skill_dict["tool_uuids"]:
+                # Find tool by UUID
+                for filename in tools_handler.list_files():
+                    if filename.endswith(".json"):
+                        try:
+                            content = tools_handler.read_file(filename, raw_content=True)
+                            if isinstance(content, str):
+                                tool_dict = json.loads(content)
+                                if tool_dict.get("uuid") == tool_uuid:
+                                    tools.append(tool_dict)
+                                    break
+                        except Exception as e:
+                            logger.warning(f"Error reading tool file {filename}: {e}")
+            skill_dict["tools"] = tools
+        else:
+            skill_dict["tools"] = []
+            
+        # Populate snippets
+        if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
+            snippets = []
+            for snippet_uuid in skill_dict["snippet_uuids"]:
+                # Find snippet by UUID
+                for filename in snippets_handler.list_files():
+                    if filename.endswith(".json"):
+                        try:
+                            content = snippets_handler.read_file(filename, raw_content=True)
+                            if isinstance(content, str):
+                                snippet_dict = json.loads(content)
+                                if snippet_dict.get("uuid") == snippet_uuid:
+                                    snippets.append(snippet_dict)
+                                    break
+                        except Exception as e:
+                            logger.warning(f"Error reading snippet file {filename}: {e}")
+            skill_dict["snippets"] = snippets
+        else:
+            skill_dict["snippets"] = []
+            
+        return skill_dict
 
     @app.post("/skills/", tags=[tags])
-    def create_skill(skill: SkillSchema):
+    def create_skill(skill: Annotated[SkillSchema, Query()]):
         """Create a new skill.
+        
+        The form fields are dynamically generated from SkillSchema.
+        Any changes to SkillSchema will automatically reflect in this API.
 
         Args:
-            skill: The skill schema containing tools, snippets, and metadata.
+            skill: The skill schema with tool_uuids and snippet_uuids (auto-generated from SkillSchema).
                    If uuid is not provided, it will be automatically generated.
 
         Returns:
@@ -83,10 +132,10 @@ def register_skills_api(
 
     @app.get("/skills/", tags=[tags])
     def list_skills():
-        """List all skills.
+        """List all skills with populated tool and snippet objects.
 
         Returns:
-            list: A list of all skill objects.
+            list: A list of all skill objects with full tool and snippet details.
 
         Raises:
             HTTPException: If listing fails (500).
@@ -102,6 +151,8 @@ def register_skills_api(
                     content = skill_handler.read_file(filename, raw_content=True)
                     if isinstance(content, str):
                         skill_dict = json.loads(content)
+                        # Populate full tool and snippet objects
+                        skill_dict = populate_skill_objects(skill_dict)
                     else:
                         continue
                     skills.append(skill_dict)
@@ -116,13 +167,13 @@ def register_skills_api(
 
     @app.get("/skills/{name}", tags=[tags])
     def get_skill(name: str):
-        """Get a specific skill by name.
+        """Get a specific skill by name with populated tool and snippet objects.
 
         Args:
             name: The name of the skill.
 
         Returns:
-            dict: The skill object.
+            dict: The skill object with full tool and snippet details.
 
         Raises:
             HTTPException: If skill not found (404) or retrieval fails (500).
@@ -137,6 +188,8 @@ def register_skills_api(
                     status_code=500, detail=f"Invalid content type for skill '{name}'"
                 )
             skill_dict = json.loads(content)
+            # Populate full tool and snippet objects
+            skill_dict = populate_skill_objects(skill_dict)
             logger.info(f"Retrieved skill: {name}")
             return skill_dict
         except HTTPException:

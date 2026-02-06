@@ -12,6 +12,7 @@ import { SnippetsPage } from './pages/SnippetsPage';
 import { SnippetDetailPage } from './pages/SnippetDetailPage';
 import { VMCPServersPage } from './pages/VMCPServersPage';
 import { VMCPServerDetailPage } from './pages/VMCPServerDetailPage';
+import { AdminPage } from './pages/AdminPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 function App() {
@@ -32,9 +33,12 @@ function App() {
         <Route path="/snippets" element={<SnippetsPage />} />
         <Route path="/snippets/:name" element={<SnippetDetailPage />} />
         
-        {/* VMCP Servers routes */}
+        {/* Virtual MCP Servers routes */}
         <Route path="/vmcp-servers" element={<VMCPServersPage />} />
         <Route path="/vmcp-servers/:name" element={<VMCPServerDetailPage />} />
+        
+        {/* Admin route */}
+        <Route path="/admin" element={<AdminPage />} />
         
         {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />

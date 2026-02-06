@@ -1,9 +1,10 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getTagColor } from '../utils/tagColors';
 import {
   PageSection,
   Title,
@@ -12,12 +13,7 @@ import {
   ToolbarItem,
   Button,
   SearchInput,
-  Card,
-  CardBody,
-  Gallery,
-  GalleryItem,
   Text,
-  Label,
   Spinner,
   EmptyState,
   EmptyStateIcon,
@@ -25,14 +21,53 @@ import {
   Alert,
   Modal,
   ModalVariant,
+  Form,
+  FormGroup,
+  TextInput,
+  TextArea,
+  Label,
+  FileUpload,
+  Select,
+  SelectOption,
+  SelectList,
+  MenuToggle,
+  MenuToggleElement,
 } from '@patternfly/react-core';
-import { PlusIcon, CodeIcon, SearchIcon } from '@patternfly/react-icons';
-import { skillsApi } from '@/services/api';
+import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
+import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon } from '@patternfly/react-icons';
+import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
+import type { Skill } from '@/types';
+
+type SortableColumn = 'name' | 'description' | 'version';
 
 export function SkillsPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newSkill, setNewSkill] = useState({
+    name: '',
+    version: '',
+    description: '',
+    tags: [] as string[],
+    toolNames: [] as string[],
+    snippetNames: [] as string[],
+  });
+  const [tagInput, setTagInput] = useState('');
+  const [createError, setCreateError] = useState('');
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importError, setImportError] = useState('');
+  const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
+  const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
+  
+  // Select dropdown states
+  const [isToolSelectOpen, setIsToolSelectOpen] = useState(false);
+  const [isSnippetSelectOpen, setIsSnippetSelectOpen] = useState(false);
+  const [toolSearchTerm, setToolSearchTerm] = useState('');
+  const [snippetSearchTerm, setSnippetSearchTerm] = useState('');
 
   const { data: skills, isLoading, error } = useQuery({
     queryKey: ['skills'],
@@ -45,11 +80,305 @@ export function SkillsPage() {
     enabled: searchTerm.length > 0,
   });
 
-  const filteredSkills = searchTerm && searchResults
-    ? skills?.filter((skill) =>
-        searchResults.some((result) => result.name === skill.name)
-      )
-    : skills;
+  // Fetch all tools for the dropdown
+  const { data: allTools } = useQuery({
+    queryKey: ['tools'],
+    queryFn: toolsApi.list,
+  });
+
+  // Fetch all snippets for the dropdown
+  const { data: allSnippets } = useQuery({
+    queryKey: ['snippets'],
+    queryFn: snippetsApi.list,
+  });
+
+  // Create skill mutation
+  const createMutation = useMutation({
+    mutationFn: (skill: Omit<Skill, 'uuid'>) =>
+      skillsApi.create(skill),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['skills'] });
+      setIsCreateModalOpen(false);
+      setNewSkill({
+        name: '',
+        version: '',
+        description: '',
+        tags: [],
+        toolNames: [],
+        snippetNames: [],
+      });
+      setTagInput('');
+      setToolSearchTerm('');
+      setSnippetSearchTerm('');
+      setCreateError('');
+    },
+    onError: (error: any) => {
+      setCreateError(error.message || 'Failed to create skill');
+    },
+  });
+
+  // Delete skills mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (names: string[]) => {
+      await Promise.all(names.map(name => skillsApi.delete(name)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['skills'] });
+      setSelectedSkills([]);
+      setIsDeleteModalOpen(false);
+    },
+  });
+
+  const handleCreateSkill = async () => {
+    if (!newSkill.name || !newSkill.description) {
+      setCreateError('Please fill in all required fields');
+      return;
+    }
+    
+    try {
+      // Fetch tool and snippet UUIDs
+      const toolPromises = newSkill.toolNames.map(name =>
+        fetch(`/api/tools/${name}`).then(r => r.json())
+      );
+      const snippetPromises = newSkill.snippetNames.map(name =>
+        fetch(`/api/snippets/${name}`).then(r => r.json())
+      );
+      
+      const tools = await Promise.all(toolPromises);
+      const snippets = await Promise.all(snippetPromises);
+      
+      // Build query parameters
+      const params = new URLSearchParams({
+        name: newSkill.name,
+        version: newSkill.version,
+        description: newSkill.description,
+      });
+      
+      // Add tags
+      newSkill.tags.forEach(tag => params.append('tags', tag));
+      
+      // Add tool and snippet UUIDs
+      tools.forEach(t => params.append('tool_uuids', t.uuid));
+      snippets.forEach(s => params.append('snippet_uuids', s.uuid));
+      
+      // Call API with query parameters
+      const response = await fetch(`/api/skills/?${params}`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        queryClient.invalidateQueries({ queryKey: ['skills'] });
+        setIsCreateModalOpen(false);
+        setNewSkill({
+          name: '',
+          version: '1.0.0',
+          description: '',
+          tags: [],
+          toolNames: [],
+          snippetNames: [],
+        });
+      } else {
+        const errorText = await response.text();
+        setCreateError(`Failed to create skill: ${errorText}`);
+      }
+    } catch (error) {
+      setCreateError('Failed to fetch tools or snippets. Please ensure they exist.');
+    }
+  };
+
+  const handleAddTag = () => {
+    if (tagInput.trim() && !newSkill.tags.includes(tagInput.trim())) {
+      setNewSkill({
+        ...newSkill,
+        tags: [...newSkill.tags, tagInput.trim()],
+      });
+      setTagInput('');
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setNewSkill({
+      ...newSkill,
+      tags: newSkill.tags.filter(tag => tag !== tagToRemove),
+    });
+  };
+
+  // Filter tools based on search term - only when modal is open
+  const filteredTools = useMemo(() => {
+    if (!isCreateModalOpen || !allTools) return [];
+    const lowerSearch = toolSearchTerm.toLowerCase();
+    return allTools.filter(tool =>
+      tool.name.toLowerCase().includes(lowerSearch) &&
+      !newSkill.toolNames.includes(tool.name)
+    );
+  }, [isCreateModalOpen, allTools, toolSearchTerm, newSkill.toolNames]);
+
+  // Filter snippets based on search term - only when modal is open
+  const filteredSnippets = useMemo(() => {
+    if (!isCreateModalOpen || !allSnippets) return [];
+    const lowerSearch = snippetSearchTerm.toLowerCase();
+    return allSnippets.filter(snippet =>
+      snippet.name.toLowerCase().includes(lowerSearch) &&
+      !newSkill.snippetNames.includes(snippet.name)
+    );
+  }, [isCreateModalOpen, allSnippets, snippetSearchTerm, newSkill.snippetNames]);
+
+  const handleSelectTool = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
+    if (typeof value === 'string' && value && !newSkill.toolNames.includes(value)) {
+      setNewSkill({
+        ...newSkill,
+        toolNames: [...newSkill.toolNames, value],
+      });
+      setIsToolSelectOpen(false);
+      setToolSearchTerm('');
+    }
+  };
+
+  const handleRemoveTool = (toolToRemove: string) => {
+    setNewSkill({
+      ...newSkill,
+      toolNames: newSkill.toolNames.filter(tool => tool !== toolToRemove),
+    });
+  };
+
+  const handleSelectSnippet = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
+    if (typeof value === 'string' && value && !newSkill.snippetNames.includes(value)) {
+      setNewSkill({
+        ...newSkill,
+        snippetNames: [...newSkill.snippetNames, value],
+      });
+      setIsSnippetSelectOpen(false);
+      setSnippetSearchTerm('');
+    }
+  };
+
+  const handleRemoveSnippet = (snippetToRemove: string) => {
+    setNewSkill({
+      ...newSkill,
+      snippetNames: newSkill.snippetNames.filter(snippet => snippet !== snippetToRemove),
+    });
+  };
+
+  const handleSelectSkill = (skillName: string, isSelected: boolean) => {
+    setSelectedSkills(prev =>
+      isSelected
+        ? [...prev, skillName]
+        : prev.filter(name => name !== skillName)
+    );
+  };
+
+  const handleSelectAll = (isSelected: boolean) => {
+    setSelectedSkills(
+      isSelected ? (filteredSkills?.map(s => s.name) || []) : []
+    );
+  };
+
+  const handleDeleteSelected = () => {
+    deleteMutation.mutate(selectedSkills);
+  };
+
+  const handleExport = async () => {
+    const selectedSkillObjects = skills?.filter(s => selectedSkills.includes(s.name)) || [];
+    
+    // Convert skills to export format with only tool and snippet names
+    const skillsForExport = selectedSkillObjects.map(skill => ({
+      name: skill.name,
+      version: skill.version,
+      description: skill.description,
+      tags: skill.tags,
+      toolNames: skill.tools?.map(t => t.name) || [],
+      snippetNames: skill.snippets?.map(s => s.name) || [],
+    }));
+    
+    const exportData = JSON.stringify(skillsForExport, null, 2);
+    const blob = new Blob([exportData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `skills-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      setImportError('Please select a file to import');
+      return;
+    }
+
+    try {
+      const text = await importFile.text();
+      const importedSkills = JSON.parse(text);
+      
+      if (!Array.isArray(importedSkills)) {
+        setImportError('Invalid file format. Expected an array of skills.');
+        return;
+      }
+
+      // Import each skill directly (tools and snippets should already exist)
+      for (const skill of importedSkills) {
+        try {
+          await skillsApi.create(skill);
+        } catch (error: any) {
+          console.error(`Failed to import skill ${skill.name}:`, error);
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['skills'] });
+      queryClient.invalidateQueries({ queryKey: ['tools'] });
+      setIsImportModalOpen(false);
+      setImportFile(null);
+      setImportError('');
+    } catch (error) {
+      setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
+    }
+  };
+
+  const getSortableRowValues = (skill: Skill): (string | number)[] => {
+    return [
+      skill.name,
+      skill.description || '',
+      skill.version || '',
+    ];
+  };
+
+  const filteredSkills = useMemo(() => {
+    let filtered = searchTerm && searchResults
+      ? skills?.filter((skill) =>
+          searchResults.some((result) => result.name === skill.name)
+        )
+      : skills;
+
+    if (filtered && activeSortIndex !== null) {
+      filtered = [...filtered].sort((a, b) => {
+        const aValue = getSortableRowValues(a)[activeSortIndex];
+        const bValue = getSortableRowValues(b)[activeSortIndex];
+        
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          const comparison = aValue.localeCompare(bValue);
+          return activeSortDirection === 'asc' ? comparison : -comparison;
+        }
+        
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [skills, searchResults, searchTerm, activeSortIndex, activeSortDirection]);
+
+  const getSortParams = (columnIndex: number): ThProps['sort'] => ({
+    sortBy: {
+      index: activeSortIndex ?? 0,
+      direction: activeSortDirection,
+    },
+    onSort: (_event, index, direction) => {
+      setActiveSortIndex(index);
+      setActiveSortDirection(direction);
+    },
+    columnIndex,
+  });
 
   if (isLoading) {
     return (
@@ -93,6 +422,35 @@ export function SkillsPage() {
             </ToolbarItem>
             <ToolbarItem>
               <Button
+                variant="secondary"
+                icon={<ExportIcon />}
+                onClick={handleExport}
+                isDisabled={selectedSkills.length === 0}
+              >
+                Export ({selectedSkills.length})
+              </Button>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button
+                variant="secondary"
+                icon={<ImportIcon />}
+                onClick={() => setIsImportModalOpen(true)}
+              >
+                Import
+              </Button>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button
+                variant="danger"
+                icon={<TrashIcon />}
+                onClick={() => setIsDeleteModalOpen(true)}
+                isDisabled={selectedSkills.length === 0}
+              >
+                Delete ({selectedSkills.length})
+              </Button>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button
                 variant="primary"
                 icon={<PlusIcon />}
                 onClick={() => setIsCreateModalOpen(true)}
@@ -114,45 +472,438 @@ export function SkillsPage() {
                 ? 'Try adjusting your search criteria'
                 : 'Create your first skill to get started'}
             </EmptyStateBody>
+            {!searchTerm && (
+              <Button
+                variant="primary"
+                icon={<PlusIcon />}
+                onClick={() => setIsCreateModalOpen(true)}
+              >
+                Create Skill
+              </Button>
+            )}
           </EmptyState>
         ) : (
-          <Gallery hasGutter minWidths={{ default: '100%', md: '50%', xl: '33%' }}>
-            {filteredSkills.map((skill) => (
-              <GalleryItem key={skill.uuid}>
-                <Card isClickable onClick={() => navigate(`/skills/${skill.name}`)}>
-                  <CardBody>
-                    <Title headingLevel="h3" size="lg">
-                      {skill.name}
-                    </Title>
-                    <Text className="text-muted text-small">
-                      {skill.description || 'No description'}
-                    </Text>
-                    {skill.tags && skill.tags.length > 0 && (
-                      <div style={{ marginTop: '0.5rem' }}>
+          <Table aria-label="Skills table" variant="compact">
+            <Thead>
+              <Tr>
+                <Th
+                  select={{
+                    onSelect: (_event, isSelected) => handleSelectAll(isSelected),
+                    isSelected: selectedSkills.length === filteredSkills.length && filteredSkills.length > 0,
+                  }}
+                />
+                <Th sort={getSortParams(0)}>Name</Th>
+                <Th sort={getSortParams(1)}>Description</Th>
+                <Th>Tags</Th>
+                <Th>Tools</Th>
+                <Th>Snippets</Th>
+                <Th sort={getSortParams(2)}>Version</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {filteredSkills.map((skill, index) => (
+                <Tr key={skill.uuid}>
+                  <Td
+                    select={{
+                      rowIndex: index,
+                      onSelect: (_event, isSelected) => handleSelectSkill(skill.name, isSelected),
+                      isSelected: selectedSkills.includes(skill.name),
+                    }}
+                  />
+                  <Td
+                    dataLabel="Name"
+                    onClick={() => navigate(`/skills/${skill.name}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {skill.name}
+                  </Td>
+                  <Td
+                    dataLabel="Description"
+                    onClick={() => navigate(`/skills/${skill.name}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {skill.description || 'No description'}
+                  </Td>
+                  <Td
+                    dataLabel="Tags"
+                    onClick={() => navigate(`/skills/${skill.name}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {skill.tags && skill.tags.length > 0 ? (
+                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
                         {skill.tags.map((tag) => (
-                          <Label key={tag} color="green" style={{ marginRight: '0.25rem' }}>
+                          <Label key={tag} color={getTagColor(tag)} isCompact>
                             {tag}
                           </Label>
                         ))}
                       </div>
+                    ) : (
+                      '-'
                     )}
-                  </CardBody>
-                </Card>
-              </GalleryItem>
-            ))}
-          </Gallery>
+                  </Td>
+                  <Td
+                    dataLabel="Tools"
+                    onClick={() => navigate(`/skills/${skill.name}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {skill.tools && skill.tools.length > 0 ? skill.tools.length : '-'}
+                  </Td>
+                  <Td
+                    dataLabel="Snippets"
+                    onClick={() => navigate(`/skills/${skill.name}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {skill.snippets && skill.snippets.length > 0 ? skill.snippets.length : '-'}
+                  </Td>
+                  <Td
+                    dataLabel="Version"
+                    onClick={() => navigate(`/skills/${skill.name}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {skill.version || '-'}
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
         )}
       </PageSection>
 
+      {/* Create Skill Modal */}
+      <Modal
+        variant={ModalVariant.medium}
+        title="Create New Skill"
+        isOpen={isCreateModalOpen}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setNewSkill({
+            name: '',
+            version: '',
+            description: '',
+            tags: [],
+            toolNames: [],
+            snippetNames: [],
+          });
+          setTagInput('');
+          setToolSearchTerm('');
+          setSnippetSearchTerm('');
+          setCreateError('');
+        }}
+        actions={[
+          <Button
+            key="create"
+            variant="primary"
+            onClick={handleCreateSkill}
+            isLoading={createMutation.isPending}
+          >
+            Create
+          </Button>,
+          <Button
+            key="cancel"
+            variant="link"
+            onClick={() => {
+              setIsCreateModalOpen(false);
+              setNewSkill({
+                name: '',
+                version: '',
+                description: '',
+                tags: [],
+                toolNames: [],
+                snippetNames: [],
+              });
+              setTagInput('');
+              setToolSearchTerm('');
+              setSnippetSearchTerm('');
+              setCreateError('');
+            }}
+          >
+            Cancel
+          </Button>,
+        ]}
+      >
+        {createError && (
+          <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
+            {createError}
+          </Alert>
+        )}
+        <Form>
+          <FormGroup label="Name" isRequired fieldId="skill-name">
+            <TextInput
+              isRequired
+              type="text"
+              id="skill-name"
+              value={newSkill.name}
+              onChange={(_, value) => setNewSkill({ ...newSkill, name: value })}
+            />
+          </FormGroup>
+          <FormGroup label="Version" fieldId="skill-version">
+            <TextInput
+              type="text"
+              id="skill-version"
+              value={newSkill.version}
+              onChange={(_, value) => setNewSkill({ ...newSkill, version: value })}
+              placeholder="e.g., 1.0.0"
+            />
+          </FormGroup>
+          <FormGroup label="Description" isRequired fieldId="skill-description">
+            <TextArea
+              isRequired
+              id="skill-description"
+              value={newSkill.description}
+              onChange={(_, value) => setNewSkill({ ...newSkill, description: value })}
+              rows={3}
+            />
+          </FormGroup>
+          <FormGroup label="Tags" fieldId="skill-tags">
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <TextInput
+                type="text"
+                id="skill-tags"
+                value={tagInput}
+                onChange={(_, value) => setTagInput(value)}
+                placeholder="Add a tag"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddTag();
+                  }
+                }}
+              />
+              <Button variant="secondary" onClick={handleAddTag}>
+                Add
+              </Button>
+            </div>
+            {newSkill.tags.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {newSkill.tags.map((tag) => (
+                  <Button
+                    key={tag}
+                    variant="plain"
+                    onClick={() => handleRemoveTag(tag)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      backgroundColor: '#f0f0f0',
+                      border: '1px solid #d2d2d2',
+                      borderRadius: '3px',
+                    }}
+                  >
+                    {tag} ✕
+                  </Button>
+                ))}
+              </div>
+            )}
+          </FormGroup>
+          <FormGroup label="Tools" fieldId="skill-tools">
+            <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
+              Search and select tools to include in this skill
+            </Text>
+            <Select
+              id="skill-tools-select"
+              isOpen={isToolSelectOpen}
+              selected={null}
+              onSelect={handleSelectTool}
+              onOpenChange={(isOpen) => setIsToolSelectOpen(isOpen)}
+              toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
+                <MenuToggle
+                  ref={toggleRef}
+                  onClick={() => setIsToolSelectOpen(!isToolSelectOpen)}
+                  isExpanded={isToolSelectOpen}
+                  style={{ width: '100%' }}
+                >
+                  {toolSearchTerm || 'Select a tool...'}
+                </MenuToggle>
+              )}
+            >
+              <SelectList>
+                <TextInput
+                  type="search"
+                  value={toolSearchTerm}
+                  onChange={(_, value) => setToolSearchTerm(value)}
+                  placeholder="Search tools..."
+                  style={{ padding: '0.5rem', borderBottom: '1px solid #d2d2d2' }}
+                />
+                {filteredTools.length === 0 ? (
+                  <SelectOption isDisabled>
+                    {toolSearchTerm ? 'No tools found' : 'Start typing to search...'}
+                  </SelectOption>
+                ) : (
+                  filteredTools.map((tool) => (
+                    <SelectOption key={tool.name} value={tool.name}>
+                      {tool.name}
+                    </SelectOption>
+                  ))
+                )}
+              </SelectList>
+            </Select>
+            {newSkill.toolNames.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {newSkill.toolNames.map((tool) => (
+                  <Button
+                    key={tool}
+                    variant="plain"
+                    onClick={() => handleRemoveTool(tool)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      backgroundColor: '#e7f1fa',
+                      border: '1px solid #bee1f4',
+                      borderRadius: '3px',
+                    }}
+                  >
+                    {tool} ✕
+                  </Button>
+                ))}
+              </div>
+            )}
+          </FormGroup>
+          <FormGroup label="Snippets" fieldId="skill-snippets">
+            <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
+              Search and select snippets to include in this skill
+            </Text>
+            <Select
+              id="skill-snippets-select"
+              isOpen={isSnippetSelectOpen}
+              selected={null}
+              onSelect={handleSelectSnippet}
+              onOpenChange={(isOpen) => setIsSnippetSelectOpen(isOpen)}
+              toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
+                <MenuToggle
+                  ref={toggleRef}
+                  onClick={() => setIsSnippetSelectOpen(!isSnippetSelectOpen)}
+                  isExpanded={isSnippetSelectOpen}
+                  style={{ width: '100%' }}
+                >
+                  {snippetSearchTerm || 'Select a snippet...'}
+                </MenuToggle>
+              )}
+            >
+              <SelectList>
+                <TextInput
+                  type="search"
+                  value={snippetSearchTerm}
+                  onChange={(_, value) => setSnippetSearchTerm(value)}
+                  placeholder="Search snippets..."
+                  style={{ padding: '0.5rem', borderBottom: '1px solid #d2d2d2' }}
+                />
+                {filteredSnippets.length === 0 ? (
+                  <SelectOption isDisabled>
+                    {snippetSearchTerm ? 'No snippets found' : 'Start typing to search...'}
+                  </SelectOption>
+                ) : (
+                  filteredSnippets.map((snippet) => (
+                    <SelectOption key={snippet.name} value={snippet.name}>
+                      {snippet.name}
+                    </SelectOption>
+                  ))
+                )}
+              </SelectList>
+            </Select>
+            {newSkill.snippetNames.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {newSkill.snippetNames.map((snippet) => (
+                  <Button
+                    key={snippet}
+                    variant="plain"
+                    onClick={() => handleRemoveSnippet(snippet)}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      backgroundColor: '#f4e7f7',
+                      border: '1px solid #d8bfd8',
+                      borderRadius: '3px',
+                    }}
+                  >
+                    {snippet} ✕
+                  </Button>
+                ))}
+              </div>
+            )}
+          </FormGroup>
+        </Form>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
       <Modal
         variant={ModalVariant.small}
-        title="Create Skill"
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        title="Delete Skills"
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        actions={[
+          <Button
+            key="delete"
+            variant="danger"
+            onClick={handleDeleteSelected}
+            isLoading={deleteMutation.isPending}
+          >
+            Delete
+          </Button>,
+          <Button
+            key="cancel"
+            variant="link"
+            onClick={() => setIsDeleteModalOpen(false)}
+          >
+            Cancel
+          </Button>,
+        ]}
       >
-        <Alert variant="info" isInline title="Feature Coming Soon">
-          The skill creation interface is under development. Please use the API to create skills for now.
-        </Alert>
+        <Text>
+          Are you sure you want to delete {selectedSkills.length} skill{selectedSkills.length > 1 ? 's' : ''}?
+          This action cannot be undone.
+        </Text>
+        <ul style={{ marginTop: '1rem' }}>
+          {selectedSkills.map(name => (
+            <li key={name}>{name}</li>
+          ))}
+        </ul>
+      </Modal>
+
+      {/* Import Modal */}
+      <Modal
+        variant={ModalVariant.small}
+        title="Import Skills"
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportFile(null);
+          setImportError('');
+        }}
+        actions={[
+          <Button
+            key="import"
+            variant="primary"
+            onClick={handleImport}
+          >
+            Import
+          </Button>,
+          <Button
+            key="cancel"
+            variant="link"
+            onClick={() => {
+              setIsImportModalOpen(false);
+              setImportFile(null);
+              setImportError('');
+            }}
+          >
+            Cancel
+          </Button>,
+        ]}
+      >
+        {importError && (
+          <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
+            {importError}
+          </Alert>
+        )}
+        <Text style={{ marginBottom: '1rem' }}>
+          Select a JSON file containing an array of skill objects (with full tool and snippet objects) to import.
+        </Text>
+        <FileUpload
+          id="import-file"
+          value={importFile || undefined}
+          filename={importFile?.name}
+          onFileInputChange={(_event: any, file: File) => setImportFile(file)}
+          onClearClick={() => setImportFile(null)}
+          hideDefaultPreview
+          browseButtonText="Select JSON File"
+          accept=".json"
+        />
       </Modal>
     </>
   );

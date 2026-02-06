@@ -30,8 +30,8 @@ export interface Skill {
   uuid: string;
   name: string;
   description: string;
-  tools?: string[];
-  snippets?: string[];
+  tools?: Tool[];
+  snippets?: Snippet[];
   tags?: string[];
   version?: string;
   author?: string;

@@ -47,7 +47,7 @@ export function VMCPServersPage() {
   if (error) {
     return (
       <PageSection>
-        <Alert variant="danger" title="Error loading VMCP servers">
+        <Alert variant="danger" title="Error loading Virtual MCP servers">
           {(error as Error).message}
         </Alert>
       </PageSection>
@@ -58,7 +58,7 @@ export function VMCPServersPage() {
     <>
       <PageSection variant="light">
         <Title headingLevel="h1" size="2xl">
-          VMCP Servers
+          Virtual MCP Servers
         </Title>
         <Text>Create and manage virtual MCP servers for tool subsets</Text>
       </PageSection>
@@ -68,7 +68,7 @@ export function VMCPServersPage() {
           <ToolbarContent>
             <ToolbarItem>
               <Button variant="primary" icon={<PlusIcon />}>
-                Create VMCP Server
+                Create Virtual MCP Server
               </Button>
             </ToolbarItem>
           </ToolbarContent>
@@ -78,13 +78,13 @@ export function VMCPServersPage() {
           <EmptyState>
             <EmptyStateIcon icon={ServerIcon} />
             <Title headingLevel="h4" size="lg">
-              No VMCP servers yet
+              No Virtual MCP servers yet
             </Title>
             <EmptyStateBody>
-              Create your first VMCP server to get started
+              Create your first Virtual MCP server to get started
             </EmptyStateBody>
             <Button variant="primary">
-              Create VMCP Server
+              Create Virtual MCP Server
             </Button>
           </EmptyState>
         ) : (

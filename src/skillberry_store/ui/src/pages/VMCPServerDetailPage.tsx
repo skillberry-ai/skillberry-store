@@ -43,7 +43,7 @@ export function VMCPServerDetailPage() {
   if (error || !server) {
     return (
       <PageSection>
-        <Alert variant="danger" title="Error loading VMCP server">
+        <Alert variant="danger" title="Error loading Virtual MCP server">
           {(error as Error)?.message || 'Server not found'}
         </Alert>
       </PageSection>
@@ -55,7 +55,7 @@ export function VMCPServerDetailPage() {
       <PageSection variant="light">
         <Breadcrumb>
           <BreadcrumbItem to="/vmcp-servers" onClick={(e) => { e.preventDefault(); navigate('/vmcp-servers'); }}>
-            VMCP Servers
+            Virtual MCP Servers
           </BreadcrumbItem>
           <BreadcrumbItem isActive>{server.name}</BreadcrumbItem>
         </Breadcrumb>

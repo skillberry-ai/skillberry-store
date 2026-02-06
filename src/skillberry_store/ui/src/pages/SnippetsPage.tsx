@@ -4,6 +4,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getTagColor } from '../utils/tagColors';
 import {
   PageSection,
   Title,
@@ -27,9 +28,10 @@ import {
   FormSelect,
   FormSelectOption,
   Label,
+  FileUpload,
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
-import { PlusIcon, FileCodeIcon, SearchIcon, TrashIcon } from '@patternfly/react-icons';
+import { PlusIcon, FileCodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon } from '@patternfly/react-icons';
 import { snippetsApi } from '@/services/api';
 import type { Snippet } from '@/types';
 
@@ -53,6 +55,9 @@ export function SnippetsPage() {
   const [createError, setCreateError] = useState('');
   const [selectedSnippets, setSelectedSnippets] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importError, setImportError] = useState('');
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -153,6 +158,53 @@ export function SnippetsPage() {
     deleteMutation.mutate(selectedSnippets);
   };
 
+  const handleExport = () => {
+    const selectedSnippetObjects = snippets?.filter(s => selectedSnippets.includes(s.name)) || [];
+    const exportData = JSON.stringify(selectedSnippetObjects, null, 2);
+    const blob = new Blob([exportData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `snippets-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      setImportError('Please select a file to import');
+      return;
+    }
+
+    try {
+      const text = await importFile.text();
+      const importedSnippets = JSON.parse(text) as Snippet[];
+      
+      if (!Array.isArray(importedSnippets)) {
+        setImportError('Invalid file format. Expected an array of snippets.');
+        return;
+      }
+
+      // Import each snippet
+      for (const snippet of importedSnippets) {
+        try {
+          await snippetsApi.create(snippet);
+        } catch (error: any) {
+          console.error(`Failed to import snippet ${snippet.name}:`, error);
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['snippets'] });
+      setIsImportModalOpen(false);
+      setImportFile(null);
+      setImportError('');
+    } catch (error) {
+      setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
+    }
+  };
+
   const getSortableRowValues = (snippet: Snippet): (string | number)[] => {
     return [
       snippet.name,
@@ -238,6 +290,25 @@ export function SnippetsPage() {
                 onChange={(_, value) => setSearchTerm(value)}
                 onClear={() => setSearchTerm('')}
               />
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button
+                variant="secondary"
+                icon={<ExportIcon />}
+                onClick={handleExport}
+                isDisabled={selectedSnippets.length === 0}
+              >
+                Export ({selectedSnippets.length})
+              </Button>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button
+                variant="secondary"
+                icon={<ImportIcon />}
+                onClick={() => setIsImportModalOpen(true)}
+              >
+                Import
+              </Button>
             </ToolbarItem>
             <ToolbarItem>
               <Button
@@ -339,7 +410,7 @@ export function SnippetsPage() {
                     {snippet.tags && snippet.tags.length > 0 ? (
                       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
                         {snippet.tags.map((tag) => (
-                          <Label key={tag} color="purple" isCompact>
+                          <Label key={tag} color={getTagColor(tag)} isCompact>
                             {tag}
                           </Label>
                         ))}
@@ -568,6 +639,57 @@ export function SnippetsPage() {
             <li key={name}>{name}</li>
           ))}
         </ul>
+      </Modal>
+
+      {/* Import Modal */}
+      <Modal
+        variant={ModalVariant.small}
+        title="Import Snippets"
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportFile(null);
+          setImportError('');
+        }}
+        actions={[
+          <Button
+            key="import"
+            variant="primary"
+            onClick={handleImport}
+          >
+            Import
+          </Button>,
+          <Button
+            key="cancel"
+            variant="link"
+            onClick={() => {
+              setIsImportModalOpen(false);
+              setImportFile(null);
+              setImportError('');
+            }}
+          >
+            Cancel
+          </Button>,
+        ]}
+      >
+        {importError && (
+          <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
+            {importError}
+          </Alert>
+        )}
+        <Text style={{ marginBottom: '1rem' }}>
+          Select a JSON file containing an array of snippet objects to import.
+        </Text>
+        <FileUpload
+          id="import-file"
+          value={importFile || undefined}
+          filename={importFile?.name}
+          onFileInputChange={(_event: any, file: File) => setImportFile(file)}
+          onClearClick={() => setImportFile(null)}
+          hideDefaultPreview
+          browseButtonText="Select JSON File"
+          accept=".json"
+        />
       </Modal>
     </>
   );
