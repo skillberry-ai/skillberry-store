@@ -134,21 +134,24 @@ class SBS(FastAPI):
         self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
         self.logger = logging.getLogger(__name__)
-        descriptions = descriptions_api()
-        tools_descriptions = tools_descriptions_api()
-        snippets_descriptions = snippets_descriptions_api()
-        skills_descriptions = skills_descriptions_api()
+        
+        # Store description instances in app state for access by admin API
+        self.state.descriptions = descriptions_api()
+        self.state.tools_descriptions = tools_descriptions_api()
+        self.state.snippets_descriptions = snippets_descriptions_api()
+        self.state.skills_descriptions = skills_descriptions_api()
+        
         self.manifest_api(
-            file_handler=file_api(), descriptions=descriptions, tags=["manifest"]
+            file_handler=file_api(), descriptions=self.state.descriptions, tags=["manifest"]
         )
         self.virtual_mcp_server_api(tags=["vmcp_servers"])
         register_skills_api(
-            self, tags="skills", skills_descriptions=skills_descriptions
+            self, tags="skills", skills_descriptions=self.state.skills_descriptions
         )
         register_snippets_api(
-            self, tags="snippets", snippets_descriptions=snippets_descriptions
+            self, tags="snippets", snippets_descriptions=self.state.snippets_descriptions
         )
-        register_tools_api(self, tags="tools", tools_descriptions=tools_descriptions)
+        register_tools_api(self, tags="tools", tools_descriptions=self.state.tools_descriptions)
         register_admin_api(self, tags="admin")
 
         # Mount MCP server
