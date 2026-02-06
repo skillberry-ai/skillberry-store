@@ -27,18 +27,18 @@ export function HomePage() {
 
   const features = [
     {
-      title: 'Tools',
-      description: 'Manage executable tools with parameters, execution, and search capabilities.',
-      icon: <CubeIcon size="xl" />,
-      path: '/tools',
-      color: '#0066CC',
-    },
-    {
       title: 'Skills',
       description: 'Organize collections of tools and snippets into reusable skills.',
       icon: <CodeIcon size="xl" />,
       path: '/skills',
       color: '#3E8635',
+    },
+    {
+      title: 'Tools',
+      description: 'Manage executable tools with parameters, execution, and search capabilities.',
+      icon: <CubeIcon size="xl" />,
+      path: '/tools',
+      color: '#0066CC',
     },
     {
       title: 'Snippets',
@@ -48,7 +48,7 @@ export function HomePage() {
       color: '#A18FFF',
     },
     {
-      title: 'VMCP Servers',
+      title: 'Virtual MCP Servers',
       description: 'Create and manage virtual MCP servers for tool subsets.',
       icon: <ServerIcon size="xl" />,
       path: '/vmcp-servers',

@@ -178,10 +178,23 @@ export const snippetsApi = {
   },
 
   create: async (snippet: Omit<Snippet, 'uuid'>): Promise<Snippet> => {
-    const response = await fetch(`${API_BASE}/snippets/`, {
+    // Build query parameters for form data
+    const params = new URLSearchParams({
+      name: snippet.name,
+      description: snippet.description,
+      content: snippet.content,
+      version: snippet.version || '1.0.0',
+      content_type: snippet.content_type || 'text/plain',
+      state: snippet.state || 'approved',
+    });
+    
+    // Add tags as separate parameters
+    if (snippet.tags && Array.isArray(snippet.tags)) {
+      snippet.tags.forEach(tag => params.append('tags', tag));
+    }
+    
+    const response = await fetch(`${API_BASE}/snippets/?${params}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(snippet),
     });
     return handleResponse<Snippet>(response);
   },

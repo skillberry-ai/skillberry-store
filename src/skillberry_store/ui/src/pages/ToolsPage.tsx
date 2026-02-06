@@ -4,6 +4,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getTagColor } from '../utils/tagColors';
 import {
   PageSection,
   Title,
@@ -30,7 +31,7 @@ import {
   FormSelectOption,
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
-import { PlusIcon, CubeIcon, SearchIcon, TrashIcon } from '@patternfly/react-icons';
+import { PlusIcon, CubeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon } from '@patternfly/react-icons';
 import { toolsApi } from '@/services/api';
 import type { Tool } from '@/types';
 
@@ -47,6 +48,9 @@ export function ToolsPage() {
   const [createError, setCreateError] = useState('');
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importError, setImportError] = useState('');
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -124,6 +128,72 @@ export function ToolsPage() {
 
   const handleDeleteSelected = () => {
     deleteMutation.mutate(selectedTools);
+  };
+
+  const handleExport = async () => {
+    const selectedToolObjects = tools?.filter(t => selectedTools.includes(t.name)) || [];
+    
+    // Fetch module content for each tool
+    const toolsWithModules = await Promise.all(
+      selectedToolObjects.map(async (tool) => {
+        try {
+          const module = await toolsApi.getModule(tool.name);
+          return { ...tool, module_content: module };
+        } catch (error) {
+          console.error(`Failed to fetch module for ${tool.name}:`, error);
+          return { ...tool, module_content: null };
+        }
+      })
+    );
+    
+    const exportData = JSON.stringify(toolsWithModules, null, 2);
+    const blob = new Blob([exportData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `tools-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      setImportError('Please select a file to import');
+      return;
+    }
+
+    try {
+      const text = await importFile.text();
+      const importedTools = JSON.parse(text) as (Tool & { module_content?: string })[];
+      
+      if (!Array.isArray(importedTools)) {
+        setImportError('Invalid file format. Expected an array of tools.');
+        return;
+      }
+
+      // Import each tool
+      for (const tool of importedTools) {
+        try {
+          if (tool.module_content) {
+            // Create a File object from the module content
+            const moduleBlob = new Blob([tool.module_content], { type: 'text/x-python' });
+            const moduleFile = new File([moduleBlob], `${tool.name}.py`, { type: 'text/x-python' });
+            await toolsApi.create(moduleFile, tool.name, true);
+          }
+        } catch (error: any) {
+          console.error(`Failed to import tool ${tool.name}:`, error);
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['tools'] });
+      setIsImportModalOpen(false);
+      setImportFile(null);
+      setImportError('');
+    } catch (error) {
+      setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
+    }
   };
 
   const getSortableRowValues = (tool: Tool): (string | number)[] => {
@@ -211,6 +281,25 @@ export function ToolsPage() {
                 onChange={(_, value) => setSearchTerm(value)}
                 onClear={() => setSearchTerm('')}
               />
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button
+                variant="secondary"
+                icon={<ExportIcon />}
+                onClick={handleExport}
+                isDisabled={selectedTools.length === 0}
+              >
+                Export ({selectedTools.length})
+              </Button>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button
+                variant="secondary"
+                icon={<ImportIcon />}
+                onClick={() => setIsImportModalOpen(true)}
+              >
+                Import
+              </Button>
             </ToolbarItem>
             <ToolbarItem>
               <Button
@@ -312,7 +401,7 @@ export function ToolsPage() {
                     {tool.tags && tool.tags.length > 0 ? (
                       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
                         {tool.tags.map((tag) => (
-                          <Label key={tag} color="blue" isCompact>
+                          <Label key={tag} color={getTagColor(tag)} isCompact>
                             {tag}
                           </Label>
                         ))}
@@ -471,6 +560,57 @@ export function ToolsPage() {
             <li key={name}>{name}</li>
           ))}
         </ul>
+      </Modal>
+
+      {/* Import Modal */}
+      <Modal
+        variant={ModalVariant.small}
+        title="Import Tools"
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setImportFile(null);
+          setImportError('');
+        }}
+        actions={[
+          <Button
+            key="import"
+            variant="primary"
+            onClick={handleImport}
+          >
+            Import
+          </Button>,
+          <Button
+            key="cancel"
+            variant="link"
+            onClick={() => {
+              setIsImportModalOpen(false);
+              setImportFile(null);
+              setImportError('');
+            }}
+          >
+            Cancel
+          </Button>,
+        ]}
+      >
+        {importError && (
+          <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
+            {importError}
+          </Alert>
+        )}
+        <Text style={{ marginBottom: '1rem' }}>
+          Select a JSON file containing an array of tool objects (with module_content) to import.
+        </Text>
+        <FileUpload
+          id="import-file"
+          value={importFile || undefined}
+          filename={importFile?.name}
+          onFileInputChange={(_event: any, file: File) => setImportFile(file)}
+          onClearClick={() => setImportFile(null)}
+          hideDefaultPreview
+          browseButtonText="Select JSON File"
+          accept=".json"
+        />
       </Modal>
     </>
   );

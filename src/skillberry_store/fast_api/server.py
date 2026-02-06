@@ -22,6 +22,7 @@ from skillberry_store.fast_api.mcp_proxy import MCPToSBSProxy
 from skillberry_store.fast_api.skills_api import register_skills_api
 from skillberry_store.fast_api.snippets_api import register_snippets_api
 from skillberry_store.fast_api.tools_api import register_tools_api
+from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.modules.dictionary_checker import DictionaryChecker
 from skillberry_store.modules.lifecycle import LifecycleState, LifecycleManager
 from skillberry_store.modules.manifest import Manifest
@@ -116,7 +117,7 @@ class SBSettings(BaseSettings):
 
     bts_host: str = Field("0.0.0.0", env="SBS_HOST")
     bts_port: int = Field(8000, env="SBS_PORT")
-    ui_port: int = Field(3000, env="SBS_UI_PORT")
+    ui_port: int = Field(8002, env="SBS_UI_PORT")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         "INFO", env="UVICORN_LOG_LEVEL"
     )
@@ -148,7 +149,7 @@ class SBS(FastAPI):
             self, tags="snippets", snippets_descriptions=snippets_descriptions
         )
         register_tools_api(self, tags="tools", tools_descriptions=tools_descriptions)
-        self.health_api(tags=["health"])
+        register_admin_api(self, tags="admin")
 
         # Mount MCP server
         mcp_server = FastApiMCP(self)
@@ -189,6 +190,9 @@ class SBS(FastAPI):
     def run(self):
         """Starts the FastAPI app using Uvicorn, and sets up SSE proxy routes if MCP mode is enabled."""
         self.logger.info("Starting SBS server")
+        self.logger.info(f"API server running at: http://{self.settings.bts_host}:{self.settings.bts_port}")
+        self.logger.info(f"UI available at: http://localhost:{self.settings.ui_port}")
+        self.logger.info(f"API documentation at: http://{self.settings.bts_host}:{self.settings.bts_port}/docs")
         if self.settings.mcp_mode:
             self.logger.info("SBS server run in MCP mode with transport SSE")
 
@@ -962,19 +966,6 @@ class SBS(FastAPI):
                 return vmcp_server_manager.get_server_details(name)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
-
-    def health_api(self, tags: str):
-        """Initialize health check API endpoint."""
-
-        @self.get("/health", tags=tags)
-        def health_check():
-            """Health check endpoint.
-
-            Returns:
-                dict: Health status of the service.
-            """
-            return {"status": "healthy"}
-
 
 def descriptions_api():
     """Initialize descriptions APIs with proper persistency/db and APIs.

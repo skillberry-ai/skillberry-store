@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getTagColor } from '../utils/tagColors';
 import {
   PageSection,
   Title,
@@ -224,7 +225,7 @@ export function SnippetDetailPage() {
                   <DescriptionListDescription>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       {snippet.tags.map((tag) => (
-                        <Label key={tag} color="purple">{tag}</Label>
+                        <Label key={tag} color={getTagColor(tag)}>{tag}</Label>
                       ))}
                     </div>
                   </DescriptionListDescription>
