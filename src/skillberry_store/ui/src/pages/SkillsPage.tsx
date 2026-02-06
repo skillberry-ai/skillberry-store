@@ -5,6 +5,8 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
+import { TagFilter } from '../components/TagFilter';
+import { SearchBox, SearchMode } from '../components/SearchBox';
 import {
   PageSection,
   Title,
@@ -44,6 +46,10 @@ export function SkillsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchMode, setSearchMode] = useState<SearchMode>('text');
+  const [maxResults, setMaxResults] = useState(10);
+  const [similarityThreshold, setSimilarityThreshold] = useState(1);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newSkill, setNewSkill] = useState({
     name: '',
@@ -74,10 +80,11 @@ export function SkillsPage() {
     queryFn: skillsApi.list,
   });
 
+  // Semantic search skills (only when in semantic mode)
   const { data: searchResults } = useQuery({
-    queryKey: ['skills', 'search', searchTerm],
-    queryFn: () => skillsApi.search(searchTerm, 10, 1),
-    enabled: searchTerm.length > 0,
+    queryKey: ['skills', 'search', searchTerm, maxResults, similarityThreshold],
+    queryFn: () => skillsApi.search(searchTerm, maxResults, similarityThreshold),
+    enabled: searchTerm.length > 0 && searchMode === 'semantic',
   });
 
   // Fetch all tools for the dropdown
@@ -344,12 +351,46 @@ export function SkillsPage() {
     ];
   };
 
+  // Get all unique tags from skills
+  const allTags = useMemo(() => {
+    if (!skills) return [];
+    const tagSet = new Set<string>();
+    skills.forEach(skill => {
+      skill.tags?.forEach(tag => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort();
+  }, [skills]);
+
   const filteredSkills = useMemo(() => {
-    let filtered = searchTerm && searchResults
-      ? skills?.filter((skill) =>
-          searchResults.some((result) => result.name === skill.name)
+    let filtered = skills;
+
+    // Apply search filtering
+    if (searchTerm && filtered) {
+      if (searchMode === 'semantic' && searchResults) {
+        // Semantic search: filter by backend results (handle both name and filename)
+        filtered = filtered.filter((skill) =>
+          searchResults.some((result) =>
+            (result.name === skill.name) || (result.filename === skill.name)
+          )
+        );
+      } else if (searchMode === 'text') {
+        // Text search: filter by matching text in name or description
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((skill) =>
+          skill.name.toLowerCase().includes(lowerSearch) ||
+          skill.description?.toLowerCase().includes(lowerSearch)
+        );
+      }
+    }
+
+    // Apply tag filtering
+    if (filtered && selectedTags.length > 0) {
+      filtered = filtered.filter(skill =>
+        selectedTags.every(selectedTag =>
+          skill.tags?.includes(selectedTag)
         )
-      : skills;
+      );
+    }
 
     if (filtered && activeSortIndex !== null) {
       filtered = [...filtered].sort((a, b) => {
@@ -366,7 +407,7 @@ export function SkillsPage() {
     }
 
     return filtered;
-  }, [skills, searchResults, searchTerm, activeSortIndex, activeSortDirection]);
+  }, [skills, searchResults, searchTerm, searchMode, selectedTags, activeSortIndex, activeSortDirection]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -412,12 +453,25 @@ export function SkillsPage() {
       <PageSection>
         <Toolbar>
           <ToolbarContent>
-            <ToolbarItem variant="search-filter">
-              <SearchInput
-                placeholder="Search skills..."
+            <ToolbarItem variant="search-filter" style={{ flexGrow: 1 }}>
+              <SearchBox
                 value={searchTerm}
-                onChange={(_, value) => setSearchTerm(value)}
+                onChange={setSearchTerm}
                 onClear={() => setSearchTerm('')}
+                mode={searchMode}
+                onModeChange={setSearchMode}
+                placeholder="Search skills..."
+                maxResults={maxResults}
+                onMaxResultsChange={setMaxResults}
+                similarityThreshold={similarityThreshold}
+                onSimilarityThresholdChange={setSimilarityThreshold}
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <TagFilter
+                allTags={allTags}
+                selectedTags={selectedTags}
+                onTagsChange={setSelectedTags}
               />
             </ToolbarItem>
             <ToolbarItem>
