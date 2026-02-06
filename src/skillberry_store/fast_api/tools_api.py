@@ -8,6 +8,8 @@ from inspect import Parameter, Signature
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
+from prometheus_client import Counter, Histogram
+import time
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.file_executor import FileExecutor
@@ -22,6 +24,48 @@ from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
 from skillberry_store.utils.python_utils import extract_docstring
 
 logger = logging.getLogger(__name__)
+
+# observability - metrics
+prom_prefix = "sts_fastapi_tools_"
+create_tool_counter = Counter(
+    f"{prom_prefix}create_tool_counter", "Count number of tool create operations"
+)
+list_tools_counter = Counter(
+    f"{prom_prefix}list_tools_counter", "Count number of tool list operations"
+)
+get_tool_counter = Counter(
+    f"{prom_prefix}get_tool_counter", "Count number of tool get operations"
+)
+get_tool_module_counter = Counter(
+    f"{prom_prefix}get_tool_module_counter", "Count number of tool module get operations"
+)
+delete_tool_counter = Counter(
+    f"{prom_prefix}delete_tool_counter", "Count number of tool delete operations"
+)
+update_tool_counter = Counter(
+    f"{prom_prefix}update_tool_counter", "Count number of tool update operations"
+)
+execute_tool_counter = Counter(
+    f"{prom_prefix}execute_tool_counter",
+    "Count number of tool execute operations",
+    ["name"],
+)
+execute_successfully_tool_counter = Counter(
+    f"{prom_prefix}execute_successfully_tool_counter",
+    "Count number of tool executed successfully operations",
+    ["name"],
+)
+execute_successfully_tool_latency = Histogram(
+    f"{prom_prefix}execute_successfully_tool_latency",
+    "Histogram of execute tool successfully latencies",
+    ["name"],
+)
+search_tools_counter = Counter(
+    f"{prom_prefix}search_tools_counter", "Count number of tool search operations"
+)
+add_tool_from_python_counter = Counter(
+    f"{prom_prefix}add_tool_from_python_counter", "Count number of tool add from Python operations"
+)
 
 
 def register_tools_api(
@@ -62,6 +106,7 @@ def register_tools_api(
             HTTPException: If tool already exists (409) or creation fails (500).
         """
         logger.info(f"Request to create tool: {tool.name}")
+        create_tool_counter.inc()
 
         # Generate UUID if not provided
         if not tool.uuid:
@@ -119,6 +164,7 @@ def register_tools_api(
             HTTPException: If listing fails (500).
         """
         logger.info("Request to list tools")
+        list_tools_counter.inc()
 
         try:
             tool_files = tool_handler.list_files()
@@ -155,6 +201,7 @@ def register_tools_api(
             HTTPException: If tool not found (404) or retrieval fails (500).
         """
         logger.info(f"Request to get tool: {name}")
+        get_tool_counter.inc()
 
         try:
             tool_filename = f"{name}.json"
@@ -189,6 +236,7 @@ def register_tools_api(
                           module file not found (404), or retrieval fails (500).
         """
         logger.info(f"Request to get module file for tool: {name}")
+        get_tool_module_counter.inc()
 
         try:
             # First, get the tool to find the module_name
@@ -236,6 +284,7 @@ def register_tools_api(
             HTTPException: If tool not found (404) or deletion fails (500).
         """
         logger.info(f"Request to delete tool: {name}")
+        delete_tool_counter.inc()
 
         try:
             tool_filename = f"{name}.json"
@@ -298,6 +347,7 @@ def register_tools_api(
             HTTPException: If tool not found (404) or update fails (500).
         """
         logger.info(f"Request to update tool: {name}")
+        update_tool_counter.inc()
 
         try:
             tool_filename = f"{name}.json"
@@ -341,6 +391,8 @@ def register_tools_api(
             HTTPException: If tool not found (404) or execution fails (500).
         """
         logger.info(f"Request to execute tool: {name} with parameters: {parameters}")
+        execute_tool_counter.labels(name=name).inc()
+        start_time = time.time()
 
         try:
             # Get the tool metadata
@@ -398,6 +450,12 @@ def register_tools_api(
             result = await file_executor.execute_file(
                 parameters=exec_parameters, env_id=env_id
             )
+            
+            # Record successful execution metrics
+            duration = time.time() - start_time
+            execute_successfully_tool_counter.labels(name=name).inc()
+            execute_successfully_tool_latency.labels(name=name).observe(duration)
+            
             logger.info(f"Tool '{name}' executed successfully with result: {result}")
             return result
 
@@ -428,6 +486,7 @@ def register_tools_api(
             list: A list of matched tool names and similarity scores.
         """
         logger.info(f"Request to search tool descriptions for term: {search_term}")
+        search_tools_counter.inc()
 
         if not tools_descriptions:
             raise HTTPException(
@@ -477,6 +536,7 @@ def register_tools_api(
                           or any other error occurs (500).
         """
         logger.info(f"Request to add tool from Python file: {tool.filename}")
+        add_tool_from_python_counter.inc()
 
         # Validate that the uploaded file is a Python file
         if not tool.filename or not tool.filename.endswith('.py'):

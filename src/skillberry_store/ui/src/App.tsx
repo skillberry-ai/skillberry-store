@@ -13,6 +13,7 @@ import { SnippetDetailPage } from './pages/SnippetDetailPage';
 import { VMCPServersPage } from './pages/VMCPServersPage';
 import { VMCPServerDetailPage } from './pages/VMCPServerDetailPage';
 import { AdminPage } from './pages/AdminPage';
+import { ObservabilityPage } from './pages/ObservabilityPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 function App() {
@@ -39,6 +40,9 @@ function App() {
         
         {/* Admin route */}
         <Route path="/admin" element={<AdminPage />} />
+        
+        {/* Observability route */}
+        <Route path="/observability" element={<ObservabilityPage />} />
         
         {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />
