@@ -5,6 +5,7 @@ import logging
 import uuid
 from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query
+from prometheus_client import Counter
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
@@ -12,6 +13,27 @@ from skillberry_store.schemas.snippet_schema import SnippetSchema
 from skillberry_store.tools.configure import get_snippets_directory
 
 logger = logging.getLogger(__name__)
+
+# observability - metrics
+prom_prefix = "sts_fastapi_snippets_"
+create_snippet_counter = Counter(
+    f"{prom_prefix}create_snippet_counter", "Count number of snippet create operations"
+)
+list_snippets_counter = Counter(
+    f"{prom_prefix}list_snippets_counter", "Count number of snippet list operations"
+)
+get_snippet_counter = Counter(
+    f"{prom_prefix}get_snippet_counter", "Count number of snippet get operations"
+)
+delete_snippet_counter = Counter(
+    f"{prom_prefix}delete_snippet_counter", "Count number of snippet delete operations"
+)
+update_snippet_counter = Counter(
+    f"{prom_prefix}update_snippet_counter", "Count number of snippet update operations"
+)
+search_snippets_counter = Counter(
+    f"{prom_prefix}search_snippets_counter", "Count number of snippet search operations"
+)
 
 
 def register_snippets_api(
@@ -47,6 +69,7 @@ def register_snippets_api(
             HTTPException: If snippet already exists (409) or creation fails (500).
         """
         logger.info(f"Request to create snippet: {snippet.name}")
+        create_snippet_counter.inc()
 
         # Generate UUID if not provided
         if not snippet.uuid:
@@ -97,6 +120,7 @@ def register_snippets_api(
             HTTPException: If listing fails (500).
         """
         logger.info("Request to list snippets")
+        list_snippets_counter.inc()
 
         try:
             snippet_files = snippet_handler.list_files()
@@ -133,6 +157,7 @@ def register_snippets_api(
             HTTPException: If snippet not found (404) or retrieval fails (500).
         """
         logger.info(f"Request to get snippet: {name}")
+        get_snippet_counter.inc()
 
         try:
             snippet_filename = f"{name}.json"
@@ -166,6 +191,7 @@ def register_snippets_api(
             HTTPException: If snippet not found (404) or deletion fails (500).
         """
         logger.info(f"Request to delete snippet: {name}")
+        delete_snippet_counter.inc()
 
         try:
             snippet_filename = f"{name}.json"
@@ -207,6 +233,7 @@ def register_snippets_api(
             HTTPException: If snippet not found (404) or update fails (500).
         """
         logger.info(f"Request to update snippet: {name}")
+        update_snippet_counter.inc()
 
         try:
             snippet_filename = f"{name}.json"
@@ -250,6 +277,7 @@ def register_snippets_api(
             list: A list of matched snippet names and similarity scores.
         """
         logger.info(f"Request to search snippet descriptions for term: {search_term}")
+        search_snippets_counter.inc()
 
         if not snippets_descriptions:
             raise HTTPException(

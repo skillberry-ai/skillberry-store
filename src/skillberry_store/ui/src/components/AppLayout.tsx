@@ -114,6 +114,16 @@ export function AppLayout({ children }: AppLayoutProps) {
 
             <Divider style={{ margin: '0.5rem 0' }} />
 
+            {/* Observability */}
+            <NavItem
+              key="observability"
+              itemId="observability"
+              isActive={location.pathname === '/observability'}
+              onClick={() => navigate('/observability')}
+            >
+              Observability
+            </NavItem>
+
             {/* Admin */}
             <NavItem
               key="admin"

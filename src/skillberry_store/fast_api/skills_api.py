@@ -5,6 +5,7 @@ import logging
 import uuid
 from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query
+from prometheus_client import Counter
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
@@ -12,6 +13,27 @@ from skillberry_store.schemas.skill_schema import SkillSchema
 from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
 
 logger = logging.getLogger(__name__)
+
+# observability - metrics
+prom_prefix = "sts_fastapi_skills_"
+create_skill_counter = Counter(
+    f"{prom_prefix}create_skill_counter", "Count number of skill create operations"
+)
+list_skills_counter = Counter(
+    f"{prom_prefix}list_skills_counter", "Count number of skill list operations"
+)
+get_skill_counter = Counter(
+    f"{prom_prefix}get_skill_counter", "Count number of skill get operations"
+)
+delete_skill_counter = Counter(
+    f"{prom_prefix}delete_skill_counter", "Count number of skill delete operations"
+)
+update_skill_counter = Counter(
+    f"{prom_prefix}update_skill_counter", "Count number of skill update operations"
+)
+search_skills_counter = Counter(
+    f"{prom_prefix}search_skills_counter", "Count number of skill search operations"
+)
 
 
 def register_skills_api(
@@ -93,6 +115,7 @@ def register_skills_api(
             HTTPException: If skill already exists (409) or creation fails (500).
         """
         logger.info(f"Request to create skill: {skill.name}")
+        create_skill_counter.inc()
 
         # Generate UUID if not provided
         if not skill.uuid:
@@ -141,6 +164,7 @@ def register_skills_api(
             HTTPException: If listing fails (500).
         """
         logger.info("Request to list skills")
+        list_skills_counter.inc()
 
         try:
             skill_files = skill_handler.list_files()
@@ -179,6 +203,7 @@ def register_skills_api(
             HTTPException: If skill not found (404) or retrieval fails (500).
         """
         logger.info(f"Request to get skill: {name}")
+        get_skill_counter.inc()
 
         try:
             skill_filename = f"{name}.json"
@@ -214,6 +239,7 @@ def register_skills_api(
             HTTPException: If skill not found (404) or deletion fails (500).
         """
         logger.info(f"Request to delete skill: {name}")
+        delete_skill_counter.inc()
 
         try:
             skill_filename = f"{name}.json"
@@ -255,6 +281,7 @@ def register_skills_api(
             HTTPException: If skill not found (404) or update fails (500).
         """
         logger.info(f"Request to update skill: {name}")
+        update_skill_counter.inc()
 
         try:
             skill_filename = f"{name}.json"
@@ -298,6 +325,7 @@ def register_skills_api(
             list: A list of matched skill names and similarity scores.
         """
         logger.info(f"Request to search skill descriptions for term: {search_term}")
+        search_skills_counter.inc()
 
         if not skills_descriptions:
             raise HTTPException(

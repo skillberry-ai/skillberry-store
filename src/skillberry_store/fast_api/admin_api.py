@@ -3,8 +3,10 @@
 import logging
 import shutil
 import os
+import httpx
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
 
 from skillberry_store.tools.configure import (
     get_files_directory_path,
@@ -23,6 +25,9 @@ logger = logging.getLogger(__name__)
 # VMCP servers persistent file location
 VMCP_SERVERS_FILE = os.environ.get("VMCP_SERVERS_FILE", "/tmp/vmcp_servers.json")
 
+# Prometheus metrics port
+PROMETHEUS_METRICS_PORT = int(os.getenv("PROMETHEUS_METRICS_PORT", 8090))
+
 
 def register_admin_api(app: FastAPI, tags: str = "admin"):
     """Register admin API endpoints with the FastAPI application.
@@ -31,6 +36,43 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         app: The FastAPI application instance.
         tags: FastAPI tags for grouping the endpoints in documentation.
     """
+    @app.get("/admin/metrics", tags=[tags], response_class=PlainTextResponse)
+    async def get_metrics():
+        """Proxy endpoint to fetch Prometheus metrics.
+        
+        This endpoint proxies requests to the Prometheus metrics server
+        to avoid CORS issues when accessing metrics from the UI.
+        
+        Returns:
+            PlainTextResponse: The raw Prometheus metrics in text format.
+            
+        Raises:
+            HTTPException: If metrics server is not accessible (503).
+        """
+        try:
+            metrics_url = f"http://localhost:{PROMETHEUS_METRICS_PORT}/metrics"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(metrics_url, timeout=5.0)
+                if response.status_code == 200:
+                    return PlainTextResponse(content=response.text, media_type="text/plain")
+                else:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"Metrics server returned status {response.status_code}"
+                    )
+        except httpx.ConnectError:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Cannot connect to metrics server on port {PROMETHEUS_METRICS_PORT}. "
+                       f"Ensure PROMETHEUS_METRICS_PORT environment variable is set correctly."
+            )
+        except Exception as e:
+            logger.error(f"Error fetching metrics: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Error fetching metrics: {str(e)}"
+            )
+
 
     @app.delete("/admin/purge-all", tags=[tags])
     async def purge_all_data():
