@@ -5,6 +5,8 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
+import { TagFilter } from '../components/TagFilter';
+import { SearchBox, SearchMode } from '../components/SearchBox';
 import {
   PageSection,
   Title,
@@ -41,6 +43,10 @@ export function ToolsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchMode, setSearchMode] = useState<SearchMode>('text');
+  const [maxResults, setMaxResults] = useState(10);
+  const [similarityThreshold, setSimilarityThreshold] = useState(1);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [toolName, setToolName] = useState('');
   const [moduleFile, setModuleFile] = useState<File | null>(null);
@@ -60,11 +66,11 @@ export function ToolsPage() {
     queryFn: toolsApi.list,
   });
 
-  // Search tools
+  // Semantic search tools (only when in semantic mode)
   const { data: searchResults } = useQuery({
-    queryKey: ['tools', 'search', searchTerm],
-    queryFn: () => toolsApi.search(searchTerm, 10, 1),
-    enabled: searchTerm.length > 0,
+    queryKey: ['tools', 'search', searchTerm, maxResults, similarityThreshold],
+    queryFn: () => toolsApi.search(searchTerm, maxResults, similarityThreshold),
+    enabled: searchTerm.length > 0 && searchMode === 'semantic',
   });
 
   // Create tool mutation
@@ -206,12 +212,46 @@ export function ToolsPage() {
     ];
   };
 
+  // Get all unique tags from tools
+  const allTags = useMemo(() => {
+    if (!tools) return [];
+    const tagSet = new Set<string>();
+    tools.forEach(tool => {
+      tool.tags?.forEach(tag => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort();
+  }, [tools]);
+
   const filteredTools = useMemo(() => {
-    let filtered = searchTerm && searchResults
-      ? tools?.filter((tool) =>
-          searchResults.some((result) => result.name === tool.name)
+    let filtered = tools;
+
+    // Apply search filtering
+    if (searchTerm && filtered) {
+      if (searchMode === 'semantic' && searchResults) {
+        // Semantic search: filter by backend results (handle both name and filename)
+        filtered = filtered.filter((tool) =>
+          searchResults.some((result) =>
+            (result.name === tool.name) || (result.filename === tool.name)
+          )
+        );
+      } else if (searchMode === 'text') {
+        // Text search: filter by matching text in name or description
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((tool) =>
+          tool.name.toLowerCase().includes(lowerSearch) ||
+          tool.description?.toLowerCase().includes(lowerSearch)
+        );
+      }
+    }
+
+    // Apply tag filtering
+    if (filtered && selectedTags.length > 0) {
+      filtered = filtered.filter(tool =>
+        selectedTags.every(selectedTag =>
+          tool.tags?.includes(selectedTag)
         )
-      : tools;
+      );
+    }
 
     if (filtered && activeSortIndex !== null) {
       filtered = [...filtered].sort((a, b) => {
@@ -228,7 +268,7 @@ export function ToolsPage() {
     }
 
     return filtered;
-  }, [tools, searchResults, searchTerm, activeSortIndex, activeSortDirection]);
+  }, [tools, searchResults, searchTerm, searchMode, selectedTags, activeSortIndex, activeSortDirection]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -274,12 +314,25 @@ export function ToolsPage() {
       <PageSection>
         <Toolbar>
           <ToolbarContent>
-            <ToolbarItem variant="search-filter">
-              <SearchInput
-                placeholder="Search tools..."
+            <ToolbarItem variant="search-filter" style={{ flexGrow: 1 }}>
+              <SearchBox
                 value={searchTerm}
-                onChange={(_, value) => setSearchTerm(value)}
+                onChange={setSearchTerm}
                 onClear={() => setSearchTerm('')}
+                mode={searchMode}
+                onModeChange={setSearchMode}
+                placeholder="Search tools..."
+                maxResults={maxResults}
+                onMaxResultsChange={setMaxResults}
+                similarityThreshold={similarityThreshold}
+                onSimilarityThresholdChange={setSimilarityThreshold}
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <TagFilter
+                allTags={allTags}
+                selectedTags={selectedTags}
+                onTagsChange={setSelectedTags}
               />
             </ToolbarItem>
             <ToolbarItem>

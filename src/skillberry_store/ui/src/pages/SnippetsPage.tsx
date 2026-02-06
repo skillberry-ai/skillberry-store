@@ -5,6 +5,8 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
+import { TagFilter } from '../components/TagFilter';
+import { SearchBox, SearchMode } from '../components/SearchBox';
 import {
   PageSection,
   Title,
@@ -41,6 +43,10 @@ export function SnippetsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchMode, setSearchMode] = useState<SearchMode>('text');
+  const [maxResults, setMaxResults] = useState(10);
+  const [similarityThreshold, setSimilarityThreshold] = useState(1);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newSnippet, setNewSnippet] = useState({
     name: '',
@@ -66,10 +72,11 @@ export function SnippetsPage() {
     queryFn: snippetsApi.list,
   });
 
+  // Semantic search snippets (only when in semantic mode)
   const { data: searchResults } = useQuery({
-    queryKey: ['snippets', 'search', searchTerm],
-    queryFn: () => snippetsApi.search(searchTerm, 10, 1),
-    enabled: searchTerm.length > 0,
+    queryKey: ['snippets', 'search', searchTerm, maxResults, similarityThreshold],
+    queryFn: () => snippetsApi.search(searchTerm, maxResults, similarityThreshold),
+    enabled: searchTerm.length > 0 && searchMode === 'semantic',
   });
 
   // Create snippet mutation
@@ -215,12 +222,46 @@ export function SnippetsPage() {
     ];
   };
 
+  // Get all unique tags from snippets
+  const allTags = useMemo(() => {
+    if (!snippets) return [];
+    const tagSet = new Set<string>();
+    snippets.forEach(snippet => {
+      snippet.tags?.forEach(tag => tagSet.add(tag));
+    });
+    return Array.from(tagSet).sort();
+  }, [snippets]);
+
   const filteredSnippets = useMemo(() => {
-    let filtered = searchTerm && searchResults
-      ? snippets?.filter((snippet) =>
-          searchResults.some((result) => result.name === snippet.name)
+    let filtered = snippets;
+
+    // Apply search filtering
+    if (searchTerm && filtered) {
+      if (searchMode === 'semantic' && searchResults) {
+        // Semantic search: filter by backend results (handle both name and filename)
+        filtered = filtered.filter((snippet) =>
+          searchResults.some((result) =>
+            (result.name === snippet.name) || (result.filename === snippet.name)
+          )
+        );
+      } else if (searchMode === 'text') {
+        // Text search: filter by matching text in name or description
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((snippet) =>
+          snippet.name.toLowerCase().includes(lowerSearch) ||
+          snippet.description?.toLowerCase().includes(lowerSearch)
+        );
+      }
+    }
+
+    // Apply tag filtering
+    if (filtered && selectedTags.length > 0) {
+      filtered = filtered.filter(snippet =>
+        selectedTags.every(selectedTag =>
+          snippet.tags?.includes(selectedTag)
         )
-      : snippets;
+      );
+    }
 
     if (filtered && activeSortIndex !== null) {
       filtered = [...filtered].sort((a, b) => {
@@ -237,7 +278,7 @@ export function SnippetsPage() {
     }
 
     return filtered;
-  }, [snippets, searchResults, searchTerm, activeSortIndex, activeSortDirection]);
+  }, [snippets, searchResults, searchTerm, searchMode, selectedTags, activeSortIndex, activeSortDirection]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -283,12 +324,25 @@ export function SnippetsPage() {
       <PageSection>
         <Toolbar>
           <ToolbarContent>
-            <ToolbarItem variant="search-filter">
-              <SearchInput
-                placeholder="Search snippets..."
+            <ToolbarItem variant="search-filter" style={{ flexGrow: 1 }}>
+              <SearchBox
                 value={searchTerm}
-                onChange={(_, value) => setSearchTerm(value)}
+                onChange={setSearchTerm}
                 onClear={() => setSearchTerm('')}
+                mode={searchMode}
+                onModeChange={setSearchMode}
+                placeholder="Search snippets..."
+                maxResults={maxResults}
+                onMaxResultsChange={setMaxResults}
+                similarityThreshold={similarityThreshold}
+                onSimilarityThresholdChange={setSimilarityThreshold}
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <TagFilter
+                allTags={allTags}
+                selectedTags={selectedTags}
+                onTagsChange={setSelectedTags}
               />
             </ToolbarItem>
             <ToolbarItem>

@@ -63,7 +63,8 @@ export interface VMCPServer {
 }
 
 export interface SearchResult {
-  name: string;
+  name?: string;
+  filename?: string;
   similarity_score: number;
 }
 
