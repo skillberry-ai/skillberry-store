@@ -156,6 +156,8 @@ export function VMCPServersPage() {
         setNewServer({
           ...newServer,
           skill_uuid: selectedSkill.uuid,
+          name: selectedSkill.name,
+          description: selectedSkill.description || '',
         });
         setSkillSearchTerm(selectedSkill.name);
         setIsSkillSelectOpen(false);
@@ -615,55 +617,6 @@ export function VMCPServersPage() {
           </Alert>
         )}
         <Form>
-          <FormGroup label="Name" isRequired fieldId="server-name">
-            <TextInput
-              isRequired
-              type="text"
-              id="server-name"
-              value={newServer.name}
-              onChange={(_, value) => setNewServer({ ...newServer, name: value })}
-            />
-          </FormGroup>
-          <FormGroup label="Version" fieldId="server-version">
-            <TextInput
-              type="text"
-              id="server-version"
-              value={newServer.version}
-              onChange={(_, value) => setNewServer({ ...newServer, version: value })}
-              placeholder="e.g., 1.0.0"
-            />
-          </FormGroup>
-          <FormGroup label="Description" isRequired fieldId="server-description">
-            <TextArea
-              isRequired
-              id="server-description"
-              value={newServer.description}
-              onChange={(_, value) => setNewServer({ ...newServer, description: value })}
-              rows={2}
-            />
-          </FormGroup>
-          <FormGroup label="State" isRequired fieldId="server-state">
-            <FormSelect
-              value={newServer.state}
-              onChange={(_, value) => setNewServer({ ...newServer, state: value as 'unknown' | 'any' | 'new' | 'checked' | 'approved' })}
-              id="server-state"
-            >
-              <FormSelectOption value="unknown" label="Unknown" />
-              <FormSelectOption value="any" label="Any" />
-              <FormSelectOption value="new" label="New" />
-              <FormSelectOption value="checked" label="Checked" />
-              <FormSelectOption value="approved" label="Approved" />
-            </FormSelect>
-          </FormGroup>
-          <FormGroup label="Port" fieldId="server-port">
-            <TextInput
-              type="number"
-              id="server-port"
-              value={newServer.port?.toString() || ''}
-              onChange={(_, value) => setNewServer({ ...newServer, port: value ? parseInt(value) : undefined })}
-              placeholder="Leave empty for auto-assignment"
-            />
-          </FormGroup>
           <FormGroup label="Skill" fieldId="server-skill">
             <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
               Search and select a skill to expose via this VMCP server
@@ -722,6 +675,55 @@ export function VMCPServersPage() {
                 </Button>
               </div>
             )}
+          </FormGroup>
+          <FormGroup label="Name" isRequired fieldId="server-name">
+            <TextInput
+              isRequired
+              type="text"
+              id="server-name"
+              value={newServer.name}
+              onChange={(_, value) => setNewServer({ ...newServer, name: value })}
+            />
+          </FormGroup>
+          <FormGroup label="Description" isRequired fieldId="server-description">
+            <TextArea
+              isRequired
+              id="server-description"
+              value={newServer.description}
+              onChange={(_, value) => setNewServer({ ...newServer, description: value })}
+              rows={2}
+            />
+          </FormGroup>
+          <FormGroup label="Version" fieldId="server-version">
+            <TextInput
+              type="text"
+              id="server-version"
+              value={newServer.version}
+              onChange={(_, value) => setNewServer({ ...newServer, version: value })}
+              placeholder="e.g., 1.0.0"
+            />
+          </FormGroup>
+          <FormGroup label="State" isRequired fieldId="server-state">
+            <FormSelect
+              value={newServer.state}
+              onChange={(_, value) => setNewServer({ ...newServer, state: value as 'unknown' | 'any' | 'new' | 'checked' | 'approved' })}
+              id="server-state"
+            >
+              <FormSelectOption value="unknown" label="Unknown" />
+              <FormSelectOption value="any" label="Any" />
+              <FormSelectOption value="new" label="New" />
+              <FormSelectOption value="checked" label="Checked" />
+              <FormSelectOption value="approved" label="Approved" />
+            </FormSelect>
+          </FormGroup>
+          <FormGroup label="Port" fieldId="server-port">
+            <TextInput
+              type="number"
+              id="server-port"
+              value={newServer.port?.toString() || ''}
+              onChange={(_, value) => setNewServer({ ...newServer, port: value ? parseInt(value) : undefined })}
+              placeholder="Leave empty for auto-assignment"
+            />
           </FormGroup>
           <FormGroup label="Tags" fieldId="server-tags">
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
