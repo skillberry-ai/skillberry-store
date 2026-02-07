@@ -104,8 +104,8 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
             
             # Create a temporary manager to access and stop all servers
-            bts_url = f"http://{app.state.settings.bts_host if hasattr(app, 'state') and hasattr(app.state, 'settings') else '0.0.0.0'}:8000"
-            temp_manager = VirtualMcpServerManager(bts_url=bts_url, app=app)
+            sts_url = f"http://{app.state.settings.bts_host if hasattr(app, 'state') and hasattr(app.state, 'settings') else '0.0.0.0'}:8000"
+            temp_manager = VirtualMcpServerManager(sts_url=sts_url, app=app)
             
             # Stop all servers
             server_names = temp_manager.list_servers()
