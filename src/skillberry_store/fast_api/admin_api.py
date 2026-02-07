@@ -18,6 +18,8 @@ from skillberry_store.tools.configure import (
     get_tools_descriptions_directory,
     get_skills_descriptions_directory,
     get_snippets_descriptions_directory,
+    get_vmcp_directory,
+    get_vmcp_descriptions_directory,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,51 +97,46 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         """
         logger.warning("Admin purge-all endpoint called - deleting all backend data")
 
-        # Step 1: Stop all VMCP servers and clear in-memory state
-        # Access the VMCP server manager from the app if it exists
+        # Step 1: Stop all VMCP servers using the existing manager from app.state
         vmcp_stopped = False
+        vmcp_servers_count = 0
         try:
-            # Get the vmcp_server_manager from the app's virtual_mcp_server_api
-            # Since it's created per-request, we need to stop servers manually
-            from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
-            
-            # Create a temporary manager to access and stop all servers
-            sts_url = f"http://{app.state.settings.bts_host if hasattr(app, 'state') and hasattr(app.state, 'settings') else '0.0.0.0'}:8000"
-            temp_manager = VirtualMcpServerManager(sts_url=sts_url, app=app)
-            
-            # Stop all servers
-            server_names = temp_manager.list_servers()
-            for server_name in server_names:
-                try:
-                    temp_manager.remove_server(server_name)
-                    logger.info(f"Stopped VMCP server: {server_name}")
-                except Exception as e:
-                    logger.warning(f"Failed to stop VMCP server {server_name}: {str(e)}")
-            
-            vmcp_stopped = True
-            logger.info("All VMCP servers stopped")
+            # Use the existing vmcp_server_manager from app.state
+            if hasattr(app, 'state') and hasattr(app.state, 'vmcp_server_manager'):
+                vmcp_manager = app.state.vmcp_server_manager
+                
+                # Get list of all servers before stopping them
+                server_names = vmcp_manager.list_servers()
+                vmcp_servers_count = len(server_names)
+                
+                # Stop and remove all servers
+                for server_name in server_names:
+                    try:
+                        vmcp_manager.remove_server(server_name)
+                        logger.info(f"Stopped and removed VMCP server: {server_name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to stop VMCP server {server_name}: {str(e)}")
+                
+                vmcp_stopped = True
+                logger.info(f"All {vmcp_servers_count} VMCP servers stopped and removed")
+            else:
+                logger.warning("vmcp_server_manager not found in app.state")
         except Exception as e:
             logger.warning(f"Failed to stop VMCP servers: {str(e)}")
 
-        # Step 2: Delete VMCP servers persistent file
-        try:
-            if os.path.exists(VMCP_SERVERS_FILE):
-                os.remove(VMCP_SERVERS_FILE)
-                logger.info(f"Deleted VMCP servers file: {VMCP_SERVERS_FILE}")
-        except Exception as e:
-            logger.warning(f"Failed to delete VMCP servers file: {str(e)}")
-
-        # Step 3: Delete all data directories
+        # Step 2: Delete all data directories (including VMCP directory)
         directories_to_purge = [
             ("files", get_files_directory_path()),
             ("tools", get_tools_directory()),
             ("skills", get_skills_directory()),
             ("snippets", get_snippets_directory()),
+            ("vmcp", get_vmcp_directory()),
             ("manifest", get_manifest_directory()),
             ("descriptions", get_descriptions_directory()),
             ("tools_descriptions", get_tools_descriptions_directory()),
             ("skills_descriptions", get_skills_descriptions_directory()),
             ("snippets_descriptions", get_snippets_descriptions_directory()),
+            ("vmcp_descriptions", get_vmcp_descriptions_directory()),
         ]
 
         deleted_dirs = []
@@ -170,7 +167,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                 logger.error(error_msg)
                 failed_dirs.append({"name": dir_name, "path": dir_path, "error": str(e)})
 
-        # Step 4: Reset in-memory vector indexes
+        # Step 3: Reset in-memory vector indexes
         vector_indexes_reset = False
         try:
             if hasattr(app, 'state'):
@@ -208,12 +205,13 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                 },
             )
 
-        logger.info(f"Successfully purged all data. Deleted directories: {deleted_dirs}")
+        logger.info(f"Successfully purged all data. Deleted directories: {deleted_dirs}, stopped {vmcp_servers_count} VMCP servers")
         return {
             "message": "All backend data successfully purged",
             "deleted_directories": deleted_dirs,
             "total_deleted": len(deleted_dirs),
             "vmcp_servers_stopped": vmcp_stopped,
+            "vmcp_servers_count": vmcp_servers_count,
             "vector_indexes_reset": vector_indexes_reset,
         }
 
