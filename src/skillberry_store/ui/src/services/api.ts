@@ -294,6 +294,13 @@ export const vmcpApi = {
     return handleResponse<{ message: string }>(response);
   },
 
+  start: async (name: string): Promise<{ message: string; port: number }> => {
+    const response = await fetch(`${API_BASE}/vmcp_servers/${name}/start`, {
+      method: 'POST',
+    });
+    return handleResponse<{ message: string; port: number }>(response);
+  },
+
   search: async (
     searchTerm: string,
     maxResults = 5,
@@ -304,7 +311,7 @@ export const vmcpApi = {
       max_number_of_results: maxResults.toString(),
       similarity_threshold: threshold.toString(),
     });
-    const response = await fetch(`${API_BASE}/vmcp_servers/search?${params}`);
+    const response = await fetch(`${API_BASE}/search/vmcp_servers?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
 };

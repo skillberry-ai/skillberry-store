@@ -247,23 +247,29 @@ def register_vmcp_api(
         list_vmcp_counter.inc()
 
         try:
-            # Get all server names from runtime
-            server_names = vmcp_server_manager.list_servers()
+            # Get all server files from persistent storage
+            all_files = vmcp_handler.list_files()
+            server_files = [f for f in all_files if f.endswith('.json')]
             
             # Build full server objects by combining persistent and runtime data
             servers_dict = {}
-            for server_name in server_names:
+            for filename in server_files:
+                server_name = filename[:-5]  # Remove .json extension
                 try:
                     # Read persistent data from JSON
-                    content = vmcp_handler.read_file(f"{server_name}.json", raw_content=True)
+                    content = vmcp_handler.read_file(filename, raw_content=True)
                     if isinstance(content, str):
                         vmcp_data = json.loads(content)
                     else:
-                        logger.warning(f"Unexpected content type for {server_name}.json")
+                        logger.warning(f"Unexpected content type for {filename}")
                         continue
                     
-                    # Get runtime data
-                    runtime_server = vmcp_server_manager.get_server(server_name)
+                    # Get runtime data (may be None if server not running)
+                    runtime_server = None
+                    try:
+                        runtime_server = vmcp_server_manager.get_server(server_name)
+                    except Exception:
+                        pass  # Server not running, which is fine
                     
                     # Combine persistent and runtime data
                     server_info = {
@@ -503,6 +509,136 @@ def register_vmcp_api(
             logger.error(f"Error updating vmcp server '{name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating vmcp server: {str(e)}"
+            )
+
+    @app.post("/vmcp_servers/{name}/start", tags=[tags])
+    def start_vmcp_server(name: str, request: Request):
+        """Start or restart a virtual MCP server.
+        
+        This endpoint allows starting a server that exists in persistent storage
+        but is not currently running in the runtime manager.
+
+        Args:
+            name: The name of the vmcp server to start.
+            request: The incoming request object for context extraction.
+
+        Returns:
+            dict: Success message with the server port.
+
+        Raises:
+            HTTPException: If vmcp server not found (404) or start fails (500).
+        """
+        logger.info(f"Request to start vmcp server: {name}")
+        
+        try:
+            # Check if server already running
+            try:
+                existing_server = vmcp_server_manager.get_server(name)
+                if existing_server:
+                    return {
+                        "message": f"VMCP server '{name}' is already running.",
+                        "port": existing_server.port,
+                    }
+            except Exception:
+                pass  # Server not running, proceed to start it
+            
+            # Read persistent data
+            vmcp_filename = f"{name}.json"
+            content = vmcp_handler.read_file(vmcp_filename, raw_content=True)
+            if not isinstance(content, str):
+                raise HTTPException(
+                    status_code=500, detail=f"Invalid content type for vmcp server '{name}'"
+                )
+            vmcp_data = json.loads(content)
+            
+            # Extract env_id from request headers
+            headers = request.headers
+            skillberry_context = unflatten_keys(dict(headers)).get(SKILLBERRY_CONTEXT.lower())
+            env_id = (
+                skillberry_context.get("env_id")
+                if skillberry_context is not None
+                else ""
+            )
+            
+            # Extract tool names and snippet names from skill_uuid
+            tool_names = []
+            snippet_names = []
+            skill_uuid = vmcp_data.get("skill_uuid")
+            
+            if skill_uuid:
+                logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid}")
+                from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
+                
+                skills_handler = FileHandler(get_skills_directory())
+                tools_handler = FileHandler(get_tools_directory())
+                snippets_handler = FileHandler(get_snippets_directory())
+                
+                # Find skill by UUID
+                skill_tool_uuids = []
+                skill_snippet_uuids = []
+                for filename in skills_handler.list_files():
+                    if filename.endswith(".json"):
+                        try:
+                            skill_content = skills_handler.read_file(filename, raw_content=True)
+                            if isinstance(skill_content, str):
+                                skill_dict = json.loads(skill_content)
+                                if skill_dict.get("uuid") == skill_uuid:
+                                    skill_tool_uuids = skill_dict.get("tool_uuids", [])
+                                    skill_snippet_uuids = skill_dict.get("snippet_uuids", [])
+                                    logger.info(f"Found skill with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs")
+                                    break
+                        except Exception as e:
+                            logger.warning(f"Error reading skill file {filename}: {e}")
+                
+                # Resolve tool UUIDs to tool names
+                for tool_uuid in skill_tool_uuids:
+                    for filename in tools_handler.list_files():
+                        if filename.endswith(".json"):
+                            try:
+                                tool_content = tools_handler.read_file(filename, raw_content=True)
+                                if isinstance(tool_content, str):
+                                    tool_dict = json.loads(tool_content)
+                                    if tool_dict.get("uuid") == tool_uuid:
+                                        tool_names.append(tool_dict.get("name"))
+                                        break
+                            except Exception as e:
+                                logger.warning(f"Error reading tool file {filename}: {e}")
+                
+                # Resolve snippet UUIDs to snippet names
+                for snippet_uuid in skill_snippet_uuids:
+                    for filename in snippets_handler.list_files():
+                        if filename.endswith(".json"):
+                            try:
+                                snippet_content = snippets_handler.read_file(filename, raw_content=True)
+                                if isinstance(snippet_content, str):
+                                    snippet_dict = json.loads(snippet_content)
+                                    if snippet_dict.get("uuid") == snippet_uuid:
+                                        snippet_names.append(snippet_dict.get("name"))
+                                        break
+                            except Exception as e:
+                                logger.warning(f"Error reading snippet file {filename}: {e}")
+            
+            # Start the runtime server
+            server = vmcp_server_manager.add_server(
+                name=vmcp_data.get("name"),
+                description=vmcp_data.get("description", ""),
+                port=vmcp_data.get("port"),
+                tools=tool_names,
+                snippets=snippet_names,
+                env_id=env_id,
+            )
+            
+            logger.info(f"VMCP server '{name}' started successfully on port {server.port}")
+            return {
+                "message": f"VMCP server '{name}' started successfully.",
+                "port": server.port,
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error starting vmcp server '{name}': {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error starting vmcp server: {str(e)}"
             )
 
     @app.get("/search/vmcp_servers", tags=[tags])
