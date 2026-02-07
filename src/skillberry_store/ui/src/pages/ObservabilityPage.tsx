@@ -128,6 +128,7 @@ export function ObservabilityPage() {
       tools: [],
       snippets: [],
       manifests: [],
+      vmcp: [],
       system: [],
     };
 
@@ -195,6 +196,8 @@ export function ObservabilityPage() {
             grouped.tools.push(metric);
           } else if (name.includes('snippets')) {
             grouped.snippets.push(metric);
+          } else if (name.includes('vmcp')) {
+            grouped.vmcp.push(metric);
           } else if (name.includes('manifest')) {
             grouped.manifests.push(metric);
           }
@@ -725,6 +728,19 @@ export function ObservabilityPage() {
 
               <Tab
                 eventKey={5}
+                title={<TabTitleText>Virtual MCP Metrics</TabTitleText>}
+                aria-label="Virtual MCP metrics"
+              >
+                <div style={{ padding: '1rem' }}>
+                  <Title headingLevel="h2" size="lg" style={{ marginBottom: '1rem' }}>
+                    Virtual MCP Server Metrics
+                  </Title>
+                  {renderMetricsGrid(metrics.vmcp || [])}
+                </div>
+              </Tab>
+
+              <Tab
+                eventKey={6}
                 title={<TabTitleText>System Metrics</TabTitleText>}
                 aria-label="System metrics"
               >
