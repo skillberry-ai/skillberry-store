@@ -13,14 +13,14 @@ import socket
 
 def test_init_with_port():
     server = VirtualMcpServer(
-        name="test_server", description="Test Server", port=8080, tools=[]
+        name="test_server", description="Test Server", port=8080, tools=[], snippets=[]
     )
     assert server.port == 8080
 
 
 def test_init_without_port():
     server = VirtualMcpServer(
-        name="test_server", description="Test Server", port=None, tools=[]
+        name="test_server", description="Test Server", port=None, tools=[], snippets=[]
     )
     assert server.port is not None
 
@@ -31,17 +31,18 @@ def test_init_with_unavailable_port():
     sock.bind(("localhost", 8081))
     with pytest.raises(ValueError):
         VirtualMcpServer(
-            name="test_server", description="Test Server", port=8081, tools=[]
+            name="test_server", description="Test Server", port=8081, tools=[], snippets=[]
         )
     sock.close()
 
 
 def test_to_dict():
     server = VirtualMcpServer(
-        name="test_server", description="Test Server", port=8080, tools=[]
+        name="test_server", description="Test Server", port=8080, tools=[], snippets=["snippet1"]
     )
     server_dict = server.to_dict()
     assert server_dict["name"] == "test_server"
     assert server_dict["description"] == "Test Server"
     assert server_dict["port"] == 8080
     assert server_dict["tools"] == []
+    assert server_dict["snippets"] == ["snippet1"]

@@ -18,11 +18,13 @@ def test_add_server_from_manifest_filter():
         mock_server.description = "Test Description"
         mock_server.port = 8080
         mock_server.tools = ["tool1", "tool2"]
+        mock_server.snippets = []
         mock_server.to_dict.return_value = {
             "name": "Test Server",
-            "description": "Test Description", 
+            "description": "Test Description",
             "port": 8080,
-            "tools": ["tool1", "tool2"]
+            "tools": ["tool1", "tool2"],
+            "snippets": []
         }
         mock_server.to_manifest.return_value = {
             "name": "Test Server",
@@ -61,6 +63,7 @@ def test_add_server_from_manifest_filter():
             description="Test Description",
             port=8080,
             tools=["tool1", "tool2"],
+            snippets=[],
             bts_url="http://localhost:8000",
             app=mock_app,
             env_id=None
@@ -85,7 +88,8 @@ def test_add_server_from_manifest_filter_auto_name():
             "name": "Manifest Filter Server - auto_filter",
             "description": "Virtual MCP Server created from manifest filter: auto_filter, lifecycle state: any",
             "port": None,
-            "tools": ["tool3"]
+            "tools": ["tool3"],
+            "snippets": []
         }
         mock_server.to_manifest.return_value = {
             "name": "Manifest Filter Server - auto_filter",
@@ -116,6 +120,7 @@ def test_add_server_from_manifest_filter_auto_name():
             description=expected_description,
             port=None,
             tools=["tool3"],
+            snippets=[],
             bts_url="http://localhost:8000",
             app=mock_app,
             env_id=None

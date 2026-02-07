@@ -42,11 +42,29 @@ async def test_virtual_mcp_servers(run_sbs):
         tool_response = response.json()
         tool_uuid = tool_response.get("uuid")
 
-        # Step 2: Create a skill with the tool
+        # Step 1b: Create a snippet for testing prompts
+        snippet_name = "test_snippet_for_vmcp"
+        snippet_data = {
+            "name": snippet_name,
+            "description": "Test snippet for VMCP server prompts",
+            "content": "This is a test snippet content for MCP prompts",
+            "content_type": "text/plain"
+        }
+        response = await client.post(
+            f"{BASE_URL}/snippets/",
+            params=snippet_data
+        )
+        assert response.status_code == 200, f"Snippet creation failed: {response.text}"
+        snippet_response = response.json()
+        snippet_uuid = snippet_response.get("uuid")
+        print(f"Created snippet with UUID: {snippet_uuid}")
+
+        # Step 2: Create a skill with the tool and snippet
         skill_data = {
             "name": skill_name,
-            "description": "Test skill for VMCP server",
-            "tool_uuids": tool_uuid  # Pass as single value, FastAPI will handle the list
+            "description": "Test skill for VMCP server with tools and snippets",
+            "tool_uuids": tool_uuid,  # Pass as single value, FastAPI will handle the list
+            "snippet_uuids": snippet_uuid
         }
         response = await client.post(
             f"{BASE_URL}/skills/",
@@ -140,6 +158,17 @@ async def test_virtual_mcp_servers(run_sbs):
                     print(f"Tool execution result: {result}")
                     assert len(result.content) > 0, "No content in result"
                     assert result.content[0].text == "5", f"Expected '5', got '{result.content[0].text}'"
+                    
+                    # List available prompts
+                    prompts_list = await session.list_prompts()
+                    print(f"Available prompts: {[p.name for p in prompts_list.prompts]}")
+                    assert len(prompts_list.prompts) > 0, "No prompts found"
+                    assert snippet_name in [p.name for p in prompts_list.prompts], f"Prompt '{snippet_name}' not found"
+                    
+                    # Get the prompt
+                    prompt_result = await session.get_prompt(snippet_name)
+                    print(f"Prompt result: {prompt_result}")
+                    assert len(prompt_result.messages) > 0, "No messages in prompt result"
         
         # Step 6: Delete virtual MCP server and verify cleanup
         response = await client.delete(f"{BASE_URL}/vmcp_servers/{vmcp_server_name}")
@@ -151,6 +180,9 @@ async def test_virtual_mcp_servers(run_sbs):
         vmcp_servers_after_delete = response.json()["virtual_mcp_servers"]
         assert vmcp_server_name not in vmcp_servers_after_delete
         
-        # Step 8: Clean up skill
+        # Step 8: Clean up skill and snippet
         response = await client.delete(f"{BASE_URL}/skills/{skill_name}")
+        assert response.status_code == 200
+        
+        response = await client.delete(f"{BASE_URL}/snippets/{snippet_name}")
         assert response.status_code == 200

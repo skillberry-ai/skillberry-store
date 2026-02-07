@@ -48,6 +48,7 @@ class VirtualMcpServerManager:
         description: str,
         port: Optional[int],
         tools: list,
+        snippets: list = None,
         env_id: str = "",
     ) -> VirtualMcpServer:
         """Add a new virtual MCP server.
@@ -57,6 +58,7 @@ class VirtualMcpServerManager:
             description: A description of the virtual MCP server.
             port: The port number for the server (optional, auto-assigned if None).
             tools: List of tool names to include in the server.
+            snippets: List of snippet names to include as prompts in the server (optional).
             env_id: A string representing the environment id to be used for this server (Optional).
 
         Returns:
@@ -72,6 +74,7 @@ class VirtualMcpServerManager:
                 description=description,
                 port=port,
                 tools=tools,
+                snippets=snippets or [],
                 sts_url=self.sts_url,
                 app=self.app,
                 env_id=env_id,
@@ -79,7 +82,7 @@ class VirtualMcpServerManager:
             self.servers[server.name] = server
 
             logger.info(
-                f"Added and started new vmcp_server: {name} on port {server.port}"
+                f"Added and started new vmcp_server: {name} on port {server.port} with {len(tools)} tools and {len(snippets or [])} prompts"
             )
             return server
 
@@ -148,6 +151,7 @@ class VirtualMcpServerManager:
                     "description": server.description,
                     "port": server.port,
                     "tools": server.tools,
+                    "snippets": server.snippets,
                 }
             else:
                 raise ValueError(f"vmcp_server '{name}' not found")
@@ -173,18 +177,21 @@ class VirtualMcpServerManager:
                             port = vmcp_data.get("port")
                             skill_uuid = vmcp_data.get("skill_uuid")
                             
-                            # Resolve tool names from skill_uuid
+                            # Resolve tool names and snippet names from skill_uuid
                             tool_names = []
+                            snippet_names = []
                             if skill_uuid:
-                                logger.info(f"Resolving tools for skill_uuid: {skill_uuid} during server load")
+                                logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load")
                                 try:
-                                    from skillberry_store.tools.configure import get_skills_directory, get_tools_directory
+                                    from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
                                     
                                     skills_handler = FileHandler(get_skills_directory())
                                     tools_handler = FileHandler(get_tools_directory())
+                                    snippets_handler = FileHandler(get_snippets_directory())
                                     
                                     # Find skill by UUID
                                     skill_tool_uuids = []
+                                    skill_snippet_uuids = []
                                     for skill_filename in skills_handler.list_files():
                                         if skill_filename.endswith(".json"):
                                             try:
@@ -193,7 +200,8 @@ class VirtualMcpServerManager:
                                                     skill_dict = json.loads(skill_content)
                                                     if skill_dict.get("uuid") == skill_uuid:
                                                         skill_tool_uuids = skill_dict.get("tool_uuids", [])
-                                                        logger.info(f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs")
+                                                        skill_snippet_uuids = skill_dict.get("snippet_uuids", [])
+                                                        logger.info(f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs")
                                                         break
                                             except Exception as e:
                                                 logger.warning(f"Error reading skill file {skill_filename}: {e}")
@@ -214,9 +222,25 @@ class VirtualMcpServerManager:
                                                 except Exception as e:
                                                     logger.warning(f"Error reading tool file {tool_filename}: {e}")
                                     
-                                    logger.info(f"Resolved {len(tool_names)} tool names for server '{name}': {tool_names}")
+                                    # Resolve snippet UUIDs to snippet names
+                                    for snippet_uuid in skill_snippet_uuids:
+                                        for snippet_filename in snippets_handler.list_files():
+                                            if snippet_filename.endswith(".json"):
+                                                try:
+                                                    snippet_content = snippets_handler.read_file(snippet_filename, raw_content=True)
+                                                    if isinstance(snippet_content, str):
+                                                        snippet_dict = json.loads(snippet_content)
+                                                        if snippet_dict.get("uuid") == snippet_uuid:
+                                                            snippet_name = snippet_dict.get("name")
+                                                            snippet_names.append(snippet_name)
+                                                            logger.info(f"Resolved snippet UUID {snippet_uuid} to name '{snippet_name}'")
+                                                            break
+                                                except Exception as e:
+                                                    logger.warning(f"Error reading snippet file {snippet_filename}: {e}")
+                                    
+                                    logger.info(f"Resolved {len(tool_names)} tool names and {len(snippet_names)} snippet names for server '{name}'")
                                 except Exception as e:
-                                    logger.error(f"Error resolving tools for skill_uuid {skill_uuid}: {e}")
+                                    logger.error(f"Error resolving tools and snippets for skill_uuid {skill_uuid}: {e}")
                             
                             # Start the runtime server
                             if name:
@@ -225,15 +249,36 @@ class VirtualMcpServerManager:
                                     description=description,
                                     port=port,
                                     tools=tool_names,
+                                    snippets=snippet_names,
                                     sts_url=self.sts_url,
                                     app=self.app,
                                     env_id="",
                                 )
                                 self.servers[server.name] = server
-                                logger.info(f"Loaded and started vmcp_server: {server.name} on port {server.port} with {len(tool_names)} tools")
+                                logger.info(f"Loaded and started vmcp_server: {server.name} on port {server.port} with {len(tool_names)} tools and {len(snippet_names)} prompts")
                     except Exception as e:
                         logger.error(f"Failed to load vmcp_server from {filename}: {str(e)}")
             
             logger.info(f"Loaded {len(self.servers)} vmcp servers from {self.vmcp_directory}")
         except Exception as e:
             logger.error(f"Failed to load vmcp_servers from directory. Error: {str(e)}")
+
+    def cleanup_all_servers(self):
+        """Stop and cleanup all running virtual MCP servers.
+        
+        This method should be called during application shutdown to ensure
+        all VMCP servers are properly stopped.
+        """
+        logger.info("Cleaning up all VMCP servers...")
+        with self._lock:
+            server_names = list(self.servers.keys())
+            for name in server_names:
+                try:
+                    logger.info(f"Stopping VMCP server: {name}")
+                    server = self.servers[name]
+                    server.stop()
+                except Exception as e:
+                    logger.warning(f"Error stopping VMCP server {name}: {e}")
+            
+            self.servers.clear()
+            logger.info("All VMCP servers cleaned up")
