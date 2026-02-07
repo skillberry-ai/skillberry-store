@@ -27,7 +27,7 @@ class VirtualMcpServer:
         description: str,
         port: Optional[int],
         tools: List[str],
-        bts_url: str = None,
+        sts_url: str = None,
         app=None,
         env_id=None,
     ):
@@ -47,7 +47,7 @@ class VirtualMcpServer:
         self.name = name
         self.description = description
         self.tools = tools
-        self.bts_url = bts_url or "http://localhost:8000"
+        self.sts_url = sts_url or "http://localhost:8000"
         self.app = app
         self.env_id = env_id
 
@@ -108,29 +108,39 @@ class VirtualMcpServer:
         Returns:
             List (mcp.types.Tool): A list of tools
         """
-        if self.app:
-            # Use direct app method call like MCPToSBSProxy
-            manifests = self.app.handle_get_manifests()
-            tools = []
-            for manifest in manifests:
-                if manifest["name"] in self.tools:
-                    try:
-                        tools.append(self.manifest_to_tool(manifest))
-                    except Exception as e:
-                        logging.warning(f"Failed to convert manifest to tool: {e}")
-            return tools
-        else:
-            # Fallback to HTTP requests
-            tools = []
-            for tool_uuid in self.tools:
-                try:
-                    response = requests.get(f"{self.bts_url}/manifests/{tool_uuid}")
+        # Get tools from the tools directory directly to avoid HTTP dependency during startup
+        print(f"DEBUG list_tools: self.tools = {self.tools}")
+        tools = []
+        for tool_name in self.tools:
+            try:
+                # Try HTTP first if available
+                if self.app:
+                    # Use direct file access when app is available (during startup)
+                    import json
+                    from skillberry_store.tools.configure import get_tools_directory
+                    from skillberry_store.modules.file_handler import FileHandler
+                    
+                    tools_handler = FileHandler(get_tools_directory())
+                    tool_filename = f"{tool_name}.json"
+                    content = tools_handler.read_file(tool_filename, raw_content=True)
+                    if isinstance(content, str):
+                        tool_dict = json.loads(content)
+                        print(f"DEBUG list_tools: Got tool {tool_name} from file: {tool_dict.get('name')}")
+                        tools.append(self.tool_dict_to_mcp_tool(tool_dict))
+                    else:
+                        logging.warning(f"Failed to read tool {tool_name}: invalid content type")
+                else:
+                    # Fallback to HTTP when app is not available
+                    response = requests.get(f"{self.sts_url}/tools/{tool_name}")
                     response.raise_for_status()
-                    manifest = response.json()
-                    tools.append(self.manifest_to_tool(manifest))
-                except Exception as e:
-                    logging.warning(f"Failed to get manifest for tool {tool_uuid}: {e}")
-            return tools
+                    tool_dict = response.json()
+                    print(f"DEBUG list_tools: Got tool {tool_name} from HTTP: {tool_dict.get('name')}")
+                    tools.append(self.tool_dict_to_mcp_tool(tool_dict))
+            except Exception as e:
+                logging.warning(f"Failed to get tool {tool_name}: {e}")
+                print(f"DEBUG list_tools: Failed to get tool {tool_name}: {e}")
+        print(f"DEBUG list_tools: Returning {len(tools)} tools")
+        return tools
 
     def _register_tools(self):
         """
@@ -161,7 +171,7 @@ class VirtualMcpServer:
                         # annotate the parameter so that is appears inside MCP tool
                         # i.e. when being retrieved via MCP client
                         annotated_type = Annotated[
-                            manifest_param_type_to_python_type(_type),
+                            param_type_to_python_type(_type),
                             Field(title=description, description=description),
                         ]
                         annotations[param_name] = annotated_type
@@ -273,26 +283,32 @@ class VirtualMcpServer:
         else:
             # Fallback to HTTP requests
             response = requests.post(
-                f"{self.bts_url}/manifests/execute/{tool_name}", json=parameters
+                f"{self.sts_url}/manifests/execute/{tool_name}", json=parameters
             )
             response.raise_for_status()
             return response.json()
 
-    def manifest_to_tool(self, manifest: dict):
+    def tool_dict_to_mcp_tool(self, tool_dict: dict):
         """
-        Convert SBS manifest to MCP tool format.
+        Convert SBS tool dictionary to MCP tool format.
+        
+        Args:
+            tool_dict: Tool dictionary from the tools API (has same structure as manifest)
+        
+        Returns:
+            mcp.types.Tool: MCP tool object
         """
         from mcp import types
 
         # Clean up extras before unpacking
-        extras = manifest.copy()
+        extras = tool_dict.copy()
         for key in ["name", "description", "params"]:
             extras.pop(key, None)
 
         return types.Tool(
-            name=str(manifest["name"]),
-            description=manifest.get("description"),
-            inputSchema=manifest["params"],
+            name=str(tool_dict["name"]),
+            description=tool_dict.get("description"),
+            inputSchema=tool_dict["params"],
             **extras,
         )
 
@@ -338,35 +354,15 @@ class VirtualMcpServer:
             "tools": self.tools,
         }
 
-    def to_manifest(self):
-        """
-        Converts the VirtualMcpServer instance to a manifest format for search.
-
-        Returns:
-            dict: A manifest representation of the VirtualMcpServer.
-        """
-        return {
-            "name": self.name,
-            "description": self.description,
-            "programming_language": "vmcp_server",
-            "packaging_format": "vmcp_server",
-            "version": "1.0.0",
-            "state": "approved",
-            "uid": self.name,
-            "port": self.port,
-            "tools": self.tools,
-        }
-
-
-def manifest_param_type_to_python_type(manifest_param_type: str) -> Any:
+def param_type_to_python_type(param_type: str) -> Any:
     """
-    Helper utility to map manifest 'properties' type into a Pythonic type.
+    Helper utility to map parameter type string into a Python type.
 
-    This method is being used to properly annotate manifest into an MCP tool.
+    This method is used to properly annotate tool parameters for MCP tools.
     Inspired from https://github.ibm.com/skillberry/skillberry-agent/blob/main/agents/remote_tools_wrapper.py#L98
 
     Parameters:
-        manifest_param_type (str): a type value of a manifest parameter
+        param_type (str): a type value of a tool parameter (e.g., 'string', 'integer', 'boolean')
 
     """
     # Mapping manifest properties types to Python types
@@ -388,4 +384,4 @@ def manifest_param_type_to_python_type(manifest_param_type: str) -> Any:
     }
 
     # Return the corresponding Python type as a string
-    return type_mapping.get(manifest_param_type, object)
+    return type_mapping.get(param_type, object)

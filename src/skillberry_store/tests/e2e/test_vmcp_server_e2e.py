@@ -1,39 +1,21 @@
 import asyncio
 import os
 import pytest
-import requests
+import httpx
 from mcp import ClientSession
 from mcp.client.sse import sse_client
-from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready, add_tool_manifest
+from skillberry_store.tests.e2e.fixtures import run_sbs
 from skillberry_store.modules.tool_type import ToolType
+
+BASE_URL = "http://localhost:8000"
 
 
 @pytest.mark.asyncio
-async def test_virtual_mcp_servers():
+async def test_virtual_mcp_servers(run_sbs):
     """Test the SBS server virtual MCP server"""
-    clean_test_tmp_dir()
-    
-    # Clean up old virtual MCP servers file
-    vmcp_file = "/tmp/vmcp_servers.json"
-    if os.path.exists(vmcp_file):
-        os.remove(vmcp_file)
-
-    env = os.environ.copy()
-
-    env["MCP_MODE"] = "true"
-    main_proc = await asyncio.create_subprocess_exec(
-        "python", "-m", "skillberry_store.main",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=env,
-        cwd=os.path.dirname(
-            os.path.abspath(__file__).rstrip("/tests/e2e/test_virtual_mcp_servers.py"))
-    )
-
-    try:
-        await wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=60)
-                
+    async with httpx.AsyncClient() as client:
         # Step 1: Add a simple tool that adds two numbers using the manifest API
+        skill_name = "test_skill_for_vmcp"
         tool_name = "add_numbers"
         tool_type = "code/python"
         tool_code = """def add_numbers(a, b):
@@ -48,63 +30,127 @@ async def test_virtual_mcp_servers():
     \"\"\"
     return a + b
 """
-        response = requests.post(
-            "http://127.0.0.1:8000/tools/add",
+        response = await client.post(
+            f"{BASE_URL}/tools/add",
             params={"tool_type": tool_type, "update": "true"},
             files={"tool": (f"{tool_name}.py", tool_code, "text/x-python")}
         )
-        assert response.status_code == 200
+        if response.status_code != 200:
+            print(f"Tool creation failed with status {response.status_code}")
+            print(f"Response: {response.text}")
+        assert response.status_code == 200, f"Tool creation failed: {response.text}"
+        tool_response = response.json()
+        tool_uuid = tool_response.get("uuid")
 
-        # Step 2: Create an MCP virtual server from search term against the tool name
-        search_term = f"name:{tool_name}"
-        response = requests.post(
-            "http://localhost:8000/vmcp_servers/add_server_from_search_term",
-            params={"search_term": search_term},
+        # Step 2: Create a skill with the tool
+        skill_data = {
+            "name": skill_name,
+            "description": "Test skill for VMCP server",
+            "tool_uuids": tool_uuid  # Pass as single value, FastAPI will handle the list
+        }
+        response = await client.post(
+            f"{BASE_URL}/skills/",
+            params=skill_data
         )
         assert response.status_code == 200
+        skill_response = response.json()
+        skill_uuid = skill_response.get("uuid")
+        print(f"Created skill with UUID: {skill_uuid}")
+        print(f"Skill response: {skill_response}")
+        
+        # Verify the skill was created with the tool
+        response = await client.get(f"{BASE_URL}/skills/{skill_name}")
+        assert response.status_code == 200
+        skill_details = response.json()
+        print(f"Skill details: {skill_details}")
+        assert len(skill_details.get("tools", [])) > 0, "Skill should have at least one tool"
 
-        # Step 3: List the MCP virtual servers to see that the virtual server exists
-        response = requests.get("http://localhost:8000/vmcp_servers/")
+        # Step 3: Create an MCP virtual server with the skill
+        vmcp_server_name = f"test_vmcp_server_{tool_name}"
+        vmcp_data = {
+            "name": vmcp_server_name,
+            "description": "Test VMCP server for e2e testing",
+            # Don't specify port - let the server auto-assign one
+            "skill_uuid": skill_uuid
+        }
+        response = await client.post(
+            f"{BASE_URL}/vmcp_servers/",
+            params=vmcp_data
+        )
+        if response.status_code != 200:
+            print(f"VMCP server creation failed with status {response.status_code}")
+            print(f"Response: {response.text}")
+        assert response.status_code == 200, f"VMCP creation failed: {response.text}"
+        
+        # Wait for the VMCP server to fully start - give it more time for SSE endpoint
+        print("Waiting for VMCP server SSE endpoint to be ready...")
+        await asyncio.sleep(5)
+
+        # Step 4: List the MCP virtual servers to see that the virtual server exists
+        response = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert response.status_code == 200
         vmcp_servers = response.json()["virtual_mcp_servers"]
-        assert f"Search Term Server - {search_term}" in vmcp_servers
+        assert vmcp_server_name in vmcp_servers
 
-        # Step 4: Get virtual MCP server details and invoke function
-        vmcp_server_name = f"Search Term Server - {search_term}"
-        response = requests.get(f"http://localhost:8000/vmcp_servers/{vmcp_server_name}")
+        # Step 5: Get virtual MCP server details and invoke function
+        response = await client.get(f"{BASE_URL}/vmcp_servers/{vmcp_server_name}")
         assert response.status_code == 200
         vmcp_server_details = response.json()
         vmcp_server_port = vmcp_server_details["port"]
-        print (f"Virtual MCP server port: {vmcp_server_port}")
-        
+        print(f"Virtual MCP server port: {vmcp_server_port}")
+        print(f"VMCP server details: {vmcp_server_details}")
+
         # Test tool execution through the virtual MCP server using MCP client
-        async with sse_client(f"http://localhost:{vmcp_server_port}/sse") as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()    
-                result = await session.call_tool(tool_name, {"a": 2, "b": 3})
-                assert result.content[0].text == "5"
+        print(f"Attempting to connect to MCP server at http://localhost:{vmcp_server_port}/sse")
         
-        # Step 5: Delete virtual MCP server and verify cleanup
-        response = requests.delete(f"http://localhost:8000/vmcp_servers/{vmcp_server_name}")
+        # Retry logic for SSE endpoint - it may take time to start
+        max_retries = 5
+        retry_delay = 2
+        sse_ready = False
+        
+        for attempt in range(max_retries):
+            try:
+                response = await client.get(f"http://localhost:{vmcp_server_port}/sse")
+                print(f"SSE endpoint status: {response.status_code}")
+                if response.status_code in [200, 404]:  # 404 is ok for SSE GET
+                    sse_ready = True
+                    break
+            except Exception as e:
+                print(f"Attempt {attempt + 1}/{max_retries}: Failed to connect to SSE endpoint: {e}")
+                if attempt < max_retries - 1:
+                    print(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+        
+        assert sse_ready, f"SSE endpoint not ready after {max_retries} attempts"
+        
+        # Connect via MCP client
+        async with asyncio.timeout(15):  # 15 second timeout
+            async with sse_client(f"http://localhost:{vmcp_server_port}/sse") as (read, write):
+                async with ClientSession(read, write) as session:
+                    await session.initialize()
+                    
+                    # List available tools
+                    tools_list = await session.list_tools()
+                    print(f"Available tools: {[t.name for t in tools_list.tools]}")
+                    assert len(tools_list.tools) > 0, "No tools found"
+                    assert tool_name in [t.name for t in tools_list.tools], f"Tool '{tool_name}' not found"
+                    
+                    # Call the tool with string arguments (as defined in the tool schema)
+                    result = await session.call_tool(tool_name, {"a": "2", "b": "3"})
+                    print(f"Tool execution result: {result}")
+                    assert len(result.content) > 0, "No content in result"
+                    assert result.content[0].text == "5", f"Expected '5', got '{result.content[0].text}'"
+        
+        # Step 6: Delete virtual MCP server and verify cleanup
+        response = await client.delete(f"{BASE_URL}/vmcp_servers/{vmcp_server_name}")
         assert response.status_code == 200
         
-        # Verify the server is no longer in the list
-        response = requests.get("http://localhost:8000/vmcp_servers/")
+        # Step 7: Verify the server is no longer in the list
+        response = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert response.status_code == 200
         vmcp_servers_after_delete = response.json()["virtual_mcp_servers"]
         assert vmcp_server_name not in vmcp_servers_after_delete
-    
-    finally:
-        # Cleanup: kill server process
-        main_proc.kill()
-        # Read and display server output
-        if main_proc.stdout:
-            stdout_data = await main_proc.stdout.read()
-            if stdout_data:
-                print("\n=== SERVER STDOUT ===")
-                print(stdout_data.decode())
-        if main_proc.stderr:
-            stderr_data = await main_proc.stderr.read()
-            if stderr_data:
-                print("\n=== SERVER STDERR ===")
-                print(stderr_data.decode())
+        
+        # Step 8: Clean up skill
+        response = await client.delete(f"{BASE_URL}/skills/{skill_name}")
+        assert response.status_code == 200

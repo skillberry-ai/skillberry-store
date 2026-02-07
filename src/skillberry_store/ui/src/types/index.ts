@@ -54,12 +54,21 @@ export interface Snippet {
 }
 
 export interface VMCPServer {
+  uuid: string;
   name: string;
-  description: string;
-  port: number;
-  tools: string[];
-  status?: 'running' | 'stopped' | 'error';
-  created_at?: string;
+  description?: string;
+  version?: string;
+  state?: 'unknown' | 'any' | 'new' | 'checked' | 'approved';
+  tags?: string[];
+  port?: number;
+  skill_uuid?: string;
+  runtime?: {
+    name: string;
+    description: string;
+    port: number;
+    tools: string[];
+  };
+  running?: boolean;
 }
 
 export interface SearchResult {

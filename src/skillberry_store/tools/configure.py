@@ -228,3 +228,29 @@ def get_skills_descriptions_directory():
     default_path = "/tmp/skills_descriptions"
     logger.info(f"Using default skills descriptions directory: {default_path}")
     return default_path
+
+
+def get_vmcp_directory():
+    """
+    Get the directory path for virtual MCP servers.
+    """
+    env_path = os.getenv("SBS_VMCP_DIRECTORY")
+    if env_path:
+        logger.info(f"Using vmcp directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/vmcp"
+    logger.info(f"Using default vmcp directory: {default_path}")
+    return default_path
+
+
+def get_vmcp_descriptions_directory():
+    """
+    Get the directory path for virtual MCP server descriptions.
+    """
+    env_path = os.getenv("SBS_VMCP_DESCRIPTIONS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using vmcp descriptions directory from environment: {env_path}")
+        return env_path
+    default_path = "/tmp/vmcp_descriptions"
+    logger.info(f"Using default vmcp descriptions directory: {default_path}")
+    return default_path

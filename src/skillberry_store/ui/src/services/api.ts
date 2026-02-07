@@ -236,50 +236,76 @@ export const snippetsApi = {
 // VMCP Servers API
 export const vmcpApi = {
   list: async (): Promise<VMCPServer[]> => {
-    const response = await fetch(`${API_BASE}/vmcp/servers`);
-    return handleResponse<VMCPServer[]>(response);
+    const response = await fetch(`${API_BASE}/vmcp_servers/`);
+    const data = await handleResponse<{ virtual_mcp_servers: Record<string, VMCPServer> }>(response);
+    // Convert the object to an array
+    return Object.values(data.virtual_mcp_servers);
   },
 
   get: async (name: string): Promise<VMCPServer> => {
-    const response = await fetch(`${API_BASE}/vmcp/servers/${name}`);
+    const response = await fetch(`${API_BASE}/vmcp_servers/${name}`);
     return handleResponse<VMCPServer>(response);
   },
 
-  create: async (server: Omit<VMCPServer, 'status' | 'created_at'>): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/vmcp/servers`, {
+  create: async (
+    server: Omit<VMCPServer, 'uuid' | 'runtime' | 'running'>
+  ): Promise<{ message: string; name: string; uuid: string; port: number }> => {
+    const params = new URLSearchParams();
+    params.append('name', server.name);
+    if (server.description) params.append('description', server.description);
+    if (server.version) params.append('version', server.version);
+    if (server.state) params.append('state', server.state);
+    if (server.port) params.append('port', server.port.toString());
+    if (server.skill_uuid) params.append('skill_uuid', server.skill_uuid);
+    if (server.tags) {
+      server.tags.forEach(tag => params.append('tags', tag));
+    }
+
+    const response = await fetch(`${API_BASE}/vmcp_servers/?${params}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(server),
+    });
+    return handleResponse<{ message: string; name: string; uuid: string; port: number }>(response);
+  },
+
+  update: async (
+    name: string,
+    server: Partial<VMCPServer>
+  ): Promise<{ message: string }> => {
+    const params = new URLSearchParams();
+    if (server.description) params.append('description', server.description);
+    if (server.version) params.append('version', server.version);
+    if (server.state) params.append('state', server.state);
+    if (server.port) params.append('port', server.port.toString());
+    if (server.skill_uuid) params.append('skill_uuid', server.skill_uuid);
+    if (server.tags) {
+      server.tags.forEach(tag => params.append('tags', tag));
+    }
+
+    const response = await fetch(`${API_BASE}/vmcp_servers/${name}?${params}`, {
+      method: 'PUT',
     });
     return handleResponse<{ message: string }>(response);
   },
 
   delete: async (name: string): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/vmcp/servers/${name}`, {
+    const response = await fetch(`${API_BASE}/vmcp_servers/${name}`, {
       method: 'DELETE',
     });
     return handleResponse<{ message: string }>(response);
   },
 
-  createFromSearch: async (
+  search: async (
     searchTerm: string,
-    name: string,
-    description: string,
-    port: number,
-    maxResults = 10
-  ): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/vmcp/servers/from-search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        search_term: searchTerm,
-        name,
-        description,
-        port,
-        max_results: maxResults,
-      }),
+    maxResults = 5,
+    threshold = 1
+  ): Promise<SearchResult[]> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
     });
-    return handleResponse<{ message: string }>(response);
+    const response = await fetch(`${API_BASE}/vmcp_servers/search?${params}`);
+    return handleResponse<SearchResult[]>(response);
   },
 };
 

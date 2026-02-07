@@ -26,12 +26,30 @@ async def run_sbs(request):
     tests_dir = os.path.dirname(e2e_dir)
     project_root = os.path.dirname(tests_dir)
     
+    # Set environment to disable UI for tests
+    env = os.environ.copy()
+    env["ENABLE_UI"] = "false"
+    
     main_proc = await asyncio.create_subprocess_exec(
         "python", "-m", "skillberry_store.main",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
         cwd=project_root,
+        env=env,
     )
+    
+    # Give the server a moment to start before checking
+    await asyncio.sleep(2)
+    
+    # Check if process is still running
+    if main_proc.returncode is not None:
+        stdout_data = await main_proc.stdout.read() if main_proc.stdout else b""
+        stderr_data = await main_proc.stderr.read() if main_proc.stderr else b""
+        print(f"Server failed to start!")
+        print(f"STDOUT: {stdout_data.decode()}")
+        print(f"STDERR: {stderr_data.decode()}")
+        raise RuntimeError("Server process terminated unexpectedly")
+    
     await wait_until_server_ready(timeout=60)
 
     yield
