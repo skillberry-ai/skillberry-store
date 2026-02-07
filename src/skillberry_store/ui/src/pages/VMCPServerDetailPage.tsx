@@ -66,6 +66,10 @@ export function VMCPServerDetailPage() {
   // Skill selection state
   const [isSkillSelectOpen, setIsSkillSelectOpen] = useState(false);
   const [skillSearchTerm, setSkillSearchTerm] = useState('');
+  
+  // Prompt content state
+  const [promptContents, setPromptContents] = useState<Record<string, any>>({});
+  const [loadingPrompts, setLoadingPrompts] = useState<Record<string, boolean>>({});
 
   const { data: server, isLoading, error } = useQuery({
     queryKey: ['vmcp-servers', name],
@@ -467,7 +471,18 @@ export function VMCPServerDetailPage() {
                       <ExpandableSection
                         key={prompt.name}
                         toggleText={prompt.name}
-                        style={{ marginBottom: '0.5rem' }}>
+                        style={{ marginBottom: '0.5rem' }}
+                        onToggle={async (_, isExpanded) => {
+                          if (isExpanded && !promptContents[prompt.name] && !loadingPrompts[prompt.name]) {
+                            setLoadingPrompts(prev => ({ ...prev, [prompt.name]: true }));
+                            const content = await mcpClient.getPrompt(prompt.name);
+                            if (content) {
+                              setPromptContents(prev => ({ ...prev, [prompt.name]: content }));
+                            }
+                            setLoadingPrompts(prev => ({ ...prev, [prompt.name]: false }));
+                          }
+                        }}
+                      >
                         <Card isCompact>
                           <CardBody>
                             {prompt.description && (
@@ -475,9 +490,55 @@ export function VMCPServerDetailPage() {
                                 {prompt.description}
                               </Text>
                             )}
+                            
+                            {loadingPrompts[prompt.name] && (
+                              <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem' }}>
+                                <Spinner size="md" />
+                              </div>
+                            )}
+                            
+                            {promptContents[prompt.name] && !loadingPrompts[prompt.name] && (
+                              <>
+                                {promptContents[prompt.name].messages && promptContents[prompt.name].messages.length > 0 && (
+                                  <>
+                                    <Text component="h4" style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                      Prompt Content:
+                                    </Text>
+                                    {promptContents[prompt.name].messages.map((msg: any, msgIndex: number) => (
+                                      <div key={msgIndex} style={{ marginBottom: '1rem' }}>
+                                        <Label color={msg.role === 'user' ? 'blue' : 'green'} style={{ marginBottom: '0.5rem' }}>
+                                          {msg.role}
+                                        </Label>
+                                        <div style={{
+                                          backgroundColor: '#f5f5f5',
+                                          border: '1px solid #d2d2d2',
+                                          borderRadius: '4px',
+                                          padding: '0',
+                                          overflow: 'auto'
+                                        }}>
+                                          <pre style={{
+                                            margin: 0,
+                                            padding: '1rem',
+                                            fontFamily: 'monospace',
+                                            fontSize: '0.875rem',
+                                            color: '#151515',
+                                            backgroundColor: '#f5f5f5',
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-word'
+                                          } as React.CSSProperties}>
+                                            {msg.content.text || JSON.stringify(msg.content, null, 2)}
+                                          </pre>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
+                              </>
+                            )}
+                            
                             {prompt.arguments && prompt.arguments.length > 0 && (
                               <>
-                                <Text component="h4" style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                <Text component="h4" style={{ marginBottom: '0.5rem', fontWeight: 'bold', marginTop: '1rem' }}>
                                   Arguments:
                                 </Text>
                                 <div style={{

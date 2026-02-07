@@ -35,7 +35,7 @@ function parsePythonFunction(
   let description = '';
   const params: Record<string, any> = {};
   const required: string[] = [];
-  let returns = { type: 'string', description: '' };
+  let returns: { type: string; description: string } | undefined = undefined;
   
   // Extract docstring
   let inDocstring = false;
@@ -90,6 +90,9 @@ function parsePythonFunction(
           required.push(paramName);
         }
       } else if (currentSection === 'returns' && line) {
+        if (!returns) {
+          returns = { type: 'string', description: '' };
+        }
         returns.description += (returns.description ? ' ' : '') + line;
       }
     }
@@ -102,20 +105,104 @@ function parsePythonFunction(
     const paramsList = paramsStr.split(',').map(p => p.trim()).filter(p => p && p !== 'self');
     
     for (const param of paramsList) {
-      const [paramName, defaultValue] = param.split('=').map(s => s.trim());
-      const cleanName = paramName.split(':')[0].trim();
+      // Split by '=' to separate parameter from default value
+      const [paramPart, defaultValue] = param.split('=').map(s => s.trim());
+      
+      // Split by ':' to separate name from type annotation
+      const colonIndex = paramPart.indexOf(':');
+      let cleanName: string;
+      let typeAnnotation: string | undefined;
+      
+      if (colonIndex !== -1) {
+        cleanName = paramPart.substring(0, colonIndex).trim();
+        typeAnnotation = paramPart.substring(colonIndex + 1).trim();
+      } else {
+        cleanName = paramPart.trim();
+      }
       
       if (!params[cleanName]) {
+        // Map Python type annotations to JSON schema types
+        let jsonType = 'string';
+        if (typeAnnotation) {
+          const lowerType = typeAnnotation.toLowerCase();
+          if (lowerType.includes('int')) {
+            jsonType = 'integer';
+          } else if (lowerType.includes('float') || lowerType.includes('number')) {
+            jsonType = 'number';
+          } else if (lowerType.includes('bool')) {
+            jsonType = 'boolean';
+          } else if (lowerType.includes('list') || lowerType.includes('tuple')) {
+            jsonType = 'array';
+          } else if (lowerType.includes('dict')) {
+            jsonType = 'object';
+          } else if (lowerType.includes('str')) {
+            jsonType = 'string';
+          }
+        }
+        
         params[cleanName] = {
-          type: 'string',
-          description: `Parameter ${cleanName}`,
+          type: jsonType,
+          description: `Parameter ${cleanName}${typeAnnotation ? ` (${typeAnnotation})` : ''}`,
         };
+        
+        // Add to required list if no default value
+        if (!defaultValue) {
+          required.push(cleanName);
+        }
+      } else {
+        // Parameter was in docstring, update type if we have annotation
+        if (typeAnnotation) {
+          const lowerType = typeAnnotation.toLowerCase();
+          if (lowerType.includes('int')) {
+            params[cleanName].type = 'integer';
+          } else if (lowerType.includes('float') || lowerType.includes('number')) {
+            params[cleanName].type = 'number';
+          } else if (lowerType.includes('bool')) {
+            params[cleanName].type = 'boolean';
+          } else if (lowerType.includes('list') || lowerType.includes('tuple')) {
+            params[cleanName].type = 'array';
+          } else if (lowerType.includes('dict')) {
+            params[cleanName].type = 'object';
+          } else if (lowerType.includes('str')) {
+            params[cleanName].type = 'string';
+          }
+        }
+        
+        // If has default value, remove from required
+        if (defaultValue && required.includes(cleanName)) {
+          required.splice(required.indexOf(cleanName), 1);
+        }
       }
-      
-      // If has default value, it's optional
-      if (defaultValue && required.includes(cleanName)) {
-        required.splice(required.indexOf(cleanName), 1);
-      }
+    }
+  }
+  
+  // Parse return type annotation from function signature
+  const returnTypeMatch = functionCode.match(/def\s+\w+\s*\([^)]*\)\s*->\s*([^:]+):/);
+  if (returnTypeMatch) {
+    const returnTypeAnnotation = returnTypeMatch[1].trim();
+    let returnJsonType = 'string';
+    
+    const lowerReturnType = returnTypeAnnotation.toLowerCase();
+    if (lowerReturnType.includes('int')) {
+      returnJsonType = 'integer';
+    } else if (lowerReturnType.includes('float') || lowerReturnType.includes('number')) {
+      returnJsonType = 'number';
+    } else if (lowerReturnType.includes('bool')) {
+      returnJsonType = 'boolean';
+    } else if (lowerReturnType.includes('list') || lowerReturnType.includes('tuple')) {
+      returnJsonType = 'array';
+    } else if (lowerReturnType.includes('dict')) {
+      returnJsonType = 'object';
+    } else if (lowerReturnType.includes('str')) {
+      returnJsonType = 'string';
+    } else if (lowerReturnType === 'none') {
+      returnJsonType = 'null';
+    }
+    
+    if (!returns) {
+      returns = { type: returnJsonType, description: '' };
+    } else if (returns) {
+      returns = { ...returns, type: returnJsonType };
     }
   }
   
@@ -126,7 +213,7 @@ function parsePythonFunction(
       properties: params,
       required: required.length > 0 ? required : undefined,
     } : undefined,
-    returns: returns.description ? returns : undefined,
+    returns: returns,
   };
 }
 

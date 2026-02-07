@@ -17,6 +17,21 @@ interface MCPPrompt {
   arguments?: any[];
 }
 
+interface MCPPromptMessage {
+  role: 'user' | 'assistant';
+  content: {
+    type: 'text' | 'image' | 'resource';
+    text?: string;
+    data?: string;
+    mimeType?: string;
+  };
+}
+
+interface MCPPromptContent {
+  description?: string;
+  messages: MCPPromptMessage[];
+}
+
 interface MCPClientState {
   isConnected: boolean;
   isConnecting: boolean;
@@ -142,6 +157,27 @@ export function useMCPClient(serverPort: number | undefined, serverName: string)
     }
   }, [client]);
 
+  const getPrompt = useCallback(async (promptName: string, args?: Record<string, string>): Promise<MCPPromptContent | null> => {
+    if (!client || !state.isConnected) {
+      console.error('[MCP Client] Cannot get prompt: not connected');
+      return null;
+    }
+
+    try {
+      console.log(`[MCP Client] Getting prompt: ${promptName}`, args);
+      const response = await client.getPrompt({ name: promptName, arguments: args });
+      console.log(`[MCP Client] Received prompt content:`, response);
+      
+      return {
+        description: response.description,
+        messages: response.messages as MCPPromptMessage[],
+      };
+    } catch (error) {
+      console.error(`[MCP Client] Error getting prompt ${promptName}:`, error);
+      return null;
+    }
+  }, [client, state.isConnected]);
+
   // Auto-connect when component mounts
   useEffect(() => {
     console.log(`[MCP Client] useEffect triggered - serverPort: ${serverPort}, serverName: ${serverName}`);
@@ -162,6 +198,7 @@ export function useMCPClient(serverPort: number | undefined, serverName: string)
     ...state,
     connect,
     disconnect,
+    getPrompt,
     client,
   };
 }
