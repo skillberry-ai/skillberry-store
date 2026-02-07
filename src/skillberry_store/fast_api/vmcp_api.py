@@ -5,7 +5,7 @@ import logging
 import uuid
 from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, Request
-from prometheus_client import Counter
+from prometheus_client import Counter, Histogram
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
@@ -35,6 +35,21 @@ update_vmcp_counter = Counter(
 )
 search_vmcp_counter = Counter(
     f"{prom_prefix}search_vmcp_counter", "Count number of vmcp search operations"
+)
+invoke_vmcp_tool_counter = Counter(
+    f"{prom_prefix}invoke_vmcp_tool_counter",
+    "Count number of vmcp tool invoke operations",
+    ["server_name", "tool_name"],
+)
+invoke_successfully_vmcp_tool_counter = Counter(
+    f"{prom_prefix}invoke_successfully_vmcp_tool_counter",
+    "Count number of vmcp tool invoked successfully operations",
+    ["server_name", "tool_name"],
+)
+invoke_successfully_vmcp_tool_latency = Histogram(
+    f"{prom_prefix}invoke_successfully_vmcp_tool_latency",
+    "Histogram of invoke vmcp tool successfully latencies",
+    ["server_name", "tool_name"],
 )
 
 

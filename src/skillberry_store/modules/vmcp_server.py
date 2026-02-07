@@ -1,6 +1,7 @@
 import logging
 import os
 import socket
+import time
 
 import requests
 from pydantic import Field
@@ -369,21 +370,44 @@ class VirtualMcpServer:
         Returns:
             result: The result of the tool invocation.
         """
+        # Import metrics here to avoid circular imports
+        from skillberry_store.fast_api.vmcp_api import (
+            invoke_vmcp_tool_counter,
+            invoke_successfully_vmcp_tool_counter,
+            invoke_successfully_vmcp_tool_latency,
+        )
+        
+        # Record invocation attempt
+        invoke_vmcp_tool_counter.labels(server_name=self.name, tool_name=tool_name).inc()
+        start_time = time.time()
+        
         if tool_name not in self.tools:
             raise ValueError(f"Tool {tool_name} not found")
 
-        if self.app:
-            # Use direct app method call like MCPToSBSProxy
-            return await self.app.handle_execute_manifest(
-                tool_name, parameters, env_id=env_id
-            )
-        else:
-            # Fallback to HTTP requests
-            response = requests.post(
-                f"{self.sts_url}/manifests/execute/{tool_name}", json=parameters
-            )
-            response.raise_for_status()
-            return response.json()
+        try:
+            if self.app:
+                # Use direct app method call like MCPToSBSProxy
+                result = await self.app.handle_execute_manifest(
+                    tool_name, parameters, env_id=env_id
+                )
+            else:
+                # Fallback to HTTP requests
+                response = requests.post(
+                    f"{self.sts_url}/manifests/execute/{tool_name}", json=parameters
+                )
+                response.raise_for_status()
+                result = response.json()
+            
+            # Record successful execution metrics
+            duration = time.time() - start_time
+            invoke_successfully_vmcp_tool_counter.labels(server_name=self.name, tool_name=tool_name).inc()
+            invoke_successfully_vmcp_tool_latency.labels(server_name=self.name, tool_name=tool_name).observe(duration)
+            
+            return result
+        except Exception as e:
+            # Re-raise the exception after recording the attempt
+            logging.error(f"Error invoking tool {tool_name} on VMCP server {self.name}: {e}")
+            raise
 
     def tool_dict_to_mcp_tool(self, tool_dict: dict):
         """
