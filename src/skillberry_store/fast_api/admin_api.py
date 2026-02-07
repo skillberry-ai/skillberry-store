@@ -188,6 +188,10 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                     app.state.skills_descriptions.load_index()
                     logger.info("Reset skills_descriptions vector index")
                 
+                if hasattr(app.state, 'vmcp_descriptions'):
+                    app.state.vmcp_descriptions.load_index()
+                    logger.info("Reset vmcp_descriptions vector index")
+                
                 vector_indexes_reset = True
                 logger.info("All in-memory vector indexes reset successfully")
         except Exception as e:

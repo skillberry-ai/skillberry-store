@@ -44,6 +44,9 @@ class DescriptionVectorIndex:
             self.index = faiss.read_index(self.index_file)
         else:
             logger.info("No existing FAISS index found. Starting with an empty index.")
+            # Reset to empty index
+            self.index = faiss.IndexFlatL2(self.dimension)
+            self.files_to_faiss_index_map = []
 
         # Load the files to FAISS index map
         if os.path.exists(f"{self.index_file}.files_index.npy"):
@@ -52,6 +55,10 @@ class DescriptionVectorIndex:
             )
             self.files_to_faiss_index_map = self.files_to_faiss_index_map.tolist()
             logger.info("Loaded files to FAISS index map.")
+        else:
+            # Reset to empty map if file doesn't exist
+            self.files_to_faiss_index_map = []
+            logger.info("No files index map found. Starting with empty map.")
 
     def save_index(self):
         """
