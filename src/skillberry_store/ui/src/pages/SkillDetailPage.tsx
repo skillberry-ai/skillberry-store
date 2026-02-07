@@ -41,9 +41,10 @@ import {
   TreeView,
   TreeViewDataItem,
 } from '@patternfly/react-core';
-import { EditIcon, TrashIcon, FolderIcon, FileIcon, FileCodeIcon } from '@patternfly/react-icons';
+import { EditIcon, TrashIcon, FolderIcon, FileIcon, FileCodeIcon, ExportIcon } from '@patternfly/react-icons';
 import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
 import type { Skill } from '@/types';
+import { exportAndDownloadSkill } from '@/utils/anthropic/exporter';
 
 export function SkillDetailPage() {
   const { name } = useParams<{ name: string }>();
@@ -274,6 +275,22 @@ export function SkillDetailPage() {
     });
   };
 
+  const handleExportToAnthropic = async () => {
+    if (!skill) return;
+    
+    try {
+      await exportAndDownloadSkill({
+        skill,
+        tools: skill.tools || [],
+        snippets: skill.snippets || [],
+        toolModules: toolModules || [],
+      });
+    } catch (error) {
+      console.error('Failed to export skill:', error);
+      alert('Failed to export skill. Please try again.');
+    }
+  };
+
   // Helper function to extract file path from tags
   const getFilePathFromTags = (tags: string[]): string | null => {
     const fileTag = tags.find(tag => tag.startsWith('file:'));
@@ -466,6 +483,9 @@ export function SkillDetailPage() {
             {skill.name}
           </Title>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Button variant="primary" icon={<ExportIcon />} onClick={handleExportToAnthropic}>
+              Export to Anthropic
+            </Button>
             <Button variant="secondary" icon={<EditIcon />} onClick={handleEditClick}>
               Edit
             </Button>

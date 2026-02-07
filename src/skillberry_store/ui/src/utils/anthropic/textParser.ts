@@ -63,6 +63,23 @@ function extractTags(filePath: string, fileName: string): string[] {
 }
 
 /**
+ * Strip YAML frontmatter from content
+ */
+function stripFrontmatter(content: string): string {
+  const lines = content.split('\n');
+  if (lines[0]?.trim() === '---') {
+    // Find the closing ---
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i].trim() === '---') {
+        // Return content after the closing ---
+        return lines.slice(i + 1).join('\n').trim();
+      }
+    }
+  }
+  return content;
+}
+
+/**
  * Parse a text file into snippets (one per paragraph or complete file)
  */
 export function parseTextFile(
@@ -78,19 +95,29 @@ export function parseTextFile(
   // Add file path tag in format file:complete_path_filename as the first tag
   const filePathTag = `file:${filePath}`;
   
+  // Strip frontmatter from SKILL.md files
+  let processedContent = content;
+  if (fileName.toUpperCase() === 'SKILL.MD') {
+    processedContent = stripFrontmatter(content);
+    // If content is empty after stripping frontmatter, skip creating snippet
+    if (!processedContent) {
+      return [];
+    }
+  }
+  
   if (!splitByParagraph) {
     // Import as a single snippet (complete file)
     return [{
       name: `${skillName}_${baseFileName}`,
-      description: generateDescription(content),
-      content: content,
+      description: generateDescription(processedContent),
+      content: processedContent,
       tags: [filePathTag, ...tags],
       version: '1.0.0',
     }];
   }
   
   // Split by paragraphs
-  const paragraphs = splitIntoParagraphs(content);
+  const paragraphs = splitIntoParagraphs(processedContent);
   
   return paragraphs.map((paragraph, index) => {
     const snippetName = paragraphs.length === 1

@@ -18,7 +18,7 @@ import {
   UploadIcon,
   CodeIcon,
 } from '@patternfly/react-icons';
-import { AnthropicSkillImporter } from '../utils/anthropic/AnthropicSkillImporter';
+import { AnthropicSkillImporter } from '../utils/anthropic/importer';
 
 const API_BASE_URL = '/api';
 
