@@ -61,6 +61,9 @@ def register_vmcp_api(
     
     # Initialize the server manager for runtime management
     vmcp_server_manager = VirtualMcpServerManager(sts_url=sts_url, app=app)
+    
+    # Store in app state for cleanup access
+    app.state.vmcp_server_manager = vmcp_server_manager
 
     @app.post("/vmcp_servers/", tags=[tags])
     def create_vmcp_server(vmcp: Annotated[VmcpSchema, Query()], request: Request):
@@ -105,21 +108,24 @@ def register_vmcp_api(
         )
 
         try:
-            # Extract tool names from the skill by resolving skill_uuid
+            # Extract tool names and snippet names from the skill by resolving skill_uuid
             tool_names = []
+            snippet_names = []
             print(f"DEBUG: vmcp.skill_uuid = {vmcp.skill_uuid}")
             if vmcp.skill_uuid:
-                print(f"DEBUG: Resolving tools for skill_uuid: {vmcp.skill_uuid}")
-                logger.info(f"Resolving tools for skill_uuid: {vmcp.skill_uuid}")
-                # Load the skill to get tool UUIDs
-                from skillberry_store.tools.configure import get_skills_directory, get_tools_directory
+                print(f"DEBUG: Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}")
+                logger.info(f"Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}")
+                # Load the skill to get tool UUIDs and snippet UUIDs
+                from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
                 from skillberry_store.modules.file_handler import FileHandler
                 
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
+                snippets_handler = FileHandler(get_snippets_directory())
                 
                 # Find skill by UUID
                 skill_tool_uuids = []
+                skill_snippet_uuids = []
                 skill_files = skills_handler.list_files()
                 logger.info(f"Searching through {len(skill_files)} skill files")
                 for filename in skill_files:
@@ -130,13 +136,14 @@ def register_vmcp_api(
                                 skill_dict = json.loads(content)
                                 if skill_dict.get("uuid") == vmcp.skill_uuid:
                                     skill_tool_uuids = skill_dict.get("tool_uuids", [])
-                                    logger.info(f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs: {skill_tool_uuids}")
+                                    skill_snippet_uuids = skill_dict.get("snippet_uuids", [])
+                                    logger.info(f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs")
                                     break
                         except Exception as e:
                             logger.warning(f"Error reading skill file {filename}: {e}")
                 
-                if not skill_tool_uuids:
-                    logger.warning(f"No tools found for skill_uuid: {vmcp.skill_uuid}")
+                if not skill_tool_uuids and not skill_snippet_uuids:
+                    logger.warning(f"No tools or snippets found for skill_uuid: {vmcp.skill_uuid}")
                 
                 # Resolve tool UUIDs to tool names
                 for tool_uuid in skill_tool_uuids:
@@ -154,9 +161,25 @@ def register_vmcp_api(
                             except Exception as e:
                                 logger.warning(f"Error reading tool file {filename}: {e}")
                 
-                logger.info(f"Final tool_names list: {tool_names}")
+                # Resolve snippet UUIDs to snippet names
+                for snippet_uuid in skill_snippet_uuids:
+                    for filename in snippets_handler.list_files():
+                        if filename.endswith(".json"):
+                            try:
+                                content = snippets_handler.read_file(filename, raw_content=True)
+                                if isinstance(content, str):
+                                    snippet_dict = json.loads(content)
+                                    if snippet_dict.get("uuid") == snippet_uuid:
+                                        snippet_name = snippet_dict.get("name")
+                                        snippet_names.append(snippet_name)
+                                        logger.info(f"Resolved snippet UUID {snippet_uuid} to name '{snippet_name}'")
+                                        break
+                            except Exception as e:
+                                logger.warning(f"Error reading snippet file {filename}: {e}")
+                
+                logger.info(f"Final tool_names list: {tool_names}, snippet_names list: {snippet_names}")
             else:
-                logger.info("No skill_uuid provided, creating VMCP server without tools")
+                logger.info("No skill_uuid provided, creating VMCP server without tools or snippets")
 
             # Start the runtime server using VirtualMcpServerManager
             server = vmcp_server_manager.add_server(
@@ -164,6 +187,7 @@ def register_vmcp_api(
                 description=vmcp.description or "",
                 port=vmcp.port if hasattr(vmcp, 'port') and vmcp.port else None,
                 tools=tool_names,
+                snippets=snippet_names,
                 env_id=env_id,
             )
 

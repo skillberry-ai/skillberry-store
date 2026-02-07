@@ -27,6 +27,7 @@ class VirtualMcpServer:
         description: str,
         port: Optional[int],
         tools: List[str],
+        snippets: List[str] = None,
         sts_url: str = None,
         app=None,
         env_id=None,
@@ -38,7 +39,8 @@ class VirtualMcpServer:
             name (str): The name of the virtual MCP server.
             description (str): A description of the virtual MCP server.
             port (Optional[int]): The port for the virtual MCP server. If None, an available port will be found.
-            tools (List[str]): A list of tool UUIDs to register with the virtual MCP server.
+            tools (List[str]): A list of tool names to register with the virtual MCP server.
+            snippets (List[str]): A list of snippet names to register as prompts with the virtual MCP server.
             env_id (str): A string representing the environment id to be used for this server (Optional).
 
         Raises:
@@ -47,6 +49,7 @@ class VirtualMcpServer:
         self.name = name
         self.description = description
         self.tools = tools
+        self.snippets = snippets or []
         self.sts_url = sts_url or "http://localhost:8000"
         self.app = app
         self.env_id = env_id
@@ -59,11 +62,38 @@ class VirtualMcpServer:
                 raise ValueError(f"Port {port} is not available")
 
         logging.info(f"Creating VirtualMcpServer '{name}' on port {self.port}")
+        
+        # Create FastMCP instance
         self.mcp = FastMCP(name=name, port=self.port)
+        
+        # Configure CORS middleware for browser access
+        # This will be passed to mcp.run() in _start_server()
+        from starlette.middleware import Middleware
+        from starlette.middleware.cors import CORSMiddleware
+        
+        self.cors_middleware = [
+            Middleware(
+                CORSMiddleware,
+                allow_origins=["*"],  # Allow all origins for development
+                allow_methods=["GET", "POST", "OPTIONS"],
+                allow_headers=[
+                    "mcp-protocol-version",
+                    "mcp-session-id",
+                    "Authorization",
+                    "Content-Type",
+                    "*",  # Allow all headers
+                ],
+                expose_headers=["mcp-session-id"],
+                allow_credentials=True,
+            )
+        ]
+        logging.info("CORS middleware configured for FastMCP server")
+        
         self._register_tools()
+        self._register_prompts()
         self._start_server()
         logging.info(
-            f"VirtualMcpServer '{name}' created and started on port {self.port}"
+            f"VirtualMcpServer '{name}' created and started on port {self.port} with {len(self.tools)} tools and {len(self.snippets)} prompts"
         )
 
     def _is_port_available(self, port: int) -> bool:
@@ -141,6 +171,45 @@ class VirtualMcpServer:
                 print(f"DEBUG list_tools: Failed to get tool {tool_name}: {e}")
         print(f"DEBUG list_tools: Returning {len(tools)} tools")
         return tools
+
+    def list_snippets(self):
+        """
+        Lists the snippets registered with the virtual MCP server.
+
+        Returns:
+            List[dict]: A list of snippet dictionaries
+        """
+        print(f"DEBUG list_snippets: self.snippets = {self.snippets}")
+        snippets = []
+        for snippet_name in self.snippets:
+            try:
+                if self.app:
+                    # Use direct file access when app is available (during startup)
+                    import json
+                    from skillberry_store.tools.configure import get_snippets_directory
+                    from skillberry_store.modules.file_handler import FileHandler
+                    
+                    snippets_handler = FileHandler(get_snippets_directory())
+                    snippet_filename = f"{snippet_name}.json"
+                    content = snippets_handler.read_file(snippet_filename, raw_content=True)
+                    if isinstance(content, str):
+                        snippet_dict = json.loads(content)
+                        print(f"DEBUG list_snippets: Got snippet {snippet_name} from file: {snippet_dict.get('name')}")
+                        snippets.append(snippet_dict)
+                    else:
+                        logging.warning(f"Failed to read snippet {snippet_name}: invalid content type")
+                else:
+                    # Fallback to HTTP when app is not available
+                    response = requests.get(f"{self.sts_url}/snippets/{snippet_name}")
+                    response.raise_for_status()
+                    snippet_dict = response.json()
+                    print(f"DEBUG list_snippets: Got snippet {snippet_name} from HTTP: {snippet_dict.get('name')}")
+                    snippets.append(snippet_dict)
+            except Exception as e:
+                logging.warning(f"Failed to get snippet {snippet_name}: {e}")
+                print(f"DEBUG list_snippets: Failed to get snippet {snippet_name}: {e}")
+        print(f"DEBUG list_snippets: Returning {len(snippets)} snippets")
+        return snippets
 
     def _register_tools(self):
         """
@@ -260,6 +329,34 @@ class VirtualMcpServer:
             # Use FastMCP's add_tool method
             self.mcp.add_tool(handler, name=tool.name, description=tool.description)
 
+    def _register_prompts(self):
+        """
+        Register snippets as prompts with the FastMCP server.
+        
+        Uses the @prompt decorator pattern to register each snippet as an MCP prompt.
+        """
+        snippets = self.list_snippets()
+        for snippet in snippets:
+            try:
+                snippet_name = snippet.get("name")
+                snippet_description = snippet.get("description", "")
+                snippet_content = snippet.get("content", "")
+                
+                # Create a prompt function with proper closure
+                def make_prompt_func(name, desc, content):
+                    # Use the @prompt decorator from FastMCP
+                    @self.mcp.prompt(name=name, description=desc)
+                    def prompt_func():
+                        """Returns the snippet content as a prompt."""
+                        return content
+                    return prompt_func
+                
+                # Register the prompt
+                make_prompt_func(snippet_name, snippet_description, snippet_content)
+                logging.info(f"Registered prompt '{snippet_name}' with MCP server")
+            except Exception as e:
+                logging.error(f"Failed to register prompt for snippet {snippet.get('name', 'unknown')}: {e}")
+
     async def invoke_tool(self, tool_name: str, parameters: dict, env_id: str):
         """
         Invokes a tool on the virtual MCP server.
@@ -314,20 +411,45 @@ class VirtualMcpServer:
 
     def _start_server(self, transport="sse"):
         """
-        Starts the virtual MCP server.
+        Starts the virtual MCP server with CORS middleware.
 
         Args:
             transport (str): The transport to use. Defaults to "sse".
         """
         import threading
+        import uvicorn
 
         def run_server():
             logging.info(f"Starting FastMCP server '{self.name}' on port {self.port}")
-            self.mcp.run(transport=transport)
-            logging.info(f"FastMCP server '{self.name}' started on port {self.port}")
-            logging.info(
-                f"Virtual MCP server '{self.name}' running on port {self.port} with transport {transport}"
-            )
+            
+            # Get the SSE app and manually add CORS middleware
+            if hasattr(self, 'cors_middleware'):
+                try:
+                    # Get the Starlette app from FastMCP
+                    app = self.mcp.sse_app()
+                    
+                    # Add CORS middleware to the existing app
+                    # We need to add it to app.user_middleware since the app is already created
+                    from starlette.middleware.cors import CORSMiddleware
+                    
+                    app.add_middleware(
+                        CORSMiddleware,
+                        allow_origins=["*"],
+                        allow_methods=["GET", "POST", "OPTIONS"],
+                        allow_headers=["*"],
+                        allow_credentials=True,
+                        expose_headers=["*"],
+                    )
+                    
+                    logging.info(f"CORS middleware added, starting server on port {self.port}")
+                    # Run the app with uvicorn
+                    uvicorn.run(app, host="127.0.0.1", port=self.port, log_level="info")
+                except Exception as e:
+                    logging.error(f"Failed to start with CORS: {e}", exc_info=True)
+                    # Fallback to default
+                    self.mcp.run(transport=transport)
+            else:
+                self.mcp.run(transport=transport)
 
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
@@ -352,6 +474,7 @@ class VirtualMcpServer:
             "description": self.description,
             "port": self.port,
             "tools": self.tools,
+            "snippets": self.snippets,
         }
 
 def param_type_to_python_type(param_type: str) -> Any:

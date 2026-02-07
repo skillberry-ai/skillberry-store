@@ -5,6 +5,7 @@ import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
+import { useMCPClient } from '../hooks/useMCPClient';
 import {
   PageSection,
   Title,
@@ -35,8 +36,11 @@ import {
   SelectList,
   MenuToggle,
   MenuToggleElement,
+  ExpandableSection,
+  CodeBlock,
+  CodeBlockCode,
 } from '@patternfly/react-core';
-import { EditIcon, TrashIcon } from '@patternfly/react-icons';
+import { EditIcon, TrashIcon, ConnectedIcon, DisconnectedIcon } from '@patternfly/react-icons';
 import { vmcpApi, skillsApi } from '@/services/api';
 import type { VMCPServer } from '@/types';
 
@@ -68,6 +72,9 @@ export function VMCPServerDetailPage() {
     queryFn: () => vmcpApi.get(name!),
     enabled: !!name,
   });
+
+  // MCP Client connection
+  const mcpClient = useMCPClient(server?.port, server?.name || '');
 
   // Fetch all skills for the dropdown
   const { data: allSkills } = useQuery({
@@ -358,6 +365,159 @@ export function VMCPServerDetailPage() {
             </CardBody>
           </Card>
         )}
+
+        {/* MCP Connection Status and Tools/Prompts */}
+        <Card style={{ marginTop: '1rem' }}>
+          <CardTitle>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              MCP Connection Status
+              {mcpClient.isConnected ? (
+                <Label color="green" icon={<ConnectedIcon />}>Connected</Label>
+              ) : mcpClient.isConnecting ? (
+                <Label color="blue"><Spinner size="sm" /> Connecting...</Label>
+              ) : (
+                <Label color="red" icon={<DisconnectedIcon />}>Disconnected</Label>
+              )}
+            </div>
+          </CardTitle>
+          <CardBody>
+            {mcpClient.error && (
+              <Alert variant="warning" title="Connection Error" isInline style={{ marginBottom: '1rem' }}>
+                {mcpClient.error}
+              </Alert>
+            )}
+            
+            {mcpClient.isConnected && (
+              <>
+                <DescriptionList isHorizontal>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Available Tools</DescriptionListTerm>
+                    <DescriptionListDescription>
+                      <Label color="blue" isCompact>{mcpClient.tools.length}</Label>
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Available Prompts</DescriptionListTerm>
+                    <DescriptionListDescription>
+                      <Label color="purple" isCompact>{mcpClient.prompts.length}</Label>
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
+                </DescriptionList>
+
+                {/* Tools Section */}
+                {mcpClient.tools.length > 0 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <Title headingLevel="h3" size="md" style={{ marginBottom: '1rem' }}>
+                      Tools
+                    </Title>
+                    {mcpClient.tools.map((tool, index) => (
+                      <ExpandableSection
+                        key={tool.name}
+                        toggleText={tool.name}
+                        style={{ marginBottom: '0.5rem' }}
+                      >
+                        <Card isCompact>
+                          <CardBody>
+                            {tool.description && (
+                              <Text style={{ marginBottom: '1rem', fontSize: '1rem' }}>
+                                {tool.description}
+                              </Text>
+                            )}
+                            {tool.inputSchema && (
+                              <>
+                                <Text component="h4" style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                  Input Schema:
+                                </Text>
+                                <div style={{
+                                  backgroundColor: '#f5f5f5',
+                                  border: '1px solid #d2d2d2',
+                                  borderRadius: '4px',
+                                  padding: '0',
+                                  overflow: 'auto'
+                                }}>
+                                  <pre style={{
+                                    margin: 0,
+                                    padding: '1rem',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.875rem',
+                                    color: '#151515',
+                                    backgroundColor: '#f5f5f5',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word'
+                                  } as React.CSSProperties}>
+                                    {JSON.stringify(tool.inputSchema, null, 2)}
+                                  </pre>
+                                </div>
+                              </>
+                            )}
+                          </CardBody>
+                        </Card>
+                      </ExpandableSection>
+                    ))}
+                  </div>
+                )}
+
+                {/* Prompts Section */}
+                {mcpClient.prompts.length > 0 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <Title headingLevel="h3" size="md" style={{ marginBottom: '1rem' }}>
+                      Prompts
+                    </Title>
+                    {mcpClient.prompts.map((prompt, index) => (
+                      <ExpandableSection
+                        key={prompt.name}
+                        toggleText={prompt.name}
+                        style={{ marginBottom: '0.5rem' }}>
+                        <Card isCompact>
+                          <CardBody>
+                            {prompt.description && (
+                              <Text style={{ marginBottom: '1rem' }}>
+                                {prompt.description}
+                              </Text>
+                            )}
+                            {prompt.arguments && prompt.arguments.length > 0 && (
+                              <>
+                                <Text component="h4" style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                  Arguments:
+                                </Text>
+                                <div style={{
+                                  backgroundColor: '#f5f5f5',
+                                  border: '1px solid #d2d2d2',
+                                  borderRadius: '4px',
+                                  padding: '0',
+                                  overflow: 'auto'
+                                }}>
+                                  <pre style={{
+                                    margin: 0,
+                                    padding: '1rem',
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.875rem',
+                                    color: '#151515',
+                                    backgroundColor: '#f5f5f5',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word'
+                                  } as React.CSSProperties}>
+                                    {JSON.stringify(prompt.arguments, null, 2)}
+                                  </pre>
+                                </div>
+                              </>
+                            )}
+                          </CardBody>
+                        </Card>
+                      </ExpandableSection>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {!mcpClient.isConnected && !mcpClient.isConnecting && (
+              <Button variant="primary" onClick={mcpClient.connect}>
+                Reconnect to MCP Server
+              </Button>
+            )}
+          </CardBody>
+        </Card>
       </PageSection>
 
       {/* Edit Modal */}
