@@ -368,12 +368,12 @@ export function AnthropicSkillImporter({
       });
 
       try {
-        // Build query parameters for form data
+        // Build query parameters (without content to avoid URL length limits)
         const params = new URLSearchParams({
           name: snippet.name,
           version: snippet.version,
           description: snippet.description,
-          content: snippet.content,
+          content: '', // Empty content, will be provided via file upload
           content_type: 'text/plain',
           state: 'approved',
         });
@@ -385,8 +385,14 @@ export function AnthropicSkillImporter({
           });
         }
 
+        // Create FormData with the content as a file upload
+        const formData = new FormData();
+        const contentBlob = new Blob([snippet.content], { type: 'text/plain' });
+        formData.append('file', contentBlob, 'snippet.txt');
+
         const response = await fetch(`${API_BASE_URL}/snippets/?${params}`, {
           method: 'POST',
+          body: formData,
         });
 
         if (response.ok) {

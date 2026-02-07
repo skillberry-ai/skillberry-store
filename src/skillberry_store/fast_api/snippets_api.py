@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from typing import Optional, Annotated
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 from prometheus_client import Counter
 
 from skillberry_store.modules.file_handler import FileHandler
@@ -52,7 +52,10 @@ def register_snippets_api(
     snippet_handler = FileHandler(snippets_directory)
 
     @app.post("/snippets/", tags=[tags])
-    def create_snippet(snippet: Annotated[SnippetSchema, Query()]):
+    async def create_snippet(
+        snippet: Annotated[SnippetSchema, Query()],
+        file: Optional[UploadFile] = File(None)
+    ):
         """Create a new snippet.
         
         The form fields are dynamically generated from SnippetSchema.
@@ -61,6 +64,7 @@ def register_snippets_api(
         Args:
             snippet: The snippet schema containing content and metadata (auto-generated from SnippetSchema).
                     If uuid is not provided, it will be automatically generated.
+            file: Optional file upload for large content. If provided, overrides snippet.content.
 
         Returns:
             dict: Success message with the snippet name and uuid.
@@ -75,6 +79,18 @@ def register_snippets_api(
         if not snippet.uuid:
             snippet.uuid = str(uuid.uuid4())
             logger.info(f"Generated UUID for snippet '{snippet.name}': {snippet.uuid}")
+
+        # If file is provided, read its content and override snippet.content
+        if file:
+            try:
+                content_bytes = await file.read()
+                snippet.content = content_bytes.decode('utf-8')
+                logger.info(f"Read {len(snippet.content)} characters from uploaded file")
+            except Exception as e:
+                logger.error(f"Error reading uploaded file: {e}")
+                raise HTTPException(
+                    status_code=400, detail=f"Error reading uploaded file: {str(e)}"
+                )
 
         # Check if snippet already exists
         existing_snippets = snippet_handler.list_files()
