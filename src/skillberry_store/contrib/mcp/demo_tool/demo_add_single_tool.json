@@ -1,9 +1,0 @@
-{
-  "content": "def add(a: int, b: int) -> int:\n    \"\"\"\n    Adds two numbers and returns the result.\n\n    Parameters:\n        a (int): The first number to add.\n        b (int): The second number to add.\n\n    Returns:\n        int: The sum of the two input numbers.\n    \"\"\"\n    return a + b\n",
-  "metadata": {
-    "packaging_format": "mcp",
-    "url": "http://localhost:8080/sse",
-    "state": "approved",
-    "name" : "add"
-  }
-}

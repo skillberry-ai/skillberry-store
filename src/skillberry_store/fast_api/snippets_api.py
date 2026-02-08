@@ -9,8 +9,10 @@ from prometheus_client import Counter
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
+from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
 from skillberry_store.tools.configure import get_snippets_directory
+from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
 
@@ -279,15 +281,19 @@ def register_snippets_api(
         search_term: str,
         max_number_of_results: int = 5,
         similarity_threshold: float = 1,
+        manifest_filter: str = ".",
+        lifecycle_state: LifecycleState = LifecycleState.ANY,
     ):
         """Return a list of snippets that are similar to the given search term.
 
-        Returns snippets that are below the similarity threshold.
+        Returns snippets that are below the similarity threshold and match the filters.
 
         Args:
             search_term: Search term.
             max_number_of_results: Number of results to return.
             similarity_threshold: Threshold to be used.
+            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
 
         Returns:
             list: A list of matched snippet names and similarity scores.
@@ -312,8 +318,39 @@ def register_snippets_api(
                 if matched_entity["similarity_score"] <= similarity_threshold
             ]
 
-            logger.info(f"Found {len(filtered_matched_entities)} matching snippets")
-            return filtered_matched_entities
+            # Get full snippet objects for filtering
+            snippets_to_filter = []
+            for matched_entity in filtered_matched_entities:
+                snippet_name = matched_entity.get("filename") or matched_entity.get("name")
+                if not snippet_name:
+                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    continue
+                try:
+                    snippet_filename = f"{snippet_name}.json"
+                    content = snippet_handler.read_file(snippet_filename, raw_content=True)
+                    if isinstance(content, str):
+                        snippet_dict = json.loads(content)
+                        snippet_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                        snippets_to_filter.append(snippet_dict)
+                except Exception as e:
+                    logger.warning(f"Could not load snippet {snippet_name} for filtering: {e}")
+
+            # Apply manifest and lifecycle filters
+            filtered_snippets = apply_search_filters(
+                snippets_to_filter,
+                manifest_filter=manifest_filter,
+                lifecycle_state=lifecycle_state,
+            )
+
+            # Return only filename and similarity_score (filename is the snippet name)
+            result = [
+                {"filename": snippet.get("name", ""), "similarity_score": snippet.get("similarity_score", 0.0)}
+                for snippet in filtered_snippets
+                if snippet.get("name")  # Only include if name exists
+            ]
+
+            logger.info(f"Found {len(result)} matching snippets after filtering")
+            return result
         except Exception as e:
             logger.error(f"Error searching snippets: {e}")
             raise HTTPException(
