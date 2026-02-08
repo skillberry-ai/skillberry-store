@@ -14,6 +14,7 @@ import time
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.file_executor import FileExecutor
 from skillberry_store.modules.description import Description
+from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema, ToolParamsSchema, ToolReturnsSchema
 from skillberry_store.schemas.manifest_schema import ManifestState
 from skillberry_store.tools.configure import (
@@ -22,6 +23,12 @@ from skillberry_store.tools.configure import (
 )
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
 from skillberry_store.utils.python_utils import extract_docstring
+from skillberry_store.fast_api.server_utils import (
+    get_mcp_tools,
+    mcp_json_converter,
+    mcp_content,
+)
+from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
 
@@ -222,8 +229,11 @@ def register_tools_api(
             )
 
     @app.get("/tools/{name}/module", tags=[tags], response_class=PlainTextResponse)
-    def get_tool_module(name: str):
+    async def get_tool_module(name: str):
         """Get the module file content for a specific tool.
+
+        Note: For MCP tools, this returns the generated function signature.
+        For code tools, this returns the actual module file content.
 
         Args:
             name: The name of the tool.
@@ -248,6 +258,19 @@ def register_tools_api(
                 )
             tool_dict = json.loads(content)
 
+            # Handle MCP packaging format
+            if tool_dict.get("packaging_format") == "mcp":
+                # Generate content from MCP tool
+                tools = await get_mcp_tools(tool_dict)
+                if not tools:
+                    raise HTTPException(
+                        status_code=404, detail=f"MCP tool '{name}' not found."
+                    )
+                tool_mcp_dict = vars(tools[0])
+                module_content = mcp_content(tool_mcp_dict)
+                return PlainTextResponse(content=module_content, media_type="text/plain")
+            
+            # Handle code packaging format
             # Check if module_name exists
             module_name = tool_dict.get("module_name")
             if not module_name:
@@ -421,20 +444,32 @@ def register_tools_api(
                 else None
             )
 
-            # Check if module_name exists
-            module_name = tool_dict.get("module_name")
-            if not module_name:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Tool '{name}' does not have a module file specified",
-                )
+            # Handle MCP packaging format
+            if tool_dict.get("packaging_format") == "mcp":
+                # Ensure the tool exists in MCP
+                tools = await get_mcp_tools(tool_dict)
+                if not tools:
+                    raise HTTPException(
+                        status_code=404, detail=f"MCP tool '{name}' not found."
+                    )
+                tool_mcp_dict = vars(tools[0])
+                module_content = mcp_content(tool_mcp_dict)
+            else:
+                # Handle code packaging format
+                # Check if module_name exists
+                module_name = tool_dict.get("module_name")
+                if not module_name:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Tool '{name}' does not have a module file specified",
+                    )
 
-            # Get the module file content
-            module_content = file_handler.read_file(module_name, raw_content=True)
-            if not isinstance(module_content, str):
-                raise HTTPException(
-                    status_code=500, detail=f"Invalid module content for tool '{name}'"
-                )
+                # Get the module file content
+                module_content = file_handler.read_file(module_name, raw_content=True)
+                if not isinstance(module_content, str):
+                    raise HTTPException(
+                        status_code=500, detail=f"Invalid module content for tool '{name}'"
+                    )
 
             # Execute the tool using FileExecutor
             file_executor = FileExecutor(
@@ -472,15 +507,19 @@ def register_tools_api(
         search_term: str,
         max_number_of_results: int = 5,
         similarity_threshold: float = 1,
+        manifest_filter: str = ".",
+        lifecycle_state: LifecycleState = LifecycleState.ANY,
     ):
         """Return a list of tools that are similar to the given search term.
 
-        Returns tools that are below the similarity threshold.
+        Returns tools that are below the similarity threshold and match the filters.
 
         Args:
             search_term: Search term.
             max_number_of_results: Number of results to return.
             similarity_threshold: Threshold to be used.
+            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
 
         Returns:
             list: A list of matched tool names and similarity scores.
@@ -505,10 +544,44 @@ def register_tools_api(
                 if matched_entity["similarity_score"] <= similarity_threshold
             ]
 
-            logger.info(f"Found {len(filtered_matched_entities)} matching tools")
-            return filtered_matched_entities
+            # Get full tool objects for filtering
+            tools_to_filter = []
+            for matched_entity in filtered_matched_entities:
+                tool_name = matched_entity.get("filename") or matched_entity.get("name")
+                if not tool_name:
+                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    continue
+                try:
+                    tool_filename = f"{tool_name}.json"
+                    content = tool_handler.read_file(tool_filename, raw_content=True)
+                    if isinstance(content, str):
+                        tool_dict = json.loads(content)
+                        tool_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                        tools_to_filter.append(tool_dict)
+                except Exception as e:
+                    logger.warning(f"Could not load tool {tool_name} for filtering: {e}")
+
+            # Apply manifest and lifecycle filters
+            filtered_tools = apply_search_filters(
+                tools_to_filter,
+                manifest_filter=manifest_filter,
+                lifecycle_state=lifecycle_state,
+            )
+
+            # Return only filename and similarity_score (filename is the tool name)
+            result = [
+                {"filename": tool.get("name", ""), "similarity_score": tool.get("similarity_score", 0.0)}
+                for tool in filtered_tools
+                if tool.get("name")  # Only include if name exists
+            ]
+
+            logger.info(f"Found {len(result)} matching tools after filtering")
+            return result
         except Exception as e:
             logger.error(f"Error searching tools: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error searching tools: {str(e)}"
+            )
 
     @app.post("/tools/add", tags=[tags])
     async def add_tool_from_python(

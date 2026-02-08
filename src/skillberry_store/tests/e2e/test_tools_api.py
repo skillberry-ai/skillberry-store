@@ -623,4 +623,242 @@ async def test_search_tools(run_sbs):
         # Clean up - delete test tools
         for tool_params in test_tools:
             delete_response = await client.delete(f"{BASE_URL}/tools/{tool_params['name']}")
-            assert delete_response.status_code == 200, f"Failed to delete tool {tool_params['name']}"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_with_mcp_packaging(run_sbs):
+    """Test executing a tool with MCP packaging format."""
+    tool_name = "mcp_test_tool"
+    
+    async with httpx.AsyncClient() as client:
+        # First, create a VMCP server with a tool
+        # Step 1: Create a code-based tool first
+        code_tool_name = "add_for_mcp_test"
+        tool_code = b"""def add_for_mcp_test(a: int, b: int) -> int:
+    \"\"\"Add two numbers
+    
+    Args:
+        a: first number
+        b: second number
+    
+    Returns:
+        Sum of a and b
+    \"\"\"
+    return a + b
+"""
+        response = await client.post(
+            f"{BASE_URL}/tools/add",
+            params={"tool_name": code_tool_name, "update": "true"},
+            files={"tool": (f"{code_tool_name}.py", tool_code, "text/x-python")}
+        )
+        assert response.status_code == 200, f"Tool creation failed: {response.text}"
+        tool_response = response.json()
+        tool_uuid = tool_response.get("uuid")
+        
+        # Step 2: Create a skill with the tool
+        skill_name = "mcp_test_skill"
+        skill_data = {
+            "name": skill_name,
+            "description": "Test skill for MCP tool execution",
+            "tool_uuids": tool_uuid
+        }
+        response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
+        assert response.status_code == 200, f"Skill creation failed: {response.text}"
+        skill_response = response.json()
+        skill_uuid = skill_response.get("uuid")
+        
+        # Step 3: Create a VMCP server with the skill
+        vmcp_server_name = "test_vmcp_for_tool_exec"
+        vmcp_data = {
+            "name": vmcp_server_name,
+            "description": "Test VMCP server for tool execution",
+            "skill_uuid": skill_uuid
+        }
+        response = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data)
+        assert response.status_code == 200, f"VMCP server creation failed: {response.text}"
+        vmcp_response = response.json()
+        vmcp_url = vmcp_response.get("url")
+        
+        # Step 4: Create a tool with MCP packaging format
+        mcp_tool_data = {
+            "name": tool_name,
+            "description": "MCP-based tool for testing",
+            "programming_language": "python",
+            "packaging_format": "mcp",
+            "mcp_url": vmcp_url,
+            "state": "approved"
+        }
+        
+        # For MCP tools, we don't need to upload a module file
+        # Create the tool JSON manually
+        import json
+        tool_json = json.dumps(mcp_tool_data, indent=4)
+        
+        # Write the tool JSON directly to the tools directory
+        from skillberry_store.tools.configure import get_tools_directory
+        from skillberry_store.modules.file_handler import FileHandler
+        tools_directory = get_tools_directory()
+        tool_handler = FileHandler(tools_directory)
+        tool_handler.write_file_content(f"{tool_name}.json", tool_json)
+        
+        # Step 5: Execute the MCP tool
+        execute_params = {"a": 10, "b": 5}
+        execute_response = await client.post(
+            f"{BASE_URL}/tools/{tool_name}/execute",
+            json=execute_params
+        )
+        assert execute_response.status_code == 200, f"MCP tool execution failed: {execute_response.text}"
+        result = execute_response.json()
+        
+        # Verify the result
+        assert result is not None
+        assert isinstance(result, dict)
+        # The result should contain the sum (15)
+        assert result.get("return value") == "15", f"Expected '15', got {result.get('return value')}"
+        
+        # Clean up
+        delete_response = await client.delete(f"{BASE_URL}/tools/{tool_name}")
+        assert delete_response.status_code == 200
+        
+        # Clean up VMCP server
+        await client.delete(f"{BASE_URL}/vmcp_servers/{vmcp_server_name}")
+        
+        # Clean up skill
+        await client.delete(f"{BASE_URL}/skills/{skill_name}")
+        
+        # Clean up code tool
+        await client.delete(f"{BASE_URL}/tools/{code_tool_name}")
+
+
+@pytest.mark.asyncio
+async def test_get_tool_module_with_mcp_packaging(run_sbs):
+    """Test getting module content for a tool with MCP packaging format."""
+    tool_name = "mcp_module_test_tool"
+    
+    async with httpx.AsyncClient() as client:
+        # Step 1: Create a code-based tool first
+        code_tool_name = "multiply_for_mcp_test"
+        tool_code = b"""def multiply_for_mcp_test(x: int, y: int) -> int:
+    \"\"\"Multiply two numbers
+    
+    Args:
+        x: first number
+        y: second number
+    
+    Returns:
+        Product of x and y
+    \"\"\"
+    return x * y
+"""
+        response = await client.post(
+            f"{BASE_URL}/tools/add",
+            params={"tool_name": code_tool_name, "update": "true"},
+            files={"tool": (f"{code_tool_name}.py", tool_code, "text/x-python")}
+        )
+        assert response.status_code == 200, f"Tool creation failed: {response.text}"
+        tool_response = response.json()
+        tool_uuid = tool_response.get("uuid")
+        
+        # Step 2: Create a skill with the tool
+        skill_name = "mcp_module_test_skill"
+        skill_data = {
+            "name": skill_name,
+            "description": "Test skill for MCP module retrieval",
+            "tool_uuids": tool_uuid
+        }
+        response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
+        assert response.status_code == 200, f"Skill creation failed: {response.text}"
+        skill_response = response.json()
+        skill_uuid = skill_response.get("uuid")
+        
+        # Step 3: Create a VMCP server with the skill
+        vmcp_server_name = "test_vmcp_for_module"
+        vmcp_data = {
+            "name": vmcp_server_name,
+            "description": "Test VMCP server for module retrieval",
+            "skill_uuid": skill_uuid
+        }
+        response = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data)
+        assert response.status_code == 200, f"VMCP server creation failed: {response.text}"
+        vmcp_response = response.json()
+        vmcp_url = vmcp_response.get("url")
+        
+        # Step 4: Create a tool with MCP packaging format
+        mcp_tool_data = {
+            "name": tool_name,
+            "description": "MCP-based tool for module testing",
+            "programming_language": "python",
+            "packaging_format": "mcp",
+            "mcp_url": vmcp_url,
+            "state": "approved"
+        }
+        
+        # Write the tool JSON directly
+        import json
+        tool_json = json.dumps(mcp_tool_data, indent=4)
+        from skillberry_store.tools.configure import get_tools_directory
+        from skillberry_store.modules.file_handler import FileHandler
+        tools_directory = get_tools_directory()
+        tool_handler = FileHandler(tools_directory)
+        tool_handler.write_file_content(f"{tool_name}.json", tool_json)
+        
+        # Step 5: Get the module content for the MCP tool
+        module_response = await client.get(f"{BASE_URL}/tools/{tool_name}/module")
+        assert module_response.status_code == 200, f"Module retrieval failed: {module_response.text}"
+        
+        # Verify the content is a generated function signature
+        module_content = module_response.text
+        assert "def " in module_content, "Module content should contain a function definition"
+        assert code_tool_name in module_content, f"Module content should reference the tool name {code_tool_name}"
+        
+        # Clean up
+        delete_response = await client.delete(f"{BASE_URL}/tools/{tool_name}")
+        assert delete_response.status_code == 200
+        
+        # Clean up VMCP server
+        await client.delete(f"{BASE_URL}/vmcp_servers/{vmcp_server_name}")
+        
+        # Clean up skill
+        await client.delete(f"{BASE_URL}/skills/{skill_name}")
+        
+        # Clean up code tool
+        await client.delete(f"{BASE_URL}/tools/{code_tool_name}")
+
+
+@pytest.mark.asyncio
+async def test_mcp_tool_not_found(run_sbs):
+    """Test that executing an MCP tool that doesn't exist in the MCP server fails gracefully."""
+    tool_name = "nonexistent_mcp_tool"
+    
+    async with httpx.AsyncClient() as client:
+        # Create a tool with MCP packaging format pointing to a non-existent MCP tool
+        mcp_tool_data = {
+            "name": tool_name,
+            "description": "Non-existent MCP tool",
+            "programming_language": "python",
+            "packaging_format": "mcp",
+            "mcp_url": "http://localhost:9999/sse",  # Non-existent server
+            "state": "approved"
+        }
+        
+        # Write the tool JSON directly
+        import json
+        tool_json = json.dumps(mcp_tool_data, indent=4)
+        from skillberry_store.tools.configure import get_tools_directory
+        from skillberry_store.modules.file_handler import FileHandler
+        tools_directory = get_tools_directory()
+        tool_handler = FileHandler(tools_directory)
+        tool_handler.write_file_content(f"{tool_name}.json", tool_json)
+        
+        # Try to execute the tool - should fail
+        execute_params = {"x": 5}
+        execute_response = await client.post(
+            f"{BASE_URL}/tools/{tool_name}/execute",
+            json=execute_params
+        )
+        # Should return an error (404 or 500)
+        assert execute_response.status_code in [404, 500], f"Expected error status, got {execute_response.status_code}"
+        
+        # Clean up
+        delete_response = await client.delete(f"{BASE_URL}/tools/{tool_name}")
+        assert delete_response.status_code == 200

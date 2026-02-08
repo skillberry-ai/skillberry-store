@@ -6,9 +6,6 @@ from typing import Optional, Dict, Any, Literal, List
 
 import uvicorn
 
-from mcp.server.sse import SseServerTransport
-from starlette.routing import Route, Mount
-
 from pydantic_settings import BaseSettings
 from pydantic import Field, BaseModel
 
@@ -18,7 +15,6 @@ from fastapi.openapi.utils import get_openapi
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from fastapi_mcp import FastApiMCP
 
-from skillberry_store.fast_api.mcp_proxy import MCPToSBSProxy
 from skillberry_store.fast_api.skills_api import register_skills_api
 from skillberry_store.fast_api.snippets_api import register_snippets_api
 from skillberry_store.fast_api.tools_api import register_tools_api
@@ -122,7 +118,6 @@ class SBSettings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         "INFO", env="UVICORN_LOG_LEVEL"
     )
-    mcp_mode: bool = Field(False, env="MCP_MODE")
     observability: bool = Field(True, env="OBSERVABILITY")
 
 
@@ -197,29 +192,11 @@ class SBS(FastAPI):
             FastAPIInstrumentor.instrument_app(self)
 
     def run(self):
-        """Starts the FastAPI app using Uvicorn, and sets up SSE proxy routes if MCP mode is enabled."""
+        """Starts the FastAPI app using Uvicorn."""
         self.logger.info("Starting SBS server")
         self.logger.info(f"API server running at: http://{self.settings.bts_host}:{self.settings.bts_port}")
         self.logger.info(f"UI available at: http://localhost:{self.settings.ui_port}")
         self.logger.info(f"API documentation at: http://{self.settings.bts_host}:{self.settings.bts_port}/docs")
-        if self.settings.mcp_mode:
-            self.logger.info("SBS server run in MCP mode with transport SSE")
-
-            proxy = MCPToSBSProxy(self)
-            sse = SseServerTransport("/messages/")
-
-            async def handle_sse(request):
-                async with sse.connect_sse(
-                    request.scope, request.receive, request._send
-                ) as streams:
-                    await proxy.run(
-                        streams[0],
-                        streams[1],
-                        proxy.create_initialization_options(),
-                    )
-
-            self.router.routes.append(Route("/sse", endpoint=handle_sse))
-            self.router.routes.append(Mount("/messages/", app=sse.handle_post_message))
 
         if self.settings.observability:
             observability_setup()

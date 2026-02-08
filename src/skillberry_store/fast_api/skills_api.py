@@ -9,8 +9,10 @@ from prometheus_client import Counter
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
+from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
 from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
+from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
 
@@ -311,15 +313,19 @@ def register_skills_api(
         search_term: str,
         max_number_of_results: int = 5,
         similarity_threshold: float = 1,
+        manifest_filter: str = ".",
+        lifecycle_state: LifecycleState = LifecycleState.ANY,
     ):
         """Return a list of skills that are similar to the given search term.
 
-        Returns skills that are below the similarity threshold.
+        Returns skills that are below the similarity threshold and match the filters.
 
         Args:
             search_term: Search term.
             max_number_of_results: Number of results to return.
             similarity_threshold: Threshold to be used.
+            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
 
         Returns:
             list: A list of matched skill names and similarity scores.
@@ -344,8 +350,39 @@ def register_skills_api(
                 if matched_entity["similarity_score"] <= similarity_threshold
             ]
 
-            logger.info(f"Found {len(filtered_matched_entities)} matching skills")
-            return filtered_matched_entities
+            # Get full skill objects for filtering
+            skills_to_filter = []
+            for matched_entity in filtered_matched_entities:
+                skill_name = matched_entity.get("filename") or matched_entity.get("name")
+                if not skill_name:
+                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    continue
+                try:
+                    skill_filename = f"{skill_name}.json"
+                    content = skill_handler.read_file(skill_filename, raw_content=True)
+                    if isinstance(content, str):
+                        skill_dict = json.loads(content)
+                        skill_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                        skills_to_filter.append(skill_dict)
+                except Exception as e:
+                    logger.warning(f"Could not load skill {skill_name} for filtering: {e}")
+
+            # Apply manifest and lifecycle filters
+            filtered_skills = apply_search_filters(
+                skills_to_filter,
+                manifest_filter=manifest_filter,
+                lifecycle_state=lifecycle_state,
+            )
+
+            # Return only filename and similarity_score (filename is the skill name)
+            result = [
+                {"filename": skill.get("name", ""), "similarity_score": skill.get("similarity_score", 0.0)}
+                for skill in filtered_skills
+                if skill.get("name")  # Only include if name exists
+            ]
+
+            logger.info(f"Found {len(result)} matching skills after filtering")
+            return result
         except Exception as e:
             logger.error(f"Error searching skills: {e}")
             raise HTTPException(

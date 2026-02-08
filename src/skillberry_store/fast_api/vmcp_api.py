@@ -9,10 +9,12 @@ from prometheus_client import Counter, Histogram
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
+from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
 from skillberry_store.schemas.vmcp_schema import VmcpSchema
 from skillberry_store.tools.configure import get_vmcp_directory
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
+from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
 
@@ -646,13 +648,19 @@ def register_vmcp_api(
         search_term: str,
         max_number_of_results: int = 5,
         similarity_threshold: float = 1,
+        manifest_filter: str = ".",
+        lifecycle_state: LifecycleState = LifecycleState.ANY,
     ):
         """Search for vmcp servers by description.
+
+        Returns vmcp servers that are below the similarity threshold and match the filters.
 
         Args:
             search_term: Search term.
             max_number_of_results: Number of results to return.
             similarity_threshold: Threshold to be used.
+            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
 
         Returns:
             list: A list of matched vmcp server names and similarity scores.
@@ -677,8 +685,39 @@ def register_vmcp_api(
                 if matched_entity["similarity_score"] <= similarity_threshold
             ]
 
-            logger.info(f"Found {len(filtered_matched_entities)} matching vmcp servers")
-            return filtered_matched_entities
+            # Get full vmcp server objects for filtering
+            vmcp_servers_to_filter = []
+            for matched_entity in filtered_matched_entities:
+                vmcp_name = matched_entity.get("filename") or matched_entity.get("name")
+                if not vmcp_name:
+                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    continue
+                try:
+                    vmcp_filename = f"{vmcp_name}.json"
+                    content = vmcp_handler.read_file(vmcp_filename, raw_content=True)
+                    if isinstance(content, str):
+                        vmcp_dict = json.loads(content)
+                        vmcp_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                        vmcp_servers_to_filter.append(vmcp_dict)
+                except Exception as e:
+                    logger.warning(f"Could not load vmcp server {vmcp_name} for filtering: {e}")
+
+            # Apply manifest and lifecycle filters
+            filtered_vmcp_servers = apply_search_filters(
+                vmcp_servers_to_filter,
+                manifest_filter=manifest_filter,
+                lifecycle_state=lifecycle_state,
+            )
+
+            # Return only filename and similarity_score (filename is the vmcp server name)
+            result = [
+                {"filename": vmcp.get("name", ""), "similarity_score": vmcp.get("similarity_score", 0.0)}
+                for vmcp in filtered_vmcp_servers
+                if vmcp.get("name")  # Only include if name exists
+            ]
+
+            logger.info(f"Found {len(result)} matching vmcp servers after filtering")
+            return result
         except Exception as e:
             logger.error(f"Error searching vmcp servers: {e}")
             raise HTTPException(
