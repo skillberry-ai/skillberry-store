@@ -19,15 +19,22 @@ BASE_URL = "http://localhost:8000"
 @pytest.mark.asyncio
 async def test_create_snippet(run_sbs):
     """Test creating a new snippet."""
+    content = "This is the content of my test snippet.\nIt can have multiple lines."
     snippet_data = {
         "name": "test_snippet",
         "description": "A test snippet for demonstration",
-        "content": "This is the content of my test snippet.\nIt can have multiple lines.",
+        "content": content,  # Required field, will be overridden by file if provided
         "content_type": "text/plain"
+    }
+    
+    files = {
+        "file": ("snippet.txt", content.encode(), "text/plain")
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/snippets/", json=snippet_data)
+        response = await client.post(f"{BASE_URL}/snippets/", params=snippet_data, files=files)
+        if response.status_code != 200:
+            print(f"Error response: {response.text}")
         assert response.status_code == 200
         data = response.json()
         assert data.get("name") == "test_snippet"
@@ -41,15 +48,20 @@ async def test_create_snippet(run_sbs):
 @pytest.mark.asyncio
 async def test_create_duplicate_snippet(run_sbs):
     """Test that creating a duplicate snippet fails."""
+    content = "This is the content of my test snippet."
     snippet_data = {
         "name": "test_snippet",
         "description": "A test snippet for demonstration",
-        "content": "This is the content of my test snippet.",
+        "content": content,  # Required field
         "content_type": "text/plain"
+    }
+    
+    files = {
+        "file": ("snippet.txt", content.encode(), "text/plain")
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/snippets/", json=snippet_data)
+        response = await client.post(f"{BASE_URL}/snippets/", params=snippet_data, files=files)
         # Should fail with 409 Conflict
         assert response.status_code == 409
         assert "already exists" in response.json().get("detail", "")
@@ -160,13 +172,15 @@ async def test_snippet_lifecycle(run_sbs):
     
     async with httpx.AsyncClient() as client:
         # 1. Create
+        content = "Initial content"
         create_data = {
             "name": snippet_name,
             "description": "Lifecycle test snippet",
-            "content": "Initial content",
+            "content": content,  # Required field
             "content_type": "text/plain"
         }
-        create_response = await client.post(f"{BASE_URL}/snippets/", json=create_data)
+        files = {"file": ("snippet.txt", content.encode(), "text/plain")}
+        create_response = await client.post(f"{BASE_URL}/snippets/", params=create_data, files=files)
         assert create_response.status_code == 200
         assert create_response.json().get("name") == snippet_name
 
@@ -215,29 +229,28 @@ async def test_search_snippets(run_sbs):
             "name": "python_logging_snippet",
             "description": "A Python code snippet for setting up logging configuration with file and console handlers",
             "content": "import logging\nlogging.basicConfig(level=logging.INFO)",
-            "language": "python",
-            "tags": ["logging", "python"]
+            "content_type": "text/plain"
         },
         {
             "name": "javascript_fetch_snippet",
             "description": "JavaScript snippet for making HTTP requests using the fetch API with error handling",
             "content": "fetch(url).then(response => response.json())",
-            "language": "javascript",
-            "tags": ["http", "javascript"]
+            "content_type": "text/plain"
         },
         {
             "name": "sql_query_snippet",
             "description": "SQL query snippet for joining tables and filtering data with WHERE clause",
             "content": "SELECT * FROM users WHERE active = true",
-            "language": "sql",
-            "tags": ["database", "sql"]
+            "content_type": "text/plain"
         }
     ]
     
     async with httpx.AsyncClient() as client:
         # Create the test snippets
         for snippet_data in test_snippets:
-            response = await client.post(f"{BASE_URL}/snippets/", json=snippet_data)
+            content = snippet_data["content"]  # Keep content in params
+            files = {"file": ("snippet.txt", content.encode(), "text/plain")}
+            response = await client.post(f"{BASE_URL}/snippets/", params=snippet_data, files=files)
             assert response.status_code == 200, f"Failed to create snippet {snippet_data['name']}: {response.text}"
         
         # Wait a moment for indexing

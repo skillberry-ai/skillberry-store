@@ -15,42 +15,85 @@ from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_r
 BASE_URL = "http://localhost:8000"
 
 
+async def create_tool_helper(client, name, description="A test tool"):
+    """Helper function to create a tool and return its UUID."""
+    import json
+    
+    tool_data = {
+        "name": name,
+        "description": description,
+        "programming_language": "python",
+        "packaging_format": "code"
+    }
+    
+    # Create a simple Python module content
+    module_content = f"""
+def {name}(param1):
+    '''Test tool function'''
+    return param1
+"""
+    
+    files = {
+        "module": (f"{name}.py", module_content.encode(), "text/x-python")
+    }
+    
+    response = await client.post(
+        f"{BASE_URL}/tools/",
+        params=tool_data,
+        files=files
+    )
+    
+    if response.status_code == 200:
+        return response.json().get("uuid")
+    else:
+        print(f"Tool creation failed: {response.status_code} - {response.text}")
+    return None
+
+
+async def create_snippet_helper(client, name, content="Test content", description="A test snippet"):
+    """Helper function to create a snippet and return its UUID."""
+    snippet_data = {
+        "name": name,
+        "description": description,
+        "content": content,  # Required field
+        "content_type": "text/plain"
+    }
+    
+    files = {
+        "file": ("snippet.txt", content.encode(), "text/plain")
+    }
+    
+    response = await client.post(
+        f"{BASE_URL}/snippets/",
+        params=snippet_data,
+        files=files
+    )
+    
+    if response.status_code == 200:
+        return response.json().get("uuid")
+    return None
+
 
 @pytest.mark.asyncio
 async def test_create_skill(run_sbs):
     """Test creating a new skill."""
-    skill_data = {
-        "name": "test_skill",
-        "description": "A test skill for demonstration",
-        "tools": [
-            {
-                "name": "test_tool",
-                "description": "A test tool",
-                "module_name": "test_tool_module",
-                "programming_language": "python",
-                "packaging_format": "code",
-                "params": {
-                    "type": "object",
-                    "properties": {
-                        "param1": {"type": "string"}
-                    },
-                    "required": [],
-                    "optional": []
-                }
-            }
-        ],
-        "snippets": [
-            {
-                "name": "test_snippet",
-                "description": "A test snippet",
-                "content": "Test content",
-                "content_type": "text/plain"
-            }
-        ]
-    }
-
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/skills/", json=skill_data)
+        # First create a tool and snippet
+        tool_uuid = await create_tool_helper(client, "test_tool", "A test tool")
+        assert tool_uuid is not None, "Failed to create test tool"
+        
+        snippet_uuid = await create_snippet_helper(client, "test_snippet", "Test content", "A test snippet")
+        assert snippet_uuid is not None, "Failed to create test snippet"
+        
+        # Now create the skill with the UUIDs
+        skill_data = {
+            "name": "test_skill",
+            "description": "A test skill for demonstration",
+            "tool_uuids": [tool_uuid],
+            "snippet_uuids": [snippet_uuid]
+        }
+
+        response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
         assert response.status_code == 200
         data = response.json()
         assert data.get("name") == "test_skill"
@@ -67,12 +110,12 @@ async def test_create_duplicate_skill(run_sbs):
     skill_data = {
         "name": "test_skill",
         "description": "A test skill for demonstration",
-        "tools": [],
-        "snippets": []
+        "tool_uuids": [],
+        "snippet_uuids": []
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/skills/", json=skill_data)
+        response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
         # Should fail with 409 Conflict
         assert response.status_code == 409
         assert "already exists" in response.json().get("detail", "")
@@ -119,44 +162,44 @@ async def test_get_nonexistent_skill(run_sbs):
 @pytest.mark.asyncio
 async def test_update_skill(run_sbs):
     """Test updating an existing skill."""
-    updated_data = {
-        "name": "test_skill",
-        "description": "Updated test skill description",
-        "tools": [
-            {
-                "name": "updated_tool",
-                "description": "An updated tool",
-                "module_name": "updated_tool_module",
-                "programming_language": "python",
-                "packaging_format": "code",
-                "params": {
-                    "type": "object",
-                    "properties": {
-                        "param2": {"type": "number"}
-                    },
-                    "required": [],
-                    "optional": []
-                }
-            }
-        ],
-        "snippets": [
-            {
-                "name": "updated_snippet",
-                "description": "An updated snippet",
-                "content": "Updated content",
-                "content_type": "text/markdown"
-            }
-        ]
-    }
-
     async with httpx.AsyncClient() as client:
-        response = await client.put(f"{BASE_URL}/skills/test_skill", json=updated_data)
+        # First create a skill to update with a unique name
+        initial_tool_uuid = await create_tool_helper(client, "initial_update_tool", "Initial tool")
+        assert initial_tool_uuid is not None
+        
+        initial_snippet_uuid = await create_snippet_helper(client, "initial_update_snippet", "Initial content", "Initial snippet")
+        assert initial_snippet_uuid is not None
+        
+        create_data = {
+            "name": "skill_for_update_test",
+            "description": "A test skill for update",
+            "tool_uuids": [initial_tool_uuid],
+            "snippet_uuids": [initial_snippet_uuid]
+        }
+        create_response = await client.post(f"{BASE_URL}/skills/", params=create_data)
+        assert create_response.status_code == 200
+        
+        # Now create new tool and snippet for update
+        updated_tool_uuid = await create_tool_helper(client, "updated_tool", "An updated tool")
+        assert updated_tool_uuid is not None
+        
+        updated_snippet_uuid = await create_snippet_helper(client, "updated_snippet", "Updated content", "An updated snippet")
+        assert updated_snippet_uuid is not None
+        
+        updated_data = {
+            "name": "skill_for_update_test",
+            "description": "Updated test skill description",
+            "tool_uuids": [updated_tool_uuid],
+            "snippet_uuids": [updated_snippet_uuid]
+        }
+
+        response = await client.put(f"{BASE_URL}/skills/skill_for_update_test", json=updated_data)
         assert response.status_code == 200
         data = response.json()
         assert "updated successfully" in data.get("message", "")
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/skills/test_skill")
+        get_response = await client.get(f"{BASE_URL}/skills/skill_for_update_test")
         assert get_response.status_code == 200
         skill = get_response.json()
         assert skill.get("description") == "Updated test skill description"
@@ -172,8 +215,8 @@ async def test_update_nonexistent_skill(run_sbs):
     updated_data = {
         "name": "nonexistent_skill",
         "description": "This should fail",
-        "tools": [],
-        "snippets": []
+        "tool_uuids": [],
+        "snippet_uuids": []
     }
 
     async with httpx.AsyncClient() as client:
@@ -209,37 +252,21 @@ async def test_skill_lifecycle(run_sbs):
     skill_name = "lifecycle_test_skill"
     
     async with httpx.AsyncClient() as client:
+        # Create initial tool and snippet
+        initial_tool_uuid = await create_tool_helper(client, "initial_tool", "Initial tool")
+        assert initial_tool_uuid is not None
+        
+        initial_snippet_uuid = await create_snippet_helper(client, "initial_snippet", "Initial content", "Initial snippet")
+        assert initial_snippet_uuid is not None
+        
         # 1. Create
         create_data = {
             "name": skill_name,
             "description": "Lifecycle test skill",
-            "tools": [
-                {
-                    "name": "initial_tool",
-                    "description": "Initial tool",
-                    "module_name": "initial_tool_module",
-                    "programming_language": "python",
-                    "packaging_format": "code",
-                    "params": {
-                        "type": "object",
-                        "properties": {
-                            "input": {"type": "string"}
-                        },
-                        "required": [],
-                        "optional": []
-                    }
-                }
-            ],
-            "snippets": [
-                {
-                    "name": "initial_snippet",
-                    "description": "Initial snippet",
-                    "content": "Initial content",
-                    "content_type": "text/plain"
-                }
-            ]
+            "tool_uuids": [initial_tool_uuid],
+            "snippet_uuids": [initial_snippet_uuid]
         }
-        create_response = await client.post(f"{BASE_URL}/skills/", json=create_data)
+        create_response = await client.post(f"{BASE_URL}/skills/", params=create_data)
         assert create_response.status_code == 200
         assert create_response.json().get("name") == skill_name
 
@@ -252,34 +279,17 @@ async def test_skill_lifecycle(run_sbs):
         assert skill.get("tools")[0].get("name") == "initial_tool"
 
         # 3. Update
+        updated_tool_uuid = await create_tool_helper(client, "updated_lifecycle_tool", "Updated tool")
+        assert updated_tool_uuid is not None
+        
+        updated_snippet_uuid = await create_snippet_helper(client, "updated_lifecycle_snippet", "Updated content", "Updated snippet")
+        assert updated_snippet_uuid is not None
+        
         update_data = {
             "name": skill_name,
             "description": "Updated lifecycle test skill",
-            "tools": [
-                {
-                    "name": "updated_tool",
-                    "description": "Updated tool",
-                    "module_name": "updated_tool_module",
-                    "programming_language": "python",
-                    "packaging_format": "code",
-                    "params": {
-                        "type": "object",
-                        "properties": {
-                            "output": {"type": "number"}
-                        },
-                        "required": [],
-                        "optional": []
-                    }
-                }
-            ],
-            "snippets": [
-                {
-                    "name": "updated_snippet",
-                    "description": "Updated snippet",
-                    "content": "Updated content",
-                    "content_type": "text/markdown"
-                }
-            ]
+            "tool_uuids": [updated_tool_uuid],
+            "snippet_uuids": [updated_snippet_uuid]
         }
         update_response = await client.put(f"{BASE_URL}/skills/{skill_name}", json=update_data)
         assert update_response.status_code == 200
@@ -290,8 +300,8 @@ async def test_skill_lifecycle(run_sbs):
         assert get_updated_response.status_code == 200
         updated_skill = get_updated_response.json()
         assert updated_skill.get("description") == "Updated lifecycle test skill"
-        assert updated_skill.get("tools")[0].get("name") == "updated_tool"
-        assert updated_skill.get("snippets")[0].get("content") == "Updated content"
+        assert updated_skill.get("tools")[0].get("name") == "updated_lifecycle_tool"
+        assert updated_skill.get("snippets")[0].get("name") == "updated_lifecycle_snippet"
 
         # 5. Delete
         delete_response = await client.delete(f"{BASE_URL}/skills/{skill_name}")
@@ -307,84 +317,45 @@ async def test_skill_lifecycle(run_sbs):
 async def test_search_skills(run_sbs):
     """Test searching for skills using the /search/skills endpoint."""
     
-    # Create test skills with different descriptions
-    test_skills = [
-        {
-            "name": "data_analysis_skill",
-            "description": "A comprehensive skill for data analysis including statistical methods and visualization techniques",
-            "tools": [
-                {
-                    "name": "pandas_tool",
-                    "description": "Data manipulation tool",
-                    "module_name": "pandas_module",
-                    "programming_language": "python",
-                    "packaging_format": "code",
-                    "params": {"type": "object", "properties": {}, "required": [], "optional": []}
-                }
-            ],
-            "snippets": [
-                {
-                    "name": "data_cleaning",
-                    "description": "Data cleaning snippet",
-                    "content": "# Clean data",
-                    "content_type": "text/plain"
-                }
-            ]
-        },
-        {
-            "name": "web_development_skill",
-            "description": "Full-stack web development skill covering frontend frameworks and backend APIs",
-            "tools": [
-                {
-                    "name": "react_tool",
-                    "description": "React framework tool",
-                    "module_name": "react_module",
-                    "programming_language": "javascript",
-                    "packaging_format": "code",
-                    "params": {"type": "object", "properties": {}, "required": [], "optional": []}
-                }
-            ],
-            "snippets": [
-                {
-                    "name": "api_endpoint",
-                    "description": "API endpoint snippet",
-                    "content": "// API code",
-                    "content_type": "text/plain"
-                }
-            ]
-        },
-        {
-            "name": "machine_learning_skill",
-            "description": "Machine learning and AI skill with deep learning models and neural networks",
-            "tools": [
-                {
-                    "name": "tensorflow_tool",
-                    "description": "TensorFlow ML tool",
-                    "module_name": "tensorflow_module",
-                    "programming_language": "python",
-                    "packaging_format": "code",
-                    "params": {"type": "object", "properties": {}, "required": [], "optional": []}
-                }
-            ],
-            "snippets": [
-                {
-                    "name": "model_training",
-                    "description": "Model training snippet",
-                    "content": "# Train model",
-                    "content_type": "text/plain"
-                }
-            ]
-        }
-    ]
-    
     async with httpx.AsyncClient() as client:
+        # Create tools and snippets for test skills
+        pandas_tool_uuid = await create_tool_helper(client, "pandas_tool", "Data manipulation tool")
+        data_cleaning_snippet_uuid = await create_snippet_helper(client, "data_cleaning", "# Clean data", "Data cleaning snippet")
+        
+        react_tool_uuid = await create_tool_helper(client, "react_tool", "React framework tool")
+        api_endpoint_snippet_uuid = await create_snippet_helper(client, "api_endpoint", "// API code", "API endpoint snippet")
+        
+        tensorflow_tool_uuid = await create_tool_helper(client, "tensorflow_tool", "TensorFlow ML tool")
+        model_training_snippet_uuid = await create_snippet_helper(client, "model_training", "# Train model", "Model training snippet")
+        
+        # Create test skills with different descriptions
+        test_skills = [
+            {
+                "name": "data_analysis_skill",
+                "description": "A comprehensive skill for data analysis including statistical methods and visualization techniques",
+                "tool_uuids": [pandas_tool_uuid],
+                "snippet_uuids": [data_cleaning_snippet_uuid]
+            },
+            {
+                "name": "web_development_skill",
+                "description": "Full-stack web development skill covering frontend frameworks and backend APIs",
+                "tool_uuids": [react_tool_uuid],
+                "snippet_uuids": [api_endpoint_snippet_uuid]
+            },
+            {
+                "name": "machine_learning_skill",
+                "description": "Machine learning and AI skill with deep learning models and neural networks",
+                "tool_uuids": [tensorflow_tool_uuid],
+                "snippet_uuids": [model_training_snippet_uuid]
+            }
+        ]
+        
         # Create the test skills
         for skill_data in test_skills:
-            response = await client.post(f"{BASE_URL}/skills/", json=skill_data)
+            response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
             assert response.status_code == 200, f"Failed to create skill {skill_data['name']}: {response.text}"
         
         # Wait a moment for indexing
-        import asyncio
         await asyncio.sleep(1)
         
         # Test search for "data analysis"

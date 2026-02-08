@@ -72,10 +72,11 @@ async def test_list_vmcp_servers(run_sbs):
         assert isinstance(data, dict)
         assert "virtual_mcp_servers" in data
         vmcp_servers = data["virtual_mcp_servers"]
-        assert isinstance(vmcp_servers, list)
+        # API returns a dict of server objects keyed by server name
+        assert isinstance(vmcp_servers, dict)
         assert len(vmcp_servers) > 0
         
-        # Check that our test VMCP server is in the list
+        # Check that our test VMCP server is in the dict keys
         assert "test_vmcp_server" in vmcp_servers
 
 
