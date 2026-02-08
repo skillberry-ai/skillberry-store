@@ -4,7 +4,6 @@ import json
 import pytest
 
 from skillberry_store.client.utils import base_client_utils, json_client_utils
-from skillberry_store.modules.manifest import python_manifest_from_json_description
 from skillberry_store.tests import resources as resources_package
 from skillberry_store.tests.e2e.fixtures import run_sbs
 

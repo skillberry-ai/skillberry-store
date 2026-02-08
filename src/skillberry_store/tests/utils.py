@@ -10,8 +10,6 @@ def clean_test_tmp_dir():
     """Removes temporary directories used by the tools service."""
 
     paths = [
-        "/tmp/manifest",
-        "/tmp/descriptions",
         "/tmp/files",
         "/tmp/snippets",
         "/tmp/tools",
@@ -30,7 +28,7 @@ def clean_test_tmp_dir():
             shutil.rmtree(path, ignore_errors=False)
 
 
-async def wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeout=15):
+async def wait_until_server_ready(url="http://127.0.0.1:8000/tools/", timeout=15):
     """Waits until the server at the given URL responds with HTTP 200 or times out."""
 
     start = asyncio.get_event_loop().time()
@@ -53,9 +51,12 @@ async def wait_until_server_ready(url="http://127.0.0.1:8000/manifests/", timeou
 async def add_tool_manifest(
     name: str = "multiply", mcp_url: str = "http://localhost:8080/sse"
 ):
-    """Registers a tool manifest with the tools service via HTTP POST."""
+    """Registers a tool with the tools service via HTTP POST.
+    
+    Note: This function is deprecated and should use the /tools/ endpoint instead.
+    """
 
-    manifest = {
+    tool = {
         "programming_language": "python",
         "packaging_format": "mcp",
         "version": "0.0.1",
@@ -64,13 +65,13 @@ async def add_tool_manifest(
         "state": "approved",
     }
 
-    manifest_str = json.dumps(manifest)
-    file_manifest_url = quote(manifest_str)
+    tool_str = json.dumps(tool)
+    file_tool_url = quote(tool_str)
 
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"http://localhost:8000/manifests/add?file_manifest={file_manifest_url}",
+            f"http://localhost:8000/tools/?tool={file_tool_url}",
             headers={"accept": "application/json"},
         )
-        assert response.status_code == 200, f"Add manifest failed: {response.text}"
+        assert response.status_code == 200, f"Add tool failed: {response.text}"
         return response.json()
