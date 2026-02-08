@@ -111,19 +111,6 @@ def get_files_directory_path():
     return default_path
 
 
-def get_descriptions_directory():
-    """
-    Get the directory path for descriptions.
-    """
-    env_path = os.getenv("SBS_DESCRIPTIONS_DIRECTORY")
-    if env_path:
-        logger.info(f"Using descriptions directory from environment: {env_path}")
-        return env_path
-    default_path = "/tmp/descriptions"
-    logger.info(f"Using default descriptions directory: {default_path}")
-    return default_path
-
-
 def get_tools_descriptions_directory():
     """
     Get the directory path for tool descriptions.
@@ -147,19 +134,6 @@ def get_metadata_directory():
         return env_path
     default_path = "/tmp/metadata"
     logger.info(f"Using default metadata directory: {default_path}")
-    return default_path
-
-
-def get_manifest_directory():
-    """
-    Get the directory path for manifest.
-    """
-    env_path = os.getenv("SBS_MANIFEST_DIRECTORY")
-    if env_path:
-        logger.info(f"Using manifest directory from environment: {env_path}")
-        return env_path
-    default_path = "/tmp/manifest"
-    logger.info(f"Using default manifest directory: {default_path}")
     return default_path
 
 

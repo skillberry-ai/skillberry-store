@@ -385,18 +385,12 @@ class VirtualMcpServer:
             raise ValueError(f"Tool {tool_name} not found")
 
         try:
-            if self.app:
-                # Use direct app method call like MCPToSBSProxy
-                result = await self.app.handle_execute_manifest(
-                    tool_name, parameters, env_id=env_id
-                )
-            else:
-                # Fallback to HTTP requests
-                response = requests.post(
-                    f"{self.sts_url}/manifests/execute/{tool_name}", json=parameters
-                )
-                response.raise_for_status()
-                result = response.json()
+            # Use HTTP requests to execute tools via the tools API
+            response = requests.post(
+                f"{self.sts_url}/tools/{tool_name}/execute", json=parameters
+            )
+            response.raise_for_status()
+            result = response.json()
             
             # Record successful execution metrics
             duration = time.time() - start_time

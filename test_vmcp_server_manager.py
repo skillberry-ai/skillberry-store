@@ -16,9 +16,3 @@ def test_vmcp_server_manager_searchable_via_fastapi():
     assert isinstance(servers, dict)
     assert "virtual_mcp_servers" in servers
     assert isinstance(servers["virtual_mcp_servers"], dict)
-    
-    # Test that manifests endpoint works with vmcp_server filter
-    response = client.get("/manifests/", params={"manifest_filter": "programming_language:vmcp_server"})
-    assert response.status_code == 200
-    manifests = response.json()
-    assert isinstance(manifests, list)
