@@ -18,6 +18,11 @@ CODE_FILES := $(foreach T,$(CODE_SUBTREES), \
 
 CODE_FILES := $(CODE_FILES) pyproject.toml Makefile
 
+# Service name in lowercase
+SERVICE_NAME_LC = $(shell printf "%s" "$(SERVICE_NAME)" | tr '[:upper:]' '[:lower:]')
+# Service name in code notation - lowercase + replace hyphen->underscore
+SERVICE_NAME_CN ?= $(shell printf "%s" "$(SERVICE_NAME_LC)" | tr '[:upper:]' '[:lower:]')
+
 # This stamp file checks for code changes
 .stamps/code_scan: $(CODE_FILES) 
 	@echo "Detected code changed in: $(CODE_SUBTREES)"
@@ -79,3 +84,112 @@ update_git_version:
 	    echo "Skipping update_git_version: not inside a Git repository."; \
 	fi
 
+release: check-git-main check-git-clean install_requirements  ## Release a new version
+	@if [ -z "$(RELEASE_VERSION)" ]; then \
+		echo "++++++++++++++++++++++++++++++++++++++++++++"; \
+  		echo "RELEASE_VERSION is not set. It is required for the release"; \
+  		echo "Please set RELEASE_VERSION and use 'RELEASE_VERSION=<version> make release' "; \
+		echo "++++++++++++++++++++++++++++++++++++++++++++"; \
+	exit 1; fi
+
+	@command -v sed >/dev/null 2>&1 || { echo "❌ 'sed' is not installed. Aborting."; exit 1; }
+	@echo "++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "=> Creating release with version: $(RELEASE_VERSION)"
+	@echo "++++++++++++++++++++++++++++++++++++++++++++"
+	@sleep 10
+	@echo "===> Generating git tag $(RELEASE_VERSION) and creating GitHub release"
+	@git checkout -b branch-$(RELEASE_VERSION)
+	@echo "===> Generated release branch $(RELEASE_VERSION)"
+
+ifeq ($(SERVICE_HAS_SDK), 1)
+	@echo "Updating SDK dependency to release version $$RELEASE_VERSION"
+	@sed -i "s|$(SERVICE_NAME_LC)-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-sdk.git#subdirectory=$(SERVICE_NAME_CN)_sdk|$(SERVICE_NAMLC)-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-sdk.git@$$RELEASE_VERSION#subdirectory=$(SERVICE_NAME_CN)_sdk|" pyproject.toml 
+	@git add pyproject.toml
+	@if git diff --cached --quiet; then \
+		echo "!!! No updates to commit in $(ASSET_NAME) !!!"; \
+	else \
+		echo "!!! Updates detected in $(ASSET_NAME), committing... !!!"; \
+		git config --get user.name >/dev/null || git config user.name "Skillberry CI process" && \
+		git config --get user.email >/dev/null || git config user.email "skillberry.ci@skillberry.ai" && \
+		git commit -m "UpdateD pyproject.toml file with $(RELEASE_VERSION)" && \
+		git push origin branch-$(RELEASE_VERSION) && \
+		echo "Pushed updated pyproject.toml file to $(ASSET_NAME) repository (origin branch-$(RELEASE_VERSION))"; \
+	fi
+endif
+
+	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)" 
+	@git push origin $(RELEASE_VERSION)
+
+	#
+	# Important: change to main so that later invocation of "update_git_version" properly works,
+	# Note: update_git_version is called on different contexts later in this flow
+	#
+	@git checkout main
+
+	#
+	# The following block calls either to "basic" gh release command or an "explicit" one:
+	# 
+	# If no previous release exists then "basic" is called
+	# If a previous release exists then "explicit" using commit range is called
+	#
+
+	@REL_PREV_RELEASE=$$(git branch -r | grep 'branch-' | sed 's|.*/branch-||' | sort -V | tail -n 2 | head -n 1); \
+	if [ -z "$$REL_PREV_RELEASE" ] || [ "$$REL_PREV_RELEASE" = "$(RELEASE_VERSION)" ]; then \
+		echo "No previous release found. Creating release with generated notes..."; \
+		gh release create $(RELEASE_VERSION) --generate-notes; \
+	else \
+		echo "Previous release found: $$REL_PREV_RELEASE"; \
+		REL_CURRENT_COMMIT=$$(git rev-parse --short=7 HEAD); \
+		REL_PREV_COMMIT=$$(git merge-base origin/main origin/branch-$$REL_PREV_RELEASE); \
+		echo "Creating release from $$REL_PREV_COMMIT to $$REL_CURRENT_COMMIT..."; \
+		gh release create $(RELEASE_VERSION) --title "$(RELEASE_VERSION)" --notes "$$(git log --pretty=format:'- %s by %an' $$REL_PREV_COMMIT..$$REL_CURRENT_COMMIT)"; \
+	fi
+
+	#
+	# Important: change back to release branch so that docker image is built with customized
+	# toml/requirement files
+	#
+	@git checkout branch-$(RELEASE_VERSION)
+
+	@echo "===> Building and pushing new docker image"
+	@make docker_push
+	@echo "++++++++++++++++++++++++++++++++++++++++++++"
+	@echo "=> Release $(RELEASE_VERSION) created successfully"
+	@echo "++++++++++++++++++++++++++++++++++++++++++++"
+
+
+update_sdk: ## Update the SDK, if needed
+ifeq ($(SERVICE_HAS_SDK), 1)
+	@rm -rf /tmp/skillberry-sdk || true
+	@echo "==> Updating SDK..."
+	make docker_run
+	timeout 120 bash -c 'until curl -sf http://localhost:$(MAIN_SERVICE_PORT)/docs > /dev/null;\
+ 						 do echo "Waiting for $(DESC_NAME)..."; sleep 5; done'
+	@echo "$(DESC_NAME) started (using docker)"
+	@cd /tmp && \
+	git clone git@github.ibm.com:skillberry/skillberry-sdk.git && \
+	echo "Cloned skillberry-sdk repository into /tmp/skillberry-sdk" && \
+	cd skillberry-sdk && \
+	python -m venv venv && \
+	source venv/bin/activate && \
+	echo "Activated virtual environment" && \
+	make generate_$(SERVICE_NAME_CN)_sdk && \
+	echo "SDK updated successfully" && \
+	git add . && \
+	if git diff --cached --quiet; then \
+	  		echo "!!! No updates to commit in skillberry-sdk !!!"; \
+	else \
+		echo "!!! Updates detected in skillberry-sdk, committing... !!!"; \
+		git config --get user.name >/dev/null || git config user.name "Skillberry CI process" && \
+		git config --get user.email >/dev/null || git config user.email "skillberry.ci@skillberry.ai" && \
+		git commit -m "Update $(SERVICE_NAME_CN)_sdk $$(date '+%Y-%m-%d %H:%M:%S')" && \
+		git push origin main && \
+		echo "Pushed updated SDK to skillberry-sdk repository (origin main)"; \
+	fi
+	make docker_stop
+	echo "$(DESC_NAME) stopped"
+	@echo "==> SDK update completed successfully"
+else
+	@echo "Service has no SDK, skipping"
+	@true
+endif
