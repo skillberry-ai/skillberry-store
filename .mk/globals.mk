@@ -10,6 +10,44 @@ OS := $(shell uname -s)
 # Create the .stamps directory (idempotent)
 _ := $(shell mkdir -p .stamps)
 
+# Port setup
+#
+# The first port in SERVICE_PORTS is the main service port. 
+# The second port etc are optional, defined specifically for each service
+MAIN_SERVICE_PORT = $(firstword $(SERVICE_PORTS)) 
+
+# Define ports based on ACRONYM, SERVICE_PORTS and SERVICE_PORT_ROLES e.g., "SBS_PORT","SBM_CONFIG_PORT" etc
+
+# --- Validate lengths match ---
+_ports_n := $(words $(SERVICE_PORTS))
+_roles_n := $(words $(SERVICE_PORT_ROLES))
+ifneq ($(_ports_n),$(_roles_n))
+  $(error SERVICE_PORTS has $(_ports_n) items; SERVICE_PORT_ROLES has $(_roles_n). They must match.)
+endif
+
+# --- Zip roles and ports: "MAIN:8000 CONFIG:8001 UI:8002" ---
+_pairs := $(join $(addsuffix :, $(SERVICE_PORT_ROLES)),$(SERVICE_PORTS))
+
+# --- Build the export lines (MAIN omits the role in the var name) ---
+_export_lines := \
+$(foreach _p,$(_pairs), \
+  $(if $(filter MAIN,$(firstword $(subst :, ,$(_p)))), \
+    export $(ACRONYM)_PORT = $(word 2,$(subst :, ,$(_p))), \
+    export $(ACRONYM)_$(subst -,_,$(firstword $(subst :, ,$(_p))))_PORT = $(word 2,$(subst :, ,$(_p))) ) \
+)
+
+# --- Materialize the dynamic exports ---
+$(eval $(_export_lines))
+
+# ---------- Optional: a helper target to show what was defined ----------
+.PHONY: show-ports
+show-ports:
+    @echo "$(ACRONYM)_PORT=$($(ACRONYM)_PORT)"
+    @$(foreach r,$(filter-out MAIN,$(SERVICE_PORT_ROLES)), \
+        echo "$(ACRONYM)_$(subst -,_,$(r))_PORT=$($(ACRONYM)_$(subst -,_,$(r))_PORT)";)
+
+
+
 # Set BUILD_VERSION variable
 #
 # In SkillBerry every tag/release is created in a separate branch (to have dedicated toml with
