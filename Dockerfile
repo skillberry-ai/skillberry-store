@@ -4,7 +4,7 @@ FROM public.ecr.aws/docker/library/python:3.11
 ARG BUILD_VERSION=latest
 ARG BUILD_DATE
 ARG SERVICE_NAME
-ARG SERVICE_PORT
+ARG SERVICE_PORTS
 ARG SERVICE_ENTRY_MODULE
 
 # Label the image with metadata
@@ -15,7 +15,7 @@ LABEL date="$BUILD_DATE"
 ENV BUILD_VERSION=$BUILD_VERSION \
     BUILD_DATE=$BUILD_DATE \
     SERVICE_NAME=$SERVICE_NAME \
-    SERVICE_PORT=$SERVICE_PORT \
+    SERVICE_PORTS=$SERVICE_PORTS \
     SERVICE_ENTRY_MODULE=$SERVICE_ENTRY_MODULE
 
 # Set the working directory
@@ -32,8 +32,8 @@ ENV PATH="/app/.venv/bin:${PATH}"
 COPY . .
 RUN make install_requirements
 
-# Expose a port (change if needed)
-EXPOSE $SERVICE_PORT
+# Expose all service ports
+EXPOSE $SERVICE_PORTS
 
 # Set the entrypoint command (adjust if running FastAPI, Flask, Django, etc.)
 CMD ["sh", "-c", "make run"]
