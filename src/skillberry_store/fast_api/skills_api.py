@@ -444,6 +444,9 @@ def register_skills_api(
             
             # Create tools
             created_tool_uuids = []
+            # First pass: collect all tool names for dependency detection
+            all_tool_names = [t.name for t in tools]
+            
             for tool in tools:
                 try:
                     tool_dict = tool.to_dict()
@@ -469,6 +472,25 @@ def register_skills_api(
                         tool_data['params'] = tool_dict['params']
                     if 'returns' in tool_dict and tool_dict['returns']:
                         tool_data['returns'] = tool_dict['returns']
+                    
+                    # Auto-detect dependencies for Python tools
+                    if tool_dict['programmingLanguage'] == 'python':
+                        try:
+                            from skillberry_store.modules.file_executor import detect_tool_dependencies
+                            # Get list of available tools (existing + being imported)
+                            existing_tools = [f.replace('.json', '') for f in tools_handler.list_files()]
+                            available_tools = list(set(existing_tools + all_tool_names))
+                            # Detect dependencies from code
+                            detected_deps = detect_tool_dependencies(
+                                tool_dict['moduleContent'],
+                                tool_dict['name'],
+                                available_tools
+                            )
+                            if detected_deps:
+                                tool_data['dependencies'] = detected_deps
+                                logger.info(f"Auto-detected dependencies for '{tool_dict['name']}': {detected_deps}")
+                        except Exception as e:
+                            logger.warning(f"Failed to auto-detect dependencies for {tool_dict['name']}: {e}")
                     
                     # Save tool JSON
                     tool_filename = f"{tool_dict['name']}.json"
