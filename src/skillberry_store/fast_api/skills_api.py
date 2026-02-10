@@ -4,7 +4,8 @@ import json
 import logging
 import uuid
 from typing import Optional, Annotated
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from fastapi.responses import Response
 from prometheus_client import Counter
 
 from skillberry_store.modules.file_handler import FileHandler
@@ -387,4 +388,270 @@ def register_skills_api(
             logger.error(f"Error searching skills: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error searching skills: {str(e)}"
+            )
+
+    @app.post("/skills/import-anthropic", tags=[tags])
+    async def import_anthropic_skill(
+        source_type: str = Form(...),
+        github_url: Optional[str] = Form(None),
+        zip_file: Optional[UploadFile] = File(None),
+        folder_path: Optional[str] = Form(None),
+        snippet_mode: str = Form("file"),
+    ):
+        """Import an Anthropic skill from GitHub URL, ZIP file, or local folder.
+        
+        Args:
+            source_type: 'url', 'zip', or 'folder'
+            github_url: GitHub repository URL (required if source_type='url')
+            zip_file: ZIP file upload (required if source_type='zip')
+            folder_path: Local folder path (required if source_type='folder')
+            snippet_mode: 'file' or 'paragraph' - how to import text files
+            
+        Returns:
+            dict: Import result with created tools, snippets, and skill info
+            
+        Raises:
+            HTTPException: If import fails
+        """
+        logger.info(f"Request to import Anthropic skill from {source_type}")
+        
+        try:
+            from skillberry_store.tools.anthropic.importer import import_anthropic_skill
+            
+            # Prepare source data based on type
+            source_data = None
+            if source_type == 'url':
+                if not github_url:
+                    raise HTTPException(status_code=400, detail="github_url is required for source_type='url'")
+                source_data = github_url
+            elif source_type == 'zip':
+                if not zip_file:
+                    raise HTTPException(status_code=400, detail="zip_file is required for source_type='zip'")
+                source_data = await zip_file.read()
+            elif source_type == 'folder':
+                if not folder_path:
+                    raise HTTPException(status_code=400, detail="folder_path is required for source_type='folder'")
+                source_data = folder_path
+            else:
+                raise HTTPException(status_code=400, detail=f"Invalid source_type: {source_type}. Must be 'url', 'zip', or 'folder'")
+            
+            # Import the skill
+            skill_name, skill_description, tools, snippets, ignored_files = import_anthropic_skill(
+                source_type=source_type,
+                source_data=source_data,
+                snippet_mode=snippet_mode
+            )
+            
+            # Create tools
+            created_tool_uuids = []
+            for tool in tools:
+                try:
+                    tool_dict = tool.to_dict()
+                    tool_uuid = str(uuid.uuid4())
+                    
+                    # Prepare tool data
+                    ext = '.py' if tool_dict['programmingLanguage'] == 'python' else '.sh'
+                    module_filename = f"{tool_dict['name']}{ext}"
+                    
+                    tool_data = {
+                        'uuid': tool_uuid,
+                        'name': tool_dict['name'],
+                        'version': tool_dict['version'],
+                        'description': tool_dict['description'],
+                        'tags': tool_dict['tags'],
+                        'programming_language': tool_dict['programmingLanguage'],
+                        'module_name': module_filename,
+                        'state': 'approved',
+                    }
+                    
+                    if 'params' in tool_dict and tool_dict['params']:
+                        tool_data['params'] = tool_dict['params']
+                    if 'returns' in tool_dict and tool_dict['returns']:
+                        tool_data['returns'] = tool_dict['returns']
+                    
+                    # Save tool JSON
+                    tool_filename = f"{tool_dict['name']}.json"
+                    tool_json = json.dumps(tool_data, indent=4)
+                    tools_handler.write_file_content(tool_filename, tool_json)
+                    
+                    # Save tool module
+                    from skillberry_store.tools.configure import get_files_directory_path
+                    from skillberry_store.modules.file_handler import FileHandler
+                    files_handler = FileHandler(get_files_directory_path())
+                    files_handler.write_file_content(module_filename, tool_dict['moduleContent'])
+                    
+                    created_tool_uuids.append(tool_uuid)
+                    logger.info(f"Created tool: {tool_dict['name']}")
+                except Exception as e:
+                    logger.error(f"Failed to create tool {tool.name}: {e}")
+            
+            # Create snippets
+            created_snippet_uuids = []
+            for snippet in snippets:
+                try:
+                    snippet_dict = snippet.to_dict()
+                    snippet_uuid = str(uuid.uuid4())
+                    
+                    # Prepare snippet data
+                    snippet_data = {
+                        'uuid': snippet_uuid,
+                        'name': snippet_dict['name'],
+                        'version': snippet_dict['version'],
+                        'description': snippet_dict['description'],
+                        'content': snippet_dict['content'],
+                        'tags': snippet_dict['tags'],
+                        'content_type': 'text/plain',
+                        'state': 'approved',
+                    }
+                    
+                    # Save snippet JSON
+                    snippet_filename = f"{snippet_dict['name']}.json"
+                    snippet_json = json.dumps(snippet_data, indent=4)
+                    snippets_handler.write_file_content(snippet_filename, snippet_json)
+                    
+                    created_snippet_uuids.append(snippet_uuid)
+                    logger.info(f"Created snippet: {snippet_dict['name']}")
+                except Exception as e:
+                    logger.error(f"Failed to create snippet {snippet.name}: {e}")
+            
+            # Create skill
+            skill_uuid = str(uuid.uuid4())
+            skill_data = {
+                'uuid': skill_uuid,
+                'name': skill_name,
+                'version': '1.0.0',
+                'description': skill_description,
+                'tags': ['anthropic', 'imported'],
+                'tool_uuids': created_tool_uuids,
+                'snippet_uuids': created_snippet_uuids,
+                'state': 'approved',
+            }
+            
+            skill_filename = f"{skill_name}.json"
+            skill_json = json.dumps(skill_data, indent=4)
+            skill_handler.write_file_content(skill_filename, skill_json)
+            
+            # Write description for search capability
+            if skills_descriptions and skill_description:
+                skills_descriptions.write_description(skill_name, skill_description)
+            
+            logger.info(f"Successfully imported Anthropic skill: {skill_name}")
+            
+            return {
+                'success': True,
+                'message': f"Successfully imported Anthropic skill '{skill_name}'",
+                'skill_name': skill_name,
+                'skill_uuid': skill_uuid,
+                'tools_created': len(created_tool_uuids),
+                'snippets_created': len(created_snippet_uuids),
+                'ignored_files': ignored_files,
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error importing Anthropic skill: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error importing Anthropic skill: {str(e)}"
+            )
+
+    @app.get("/skills/{name}/export-anthropic", tags=[tags])
+    async def export_anthropic_skill(name: str):
+        """Export a skill to Anthropic format as a ZIP file.
+        
+        Args:
+            name: The name of the skill to export
+            
+        Returns:
+            ZIP file with the skill in Anthropic format
+            
+        Raises:
+            HTTPException: If skill not found or export fails
+        """
+        logger.info(f"Request to export skill to Anthropic format: {name}")
+        
+        try:
+            from skillberry_store.tools.anthropic.exporter import export_skill_to_anthropic_format
+            
+            # Get skill
+            skill_filename = f"{name}.json"
+            content = skill_handler.read_file(skill_filename, raw_content=True)
+            if not isinstance(content, str):
+                raise HTTPException(
+                    status_code=500, detail=f"Invalid content type for skill '{name}'"
+                )
+            skill_dict = json.loads(content)
+            
+            # Get tools
+            tools = []
+            tool_modules = {}
+            if 'tool_uuids' in skill_dict and skill_dict['tool_uuids']:
+                for tool_uuid in skill_dict['tool_uuids']:
+                    for filename in tools_handler.list_files():
+                        if filename.endswith('.json'):
+                            try:
+                                tool_content = tools_handler.read_file(filename, raw_content=True)
+                                if isinstance(tool_content, str):
+                                    tool_dict = json.loads(tool_content)
+                                    if tool_dict.get('uuid') == tool_uuid:
+                                        tools.append(tool_dict)
+                                        # Get tool module
+                                        tool_name = tool_dict['name']
+                                        lang = tool_dict.get('programming_language', 'python').lower()
+                                        ext = '.py' if lang == 'python' else '.sh'
+                                        module_filename = f"{tool_name}{ext}"
+                                        try:
+                                            from skillberry_store.tools.configure import get_files_directory_path
+                                            from skillberry_store.modules.file_handler import FileHandler
+                                            files_handler = FileHandler(get_files_directory_path())
+                                            module_content = files_handler.read_file(module_filename, raw_content=True)
+                                            if isinstance(module_content, str):
+                                                tool_modules[tool_name] = module_content
+                                        except Exception as e:
+                                            logger.warning(f"Could not read module for tool {tool_name}: {e}")
+                                        break
+                            except Exception as e:
+                                logger.warning(f"Error reading tool file {filename}: {e}")
+            
+            # Get snippets
+            snippets = []
+            if 'snippet_uuids' in skill_dict and skill_dict['snippet_uuids']:
+                for snippet_uuid in skill_dict['snippet_uuids']:
+                    for filename in snippets_handler.list_files():
+                        if filename.endswith('.json'):
+                            try:
+                                snippet_content = snippets_handler.read_file(filename, raw_content=True)
+                                if isinstance(snippet_content, str):
+                                    snippet_dict = json.loads(snippet_content)
+                                    if snippet_dict.get('uuid') == snippet_uuid:
+                                        snippets.append(snippet_dict)
+                                        break
+                            except Exception as e:
+                                logger.warning(f"Error reading snippet file {filename}: {e}")
+            
+            # Export to Anthropic format
+            zip_content = export_skill_to_anthropic_format(
+                skill=skill_dict,
+                tools=tools,
+                snippets=snippets,
+                tool_modules=tool_modules
+            )
+            
+            logger.info(f"Successfully exported skill '{name}' to Anthropic format")
+            
+            # Return as downloadable ZIP file
+            return Response(
+                content=zip_content,
+                media_type='application/zip',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{name}.zip"'
+                }
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error exporting skill '{name}' to Anthropic format: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error exporting skill: {str(e)}"
             )
