@@ -421,7 +421,7 @@ def parse_code_file(
             ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
             
             tools.append(ParsedTool(
-                name=f"{skill_name}_{tool_name}",
+                name=tool_name,
                 source_file_name=file_name,
                 description=description,
                 module_content=content,
@@ -442,7 +442,7 @@ def parse_code_file(
             ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
             
             tools.append(ParsedTool(
-                name=f"{skill_name}_{func['name']}",
+                name=func['name'],
                 source_file_name=file_name,
                 description=description,
                 module_content=func['code'],
@@ -478,7 +478,7 @@ def parse_code_file(
             ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
             
             tools.append(ParsedTool(
-                name=f"{skill_name}_{tool_name}",
+                name=tool_name,
                 source_file_name=file_name,
                 description=description,
                 module_content=content,
@@ -499,7 +499,7 @@ def parse_code_file(
             ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
             
             tools.append(ParsedTool(
-                name=f"{skill_name}_{func['name']}",
+                name=func['name'],
                 source_file_name=file_name,
                 description=description,
                 module_content=func['code'],

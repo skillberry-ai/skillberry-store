@@ -152,7 +152,7 @@ def parse_text_file(
     if not split_by_paragraph:
         # Import as a single snippet (complete file)
         return [ParsedSnippet(
-            name=f"{skill_name}_{base_file_name}",
+            name=base_file_name,
             description=generate_description(processed_content),
             content=processed_content,
             tags=[file_path_tag] + tags,
@@ -165,9 +165,9 @@ def parse_text_file(
     snippets = []
     for index, paragraph in enumerate(paragraphs):
         snippet_name = (
-            f"{skill_name}_{base_file_name}"
+            base_file_name
             if len(paragraphs) == 1
-            else f"{skill_name}_{base_file_name}_{index + 1}"
+            else f"{base_file_name}_{index + 1}"
         )
         
         snippets.append(ParsedSnippet(
