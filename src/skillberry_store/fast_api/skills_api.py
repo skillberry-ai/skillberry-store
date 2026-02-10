@@ -461,6 +461,7 @@ def register_skills_api(
                         'tags': tool_dict['tags'],
                         'programming_language': tool_dict['programmingLanguage'],
                         'module_name': module_filename,
+                        'packaging_format': 'code',
                         'state': 'approved',
                     }
                     
