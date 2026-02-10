@@ -622,7 +622,7 @@ class FileExecutor:
 
 
 def generate_wrapper_any_types(
-    code_str: str, func_name: str, parameters: dict, dependent_codes_str: list[str]
+    code_str: str, func_name: str, parameters: dict, dependent_codes_str: list[str], env_id=None
 ) -> str:
     # Parse the main code to find the function definition
     tree = ast.parse(code_str)
@@ -640,10 +640,13 @@ def generate_wrapper_any_types(
     arg_str = ", ".join(f"{key}={repr(value)}" for key, value in parameters.items())
     func_name_call_code = f"{func_name}({arg_str})"
 
-    # Main wrapper code
+    # Main wrapper code with env_id support
+    env_id_declaration = f"env_id = {repr(env_id)}\n" if env_id is not None else ""
+    
     main_code = f"""
 import json
 
+{env_id_declaration}
 def main():
     try:
         result = {func_name_call_code}
