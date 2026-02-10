@@ -14,8 +14,6 @@ DOCKER := docker
 
 DOCKER_FILE := Dockerfile
 
-SERVICE_DOCKER_SETUP ?= ""
-
 # Check whether docker is aliased to podman
 # It is assumed that the user is using zsh or bash and alias is defined in ~/.zshrc or ~/.bashrc
 # Check that either Docker or Podman is installed
@@ -79,7 +77,7 @@ docker_build: docker_check update_git_version .stamps/docker_build
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg BUILD_DATE="$(BUILD_DATE)" \
 		--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
-		--build-arg SERVICE_PORT="$(SERVICE_PORT)" \
+		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 		-t $(DOCKER_NAME):$(DOCKER_VERSION) \
 		-t $(DOCKER_NAME):latest \
@@ -91,7 +89,7 @@ docker_build: docker_check update_git_version .stamps/docker_build
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg BUILD_DATE="$(BUILD_DATE)" \
 		--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
-		--build-arg SERVICE_PORT="$(SERVICE_PORT)" \
+		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 		-t $(DOCKER_NAME):$(DOCKER_VERSION) \
 		-t $(DOCKER_NAME):latest \
@@ -115,7 +113,6 @@ docker_push: docker_check docker_build ## Push docker image into the registry
 .PHONY: docker_run
 docker_run: docker_build docker_check docker_stop ## Run the docker image
 	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env \
-		$(SERVICE_DOCKER_SETUP) \
 		-d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp \
 		--network=host \
 		$(DOCKER_NAME):$(DOCKER_VERSION)
