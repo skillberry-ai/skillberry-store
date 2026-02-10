@@ -37,6 +37,10 @@ git_hooks_setup:
 	    echo "Skipping git_hooks_setup: not inside a Git repository."; \
 	fi
 
+.PHONY: show-ports
+show-ports: .stamps/ports.env	## Show service ports
+	@cat .stamps/ports.env
+
 test: install_requirements ## Test the tools-service
 	pytest
 
