@@ -138,6 +138,51 @@ def extract_function_and_imports(
     except SyntaxError:
         return None, [], []
 
+def detect_tool_dependencies(content: str, function_name: str, available_tools: List[str]) -> List[str]:
+    """
+    Detect tool dependencies by analyzing function calls in Python code.
+    
+    Args:
+        content: Python source code as string
+        function_name: Name of the function to analyze
+        available_tools: List of available tool names to match against
+    
+    Returns:
+        List of tool names that are called within the function
+    """
+    dependencies = []
+    
+    try:
+        tree = ast.parse(content)
+        
+        # Find the target function
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == function_name:
+                # Walk through the function body to find all function calls
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Call):
+                        # Extract the function name from the call
+                        func_name = None
+                        if isinstance(child.func, ast.Name):
+                            func_name = child.func.id
+                        elif isinstance(child.func, ast.Attribute):
+                            func_name = child.func.attr
+                        
+                        # Check if this function name matches any available tool
+                        if func_name and func_name in available_tools:
+                            if func_name not in dependencies:
+                                dependencies.append(func_name)
+                                logger.info(f"Detected dependency: {func_name}")
+                
+                break  # Found the function, no need to continue
+        
+        return dependencies
+    
+    except SyntaxError as e:
+        logger.warning(f"Failed to parse Python code for dependency detection: {e}")
+        return []
+
+
 
 class FileExecutor:
     def __init__(
@@ -146,7 +191,7 @@ class FileExecutor:
         file_content: AnyStr,
         file_manifest: dict,
         dependent_file_contents: List[str] = None,
-        dependent_manifests_as_dict: List[Dict] = None,
+        dependent_tools_as_dict: List[Dict] = None,
         execute_python_locally: bool = None,
     ):
         """
@@ -162,14 +207,14 @@ class FileExecutor:
             file_content (str): the code of the tool
             file_manifest (str): the manifest of the tool
             dependent_file_contents (list): list of dependant (if any) tools code
-            dependent_manifests_as_dict (list): list of dependant (if any) tools manifests
+            dependent_tools_as_dict (list): list of dependant (if any) tools manifests
             execute_python_locally (bool): Should execute using local mode
 
         """
         self.name = name
         self.content = file_content
         self.dependent_file_contents = dependent_file_contents or []
-        self.dependent_manifests_as_dict = dependent_manifests_as_dict or []
+        self.dependent_tools_as_dict = dependent_tools_as_dict or []
         self.execute_python_locally = (
             execute_python_locally
             if execute_python_locally is not None
@@ -364,8 +409,8 @@ class FileExecutor:
         )
 
         # Handle dependent manifests
-        for i, _ in enumerate(self.dependent_manifests_as_dict):
-            dm_name = self.dependent_manifests_as_dict[i]["name"]
+        for i, _ in enumerate(self.dependent_tools_as_dict):
+            dm_name = self.dependent_tools_as_dict[i]["name"]
             (
                 df_name,
                 _,
