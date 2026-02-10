@@ -747,7 +747,7 @@ def executor_instance_arithmetic_operation(
             file_content_add_operation,
             file_content_sub_operation,
         ],
-        dependent_manifests_as_dict=[
+        dependent_tools_as_dict=[
             manifest_test_tool_add_operation,
             manifest_test_tool_sub_operation,
         ],
@@ -880,7 +880,7 @@ def executor_instance_calculate(
         file_content=file_content_calculate,
         file_manifest=manifest_calculate,
         dependent_file_contents=[file_content_square_root, file_content_random_number],
-        dependent_manifests_as_dict=[
+        dependent_tools_as_dict=[
             manifest_square_root,
             manifest_random_number,
         ],
@@ -1017,7 +1017,7 @@ def executor_instance_describe_date(
             file_content_get_month_from_date,
             file_content_get_year_from_date,
         ],
-        dependent_manifests_as_dict=[
+        dependent_tools_as_dict=[
             manifest_get_month_from_date,
             manifest_get_year_from_date,
         ],
@@ -1080,7 +1080,7 @@ async def test_execute_modes(
         file_content=file_content_add,
         file_manifest=manifest_test_tool,
         dependent_file_contents=[],
-        dependent_manifests_as_dict=[],
+        dependent_tools_as_dict=[],
         execute_python_locally=execute_locally,
     )
 

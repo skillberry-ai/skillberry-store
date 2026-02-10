@@ -12,7 +12,7 @@ from prometheus_client import Counter, Histogram
 import time
 
 from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.modules.file_executor import FileExecutor
+from skillberry_store.modules.file_executor import FileExecutor, detect_tool_dependencies
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema, ToolParamsSchema, ToolReturnsSchema
@@ -137,6 +137,23 @@ def register_tools_api(
             file_handler.write_file(file_content, filename=module_filename)
             tool.module_name = module_filename
             logger.info(f"Saved module file: {module_filename}")
+
+            # Auto-detect dependencies if not provided
+            if not tool.dependencies:
+                try:
+                    # Get list of available tools
+                    available_tools = [f.replace('.json', '') for f in tool_handler.list_files()]
+                    # Detect dependencies from code
+                    detected_deps = detect_tool_dependencies(
+                        file_content.decode('utf-8') if isinstance(file_content, bytes) else file_content,
+                        tool.name,
+                        available_tools
+                    )
+                    if detected_deps:
+                        tool.dependencies = detected_deps
+                        logger.info(f"Auto-detected dependencies for '{tool.name}': {detected_deps}")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-detect dependencies: {e}")
 
             # Convert tool to JSON and save
             tool_json = json.dumps(tool.to_dict(), indent=4)
@@ -471,13 +488,45 @@ def register_tools_api(
                         status_code=500, detail=f"Invalid module content for tool '{name}'"
                     )
 
+            # Load dependencies if they exist
+            dependent_file_contents = []
+            dependent_tools_as_dict = []
+            
+            dependencies = tool_dict.get("dependencies", [])
+            if dependencies:
+                logger.info(f"Loading {len(dependencies)} dependencies for tool '{name}'")
+                for dep_name in dependencies:
+                    try:
+                        # Load dependency tool manifest
+                        dep_filename = f"{dep_name}.json"
+                        dep_content = tool_handler.read_file(dep_filename, raw_content=True)
+                        if isinstance(dep_content, str):
+                            dep_dict = json.loads(dep_content)
+                            dependent_tools_as_dict.append(dep_dict)
+                            
+                            # Load dependency module content
+                            dep_module_name = dep_dict.get("module_name")
+                            if dep_module_name:
+                                dep_module_content = file_handler.read_file(dep_module_name, raw_content=True)
+                                if isinstance(dep_module_content, str):
+                                    dependent_file_contents.append(dep_module_content)
+                                    logger.info(f"Loaded dependency: {dep_name}")
+                                else:
+                                    logger.warning(f"Could not load module content for dependency: {dep_name}")
+                            else:
+                                logger.warning(f"Dependency {dep_name} has no module_name")
+                        else:
+                            logger.warning(f"Could not load dependency manifest: {dep_name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to load dependency {dep_name}: {e}")
+
             # Execute the tool using FileExecutor
             file_executor = FileExecutor(
                 name=name,
                 file_content=module_content,
                 file_manifest=tool_dict,
-                dependent_file_contents=[],
-                dependent_manifests_as_dict=[],
+                dependent_file_contents=dependent_file_contents,
+                dependent_tools_as_dict=dependent_tools_as_dict,
             )
 
             # Ensure parameters is not None
@@ -691,6 +740,23 @@ def register_tools_api(
             file_handler.write_file(tool_bytes, filename=module_filename)
             logger.info(f"Saved module file: {module_filename}")
 
+            # Auto-detect dependencies
+            dependencies = None
+            try:
+                # Get list of available tools
+                available_tools = [f.replace('.json', '') for f in tool_handler.list_files()]
+                # Detect dependencies from code
+                detected_deps = detect_tool_dependencies(
+                    tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
+                    func_name,
+                    available_tools
+                )
+                if detected_deps:
+                    dependencies = detected_deps
+                    logger.info(f"Auto-detected dependencies for '{func_name}': {detected_deps}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-detect dependencies: {e}")
+
             # Create the tool schema
             params_schema = ToolParamsSchema(
                 type="object",
@@ -709,7 +775,8 @@ def register_tools_api(
                 version="0.0.1",
                 state=ManifestState.APPROVED,
                 params=params_schema,
-                returns=returns_schema
+                returns=returns_schema,
+                dependencies=dependencies
             )
 
             # Save the manifest

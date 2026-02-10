@@ -76,6 +76,10 @@ class ToolSchema(ManifestSchema):
         None,
         description="Return value schema for the tool"
     )
+    dependencies: Optional[List[str]] = Field(
+        default=None,
+        description="List of tool names that this tool depends on"
+    )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert the tool schema to a dictionary."""
