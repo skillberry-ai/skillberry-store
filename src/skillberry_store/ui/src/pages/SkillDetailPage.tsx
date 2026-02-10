@@ -44,7 +44,6 @@ import {
 import { EditIcon, TrashIcon, FolderIcon, FileIcon, FileCodeIcon, ExportIcon } from '@patternfly/react-icons';
 import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
 import type { Skill } from '@/types';
-import { exportAndDownloadSkill } from '@/utils/anthropic/exporter';
 
 export function SkillDetailPage() {
   const { name } = useParams<{ name: string }>();
@@ -279,12 +278,23 @@ export function SkillDetailPage() {
     if (!skill) return;
     
     try {
-      await exportAndDownloadSkill({
-        skill,
-        tools: skill.tools || [],
-        snippets: skill.snippets || [],
-        toolModules: toolModules || [],
-      });
+      // Call backend export endpoint
+      const response = await fetch(`/api/skills/${skill.name}/export-anthropic`);
+      
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+      
+      // Download the ZIP file
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${skill.name}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Failed to export skill:', error);
       alert('Failed to export skill. Please try again.');
