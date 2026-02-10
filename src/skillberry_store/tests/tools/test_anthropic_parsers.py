@@ -103,7 +103,7 @@ This is the actual content."""
             split_by_paragraph=False
         )
         assert len(snippets) == 1
-        assert snippets[0].name == "test_skill_test"
+        assert snippets[0].name == "test"
         assert snippets[0].content == content
         assert "file:docs/test.md" in snippets[0].tags
     
@@ -248,8 +248,8 @@ def subtract(a, b):
 """
         tools = parse_code_file(code, "utils.py", "scripts/utils.py", "test_skill")
         assert len(tools) == 2
-        assert tools[0].name == "test_skill_add"
-        assert tools[1].name == "test_skill_subtract"
+        assert tools[0].name == "add"
+        assert tools[1].name == "subtract"
         assert tools[0].programming_language == "python"
         assert "file:scripts/utils.py" in tools[0].tags
     
@@ -266,8 +266,8 @@ calculate() {
 """
         tools = parse_code_file(code, "script.sh", "scripts/script.sh", "test_skill")
         assert len(tools) == 2
-        assert tools[0].name == "test_skill_greet"
-        assert tools[1].name == "test_skill_calculate"
+        assert tools[0].name == "greet"
+        assert tools[1].name == "calculate"
         assert tools[0].programming_language == "bash"
     
     def test_parse_code_files_mixed(self):
