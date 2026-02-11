@@ -386,8 +386,15 @@ class VirtualMcpServer:
 
         try:
             # Use HTTP requests to execute tools via the tools API
+            headers = {}
+            if env_id:
+                # Pass env_id in the skillberry-context header
+                headers["skillberry-context-env_id"] = env_id
+            
             response = requests.post(
-                f"{self.sts_url}/tools/{tool_name}/execute", json=parameters
+                f"{self.sts_url}/tools/{tool_name}/execute",
+                json=parameters,
+                headers=headers
             )
             response.raise_for_status()
             result = response.json()
