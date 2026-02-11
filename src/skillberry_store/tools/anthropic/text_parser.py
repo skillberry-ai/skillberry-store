@@ -61,12 +61,13 @@ def generate_description(content: str) -> str:
     return truncated + ('...' if len(content) > 100 else '')
 
 
-def extract_tags(file_path: str, file_name: str) -> List[str]:
+def extract_tags(file_path: str, file_name: str, skill_name: str = '') -> List[str]:
     """Extract tags from filename and path.
     
     Args:
         file_path: The full file path
         file_name: The file name
+        skill_name: The skill name (optional)
         
     Returns:
         List of extracted tags
@@ -135,11 +136,12 @@ def parse_text_file(
     Returns:
         List of ParsedSnippet objects
     """
-    tags = extract_tags(file_path, file_name)
+    tags = extract_tags(file_path, file_name, skill_name)
     base_file_name = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
     
-    # Add file path tag in format file:complete_path_filename as the first tag
+    # Add file path tag and skill tag in format file:complete_path_filename as the first tags
     file_path_tag = f"file:{file_path}"
+    skill_tag = f"skill:{skill_name}"
     
     # Strip frontmatter from SKILL.md files
     processed_content = content
@@ -155,7 +157,7 @@ def parse_text_file(
             name=base_file_name,
             description=generate_description(processed_content),
             content=processed_content,
-            tags=[file_path_tag] + tags,
+            tags=[file_path_tag, skill_tag] + tags,
             version='1.0.0'
         )]
     
@@ -174,7 +176,7 @@ def parse_text_file(
             name=snippet_name,
             description=generate_description(paragraph),
             content=paragraph,
-            tags=[file_path_tag] + tags,  # File path tag first
+            tags=[file_path_tag, skill_tag] + tags,  # File path and skill tags first
             version='1.0.0'
         ))
     

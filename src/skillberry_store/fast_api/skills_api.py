@@ -9,10 +9,16 @@ from fastapi.responses import Response
 from prometheus_client import Counter
 
 from skillberry_store.modules.file_handler import FileHandler
+from skillberry_store.modules.file_executor import detect_tool_dependencies
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
-from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
+from skillberry_store.tools.configure import (
+    get_skills_directory,
+    get_tools_directory,
+    get_snippets_directory,
+    is_auto_detect_dependencies_enabled,
+)
 from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
@@ -473,10 +479,9 @@ def register_skills_api(
                     if 'returns' in tool_dict and tool_dict['returns']:
                         tool_data['returns'] = tool_dict['returns']
                     
-                    # Auto-detect dependencies for Python tools
-                    if tool_dict['programmingLanguage'] == 'python':
+                    # Auto-detect dependencies for Python tools if enabled
+                    if tool_dict['programmingLanguage'] == 'python' and is_auto_detect_dependencies_enabled():
                         try:
-                            from skillberry_store.modules.file_executor import detect_tool_dependencies
                             # Get list of available tools (existing + being imported)
                             existing_tools = [f.replace('.json', '') for f in tools_handler.list_files()]
                             available_tools = list(set(existing_tools + all_tool_names))

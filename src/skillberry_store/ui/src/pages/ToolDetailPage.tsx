@@ -297,6 +297,19 @@ export function ToolDetailPage() {
                     </DescriptionListGroup>
                   )}
 
+                  {tool.dependencies && tool.dependencies.length > 0 && (
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>Dependencies</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          {tool.dependencies.map((dep) => (
+                            <Label key={dep} color="blue">{dep}</Label>
+                          ))}
+                        </div>
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
+                  )}
+
                   {tool.params && (
                     <DescriptionListGroup>
                       <DescriptionListTerm>Parameters</DescriptionListTerm>
