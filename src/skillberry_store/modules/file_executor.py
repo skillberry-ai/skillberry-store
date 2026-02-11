@@ -641,13 +641,13 @@ def generate_wrapper_any_types(
     arg_str = ", ".join(f"{key}={repr(value)}" for key, value in parameters.items())
     func_name_call_code = f"{func_name}({arg_str})"
 
-    # Main wrapper code with env_id support
-    env_id_declaration = f"env_id = {repr(env_id)}\n" if env_id is not None else ""
+    # env_id declaration at the very top (before any dependent code)
+    env_id_declaration = f"env_id = {repr(env_id)}\n" if env_id is not None else "env_id = None\n"
     
+    # Main wrapper code
     main_code = f"""
 import json
 
-{env_id_declaration}
 def main():
     try:
         result = {func_name_call_code}
@@ -671,9 +671,11 @@ main()
         textwrap.dedent(dep.strip()) for dep in dependent_codes_str
     )
 
-    # Final full code
+    # Final full code with env_id at the very beginning
     full_code = (
         "\n"
+        + env_id_declaration
+        + "\n"
         + dependent_code_combined
         + "\n\n"
         + code_str.strip()
