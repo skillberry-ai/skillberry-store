@@ -384,7 +384,7 @@ class FileExecutor:
                 status_code=500, detail=f"Error executing Python file: {e}"
             )
 
-    def _prepare_python_execution(self, parameters):
+    def _prepare_python_execution(self, parameters, env_id=None):
         """
         Common preparation for Python execution (both local and Docker)
         """
@@ -432,6 +432,7 @@ class FileExecutor:
             str(function_name),
             dict(parameters),
             dependent_codes_str=self.dependent_file_contents,
+            env_id=env_id,
         )
 
         return function_name, function_imports, wrapper_code
@@ -447,7 +448,7 @@ class FileExecutor:
                 function_name,
                 function_imports,
                 wrapper_code,
-            ) = self._prepare_python_execution(parameters)
+            ) = self._prepare_python_execution(parameters, env_id=env_id)
 
             # Log the wrapper code for debugging
             # logger.info(f"Generated wrapper code for Docker:\n{wrapper_code}")
@@ -525,7 +526,7 @@ class FileExecutor:
                 function_name,
                 function_imports,
                 wrapper_code,
-            ) = self._prepare_python_execution(parameters)
+            ) = self._prepare_python_execution(parameters, env_id=env_id)
 
             # Try to install missing packages
             if function_imports:
