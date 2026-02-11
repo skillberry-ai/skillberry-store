@@ -18,6 +18,7 @@ from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema, ToolParamsSchema, ToolReturnsSchema
 from skillberry_store.schemas.manifest_schema import ManifestState
 from skillberry_store.tools.configure import (
+    is_auto_detect_dependencies_enabled,
     get_tools_directory,
     get_files_directory_path,
 )
@@ -138,8 +139,8 @@ def register_tools_api(
             tool.module_name = module_filename
             logger.info(f"Saved module file: {module_filename}")
 
-            # Auto-detect dependencies if not provided
-            if not tool.dependencies:
+            # Auto-detect dependencies if not provided and auto-detection is enabled
+            if not tool.dependencies and is_auto_detect_dependencies_enabled():
                 try:
                     # Get list of available tools
                     available_tools = [f.replace('.json', '') for f in tool_handler.list_files()]
@@ -740,22 +741,23 @@ def register_tools_api(
             file_handler.write_file(tool_bytes, filename=module_filename)
             logger.info(f"Saved module file: {module_filename}")
 
-            # Auto-detect dependencies
+            # Auto-detect dependencies if enabled
             dependencies = None
-            try:
-                # Get list of available tools
-                available_tools = [f.replace('.json', '') for f in tool_handler.list_files()]
-                # Detect dependencies from code
-                detected_deps = detect_tool_dependencies(
-                    tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
-                    func_name,
-                    available_tools
-                )
-                if detected_deps:
-                    dependencies = detected_deps
-                    logger.info(f"Auto-detected dependencies for '{func_name}': {detected_deps}")
-            except Exception as e:
-                logger.warning(f"Failed to auto-detect dependencies: {e}")
+            if is_auto_detect_dependencies_enabled():
+                try:
+                    # Get list of available tools
+                    available_tools = [f.replace('.json', '') for f in tool_handler.list_files()]
+                    # Detect dependencies from code
+                    detected_deps = detect_tool_dependencies(
+                        tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
+                        func_name,
+                        available_tools
+                    )
+                    if detected_deps:
+                        dependencies = detected_deps
+                        logger.info(f"Auto-detected dependencies for '{func_name}': {detected_deps}")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-detect dependencies: {e}")
 
             # Create the tool schema
             params_schema = ToolParamsSchema(

@@ -57,7 +57,7 @@ class TestTextParser:
     
     def test_extract_tags(self):
         """Test extracting tags from file path."""
-        tags = extract_tags("skills/pptx/utils.py", "utils.py")
+        tags = extract_tags("skills/pptx/utils.py", "utils.py", "test_skill")
         assert "py" in tags
         assert "anthropic" in tags
         assert "pptx" in tags
@@ -106,6 +106,7 @@ This is the actual content."""
         assert snippets[0].name == "test"
         assert snippets[0].content == content
         assert "file:docs/test.md" in snippets[0].tags
+        assert "skill:test_skill" in snippets[0].tags
     
     def test_parse_text_file_multiple_paragraphs(self):
         """Test parsing text file into multiple snippets."""
@@ -252,6 +253,7 @@ def subtract(a, b):
         assert tools[1].name == "subtract"
         assert tools[0].programming_language == "python"
         assert "file:scripts/utils.py" in tools[0].tags
+        assert "skill:test_skill" in tools[0].tags
     
     def test_parse_code_file_bash(self):
         """Test parsing Bash code file."""
@@ -321,6 +323,39 @@ def process(count: int, items: list, data: dict) -> bool:
         assert params['properties']['items']['type'] == 'array'
         assert params['properties']['data']['type'] == 'object'
         assert returns['type'] == 'boolean'
+    
+    def test_extract_python_functions_with_nested_function(self):
+        """Test that nested/internal functions are not extracted separately."""
+        code = """
+def cancel_reservation_policy(reservation_id: str):
+    '''Cancel reservation with policy check.
+    
+    Args:
+        reservation_id (str): The reservation ID
+    '''
+    
+    def is_within_24_hours(created_at_str, reference_str):
+        '''Internal helper function.'''
+        # Implementation here
+        return True
+    
+    # Use the internal function
+    if is_within_24_hours("2024-05-12", "2024-05-13"):
+        return "Cancelled"
+    return "Not cancelled"
+
+def another_top_level_function():
+    '''Another top-level function.'''
+    return "result"
+"""
+        functions = extract_python_functions(code)
+        # Should only extract top-level functions, not nested ones
+        assert len(functions) == 2
+        assert functions[0]['name'] == 'cancel_reservation_policy'
+        assert functions[1]['name'] == 'another_top_level_function'
+        # Verify the nested function is included in the parent's code
+        assert 'def is_within_24_hours' in functions[0]['code']
+        assert 'Internal helper function' in functions[0]['code']
 
 
 class TestIntegration:
@@ -357,6 +392,8 @@ class TestIntegration:
         # Verify tags
         for snippet in snippets:
             assert any(tag.startswith('file:') for tag in snippet.tags)
+            assert any(tag.startswith('skill:') for tag in snippet.tags)
         
         for tool in result['tools']:
             assert any(tag.startswith('file:') for tag in tool.tags)
+            assert any(tag.startswith('skill:') for tag in tool.tags)

@@ -277,7 +277,11 @@ def parse_bash_function(function_code: str, function_name: str) -> Tuple[str, Op
 
 
 def extract_python_functions(content: str) -> List[Dict[str, str]]:
-    """Extract functions from Python code.
+    """Extract top-level functions from Python code.
+    
+    Only extracts functions defined at indentation level 0 to avoid extracting
+    internal/nested helper functions. Internal functions remain part of their
+    parent function's code.
     
     Args:
         content: The Python code content
@@ -292,29 +296,32 @@ def extract_python_functions(content: str) -> List[Dict[str, str]]:
     
     for line in lines:
         trimmed = line.strip()
+        indent = len(line) - len(line.lstrip())
         
         # Detect function definition
         func_match = re.match(r'^def\s+(\w+)\s*\(', trimmed)
         if func_match:
-            # Save previous function if exists
-            if current_function:
-                functions.append({'name': current_function['name'], 'code': current_function['code']})
-            
-            # Start new function
-            indent = len(line) - len(line.lstrip())
-            current_function = {
-                'name': func_match.group(1),
-                'code': line + '\n',
-                'start_indent': indent,
-            }
+            # Only process top-level functions (indent == 0)
+            if indent == 0:
+                # Save previous function if exists
+                if current_function:
+                    functions.append({'name': current_function['name'], 'code': current_function['code']})
+                
+                # Start new function
+                current_function = {
+                    'name': func_match.group(1),
+                    'code': line + '\n',
+                    'start_indent': indent,
+                }
+            elif current_function:
+                # This is a nested function, include it in the parent function's code
+                current_function['code'] += line + '\n'
         elif current_function:
-            indent = len(line) - len(line.lstrip())
-            
             # Continue adding lines to current function
             if not line.strip() or indent > current_function['start_indent']:
                 current_function['code'] += line + '\n'
             else:
-                # Function ended
+                # Function ended (back to indent level 0 or less)
                 functions.append({'name': current_function['name'], 'code': current_function['code']})
                 current_function = None
     
@@ -415,6 +422,7 @@ def parse_code_file(
             
             tags = [
                 f"file:{file_path}",
+                f"skill:{skill_name}",
                 'python',
                 'anthropic',
                 'script',
@@ -437,6 +445,7 @@ def parse_code_file(
             description, params, returns = parse_python_function(func['code'], func['name'])
             tags = [
                 f"file:{file_path}",
+                f"skill:{skill_name}",
                 'python',
                 'anthropic',
             ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
@@ -472,6 +481,7 @@ def parse_code_file(
             
             tags = [
                 f"file:{file_path}",
+                f"skill:{skill_name}",
                 'bash',
                 'anthropic',
                 'script',
@@ -494,6 +504,7 @@ def parse_code_file(
             description, params, returns = parse_bash_function(func['code'], func['name'])
             tags = [
                 f"file:{file_path}",
+                f"skill:{skill_name}",
                 'bash',
                 'anthropic',
             ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]

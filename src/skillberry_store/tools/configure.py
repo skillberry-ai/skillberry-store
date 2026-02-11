@@ -228,3 +228,13 @@ def get_vmcp_descriptions_directory():
     default_path = "/tmp/vmcp_descriptions"
     logger.info(f"Using default vmcp descriptions directory: {default_path}")
     return default_path
+
+def is_auto_detect_dependencies_enabled():
+    """
+    Check if automatic tool dependency detection is enabled.
+    
+    Returns:
+        bool: True if auto-detection is enabled (default), False otherwise.
+    """
+    env_value = os.getenv("AUTO_DETECT_TOOL_DEPENDENCIES", "true").lower()
+    return env_value in ("true", "1", "yes", "on")

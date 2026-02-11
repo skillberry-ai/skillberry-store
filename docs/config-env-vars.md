@@ -11,6 +11,7 @@ This table lists the default ports, host URLs and overall service configuration 
 | Open telemetric port     | None          | `OTEL_TRACES_PORT`               | Must be set for OpenTelemetry tracing to work               |
 | Observability enablement | True          | `OBSERVABILITY`                  | If False - disable observability (telemetry and prometheus) |
 | Python execution mode    | False         | `EXECUTE_PYTHON_LOCALLY`         | If True - use local exec() instead of Docker |
+| Auto-detect dependencies | True          | `AUTO_DETECT_TOOL_DEPENDENCIES`  | If False - disable automatic tool dependency detection      |
 
 > You can override the default values by setting the corresponding environment variables in your deployment configuration.
 

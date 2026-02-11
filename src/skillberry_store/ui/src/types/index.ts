@@ -11,6 +11,7 @@ export interface Tool {
   module_name?: string;
   programming_language?: string;
   packaging_format?: string;
+  dependencies?: string[];
   params?: {
     type?: string;
     properties?: Record<string, any>;
