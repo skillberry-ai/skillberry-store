@@ -61,7 +61,7 @@ def main():
         if ui_manager.start():
             print(f"\n{'='*60}")
             print(f"  Skillberry Store UI: http://localhost:{ui_manager.ui_port}")
-            print(f"  Backend API: http://localhost:{server.settings.bts_port}/docs")
+            print(f"  Backend API: http://localhost:{server.settings.sbs_port}/docs")
             print(f"{'='*60}\n")
         else:
             print("Warning: Failed to start UI server. Backend will run without UI.")

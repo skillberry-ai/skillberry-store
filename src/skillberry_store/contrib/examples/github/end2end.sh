@@ -24,7 +24,7 @@ export SBS_POST_WRITE_MANIFEST_COMMAND="git -C $SBS_DIRECTORY_BASE add . && git 
 export SBS_POST_DELETE_MANIFEST_COMMAND="git -C $SBS_DIRECTORY_BASE add . && git -C $SBS_DIRECTORY_BASE commit -m 'Delete tool {filename}' && git -C $SBS_DIRECTORY_BASE push origin main"
 
 # Create .env file
-cat <<EOL > /tmp/.bts_github_repo_example_env
+cat <<EOL > /tmp/.sbs_github_repo_example_env
 # Base directory for the repository
 SBS_DIRECTORY_BASE="$SBS_DIRECTORY_BASE"
 
@@ -47,7 +47,7 @@ SBS_POST_WRITE_MANIFEST_COMMAND="$SBS_POST_WRITE_MANIFEST_COMMAND"
 SBS_POST_DELETE_MANIFEST_COMMAND="$SBS_POST_DELETE_MANIFEST_COMMAND"
 EOL
 
-echo "/tmp/.bts_github_repo_example_env file with all environment variables was created successfully."
+echo "/tmp/.sbs_github_repo_example_env file with all environment variables was created successfully."
 
 sleep 10
 read -n 1 -s -r -p "==> Press any key to continue...\n"
@@ -56,7 +56,7 @@ read -n 1 -s -r -p "==> Press any key to continue...\n"
 docker stop skillberry-store 2>/dev/null # stop and remove the container if it exists
 docker rm skillberry-store 2>/dev/null
 
-docker run --name skillberry-store --env-file /tmp/.bts_github_repo_example_env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p 8000:8000 us.icr.io/research3/skillberry-store:latest
+docker run --name skillberry-store --env-file /tmp/.sbs_github_repo_example_env -d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp -p 8000:8000 us.icr.io/research3/skillberry-store:latest
 sleep 10
 read -n 1 -s -r -p "==> Press any key to continue...\n"
 

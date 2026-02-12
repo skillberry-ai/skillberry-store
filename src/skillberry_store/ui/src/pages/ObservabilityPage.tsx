@@ -243,8 +243,8 @@ export function ObservabilityPage() {
           } else if (name.includes('vmcp')) {
             grouped.vmcp.push(metric);
           }
-        } else if (name.startsWith('bts_fastapi_')) {
-          // Also include bts_ metrics for backward compatibility
+        } else if (name.startsWith('sbs_fastapi_')) {
+          // Also include sbs_ metrics for backward compatibility
           grouped.system.push(metric);
         } else {
           // Only include non-sts/bts metrics that are not filtered above

@@ -1,21 +1,22 @@
 #!/bin/bash
-# Script to generate port environment variables file
-# Usage: mk_port_env.sh <ACRONYM> "<SERVICE_PORTS>" "<SERVICE_PORT_ROLES>"
-# Example: mk_port_env.sh SBS "8000 8001 8002" "MAIN CONFIG UI"
+# Script to generate service environment variables file
+# Usage: mk_port_env.sh <ACRONYM> "<SERVICE_PORTS>" "<SERVICE_PORT_ROLES>" <SERVICE_HOST>
+# Example: mk_port_env.sh SBS "8000 8001 8002" "MAIN CONFIG UI" 0.0.0.0
 
 set -e
 
-if [ $# -ne 3 ]; then
-    echo "Error: Expected 3 arguments" >&2
-    echo "Usage: $0 <ACRONYM> \"<SERVICE_PORTS>\" \"<SERVICE_PORT_ROLES>\"" >&2
+if [ $# -ne 4 ]; then
+    echo "Error: Expected 4 arguments" >&2
+    echo "Usage: $0 <ACRONYM> \"<SERVICE_PORTS>\" \"<SERVICE_PORT_ROLES>\" <SERVICE_HOST>" >&2
     exit 1
 fi
 
 ACRONYM="$1"
 SERVICE_PORTS="$2"
 SERVICE_PORT_ROLES="$3"
+SERVICE_HOST="$4"
 
-OUTPUT_FILE=".stamps/ports.env"
+OUTPUT_FILE=".stamps/srv.env"
 
 
 # Ensure .stamps directory exists
@@ -31,7 +32,10 @@ if [ ${#PORTS[@]} -ne ${#ROLES[@]} ]; then
     exit 1
 fi
 
-# Generate the port environment file
+# Clear the target file
+echo -n "" > "$OUTPUT_FILE"
+
+# Generate the port assignments
 for i in "${!PORTS[@]}"; do
     PORT="${PORTS[$i]}"
     ROLE="${ROLES[$i]}"
@@ -47,3 +51,6 @@ for i in "${!PORTS[@]}"; do
         echo "${ACRONYM}_${ROLE_CLEAN}_PORT=${PORT}" >> "$OUTPUT_FILE"
     fi
 done
+
+# Generate the host address assignment
+echo "${ACRONYM}_HOST=${SERVICE_HOST}" >> "$OUTPUT_FILE"

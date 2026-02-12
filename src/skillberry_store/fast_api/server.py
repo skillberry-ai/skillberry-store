@@ -5,7 +5,7 @@ from typing import Any, Literal
 import uvicorn
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,13 +52,13 @@ logger = logging.getLogger(__name__)
 class SBSettings(BaseSettings):
     """Configuration settings for the SBS server."""
 
-    bts_host: str = Field("0.0.0.0", env="SBS_HOST")
-    bts_port: int = Field(8000, env="SBS_PORT")
-    ui_port: int = Field(8002, env="SBS_UI_PORT")
+    sbs_host: str = Field("0.0.0.0", validation_alias="SBS_HOST")
+    sbs_port: int = Field(8000, validation_alias="SBS_PORT")
+    ui_port: int = Field(8002, validation_alias="SBS_UI_PORT")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
-        "INFO", env="UVICORN_LOG_LEVEL"
+        "INFO", validation_alias="UVICORN_LOG_LEVEL"
     )
-    observability: bool = Field(True, env="OBSERVABILITY")
+    observability: bool = Field(True, validation_alias="OBSERVABILITY")
 
 
 class SBS(FastAPI):
@@ -77,7 +77,7 @@ class SBS(FastAPI):
         self.state.skills_descriptions = skills_descriptions_api()
         self.state.vmcp_descriptions = vmcp_descriptions_api()
         
-        sts_url = f"http://{self.settings.bts_host}:{self.settings.bts_port}"
+        sts_url = f"http://{self.settings.sbs_host}:{self.settings.sbs_port}"
         register_vmcp_api(
             self, sts_url=sts_url, tags="vmcp_servers",
             vmcp_descriptions=self.state.vmcp_descriptions
@@ -114,13 +114,13 @@ class SBS(FastAPI):
     def run(self):
         """Starts the FastAPI app using Uvicorn."""
         self.logger.info("Starting SBS server")
-        self.logger.info(f"API server running at: http://{self.settings.bts_host}:{self.settings.bts_port}")
+        self.logger.info(f"API server running at: http://{self.settings.sbs_host}:{self.settings.sbs_port}")
         self.logger.info(f"UI available at: http://localhost:{self.settings.ui_port}")
-        self.logger.info(f"API documentation at: http://{self.settings.bts_host}:{self.settings.bts_port}/docs")
+        self.logger.info(f"API documentation at: http://{self.settings.sbs_host}:{self.settings.sbs_port}/docs")
 
         if self.settings.observability:
             observability_setup()
-        uvicorn.run(self, host=self.settings.bts_host, port=self.settings.bts_port)
+        uvicorn.run(self, host=self.settings.sbs_host, port=self.settings.sbs_port)
 
 
 def tools_descriptions_api():

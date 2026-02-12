@@ -17,9 +17,9 @@ _ := $(shell mkdir -p .stamps)
 MAIN_SERVICE_PORT = $(firstword $(SERVICE_PORTS))
 
 # Generate port environment variables file using script
-.stamps/ports.env:
-	@if [ -n "$(ACRONYM)" ] && [ -n "$(SERVICE_PORTS)" ] && [ -n "$(SERVICE_PORT_ROLES)" ]; then \
-		$(SB_COMMON_PATH)/scripts/mk_port_env.sh "$(ACRONYM)" "$(SERVICE_PORTS)" "$(SERVICE_PORT_ROLES)" 2>/dev/null || true; \
+.stamps/srv.env: .mk/local.mk
+	@if [ -n "$(ACRONYM)" ] && [ -n "$(SERVICE_PORTS)" ] && [ -n "$(SERVICE_PORT_ROLES)" ] && [ -n "$(SERVICE_HOST)" ]; then \
+		$(SB_COMMON_PATH)/scripts/mk_srv_env.sh "$(ACRONYM)" "$(SERVICE_PORTS)" "$(SERVICE_PORT_ROLES)" "$(SERVICE_HOST)" 2>/dev/null || true; \
 	fi
 
 # Set BUILD_VERSION variable
