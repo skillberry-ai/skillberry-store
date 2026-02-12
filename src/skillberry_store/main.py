@@ -1,4 +1,5 @@
 import os
+import sys
 import signal
 import atexit
 from skillberry_store.fast_api.server import SBS
@@ -44,7 +45,9 @@ def main():
     # Initialize server to get settings
     server = SBS()
     server_instance = server
-    
+    ui_started = False
+    ui_manager = None
+
     # Check if UI should be enabled (default: True, can be disabled via env var)
     enable_ui = os.getenv("ENABLE_UI", "true").lower() in ("true", "1", "yes")
     
@@ -58,14 +61,18 @@ def main():
         signal.signal(signal.SIGTERM, signal_handler)
         
         # Start UI server
-        if ui_manager.start():
-            print(f"\n{'='*60}")
-            print(f"  Skillberry Store UI: http://localhost:{ui_manager.ui_port}")
-            print(f"  Backend API: http://localhost:{server.settings.sbs_port}/docs")
-            print(f"{'='*60}\n")
-        else:
+        ui_started = ui_manager.start()
+
+        if not ui_started:
             print("Warning: Failed to start UI server. Backend will run without UI.")
-    
+
+    print(f"\n{'='*60}")
+    if ui_started:
+        print(f"  Skillberry Store UI: http://{server.settings.sbs_host}:{ui_manager.ui_port}")
+    print(f"  Backend API: http://{server.settings.sbs_host}:{server.settings.sbs_port}/docs")
+    print(f"{'='*60}\n")
+    sys.stdout.flush()
+
     # Start the backend server
     try:
         server.run()
