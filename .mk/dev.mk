@@ -37,9 +37,9 @@ git_hooks_setup:
 	    echo "Skipping git_hooks_setup: not inside a Git repository."; \
 	fi
 
-.PHONY: show-ports
-show-ports: .stamps/ports.env	## Show service ports
-	@cat .stamps/ports.env
+.PHONY: show-srv-env
+show-srv-env: .stamps/srv.env	## Show service env (ports, host)
+	@cat .stamps/srv.env
 
 test: install_requirements ## Test the tools-service
 	pytest
@@ -68,7 +68,7 @@ verify_venv:
 	@pip install uv
 
 # Need to actually install only when pyproject.toml changes
-.stamps/install_requirements-$(ODEPS): pyproject.toml
+.stamps/install_requirements-$(ODEPS): pyproject.toml .venv
 	@ODEPS="$(ODEPS)"; \
 	if [ -z "$$ODEPS" ]; then \
 		uv pip install -e .; \

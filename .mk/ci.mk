@@ -22,7 +22,7 @@ ci_push: ci_pull_request ## Executed upon ci push event
 	VERSION=$(VERSION) make docker_push
 	@echo "|||====> docker_push Done."
 	@echo ""
-	@echo "|||====> Executing make update_bts_sdk"
-	VERSION=$(VERSION) make update_bts_sdk
-	@echo "|||====> update_bts_sdk Done."
+	@echo "|||====> Executing make update_sdk"
+	VERSION=$(VERSION) make update_sdk
+	@echo "|||====> update_sdk Done."
 	@echo ""
