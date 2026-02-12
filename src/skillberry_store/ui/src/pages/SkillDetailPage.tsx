@@ -168,24 +168,23 @@ export function SkillDetailPage() {
       const tools = await Promise.all(toolPromises);
       const snippets = await Promise.all(snippetPromises);
       
-      // Build query parameters
-      const params = new URLSearchParams({
+      // Build skill object for request body
+      const updatedSkill = {
+        uuid: skill!.uuid,
         name: editedSkill.name,
         version: editedSkill.version,
         description: editedSkill.description,
-        uuid: skill!.uuid,
-      });
+        tags: editedSkill.tags,
+        tool_uuids: tools.map(t => t.uuid),
+        snippet_uuids: snippets.map(s => s.uuid),
+        state: skill!.state,
+      };
       
-      // Add tags
-      editedSkill.tags.forEach(tag => params.append('tags', tag));
-      
-      // Add tool and snippet UUIDs
-      tools.forEach(t => params.append('tool_uuids', t.uuid));
-      snippets.forEach(s => params.append('snippet_uuids', s.uuid));
-      
-      // Call API with query parameters
-      const response = await fetch(`/api/skills/${name}?${params}`, {
+      // Call API with JSON body
+      const response = await fetch(`/api/skills/${name}`, {
         method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedSkill),
       });
       
       if (response.ok) {
