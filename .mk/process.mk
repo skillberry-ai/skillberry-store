@@ -5,10 +5,11 @@ SERVICE_LOG=/tmp/$(SERVICE_NAME).log
 
 .PHONY: run stop clean clean_service_data
 
-run: install_requirements ## Run the service (idempotent)
+run: install_requirements .stamps/ports.env ## Run the service (idempotent)
 	@if [ -f $(SERVICE_SENTINEL) ]; then \
 		echo "$(SERVICE_NAME) service is already running. Check the SERVICE_SENTINEL file ($(SERVICE_SENTINEL))"; \
 	else \
+		set -a; source .stamps/ports.env; set +a; \
 		rc=0; \
 		echo "Starting $(SERVICE_NAME) service (version $(BUILD_VERSION) built on $(BUILD_DATE))"; \
 		$(SB_COMMON_PATH)/scripts/start-service.sh $(SERVICE_LOG) $(SERVICE_SENTINEL) python -m $(SERVICE_ENTRY_MODULE) || rc=$$?; \
