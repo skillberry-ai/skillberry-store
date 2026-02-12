@@ -484,17 +484,75 @@ export function ToolDetailPage() {
         {executionResult && (
           <div style={{ marginTop: '1rem' }}>
             {executionResult.error ? (
-              <Alert variant="danger" title="Execution Error" isInline>
-                <div style={{
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                  fontFamily: 'monospace',
-                  color: '#151515',
-                  backgroundColor: 'transparent',
-                  padding: '0.5rem',
-                  fontSize: '14px'
-                }}>
-                  {executionResult.error}
+              <Alert variant="danger" title="Execution Failed" isInline>
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#151515' }}>
+                    Error Details:
+                  </div>
+                  <div style={{
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontFamily: 'monospace',
+                    color: '#151515',
+                    backgroundColor: '#fff5f5',
+                    padding: '0.75rem',
+                    fontSize: '14px',
+                    borderRadius: '4px',
+                    border: '1px solid #c9190b'
+                  }}>
+                    {executionResult.error}
+                  </div>
+                </div>
+                {executionResult.stderr && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#151515' }}>
+                      Standard Error Output:
+                    </div>
+                    <div style={{
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      fontFamily: 'monospace',
+                      color: '#c9190b',
+                      backgroundColor: '#fff5f5',
+                      padding: '0.75rem',
+                      fontSize: '13px',
+                      borderRadius: '4px',
+                      border: '1px solid #c9190b'
+                    }}>
+                      {executionResult.stderr}
+                    </div>
+                  </div>
+                )}
+                {executionResult.stdout && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#151515' }}>
+                      Standard Output (before failure):
+                    </div>
+                    <div style={{
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      fontFamily: 'monospace',
+                      color: '#151515',
+                      backgroundColor: '#f5f5f5',
+                      padding: '0.75rem',
+                      fontSize: '13px',
+                      borderRadius: '4px',
+                      border: '1px solid #d2d2d2'
+                    }}>
+                      {executionResult.stdout}
+                    </div>
+                  </div>
+                )}
+                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', color: '#151515' }}>
+                    Troubleshooting Tips:
+                  </div>
+                  <ul style={{ margin: '0', paddingLeft: '1.5rem', color: '#151515' }}>
+                    <li>Verify that all required parameters are provided with correct types</li>
+                    <li>Check if the tool has any missing dependencies</li>
+                    <li>Review the tool's source code for any syntax or logic errors</li>
+                    <li>Ensure the execution environment has necessary permissions</li>
+                  </ul>
                 </div>
               </Alert>
             ) : (

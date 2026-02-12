@@ -1,11 +1,13 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
+export type ManifestState = 'unknown' | 'any' | 'new' | 'checked' | 'approved';
+
 export interface Tool {
   uuid: string;
   name: string;
   description: string;
-  state?: 'unknown' | 'any' | 'new' | 'checked' | 'approved';
+  state?: ManifestState;
   tags?: string[];
   version?: string;
   module_name?: string;
@@ -31,6 +33,7 @@ export interface Skill {
   uuid: string;
   name: string;
   description: string;
+  state?: ManifestState;
   tools?: Tool[];
   snippets?: Snippet[];
   tags?: string[];
@@ -45,7 +48,7 @@ export interface Snippet {
   name: string;
   description: string;
   content: string;
-  state?: 'unknown' | 'any' | 'new' | 'checked' | 'approved';
+  state?: ManifestState;
   content_type?: string;
   tags?: string[];
   version?: string;
@@ -59,7 +62,7 @@ export interface VMCPServer {
   name: string;
   description?: string;
   version?: string;
-  state?: 'unknown' | 'any' | 'new' | 'checked' | 'approved';
+  state?: ManifestState;
   tags?: string[];
   port?: number;
   skill_uuid?: string;

@@ -536,12 +536,15 @@ def register_tools_api(
                 parameters=exec_parameters, env_id=env_id
             )
             
-            # Record successful execution metrics
-            duration = time.time() - start_time
-            execute_successfully_tool_counter.labels(name=name).inc()
-            execute_successfully_tool_latency.labels(name=name).observe(duration)
+            # Record successful execution metrics only if no error
+            if not (isinstance(result, dict) and "error" in result):
+                duration = time.time() - start_time
+                execute_successfully_tool_counter.labels(name=name).inc()
+                execute_successfully_tool_latency.labels(name=name).observe(duration)
+                logger.info(f"Tool '{name}' executed successfully with result: {result}")
+            else:
+                logger.error(f"Tool '{name}' execution failed with error: {result.get('error')}")
             
-            logger.info(f"Tool '{name}' executed successfully with result: {result}")
             return result
 
         except HTTPException:

@@ -8,7 +8,7 @@ import datetime
 from typing import Dict, List, Any, Tuple, AnyStr, Optional
 
 import docker
-
+from docker.errors import ContainerError
 
 from fastapi import HTTPException
 
@@ -249,12 +249,22 @@ class FileExecutor:
         logger.info(f"Executing: {self.name} with parameters: {parameters}")
 
         try:
-            return await self.based_on_programming_language(
+            result = await self.based_on_programming_language(
                 parameters=parameters, env_id=env_id
             )
+            # If result contains an error, return it as-is
+            if isinstance(result, dict) and "error" in result:
+                return result
+            return result
+        except HTTPException:
+            # Re-raise HTTPException as-is
+            raise
         except Exception as e:
             logger.error(f"Error executing file: {e}")
-            raise HTTPException(status_code=500, detail=f"Error executing file: {e}")
+            # Return error in structured format instead of raising HTTPException
+            return {
+                "error": f"Error executing file: {str(e)}",
+            }
 
     def based_on_programming_language(self, parameters, env_id=None):
         """
@@ -379,10 +389,10 @@ class FileExecutor:
             logger.info(f"Python code executed successfully: {return_value}")
             return {"return value": f"{return_value}"}
         except Exception as e:
-            logger.error(f"Error executing Python file: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error executing Python file: {e}"
-            )
+            logger.error(f"Error executing Python file in MCP server: {e}")
+            return {
+                "error": f"Error executing Python file in MCP server: {str(e)}",
+            }
 
     def _prepare_python_execution(self, parameters, env_id=None):
         """
@@ -504,11 +514,50 @@ class FileExecutor:
                 f"Function '{function_name}' executed using docker successfully: {return_value}"
             )
             return {"return value": f"{return_value}"}
+        except ContainerError as e:
+            # Docker container execution failed - extract detailed error information
+            logger.error(f"Docker container execution failed: {e}")
+            
+            # ContainerError contains the output in its string representation
+            error_str = str(e)
+            stderr_output = ""
+            
+            # The error message format is typically:
+            # "Command '...' in image '...' returned non-zero exit status X: b'<stderr content>'"
+            if ": b'" in error_str:
+                # Extract the bytes string content which contains the actual error
+                start_idx = error_str.find(": b'") + 4
+                end_idx = error_str.rfind("'")
+                if start_idx > 3 and end_idx > start_idx:
+                    stderr_output = error_str[start_idx:end_idx].replace('\\n', '\n')
+            
+            # Build detailed error message
+            error_details = stderr_output if stderr_output else f"Docker execution failed: {error_str}"
+            
+            return {
+                "error": error_details,
+                "stderr": stderr_output if stderr_output else None,
+            }
         except Exception as e:
             logger.error(f"Error executing Python file: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error executing Python file: {e}"
-            )
+            # Extract error details from exception message if it contains traceback
+            error_msg = str(e)
+            stderr_output = None
+            
+            # Check if the error message contains a traceback (common in Docker errors)
+            if "Traceback" in error_msg or "Error:" in error_msg:
+                # Try to extract the actual error from the exception
+                if ": b'" in error_msg:
+                    # Extract the bytes string content
+                    start_idx = error_msg.find(": b'") + 4
+                    end_idx = error_msg.rfind("'")
+                    if start_idx > 3 and end_idx > start_idx:
+                        stderr_output = error_msg[start_idx:end_idx].replace('\\n', '\n')
+            
+            return {
+                "error": stderr_output if stderr_output else error_msg,
+                "stderr": stderr_output,
+            }
 
     def execute_python_file_locally(self, parameters, env_id=None):
         """
@@ -563,10 +612,10 @@ class FileExecutor:
                 logger.info(f"Error output: '{error_output}'")
 
                 if error_output:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Python execution failed: {error_output}",
-                    )
+                    return {
+                        "error": f"Python execution failed: {error_output}",
+                        "stderr": error_output,
+                    }
 
                 # If no output but execution succeeded, this might indicate a silent failure
                 if not return_value and execution_success:
@@ -582,18 +631,26 @@ class FileExecutor:
 
             except Exception as exec_error:
                 error_output = stderr_capture.getvalue().strip()
+                stdout_output = stdout_capture.getvalue().strip()
                 logger.error(f"Execution failed: {str(exec_error)}")
                 logger.error(f"Error output: '{error_output}'")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Python execution failed: {str(exec_error)} | stderr: {error_output}",
-                )
+                
+                # Build comprehensive error message
+                error_msg = str(exec_error)
+                if error_output:
+                    error_msg = f"{error_msg}\n\nStderr:\n{error_output}"
+                
+                return {
+                    "error": error_msg,
+                    "stderr": error_output if error_output else None,
+                    "stdout": stdout_output if stdout_output else None,
+                }
 
         except Exception as e:
             logger.error(f"Error executing Python file locally: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error executing Python file locally: {e}"
-            )
+            return {
+                "error": f"Error executing Python file locally: {str(e)}",
+            }
 
     def _ensure_packages_installed(self, function_imports):
         """
