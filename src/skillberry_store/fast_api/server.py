@@ -115,7 +115,7 @@ class SBS(FastAPI):
         """Starts the FastAPI app using Uvicorn."""
         self.logger.info("Starting SBS server")
         self.logger.info(f"API server running at: http://{self.settings.sbs_host}:{self.settings.sbs_port}")
-        self.logger.info(f"UI available at: http://localhost:{self.settings.ui_port}")
+        # self.logger.info(f"UI available at: http://localhost:{self.settings.ui_port}")
         self.logger.info(f"API documentation at: http://{self.settings.sbs_host}:{self.settings.sbs_port}/docs")
 
         if self.settings.observability:
