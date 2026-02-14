@@ -6,6 +6,11 @@
 # Example: 3.13+ 3.12.9 3.11.5+
 SUPPORTED_PYTHON_VERSIONS := 3.11
 
+# Service name in lowercase
+SERVICE_NAME_LC = $(shell printf "%s" "$(SERVICE_NAME)" | tr '[:upper:]' '[:lower:]')
+# Service name in code notation - lowercase + replace hyphen->underscore
+SERVICE_NAME_CN ?= $(shell printf "%s" "$(SERVICE_NAME_LC)" | tr '[:upper:]' '[:lower:]')
+
 # List your subtree roots
 CODE_SUBTREES := src .mk $(SB_COMMON_PATH)/.mk $(SB_COMMON_PATH)/scripts
 
@@ -16,12 +21,7 @@ CODE_FILTER := \( -name '*.py' -o -name 'Makefile' -o -name '*.mk' -o -name '*.s
 CODE_FILES := $(foreach T,$(CODE_SUBTREES), \
   $(shell find $(T) -type f $(CODE_FILTER) -print))
 
-CODE_FILES := $(CODE_FILES) pyproject.toml Makefile
-
-# Service name in lowercase
-SERVICE_NAME_LC = $(shell printf "%s" "$(SERVICE_NAME)" | tr '[:upper:]' '[:lower:]')
-# Service name in code notation - lowercase + replace hyphen->underscore
-SERVICE_NAME_CN ?= $(shell printf "%s" "$(SERVICE_NAME_LC)" | tr '[:upper:]' '[:lower:]')
+CODE_FILES := $(CODE_FILES) pyproject.toml Makefile Dockerfile
 
 # This stamp file checks for code changes
 .stamps/code_scan: $(CODE_FILES) 
@@ -78,12 +78,24 @@ verify_venv:
 	@touch .stamps/install_requirements-$(ODEPS)
 
 
+# Will actually modify the file in $(VERSIOIN_LOCATION) only if it does not exist or has different content
 
 .PHONY: update_git_version
 update_git_version:
 	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
-	    echo "Writing git version to $(VERSION_LOCATION)"; \
-	    echo "__git_version__ = \"$(BUILD_VERSION)\"" > $(VERSION_LOCATION); \
+	    NEW_CONTENT="__git_version__ = \"$(BUILD_VERSION)\""; \
+	    if [ ! -f "$(VERSION_LOCATION)" ]; then \
+	        echo "Creating git version file at $(VERSION_LOCATION)"; \
+	        echo "$$NEW_CONTENT" > $(VERSION_LOCATION); \
+	    else \
+	        CURRENT_CONTENT=$$(cat $(VERSION_LOCATION) 2>/dev/null || echo ""); \
+	        if [ "$$CURRENT_CONTENT" != "$$NEW_CONTENT" ]; then \
+	            echo "Updating git version in $(VERSION_LOCATION)"; \
+	            echo "$$NEW_CONTENT" > $(VERSION_LOCATION); \
+	        else \
+	            echo "Git version in $(VERSION_LOCATION) is already up to date"; \
+	        fi; \
+	    fi; \
 	else \
 	    echo "Skipping update_git_version: not inside a Git repository."; \
 	fi

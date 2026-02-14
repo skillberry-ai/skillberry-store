@@ -111,16 +111,16 @@ docker_push: docker_check docker_build ## Push docker image into the registry
 	$(DOCKER) push $(DOCKER_NAME):latest
 
 .PHONY: docker_run
-docker_run: docker_build docker_check docker_stop ## Run the docker image
-	$(DOCKER) run --privileged --name $(IMAGE_NAME) --env-file .env \
-		-d -v /var/run/docker.sock:/var/run/docker.sock -v /tmp:/tmp \
+docker_run:  docker_check docker_build docker_stop ## Run the docker image
+	$(DOCKER) run --name $(IMAGE_NAME) --env-file .env \
+		-d \
 		--network=host \
 		$(DOCKER_NAME):$(DOCKER_VERSION)
 	@echo "Docker container started: $(IMAGE_NAME)"
 	
 
 .PHONY: docker_rm
-docker_rm: docker_stop clean ## Remove the docker container, image, and temporary files
+docker_rm: docker_check docker_stop clean ## Remove the docker container, image, and temporary files
 	@echo "Removing Docker container: $(IMAGE_NAME)"
 	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
 	@echo "Removing Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
@@ -129,7 +129,7 @@ docker_rm: docker_stop clean ## Remove the docker container, image, and temporar
 
 
 .PHONY: docker_clean
-docker_clean: docker_stop clean ## Remove the docker container and temporary files, but keeping the image
+docker_clean: docker_check docker_stop clean ## Remove the docker container and temporary files, but keeping the image
 	@echo "Removing Docker container: $(IMAGE_NAME)"
 	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
 
