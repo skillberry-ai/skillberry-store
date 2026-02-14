@@ -18,6 +18,9 @@ ENV BUILD_VERSION=$BUILD_VERSION \
     SERVICE_PORTS=$SERVICE_PORTS \
     SERVICE_ENTRY_MODULE=$SERVICE_ENTRY_MODULE
 
+# Update the packages and install nodejs and npm
+RUN apt-get update && apt-get install -y nodejs npm
+
 # Set the working directory
 WORKDIR /app
 
