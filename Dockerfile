@@ -33,7 +33,7 @@ ENV PATH="/app/.venv/bin:${PATH}"
 
 # Copy the application
 COPY . .
-RUN make install_requirements
+RUN make install-requirements
 
 # Expose all service ports
 EXPOSE $SERVICE_PORTS

@@ -115,7 +115,11 @@ dependencies = [
   "opentelemetry-exporter-otlp",
   "opentelemetry-instrumentation-fastapi",
   "opentelemetry-instrumentation-requests",
-  "faiss-cpu"
+  "faiss-cpu",
+  "openapi-generator-cli[jdk4py]==7.11.0.post0",
+  "openapi-generator-cli",
+  "tomli",
+  "tomli-w"
 ]
 
 [project.optional-dependencies]
@@ -123,10 +127,11 @@ dependencies = [
 # Development dependencies
 dev = [
   "black>=22.3.0",
-  "skillberry-store-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-sdk.git#subdirectory=skillberry_store_sdk"
+  "skillberry-store-sdk"
 ]
 
 [tool.uv.sources]
+skillberry-store-sdk = { path = "client/python/skillberry_store_sdk", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
 
 [build-system]

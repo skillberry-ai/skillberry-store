@@ -1,6 +1,6 @@
 ##@ Setup & teardown as a process
 
-clean_service_data: stop
+clean-service-data: stop
 	@echo "Clean $(SERVICE_NAME) /tmp directory"
 	+rm -rf /tmp/manifest
 	+rm -rf /tmp/descriptions
