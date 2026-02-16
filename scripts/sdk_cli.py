@@ -30,9 +30,9 @@ def abort_with_install_instructions() -> NoReturn:
     print("Error: 'restish' CLI is not installed or not available on PATH.", file=sys.stderr)
     print("\nTo install restish, you have two options:", file=sys.stderr)
     print("\n1. Using Go (if you have Go installed):", file=sys.stderr)
-    print("   go install github.com/danielgtaylor/restish@latest", file=sys.stderr)
+    print("   go install github.com/rest-sh/restish@latest", file=sys.stderr)
     print("\n2. Download pre-built binaries from GitHub:", file=sys.stderr)
-    print("   https://github.com/danielgtaylor/restish/releases", file=sys.stderr)
+    print("   https://github.com/rest-sh/restish/releases", file=sys.stderr)
     print("\nAfter installation, ensure restish is in your PATH.", file=sys.stderr)
     sys.exit(1)
 
