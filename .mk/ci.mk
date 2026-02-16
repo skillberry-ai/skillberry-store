@@ -3,7 +3,7 @@ VERSION ?= latest
 ##@ CI
 .PHONY: ci-pull-request
 ci-pull-request: ## Executed upon ci pull_request event
-	@echo "|||====> Executing make Lint"
+	@echo "|||====> Executing make lint"
 	VERSION=$(VERSION) make lint
 	@echo "|||====> make lint Done."
 	@echo ""
@@ -18,11 +18,11 @@ ci-pull-request: ## Executed upon ci pull_request event
 
 .PHONY: ci-push
 ci-push: ci-pull-request ## Executed upon ci push event
-	@echo "|||====> Executing make docker_push (and build)"
-	VERSION=$(VERSION) make docker_push
-	@echo "|||====> docker_push Done."
+	@echo "|||====> Executing make docker-push (and build)"
+	VERSION=$(VERSION) make docker-push
+	@echo "|||====> docker-push Done."
 	@echo ""
-	@echo "|||====> Executing make update_sdk"
-	VERSION=$(VERSION) make update_sdk
-	@echo "|||====> update_sdk Done."
+	@echo "|||====> Executing make update-sdk"
+	VERSION=$(VERSION) make update-sdk
+	@echo "|||====> update-sdk Done."
 	@echo ""
