@@ -124,23 +124,6 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@echo "===> Generating git tag $(RELEASE_VERSION) and creating GitHub release"
 	@git checkout -b branch-$(RELEASE_VERSION)
 	@echo "===> Generated release branch $(RELEASE_VERSION)"
-
-	@if [ "$$SERVICE_HAS_SDK" = "1" ]; then \
-		echo "Updating SDK dependency to release version $(RELEASE_VERSION)"; \
-		sed -i "s|$(SERVICE_NAME_LC)-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-sdk.git#subdirectory=$(SERVICE_NAME_CN)_sdk|$(SERVICE_NAME_LC)-sdk @ git+ssh://git@github.ibm.com/skillberry/skillberry-sdk.git@$(RELEASE_VERSION)#subdirectory=$(SERVICE_NAME_CN)_sdk|" pyproject.toml; \
-		git add pyproject.toml; \
-		if git diff --cached --quiet; then \
-			echo "!!! No updates to commit in $(ASSET_NAME) !!!"; \
-		else \
-			echo "!!! Updates detected in $(ASSET_NAME), committing... !!!"; \
-			git config --get user.name >/dev/null || git config user.name "Skillberry CI process"; \
-			git config --get user.email >/dev/null || git config user.email "skillberry.ci@skillberry.ai"; \
-			git commit -m "Updated pyproject.toml file with $(RELEASE_VERSION)"; \
-			git push origin branch-$(RELEASE_VERSION); \
-			echo "Pushed updated pyproject.toml file to $(ASSET_NAME) repository (origin branch-$(RELEASE_VERSION))"; \
-		fi; \
-	fi
-
 	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)" 
 	@git push origin $(RELEASE_VERSION)
 
@@ -176,7 +159,7 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@git checkout branch-$(RELEASE_VERSION)
 
 	@echo "===> Building and pushing new docker image"
-	@make docker_push
+	@make docker-push
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "=> Release $(RELEASE_VERSION) created successfully"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
@@ -207,7 +190,7 @@ update-sdk: ## Update the SDK, if needed
 
 PYTHON_SDK_DIR = client/python/$(SERVICE_NAME_CN)_sdk/
 
-generate-sdk: install-requirements ## Generate SDK
+generate-sdk: install-requirements # Generate SDK
 	@mkdir -p $(PYTHON_SDK_DIR)
 	@rm -fr $(PYTHON_SDK_DIR)/*
 	@openapi-generator-cli generate -i $(OPEN_API_SPEC_URL)/openapi.json \
