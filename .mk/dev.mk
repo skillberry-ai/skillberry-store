@@ -11,6 +11,12 @@ SERVICE_NAME_LC = $(shell printf "%s" "$(SERVICE_NAME)" | tr '[:upper:]' '[:lowe
 # Service name in code notation - lowercase + replace hyphen->underscore
 SERVICE_NAME_CN ?= $(shell printf "%s" "$(SERVICE_NAME_LC)" | tr '-' '_')
 
+ACRONYM_LC ?= $(shell echo $(ACRONYM) | tr '[:upper:]' '[:lower:]')
+
+RESTISH_CONFIG_APIS ?= $(HOME)/.config/restish/apis.json
+
+OPEN_API_SPEC_URL ?= http://$(SERVICE_HOST):$(MAIN_SERVICE_PORT)
+
 export SERVICE_HAS_SDK ?= 0
 
 # List your subtree roots
@@ -26,24 +32,24 @@ CODE_FILES := $(foreach T,$(CODE_SUBTREES), \
 CODE_FILES := $(CODE_FILES) pyproject.toml Makefile Dockerfile
 
 # This stamp file checks for code changes
-.stamps/code_scan: $(CODE_FILES) 
+.stamps/code-scan: $(CODE_FILES) 
 	@echo "Detected code changed in: $(CODE_SUBTREES)"
-	@touch .stamps/code_scan
+	@touch .stamps/code-scan
 
-git_hooks_setup:
+git-hooks-setup:
 	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
 	    echo "Setting up Git hooks..."; \
 	    git config core.hooksPath .githooks; \
 	    chmod +x .githooks/*; \
 	else \
-	    echo "Skipping git_hooks_setup: not inside a Git repository."; \
+	    echo "Skipping git-hooks-setup: not inside a Git repository."; \
 	fi
 
 .PHONY: show-srv-env
 show-srv-env: .stamps/srv.env	## Show service env (ports, host)
 	@cat .stamps/srv.env
 
-test: install_requirements ## Test the tools-service
+test: install-requirements ## Test the tools-service
 	pytest
 
 check-git-clean:
@@ -61,29 +67,29 @@ check-git-main:
 		exit 1; \
 	fi
 
-.PHONY: install_requirements verify_venv
-install_requirements: update_git_version git_hooks_setup verify_venv .stamps/install_requirements-$(ODEPS) ## Install dependencies. For opt. deps: make install_requirements ODEPS=dev,vllm
+.PHONY: install-requirements verify-venv
+install-requirements: update-git-version git-hooks-setup verify-venv .stamps/install-requirements-$(ODEPS) ## Install dependencies. For opt. deps: make install-requirements ODEPS=dev,vllm
 	@true
 
-verify_venv:
+verify-venv:
 	@$(SB_COMMON_PATH)/scripts/check_venv.sh $(SUPPORTED_PYTHON_VERSIONS)
 	@pip install uv
 
 # Need to actually install only when pyproject.toml changes
-.stamps/install_requirements-$(ODEPS): pyproject.toml .venv
+.stamps/install-requirements-$(ODEPS): pyproject.toml .venv
 	@ODEPS="$(ODEPS)"; \
 	if [ -z "$$ODEPS" ]; then \
 		uv pip install -e .; \
 	else \
 		uv pip install -e .[$(ODEPS)]; \
 	fi
-	@touch .stamps/install_requirements-$(ODEPS)
+	@touch .stamps/install-requirements-$(ODEPS)
 
 
 # Will actually modify the file in $(VERSIOIN_LOCATION) only if it does not exist or has different content
 
-.PHONY: update_git_version
-update_git_version:
+.PHONY: update-git-version
+update-git-version:
 	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
 	    NEW_CONTENT="__git_version__ = \"$(BUILD_VERSION)\""; \
 	    if [ ! -f "$(VERSION_LOCATION)" ]; then \
@@ -99,10 +105,10 @@ update_git_version:
 	        fi; \
 	    fi; \
 	else \
-	    echo "Skipping update_git_version: not inside a Git repository."; \
+	    echo "Skipping update-git-version: not inside a Git repository."; \
 	fi
 
-release: check-git-main check-git-clean install_requirements  ## Release a new version
+release: check-git-main check-git-clean install-requirements  ## Release a new version
 	@if [ -z "$(RELEASE_VERSION)" ]; then \
 		echo "++++++++++++++++++++++++++++++++++++++++++++"; \
   		echo "RELEASE_VERSION is not set. It is required for the release"; \
@@ -139,8 +145,8 @@ release: check-git-main check-git-clean install_requirements  ## Release a new v
 	@git push origin $(RELEASE_VERSION)
 
 	#
-	# Important: change to main so that later invocation of "update_git_version" properly works,
-	# Note: update_git_version is called on different contexts later in this flow
+	# Important: change to main so that later invocation of "update-git-version" properly works,
+	# Note: update-git-version is called on different contexts later in this flow
 	#
 	@git checkout main
 
@@ -176,36 +182,57 @@ release: check-git-main check-git-clean install_requirements  ## Release a new v
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 
 
-update_sdk: ## Update the SDK, if needed
+update-sdk: ## Update the SDK, if needed
 	@if [ "$$SERVICE_HAS_SDK" = "1" ]; then \
 		rm -rf /tmp/skillberry-sdk || true; \
 		echo "==> Updating SDK..."; \
-		make docker_run; \
-		timeout 120 bash -c 'until curl -sf http://localhost:$(MAIN_SERVICE_PORT)/docs > /dev/null; do echo "Waiting for $(DESC_NAME)..."; sleep 5; done'; \
+		make docker-run; \
+		timeout 120 bash -c 'until curl -sf $(OPEN_API_SPEC_URL)/docs > /dev/null; do echo "Waiting for $(DESC_NAME)..."; sleep 5; done'; \
 		echo "$(DESC_NAME) started (using docker)"; \
-		cd /tmp && \
-		git clone git@github.ibm.com:skillberry/skillberry-sdk.git && \
-		echo "Cloned skillberry-sdk repository into /tmp/skillberry-sdk" && \
-		cd skillberry-sdk && \
-		python -m venv venv && \
-		source venv/bin/activate && \
-		echo "Activated virtual environment" && \
-		make generate_$(SERVICE_NAME_CN)_sdk && \
+		make generate-sdk && \
 		echo "SDK updated successfully" && \
 		git add . && \
 		if git diff --cached --quiet; then \
-			echo "!!! No updates to commit in skillberry-sdk !!!"; \
+			echo "!!! No updates to commit !!!"; \
 		else \
-			echo "!!! Updates detected in skillberry-sdk, committing... !!!"; \
-			git config --get user.name >/dev/null || git config user.name "Skillberry CI process"; \
-			git config --get user.email >/dev/null || git config user.email "skillberry.ci@skillberry.ai"; \
+			echo "!!! Updates detected, committing... !!!"; \
 			git commit -m "Update $(SERVICE_NAME_CN)_sdk $$(date '+%Y-%m-%d %H:%M:%S')"; \
-			git push origin main; \
-			echo "Pushed updated SDK to skillberry-sdk repository (origin main)"; \
 		fi; \
-		make docker_stop; \
+		make docker-stop; \
 		echo "$(DESC_NAME) stopped"; \
 		echo "==> SDK update completed successfully"; \
 	else \
 		echo "Service has no SDK, skipping"; \
 	fi
+
+PYTHON_SDK_DIR = client/python/$(SERVICE_NAME_CN)_sdk/
+
+generate-sdk: install-requirements ## Generate SDK
+	@mkdir -p $(PYTHON_SDK_DIR)
+	@rm -fr $(PYTHON_SDK_DIR)/*
+	@openapi-generator-cli generate -i $(OPEN_API_SPEC_URL)/openapi.json \
+		-g python \
+		-o $(PYTHON_SDK_DIR) \
+		--package-name $(SERVICE_NAME_CN)_sdk
+	@echo "==> Adding CLI module to SDK..."
+	@sed -e 's|{{API_NAME}}|$(ACRONYM_LC)|g' \
+	     -e 's|{{API_URL}}|$(OPEN_API_SPEC_URL)|g' \
+	     $(SB_COMMON_PATH)/scripts/sdk_cli.py > $(PYTHON_SDK_DIR)/$(SERVICE_NAME_CN)_sdk/sdk_cli.py
+	@echo "==> Backing up setup.py and pyproject.toml"; \
+		cp $(PYTHON_SDK_DIR)/setup.py $(PYTHON_SDK_DIR)/setup.py.bak; \
+		cp $(PYTHON_SDK_DIR)/pyproject.toml $(PYTHON_SDK_DIR)/pyproject.toml.bak;
+	@echo "==> Updating setup.py to add CLI entry point..."
+	@sed -i '/package_data=/i\    entry_points={\n        "console_scripts": [\n            "$(ACRONYM_LC)=$(SERVICE_NAME_CN)_sdk.sdk_cli:cli",\n        ],\n    },' $(PYTHON_SDK_DIR)/setup.py
+	@echo "==> Fixing pyproject.toml build backend to use Poetry..."
+	@sed -i 's|requires = \["setuptools"\]|requires = ["poetry-core>=1.0.0"]|' $(PYTHON_SDK_DIR)/pyproject.toml
+	@sed -i 's|build-backend = "setuptools.build_meta"|build-backend = "poetry.core.masonry.api"|' $(PYTHON_SDK_DIR)/pyproject.toml
+	@echo "==> Adding CLI entry point to [tool.poetry.scripts]..."
+	@if grep -q '^\[tool\.poetry\.scripts\]' $(PYTHON_SDK_DIR)/pyproject.toml; then \
+		sed -i '/^\[tool\.poetry\.scripts\]/a $(ACRONYM_LC) = "$(SERVICE_NAME_CN)_sdk.sdk_cli:cli"' $(PYTHON_SDK_DIR)/pyproject.toml; \
+	else \
+		sed -i '/^\[tool\.poetry\.dev-dependencies\]/i [tool.poetry.scripts]\n$(ACRONYM_LC) = "$(SERVICE_NAME_CN)_sdk.sdk_cli:cli"\n' $(PYTHON_SDK_DIR)/pyproject.toml; \
+	fi
+	@echo "==> Removing [project.scripts] section if it exists..."
+	@sed -i '/^\[project\.scripts\]/,/^$$/d' $(PYTHON_SDK_DIR)/pyproject.toml
+	@echo "==> SDK generation complete with CLI support"
+

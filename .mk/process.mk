@@ -5,7 +5,7 @@ SERVICE_LOG=/tmp/$(SERVICE_NAME).log
 
 .PHONY: run stop clean clean_service_data
 
-run: install_requirements .stamps/srv.env ## Run the service (idempotent)
+run: install-requirements .stamps/srv.env ## Run the service (idempotent)
 	@if [ -f $(SERVICE_SENTINEL) ]; then \
 		echo "$(SERVICE_NAME) service is already running. Check the SERVICE_SENTINEL file ($(SERVICE_SENTINEL))"; \
 	else \
@@ -24,7 +24,7 @@ stop: ## Stop the service (idempotent)
 		echo "$(SERVICE_NAME) service is already stopped. Missing SERVICE_SENTINEL file ($(SERVICE_SENTINEL))"; \
 	fi
 
-clean: stop clean_service_data	## Clean all runtime data (stopped service)
+clean: stop clean-service-data	## Clean all runtime data (stopped service)
 	@rm -f $(SERVICE_SENTINEL)
 	@rm -f $(SERVICE_LOG)
 	-rm -rf __pycache__ .pytest_cache

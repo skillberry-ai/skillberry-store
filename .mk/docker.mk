@@ -12,7 +12,7 @@ DOCKER_VERSION = $(BUILD_VERSION)
 
 DOCKER := docker
 
-DOCKER_FILE := Dockerfile
+DOCKER_FILE ?= Dockerfile
 
 # Check whether docker is aliased to podman
 # It is assumed that the user is using zsh or bash and alias is defined in ~/.zshrc or ~/.bashrc
@@ -20,7 +20,7 @@ DOCKER_FILE := Dockerfile
 # Check if the user has aliased Docker to Podman in their shell configuration file
 # If the user has aliased Docker to Podman, set the DOCKER variable to podman 
 # If the user has not aliased Docker to Podman, set the DOCKER variable to docker
-docker_check:
+docker-check:
 	@echo "Checking whether Docker or Podman is installed..."
 	@if ! command -v docker > /dev/null && ! command -v podman > /dev/null; then \
         echo "Neither Docker nor Podman is installed. Please install Docker or Podman (or both)."; \
@@ -60,11 +60,11 @@ endif
 # Print the value of DOCKER
 @echo "Using Docker: $(DOCKER)"
 
-.PHONY: docker_build 
-docker_build: docker_check update_git_version .stamps/docker_build
+.PHONY: docker-build 
+docker-build: docker-check update-git-version .stamps/docker-build
 
 # We actually build a new image only if the code changed
-.stamps/docker_build: .stamps/code_scan
+.stamps/docker-build: .stamps/code-scan
 	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
 	@echo "Build version: $(BUILD_VERSION)"
@@ -82,7 +82,7 @@ docker_build: docker_check update_git_version .stamps/docker_build
 		-t $(DOCKER_NAME):$(DOCKER_VERSION) \
 		-t $(DOCKER_NAME):latest \
 		.; \
-		touch .stamps/docker_build; \
+		touch .stamps/docker-build; \
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		$(DOCKER) build --no-cache=true \
 		--file $(DOCKER_FILE) \
@@ -94,7 +94,7 @@ docker_build: docker_check update_git_version .stamps/docker_build
 		-t $(DOCKER_NAME):$(DOCKER_VERSION) \
 		-t $(DOCKER_NAME):latest \
 		.; \
-		touch .stamps/docker_build; \
+		touch .stamps/docker-build; \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
@@ -103,15 +103,15 @@ docker_build: docker_check update_git_version .stamps/docker_build
 
 # make sure that you are login into the appropriate Docker registry with required credentials
 # before running this command
-.PHONY: docker_push
-docker_push: docker_check docker_build ## Push docker image into the registry
+.PHONY: docker-push
+docker-push: docker-check docker-build ## Push docker image into the registry
 	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
 	$(DOCKER) push $(DOCKER_NAME):$(DOCKER_VERSION)
 	@echo "Pushing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):latest"
 	$(DOCKER) push $(DOCKER_NAME):latest
 
-.PHONY: docker_run
-docker_run:  docker_check docker_build docker_stop ## Run the docker image
+.PHONY: docker-run
+docker-run:  docker-check docker-build docker-stop ## Run the docker image
 	$(DOCKER) run --name $(IMAGE_NAME) --env-file .env \
 		-d \
 		--network=host \
@@ -119,8 +119,8 @@ docker_run:  docker_check docker_build docker_stop ## Run the docker image
 	@echo "Docker container started: $(IMAGE_NAME)"
 	
 
-.PHONY: docker_rm
-docker_rm: docker_check docker_stop clean ## Remove the docker container, image, and temporary files
+.PHONY: docker-rm
+docker-rm: docker-check docker-stop clean ## Remove the docker container, image, and temporary files
 	@echo "Removing Docker container: $(IMAGE_NAME)"
 	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
 	@echo "Removing Docker image: $(DOCKER_NAME):$(DOCKER_VERSION)"
@@ -128,13 +128,13 @@ docker_rm: docker_check docker_stop clean ## Remove the docker container, image,
 	@echo "Removing Docker image: $(DOCKER_REPOSITORY_NAME)/$(IMAGE_NAME):$(DOCKER_VERSION)"
 
 
-.PHONY: docker_clean
-docker_clean: docker_check docker_stop clean ## Remove the docker container and temporary files, but keeping the image
+.PHONY: docker-clean
+docker-clean: docker-check docker-stop ## Remove the docker container and temporary files, but keeping the image
 	@echo "Removing Docker container: $(IMAGE_NAME)"
 	$(DOCKER) rm -f $(IMAGE_NAME) > /dev/null 2>&1 || true
 
-.PHONY: docker_stop
-docker_stop: docker_check ## Stop the docker image
+.PHONY: docker-stop
+docker-stop: docker-check ## Stop the docker container
 	@echo "Stopping Docker container: $(IMAGE_NAME)"
 	$(DOCKER) stop $(IMAGE_NAME) > /dev/null 2>&1 || true
 	$(DOCKER) rm $(IMAGE_NAME) > /dev/null 2>&1 || true
