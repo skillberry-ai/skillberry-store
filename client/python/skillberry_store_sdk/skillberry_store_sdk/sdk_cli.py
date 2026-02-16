@@ -64,8 +64,8 @@ def ensure_api_configured() -> None:
     needs_update = False
     if API_NAME not in config:
         needs_update = True
-    elif config[API_NAME].get("base") != API_URL:
-        needs_update = True
+    # elif config[API_NAME].get("base") != API_URL:
+    #     needs_update = True
     
     if needs_update:
         # Configure the API
@@ -116,11 +116,11 @@ def cli() -> None:
         skip_section = False
         
         for line in output_lines:
-            if line.strip().startswith('Global Flags:'):
-                skip_section = True
-            elif skip_section and line and not line[0].isspace():
-                # End of Global Flags section
-                skip_section = False
+            # if line.strip().startswith('Global Flags:'):
+            #     skip_section = True
+            # elif skip_section and line and not line[0].isspace():
+            #     # End of Global Flags section
+            #     skip_section = False
             
             if not skip_section:
                 filtered_lines.append(line)
