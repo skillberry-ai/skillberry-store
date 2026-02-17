@@ -1,0 +1,16 @@
+ARG ROOT_IMAGE=python:3.11
+
+FROM ${ROOT_IMAGE}
+
+# Update the packages and install nodejs and npm
+RUN apt-get update && apt-get install -y nodejs npm
+
+# Set the working directory
+WORKDIR /app
+
+# Create the venv
+RUN python -m venv /app/.venv
+
+# Make the venv “default” for every later RUN and at runtime
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:${PATH}"

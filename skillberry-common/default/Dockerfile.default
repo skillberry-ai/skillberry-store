@@ -1,4 +1,7 @@
-FROM public.ecr.aws/docker/library/python:3.11
+ARG BASE_IMAGE_FULL_NAME=skillberry-base
+ARG BASE_IMAGE_TAG=latest
+
+FROM ${BASE_IMAGE_FULL_NAME}:${BASE_IMAGE_TAG}
 
 # Define build arguments
 ARG BUILD_VERSION=latest
@@ -18,18 +21,8 @@ ENV BUILD_VERSION=$BUILD_VERSION \
     SERVICE_PORTS=$SERVICE_PORTS \
     SERVICE_ENTRY_MODULE=$SERVICE_ENTRY_MODULE
 
-# Update the packages and install nodejs and npm
-RUN apt-get update && apt-get install -y nodejs npm
-
-# Set the working directory
-WORKDIR /app
-
-# Create the venv
-RUN python -m venv /app/.venv
-
-# Make the venv “default” for every later RUN and at runtime
-ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="/app/.venv/bin:${PATH}"
+# Python, NodeJS and venv are already set in the base image
+# WORKDIR is already set in the base image to /app
 
 # Copy the application
 COPY . .
