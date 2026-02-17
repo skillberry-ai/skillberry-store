@@ -43,7 +43,7 @@ def get_restish_config_path() -> Path:
     return config_dir / "apis.json"
 
 
-def ensure_api_configured() -> None:
+def ensure_api_configured(api_name: str, api_url: str, force_update: bool = False) -> None:
     """Ensure the API is configured in restish with correct URL."""
     config_path = get_restish_config_path()
     
@@ -62,16 +62,16 @@ def ensure_api_configured() -> None:
     
     # Check if API is configured with correct URL
     needs_update = False
-    if API_NAME not in config:
+    if force_update or api_name not in config:
         needs_update = True
     # elif config[API_NAME].get("base") != API_URL:
     #     needs_update = True
     
     if needs_update:
         # Configure the API
-        config[API_NAME] = {
-            "base": API_URL,
-            "spec_files": [f"{API_URL}/openapi.json"]
+        config[api_name] = {
+            "base": api_url,
+            "spec_files": [f"{api_url}/openapi.json"]
         }
         
         # Write updated config
@@ -81,12 +81,13 @@ def ensure_api_configured() -> None:
         # Sync the API spec
         try:
             subprocess.run(
-                ["restish", "api", "sync", API_NAME],
+                ["restish", "api", "sync", api_name],
                 check=True,
                 capture_output=True
             )
         except subprocess.CalledProcessError as e:
             print(f"Warning: Failed to sync API spec: {e}", file=sys.stderr)
+            sys.exit(1)
 
 
 def cli() -> None:
@@ -95,8 +96,20 @@ def cli() -> None:
     if not check_restish_installed():
         abort_with_install_instructions()
     
+    # Check for "connect <URL>" command
+    if len(sys.argv) == 3 and sys.argv[1] == "connect":
+        # Extract URL from "connect <URL>" format
+        url = sys.argv[2]
+        if url:
+            ensure_api_configured(API_NAME, url, True)
+            print(f"Connected to {url}")
+            sys.exit(0)
+        else:
+            print("Error: Invalid connect command. Usage: connect <URL>", file=sys.stderr)
+            sys.exit(1)
+    
     # Ensure API is configured
-    ensure_api_configured()
+    ensure_api_configured(API_NAME, API_URL)
     
     # Delegate to restish, passing all arguments and filtering output
     try:
@@ -114,16 +127,23 @@ def cli() -> None:
         output_lines = result.stdout.split('\n')
         filtered_lines = []
         skip_section = False
+        found_global_flags = False
         
         for line in output_lines:
-            # if line.strip().startswith('Global Flags:'):
-            #     skip_section = True
-            # elif skip_section and line and not line[0].isspace():
-            #     # End of Global Flags section
-            #     skip_section = False
+            if line.strip().startswith('Global Flags:'):
+                skip_section = True
+                found_global_flags = True
+            elif skip_section and line and not line[0].isspace():
+                # End of Global Flags section
+                skip_section = False
             
             if not skip_section:
                 filtered_lines.append(line)
+        
+        # If we found and skipped Global Flags section, append custom text
+        if found_global_flags:
+            filtered_lines.append("General commands:")
+            filtered_lines.append(f"  connect <URL>\t\t\tconnect to an alternate {API_NAME} URL\n")
         
         # Print filtered output
         print('\n'.join(filtered_lines), end='')
