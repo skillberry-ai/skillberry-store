@@ -146,3 +146,6 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 skillberry_store = ["ui/**/*"]
+
+[project.scripts]
+sbs-srv = "skillberry_store.main:main"
