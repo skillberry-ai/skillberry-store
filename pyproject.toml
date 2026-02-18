@@ -141,9 +141,6 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[project.scripts]
-sbs = "skillberry_store.main:main"
-
 [tool.setuptools]
 include-package-data = true
 
