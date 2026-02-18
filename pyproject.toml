@@ -146,3 +146,6 @@ sbs = "skillberry_store.main:main"
 
 [tool.setuptools]
 include-package-data = true
+
+[tool.setuptools.package-data]
+skillberry_store = ["ui/**/*"]
