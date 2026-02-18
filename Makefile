@@ -17,8 +17,8 @@ _ensure_git_remote := $(shell \
     })
 
 
-include $(SB_COMMON_PATH)/Makefile
 include .mk/local.mk
+include $(SB_COMMON_PATH)/Makefile
 
 # If the Makefile of skillberry-common is not available, install skillberry-common folder with the contents of skillberry-common repo from branch main (defaults)
 $(SB_COMMON_PATH)/Makefile: 
