@@ -188,6 +188,8 @@ docker-run: docker-check docker-build docker-clean ## Run the docker image
 docker-rm: docker-check docker-clean ## Remove the docker container, image, and temporary files
 	@echo "Removing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(IMAGE_TAG) > /dev/null 2>&1 || true
+	$(DOCKER) rmi -f $(FULL_IMAGE_NAME):latest > /dev/null 2>&1 || true
+	rm -f .stamps/docker-build
 
 .PHONY: docker-clean
 docker-clean: docker-check docker-stop ## Remove the docker container and temporary files, but keeping the image
