@@ -5,7 +5,14 @@ SERVICE_LOG=/tmp/$(SERVICE_NAME).log
 
 .PHONY: run stop clean clean_service_data
 
-run: install-requirements .stamps/srv.env ## Run the service (idempotent)
+
+ifeq ($(USE_LLM_SVCS),1)
+  RUN_DEPS := install-requirements check-rits-watsonx-envs .stamps/srv.env
+else
+  RUN_DEPS := install-requirements .stamps/srv.env
+endif
+
+run: $(RUN_DEPS) ## Run the service (idempotent)
 	@if [ -f $(SERVICE_SENTINEL) ]; then \
 		echo "$(SERVICE_NAME) service is already running. Check the SERVICE_SENTINEL file ($(SERVICE_SENTINEL))"; \
 	else \
