@@ -3,6 +3,11 @@
 ARCH := $(shell uname -m)
 OS := $(shell uname -s)
 
+# Location of private SSH key for git+ssh dependencies, e.g., during docker build
+SSH_KEY ?= ~/.ssh/id_rsa 2>/dev/null
+
+LLM_SVCS_ENV_VARS := RITS_API_KEY WATSONX_APIKEY WATSONX_PROJECT_ID WATSONX_URL
+
 .DEFAULT:	# Any unimplemented target or dependency will fail here
 	@echo "Unimplemented target: $@"
 	@false
@@ -123,4 +128,10 @@ check-rits-watsonx-envs:
 		echo "RITS_API_KEY is set. Proceeding..."; \
 	fi
 
+.PHONY: ssh-agent
+ssh-agent:
+	@if [ -z "$$SSH_AUTH_SOCK" ]; then \
+		eval $$(ssh-agent -s); \
+		ssh-add $(SSH_KEY); \
+	fi
 
