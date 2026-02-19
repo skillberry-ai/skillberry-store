@@ -8,9 +8,16 @@ RUN apt-get update && apt-get install -y nodejs npm
 # Set the working directory
 WORKDIR /app
 
+ # SSH host authentication
+RUN mkdir -p /root/.ssh && \
+    chmod 700 /root/.ssh && \
+    ssh-keyscan github.ibm.com >> /root/.ssh/known_hosts
+
 # Create the venv
 RUN python -m venv /app/.venv
 
 # Make the venv “default” for every later RUN and at runtime
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="/app/.venv/bin:${PATH}"
+
+RUN pip install --upgrade pip 
