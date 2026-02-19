@@ -2,6 +2,8 @@
 
 This service implements a smart skills repository for agentic workflows. Manage, execute, and organize your skills, tools and snippets with powerful search and lifecycle management.
 
+![Skillberry screenshot](docs/images/skillberry-store-screenshot.jpg)
+
 ## Features ✨
 
 - **Manage tools for agentic workloads**: Add (Persist), Remove, Update, and Delete tools.
@@ -33,7 +35,7 @@ make docker_run
 
 The Skillberry Store now includes a modern web UI that starts automatically with the backend:
 
-- **Web UI**: [http://localhost:3000](http://localhost:3000) - Modern React-based interface
+- **Web UI**: [http://localhost:8002](http://localhost:8002) - Modern React-based interface
 - **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs) - OpenAPI/Swagger interface
 
 The Web UI provides:
