@@ -121,11 +121,12 @@ base-image-push: docker-check base-image-build ## Push base image into the regis
 base-image-rm: docker-check ## Remove the local base image
 	@echo "Removing BASE image: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
 	$(DOCKER) rmi -f $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) > /dev/null 2>&1 || true
+	rm -f .stamps/base-image-build
 
 .PHONY: docker-build 
-docker-build: docker-check update-git-version .stamps/docker-build	## Build service in docker image
+docker-build: docker-check update-git-version ssh-agent .stamps/docker-build	## Build service in docker image
 
-# We actually build a new image only if the code changed
+# We actually build a new image only if the code changed by checking code-scan stamp
 .stamps/docker-build: .stamps/code-scan
 	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
@@ -134,6 +135,7 @@ docker-build: docker-check update-git-version .stamps/docker-build	## Build serv
 	@echo "Building for $(ARCH) using the Docker file $(DOCKER_FILE): $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@if [ "$(DOCKER)" = "docker" ]; then \
 		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
+		--progress=plain \
 		--file $(DOCKER_FILE) \
 		--load \
 		--build-arg BASE_IMAGE_FULL_NAME=$(BASE_IMAGE_FULL_NAME) \
@@ -143,6 +145,7 @@ docker-build: docker-check update-git-version .stamps/docker-build	## Build serv
 		--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
 		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+		--ssh default=$$SSH_AUTH_SOCK \
 		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(FULL_IMAGE_NAME):latest \
 		.; \
@@ -157,6 +160,7 @@ docker-build: docker-check update-git-version .stamps/docker-build	## Build serv
 		--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
 		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+		--ssh default=$$SSH_AUTH_SOCK \
 		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(FULL_IMAGE_NAME):latest \
 		.; \
@@ -176,13 +180,25 @@ docker-push: docker-check docker-build ## Push docker image into the registry
 	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):latest"
 	$(DOCKER) push $(FULL_IMAGE_NAME):latest
 
+
 .PHONY: docker-run
-docker-run: docker-check docker-build docker-clean ## Run the docker image
+ifeq ($(USE_LLM_SVCS),1)
+docker-run: docker-check docker-build docker-clean check-rits-watsonx-envs
+	@$(SB_COMMON_PATH)/scripts/update_env_vars.sh -r .env $(LLM_SVCS_ENV_VARS)
 	$(DOCKER) run --name $(CNTR_NAME) --env-file .env \
 		-d \
 		--network=host \
 		$(FULL_IMAGE_NAME):$(IMAGE_TAG)
 	@echo "Docker container started: $(CNTR_NAME)"
+else
+docker-run: docker-check docker-build docker-clean
+	$(DOCKER) run --name $(CNTR_NAME) --env-file .env \
+		-d \
+		--network=host \
+		$(FULL_IMAGE_NAME):$(IMAGE_TAG)
+	@echo "Docker container started: $(CNTR_NAME)"
+endif
+
 
 .PHONY: docker-rm
 docker-rm: docker-check docker-clean ## Remove the docker container, image, and temporary files
