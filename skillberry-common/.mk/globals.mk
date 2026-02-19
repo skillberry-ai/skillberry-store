@@ -1,4 +1,4 @@
-.DEFAULT_GOAL ?= help
+.DEFAULT_GOAL := help
 
 ARCH := $(shell uname -m)
 OS := $(shell uname -s)
