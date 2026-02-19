@@ -135,7 +135,6 @@ docker-build: docker-check update-git-version ssh-agent .stamps/docker-build	## 
 	@echo "Building for $(ARCH) using the Docker file $(DOCKER_FILE): $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@if [ "$(DOCKER)" = "docker" ]; then \
 		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
-		--progress=plain \
 		--file $(DOCKER_FILE) \
 		--load \
 		--build-arg BASE_IMAGE_FULL_NAME=$(BASE_IMAGE_FULL_NAME) \
