@@ -41,7 +41,7 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.ToolsApi(api_client)
-    tool = None # bytearray | 
+    tool = 'tool_example' # str | 
     tool_name = 'tool_name_example' # str |  (optional)
     update = False # bool |  (optional) (default to False)
 
@@ -61,7 +61,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **tool** | **bytearray**|  | 
+ **tool** | **str**|  | 
  **tool_name** | **str**|  | [optional] 
  **update** | **bool**|  | [optional] [default to False]
 
@@ -88,7 +88,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **create_tool_tools_post**
-> object create_tool_tools_post(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, params=params, returns=returns, dependencies=dependencies)
+> object create_tool_tools_post(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, params=params, returns=returns, dependencies=dependencies)
 
 Create Tool
 
@@ -116,13 +116,14 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.ToolsApi(api_client)
-    module = None # bytearray | 
+    module = 'module_example' # str | 
     name = 'name_example' # str | Name (optional)
     uuid = 'uuid_example' # str | A UUID. If not provided, a UUID will be automatically generated. (optional)
     version = 'version_example' # str | Version (optional)
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
+    extra = None # Dict[str, object] | Optional key-value pairs for additional flexible information (optional)
     module_name = 'module_name_example' # str | Name of the module containing the tool (optional)
     programming_language = 'python' # str | Programming language of the tool (optional) (default to 'python')
     packaging_format = 'code' # str | Packaging format of the tool (optional) (default to 'code')
@@ -132,7 +133,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Create Tool
-        api_response = api_instance.create_tool_tools_post(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, params=params, returns=returns, dependencies=dependencies)
+        api_response = api_instance.create_tool_tools_post(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, params=params, returns=returns, dependencies=dependencies)
         print("The response of ToolsApi->create_tool_tools_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -146,13 +147,14 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **module** | **bytearray**|  | 
+ **module** | **str**|  | 
  **name** | **str**| Name | [optional] 
  **uuid** | **str**| A UUID. If not provided, a UUID will be automatically generated. | [optional] 
  **version** | **str**| Version | [optional] 
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional key-value pairs for additional flexible information | [optional] 
  **module_name** | **str**| Name of the module containing the tool | [optional] 
  **programming_language** | **str**| Programming language of the tool | [optional] [default to &#39;python&#39;]
  **packaging_format** | **str**| Packaging format of the tool | [optional] [default to &#39;code&#39;]

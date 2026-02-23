@@ -46,6 +46,10 @@ class ManifestSchema(BaseModel):
         default_factory=list,
         description="List of tags for categorizing"
     )
+    extra: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional key-value pairs for additional flexible information"
+    )
         
     def to_dict(self) -> Dict[str, Any]:
         """Convert the manifest schema to a dictionary."""

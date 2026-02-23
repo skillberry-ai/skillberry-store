@@ -12,6 +12,7 @@ Name | Type | Description | Notes
 **description** | **str** |  | [optional] 
 **state** | [**ManifestState**](ManifestState.md) | Lifecycle state | [optional] 
 **tags** | **List[str]** |  | [optional] 
+**extra** | **Dict[str, object]** |  | [optional] 
 **tool_uuids** | **List[str]** | Ordered list of tool UUIDs that comprise this skill | [optional] 
 **snippet_uuids** | **List[str]** | Ordered list of snippet UUIDs that comprise this skill | [optional] 
 

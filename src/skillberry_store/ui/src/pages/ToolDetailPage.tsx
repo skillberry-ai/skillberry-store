@@ -61,8 +61,10 @@ export function ToolDetailPage() {
     module_name: '',
     programming_language: 'python',
     packaging_format: 'code',
+    extra: {} as Record<string, any>,
   });
   const [tagInput, setTagInput] = useState('');
+  const [extraInput, setExtraInput] = useState('{}');
   const [editError, setEditError] = useState('');
 
   // Fetch tool details
@@ -133,7 +135,9 @@ export function ToolDetailPage() {
         module_name: tool.module_name || '',
         programming_language: tool.programming_language || 'python',
         packaging_format: tool.packaging_format || 'code',
+        extra: tool.extra || {},
       });
+      setExtraInput(JSON.stringify(tool.extra || {}, null, 2));
       setIsEditModalOpen(true);
     }
   };
@@ -143,7 +147,21 @@ export function ToolDetailPage() {
       setEditError('Please fill in all required fields');
       return;
     }
-    updateMutation.mutate({ ...tool!, ...editedTool });
+    
+    // Parse extra field
+    let parsedExtra = {};
+    try {
+      parsedExtra = JSON.parse(extraInput);
+      if (typeof parsedExtra !== 'object' || Array.isArray(parsedExtra)) {
+        setEditError('Additional Information must be a valid JSON object');
+        return;
+      }
+    } catch (e) {
+      setEditError('Additional Information must be valid JSON');
+      return;
+    }
+    
+    updateMutation.mutate({ ...tool!, ...editedTool, extra: Object.keys(parsedExtra).length > 0 ? parsedExtra : undefined });
   };
 
   const handleAddTag = () => {
@@ -387,6 +405,28 @@ export function ToolDetailPage() {
                       </Text>
                     </DescriptionListDescription>
                   </DescriptionListGroup>
+
+                  {tool.extra && Object.keys(tool.extra).length > 0 && (
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>Additional Information</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        <CodeBlock>
+                          <CodeBlockCode style={{
+                            fontSize: '14px',
+                            lineHeight: '1.6',
+                            padding: '1rem',
+                            backgroundColor: '#f5f5f5',
+                            borderRadius: '4px',
+                            display: 'block',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word'
+                          }}>
+                            {JSON.stringify(tool.extra, null, 2)}
+                          </CodeBlockCode>
+                        </CodeBlock>
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
+                  )}
                 </DescriptionList>
               </CardBody>
             </Card>
@@ -766,6 +806,18 @@ export function ToolDetailPage() {
               onChange={(_, value) => setEditedTool({ ...editedTool, packaging_format: value })}
               placeholder="e.g., code, json"
             />
+          </FormGroup>
+          <FormGroup label="Additional Information (JSON)" fieldId="tool-extra">
+            <TextArea
+              id="tool-extra"
+              value={extraInput}
+              onChange={(_, value) => setExtraInput(value)}
+              rows={5}
+              placeholder='{"key": "value"}'
+            />
+            <Text component="small" style={{ color: '#6a6e73', marginTop: '0.25rem', display: 'block' }}>
+              Optional key-value pairs for additional flexible information (must be valid JSON object)
+            </Text>
           </FormGroup>
         </Form>
       </Modal>
