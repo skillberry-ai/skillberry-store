@@ -147,7 +147,7 @@ docker-build: docker-check update-git-version ssh-agent .stamps/docker-build	## 
 		--ssh default=$$SSH_AUTH_SOCK \
 		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(FULL_IMAGE_NAME):latest \
-		.; \
+		. || exit 1; \
 		touch .stamps/docker-build; \
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		$(DOCKER) build --no-cache=true \
@@ -162,7 +162,7 @@ docker-build: docker-check update-git-version ssh-agent .stamps/docker-build	## 
 		--ssh default=$$SSH_AUTH_SOCK \
 		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(FULL_IMAGE_NAME):latest \
-		.; \
+		. || exit 1; \
 		touch .stamps/docker-build; \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
