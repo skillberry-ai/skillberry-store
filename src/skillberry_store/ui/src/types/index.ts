@@ -24,6 +24,7 @@ export interface Tool {
     type?: string;
     description?: string;
   };
+  extra?: Record<string, any>;
   author?: string;
   created_at?: string;
   updated_at?: string;
@@ -38,6 +39,7 @@ export interface Skill {
   snippets?: Snippet[];
   tags?: string[];
   version?: string;
+  extra?: Record<string, any>;
   author?: string;
   created_at?: string;
   updated_at?: string;
@@ -52,6 +54,7 @@ export interface Snippet {
   content_type?: string;
   tags?: string[];
   version?: string;
+  extra?: Record<string, any>;
   author?: string;
   created_at?: string;
   updated_at?: string;
@@ -66,6 +69,7 @@ export interface VMCPServer {
   tags?: string[];
   port?: number;
   skill_uuid?: string;
+  extra?: Record<string, any>;
   runtime?: {
     name: string;
     description: string;

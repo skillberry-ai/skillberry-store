@@ -59,8 +59,10 @@ export function VMCPServerDetailPage() {
     tags: [] as string[],
     port: undefined as number | undefined,
     skill_uuid: '',
+    extra: {} as Record<string, any>,
   });
   const [tagInput, setTagInput] = useState('');
+  const [extraInput, setExtraInput] = useState('{}');
   const [editError, setEditError] = useState('');
   
   // Skill selection state
@@ -153,7 +155,9 @@ export function VMCPServerDetailPage() {
         tags: server.tags || [],
         port: server.port,
         skill_uuid: server.skill_uuid || '',
+        extra: server.extra || {},
       });
+      setExtraInput(JSON.stringify(server.extra || {}, null, 2));
       // Set the skill search term to the current skill name if available
       if (server.skill_uuid && allSkills) {
         const currentSkill = allSkills.find(s => s.uuid === server.skill_uuid);
@@ -170,7 +174,21 @@ export function VMCPServerDetailPage() {
       setEditError('Please fill in all required fields');
       return;
     }
-    updateMutation.mutate(editedServer);
+    
+    // Parse extra field
+    let parsedExtra = {};
+    try {
+      parsedExtra = JSON.parse(extraInput);
+      if (typeof parsedExtra !== 'object' || Array.isArray(parsedExtra)) {
+        setEditError('Additional Information must be a valid JSON object');
+        return;
+      }
+    } catch (e) {
+      setEditError('Additional Information must be valid JSON');
+      return;
+    }
+    
+    updateMutation.mutate({ ...editedServer, extra: Object.keys(parsedExtra).length > 0 ? parsedExtra : undefined });
   };
 
   const handleAddTag = () => {
@@ -323,6 +341,28 @@ export function VMCPServerDetailPage() {
                   </Text>
                 </DescriptionListDescription>
               </DescriptionListGroup>
+
+              {server.extra && Object.keys(server.extra).length > 0 && (
+                <DescriptionListGroup>
+                  <DescriptionListTerm>Additional Information</DescriptionListTerm>
+                  <DescriptionListDescription>
+                    <CodeBlock>
+                      <CodeBlockCode style={{
+                        fontSize: '14px',
+                        lineHeight: '1.6',
+                        padding: '1rem',
+                        backgroundColor: '#f5f5f5',
+                        borderRadius: '4px',
+                        display: 'block',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}>
+                        {JSON.stringify(server.extra, null, 2)}
+                      </CodeBlockCode>
+                    </CodeBlock>
+                  </DescriptionListDescription>
+                </DescriptionListGroup>
+              )}
             </DescriptionList>
           </CardBody>
         </Card>
@@ -763,6 +803,18 @@ export function VMCPServerDetailPage() {
                 ))}
               </div>
             )}
+          </FormGroup>
+          <FormGroup label="Additional Information (JSON)" fieldId="server-extra">
+            <TextArea
+              id="server-extra"
+              value={extraInput}
+              onChange={(_, value) => setExtraInput(value)}
+              rows={5}
+              placeholder='{"key": "value"}'
+            />
+            <Text component="small" style={{ color: '#6a6e73', marginTop: '0.25rem', display: 'block' }}>
+              Optional key-value pairs for additional flexible information (must be valid JSON object)
+            </Text>
           </FormGroup>
         </Form>
       </Modal>

@@ -60,8 +60,10 @@ export function SkillDetailPage() {
     tags: [] as string[],
     toolNames: [] as string[],
     snippetNames: [] as string[],
+    extra: {} as Record<string, any>,
   });
   const [tagInput, setTagInput] = useState('');
+  const [extraInput, setExtraInput] = useState('{}');
   const [editError, setEditError] = useState('');
   
   // Select dropdown states
@@ -145,7 +147,9 @@ export function SkillDetailPage() {
         tags: skill.tags || [],
         toolNames: skill.tools?.map(t => t.name) || [],
         snippetNames: skill.snippets?.map(s => s.name) || [],
+        extra: skill.extra || {},
       });
+      setExtraInput(JSON.stringify(skill.extra || {}, null, 2));
       setIsEditModalOpen(true);
     }
   };
@@ -153,6 +157,19 @@ export function SkillDetailPage() {
   const handleUpdateSkill = async () => {
     if (!editedSkill.name || !editedSkill.description) {
       setEditError('Please fill in all required fields');
+      return;
+    }
+    
+    // Parse extra field
+    let parsedExtra = {};
+    try {
+      parsedExtra = JSON.parse(extraInput);
+      if (typeof parsedExtra !== 'object' || Array.isArray(parsedExtra)) {
+        setEditError('Additional Information must be a valid JSON object');
+        return;
+      }
+    } catch (e) {
+      setEditError('Additional Information must be valid JSON');
       return;
     }
     
@@ -178,6 +195,7 @@ export function SkillDetailPage() {
         tool_uuids: tools.map(t => t.uuid),
         snippet_uuids: snippets.map(s => s.uuid),
         state: skill!.state,
+        extra: Object.keys(parsedExtra).length > 0 ? parsedExtra : undefined,
       };
       
       // Call API with JSON body
@@ -615,6 +633,28 @@ export function SkillDetailPage() {
                   </Text>
                 </DescriptionListDescription>
               </DescriptionListGroup>
+
+              {skill.extra && Object.keys(skill.extra).length > 0 && (
+                <DescriptionListGroup>
+                  <DescriptionListTerm>Additional Information</DescriptionListTerm>
+                  <DescriptionListDescription>
+                    <CodeBlock>
+                      <CodeBlockCode style={{
+                        fontSize: '14px',
+                        lineHeight: '1.6',
+                        padding: '1rem',
+                        backgroundColor: '#f5f5f5',
+                        borderRadius: '4px',
+                        display: 'block',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}>
+                        {JSON.stringify(skill.extra, null, 2)}
+                      </CodeBlockCode>
+                    </CodeBlock>
+                  </DescriptionListDescription>
+                </DescriptionListGroup>
+              )}
             </DescriptionList>
           </CardBody>
         </Card>
@@ -997,6 +1037,18 @@ export function SkillDetailPage() {
                 ))}
               </div>
             )}
+          </FormGroup>
+          <FormGroup label="Additional Information (JSON)" fieldId="skill-extra">
+            <TextArea
+              id="skill-extra"
+              value={extraInput}
+              onChange={(_, value) => setExtraInput(value)}
+              rows={5}
+              placeholder='{"key": "value"}'
+            />
+            <Text component="small" style={{ color: '#6a6e73', marginTop: '0.25rem', display: 'block' }}>
+              Optional key-value pairs for additional flexible information (must be valid JSON object)
+            </Text>
           </FormGroup>
         </Form>
       </Modal>

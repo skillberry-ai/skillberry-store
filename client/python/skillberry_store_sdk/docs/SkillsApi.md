@@ -15,7 +15,7 @@ Method | HTTP request | Description
 
 
 # **create_skill_skills_post**
-> object create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
+> object create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
 
 Create Skill
 
@@ -47,12 +47,13 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
+    extra = None # Dict[str, object] | Optional key-value pairs for additional flexible information (optional)
     tool_uuids = ['tool_uuids_example'] # List[Optional[str]] | Ordered list of tool UUIDs that comprise this skill (optional)
     snippet_uuids = ['snippet_uuids_example'] # List[Optional[str]] | Ordered list of snippet UUIDs that comprise this skill (optional)
 
     try:
         # Create Skill
-        api_response = api_instance.create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
+        api_response = api_instance.create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
         print("The response of SkillsApi->create_skill_skills_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -72,6 +73,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional key-value pairs for additional flexible information | [optional] 
  **tool_uuids** | [**List[Optional[str]]**](str.md)| Ordered list of tool UUIDs that comprise this skill | [optional] 
  **snippet_uuids** | [**List[Optional[str]]**](str.md)| Ordered list of snippet UUIDs that comprise this skill | [optional] 
 
@@ -329,7 +331,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     api_instance = skillberry_store_sdk.SkillsApi(api_client)
     source_type = 'source_type_example' # str | 
     github_url = 'github_url_example' # str |  (optional)
-    zip_file = None # bytearray |  (optional)
+    zip_file = 'zip_file_example' # str |  (optional)
     folder_path = 'folder_path_example' # str |  (optional)
     snippet_mode = 'file' # str |  (optional) (default to 'file')
 
@@ -351,7 +353,7 @@ Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
  **source_type** | **str**|  | 
  **github_url** | **str**|  | [optional] 
- **zip_file** | **bytearray**|  | [optional] 
+ **zip_file** | **str**|  | [optional] 
  **folder_path** | **str**|  | [optional] 
  **snippet_mode** | **str**|  | [optional] [default to &#39;file&#39;]
 

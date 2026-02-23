@@ -68,6 +68,13 @@ def ensure_api_configured(api_name: str, api_url: str, force_update: bool = Fals
     #     needs_update = True
     
     if needs_update:
+
+        # To avoid conflicts, remove any existing API configuration with the same base URL
+        for name, api_config in list(config.items()):
+            if api_config.get("base") == api_url:
+                del config[name]
+                print(f"Removed conflicting API configuration: {name}", file=sys.stderr)
+
         # Configure the API
         config[api_name] = {
             "base": api_url,
