@@ -206,5 +206,20 @@ def custom_openapi(app: FastAPI, openapi_tags):
         routes=app.routes,
     )
 
+    # Fix file upload schema for SDK generation
+    # FastAPI generates contentMediaType but OpenAPI generators expect format: binary
+    if "components" in openapi_schema and "schemas" in openapi_schema["components"]:
+        schemas = openapi_schema["components"]["schemas"]
+        
+        # Fix the add_tool endpoint schema
+        if "Body_add_tool_from_python_tools_add_post" in schemas:
+            tool_schema = schemas["Body_add_tool_from_python_tools_add_post"]
+            if "properties" in tool_schema and "tool" in tool_schema["properties"]:
+                tool_prop = tool_schema["properties"]["tool"]
+                # Remove contentMediaType and add format: binary
+                if "contentMediaType" in tool_prop:
+                    del tool_prop["contentMediaType"]
+                tool_prop["format"] = "binary"
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema

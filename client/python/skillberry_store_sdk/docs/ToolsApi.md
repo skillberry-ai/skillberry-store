@@ -41,7 +41,7 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.ToolsApi(api_client)
-    tool = 'tool_example' # str | 
+    tool = None # bytearray | 
     tool_name = 'tool_name_example' # str |  (optional)
     update = False # bool |  (optional) (default to False)
 
@@ -61,7 +61,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **tool** | **str**|  | 
+ **tool** | **bytearray**|  | 
  **tool_name** | **str**|  | [optional] 
  **update** | **bool**|  | [optional] [default to False]
 
