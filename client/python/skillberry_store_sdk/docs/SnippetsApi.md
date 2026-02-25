@@ -13,7 +13,7 @@ Method | HTTP request | Description
 
 
 # **create_snippet_snippets_post**
-> object create_snippet_snippets_post(content, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, content_type=content_type, file=file)
+> object create_snippet_snippets_post(content, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, content_type=content_type, file=file)
 
 Create Snippet
 
@@ -48,12 +48,14 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
     extra = None # Dict[str, object] | Optional key-value pairs for additional flexible information (optional)
+    created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
+    modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     content_type = skillberry_store_sdk.ContentType() # ContentType | MIME type of the snippet content (optional)
     file = 'file_example' # str |  (optional)
 
     try:
         # Create Snippet
-        api_response = api_instance.create_snippet_snippets_post(content, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, content_type=content_type, file=file)
+        api_response = api_instance.create_snippet_snippets_post(content, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, content_type=content_type, file=file)
         print("The response of SnippetsApi->create_snippet_snippets_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -75,6 +77,8 @@ Name | Type | Description  | Notes
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
  **extra** | [**Dict[str, object]**](object.md)| Optional key-value pairs for additional flexible information | [optional] 
+ **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
+ **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **content_type** | [**ContentType**](.md)| MIME type of the snippet content | [optional] 
  **file** | **str**|  | [optional] 
 
