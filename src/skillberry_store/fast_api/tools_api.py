@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Optional, Type, TypeVar, Annotated, Dict, Any
 from inspect import Parameter, Signature
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Request
@@ -121,6 +122,11 @@ def register_tools_api(
             tool.uuid = str(uuid.uuid4())
             logger.info(f"Generated UUID for tool '{tool.name}': {tool.uuid}")
 
+        # Set timestamps
+        current_time = datetime.now(timezone.utc).isoformat()
+        tool.created_at = current_time
+        tool.modified_at = current_time
+
         # Check if tool already exists
         existing_tools = tool_handler.list_files()
         tool_filename = f"{tool.name}.json"
@@ -203,6 +209,9 @@ def register_tools_api(
                     else:
                         continue
                     tools.append(tool_dict)
+
+            # Sort by modified_at in descending order (most recent first)
+            tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
             logger.info(f"Listed {len(tools)} tools")
             return tools
@@ -397,6 +406,9 @@ def register_tools_api(
             existing_tools = tool_handler.list_files()
             if tool_filename not in existing_tools:
                 raise HTTPException(status_code=404, detail=f"Tool '{name}' not found.")
+
+            # Update modified timestamp
+            tool.modified_at = datetime.now(timezone.utc).isoformat()
 
             # Update the tool
             tool_json = json.dumps(tool.to_dict(), indent=4)
@@ -621,6 +633,9 @@ def register_tools_api(
                 lifecycle_state=lifecycle_state,
             )
 
+            # Sort by modified_at in descending order (most recent first)
+            filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+
             # Return only filename and similarity_score (filename is the tool name)
             result = [
                 {"filename": tool.get("name", ""), "similarity_score": tool.get("similarity_score", 0.0)}
@@ -770,6 +785,9 @@ def register_tools_api(
                 optional=[]
             )
             
+            # Set timestamps
+            current_time = datetime.now(timezone.utc).isoformat()
+            
             tool_schema = ToolSchema(
                 name=func_name,
                 description=description,
@@ -781,7 +799,9 @@ def register_tools_api(
                 state=ManifestState.APPROVED,
                 params=params_schema,
                 returns=returns_schema,
-                dependencies=dependencies
+                dependencies=dependencies,
+                created_at=current_time,
+                modified_at=current_time
             )
 
             # Save the manifest

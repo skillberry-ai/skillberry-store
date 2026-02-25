@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import Response
@@ -131,6 +132,11 @@ def register_skills_api(
             skill.uuid = str(uuid.uuid4())
             logger.info(f"Generated UUID for skill '{skill.name}': {skill.uuid}")
 
+        # Set timestamps
+        current_time = datetime.now(timezone.utc).isoformat()
+        skill.created_at = current_time
+        skill.modified_at = current_time
+
         # Check if skill already exists
         existing_skills = skill_handler.list_files()
         skill_filename = f"{skill.name}.json"
@@ -189,6 +195,9 @@ def register_skills_api(
                     else:
                         continue
                     skills.append(skill_dict)
+
+            # Sort by modified_at in descending order (most recent first)
+            skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
             logger.info(f"Listed {len(skills)} skills")
             return skills
@@ -302,6 +311,9 @@ def register_skills_api(
                     status_code=404, detail=f"Skill '{name}' not found."
                 )
 
+            # Update modified timestamp
+            skill.modified_at = datetime.now(timezone.utc).isoformat()
+
             # Update the skill
             skill_json = json.dumps(skill.to_dict(), indent=4)
             skill_handler.write_file_content(skill_filename, skill_json)
@@ -380,6 +392,9 @@ def register_skills_api(
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
             )
+
+            # Sort by modified_at in descending order (most recent first)
+            filtered_skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
             # Return only filename and similarity_score (filename is the skill name)
             result = [

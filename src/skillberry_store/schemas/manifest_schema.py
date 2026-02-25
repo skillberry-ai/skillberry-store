@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -49,6 +50,14 @@ class ManifestSchema(BaseModel):
     extra: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Optional key-value pairs for additional flexible information"
+    )
+    created_at: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 timestamp when created"
+    )
+    modified_at: Optional[str] = Field(
+        default=None,
+        description="ISO 8601 timestamp when last modified"
     )
         
     def to_dict(self) -> Dict[str, Any]:

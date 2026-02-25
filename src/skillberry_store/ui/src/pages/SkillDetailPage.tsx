@@ -616,11 +616,11 @@ export function SkillDetailPage() {
                 </DescriptionListGroup>
               )}
 
-              {skill.updated_at && (
+              {skill.modified_at && (
                 <DescriptionListGroup>
-                  <DescriptionListTerm>Last Updated</DescriptionListTerm>
+                  <DescriptionListTerm>Last Modified</DescriptionListTerm>
                   <DescriptionListDescription>
-                    {new Date(skill.updated_at).toLocaleString()}
+                    {new Date(skill.modified_at).toLocaleString()}
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}

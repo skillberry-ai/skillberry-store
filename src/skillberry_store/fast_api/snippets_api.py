@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 from prometheus_client import Counter
@@ -82,6 +83,11 @@ def register_snippets_api(
             snippet.uuid = str(uuid.uuid4())
             logger.info(f"Generated UUID for snippet '{snippet.name}': {snippet.uuid}")
 
+        # Set timestamps
+        current_time = datetime.now(timezone.utc).isoformat()
+        snippet.created_at = current_time
+        snippet.modified_at = current_time
+
         # If file is provided, read its content and override snippet.content
         if file:
             try:
@@ -152,6 +158,9 @@ def register_snippets_api(
                     else:
                         continue
                     snippets.append(snippet_dict)
+
+            # Sort by modified_at in descending order (most recent first)
+            snippets.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
             logger.info(f"Listed {len(snippets)} snippets")
             return snippets
@@ -263,6 +272,9 @@ def register_snippets_api(
                     status_code=404, detail=f"Snippet '{name}' not found."
                 )
 
+            # Update modified timestamp
+            snippet.modified_at = datetime.now(timezone.utc).isoformat()
+
             # Update the snippet
             snippet_json = json.dumps(snippet.to_dict(), indent=4)
             snippet_handler.write_file_content(snippet_filename, snippet_json)
@@ -341,6 +353,9 @@ def register_snippets_api(
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
             )
+
+            # Sort by modified_at in descending order (most recent first)
+            filtered_snippets.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
             # Return only filename and similarity_score (filename is the snippet name)
             result = [
