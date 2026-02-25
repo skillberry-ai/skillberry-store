@@ -15,7 +15,7 @@ Method | HTTP request | Description
 
 
 # **create_skill_skills_post**
-> object create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
+> object create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
 
 Create Skill
 
@@ -48,12 +48,14 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
     extra = None # Dict[str, object] | Optional key-value pairs for additional flexible information (optional)
+    created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
+    modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     tool_uuids = ['tool_uuids_example'] # List[Optional[str]] | Ordered list of tool UUIDs that comprise this skill (optional)
     snippet_uuids = ['snippet_uuids_example'] # List[Optional[str]] | Ordered list of snippet UUIDs that comprise this skill (optional)
 
     try:
         # Create Skill
-        api_response = api_instance.create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
+        api_response = api_instance.create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
         print("The response of SkillsApi->create_skill_skills_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -74,6 +76,8 @@ Name | Type | Description  | Notes
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
  **extra** | [**Dict[str, object]**](object.md)| Optional key-value pairs for additional flexible information | [optional] 
+ **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
+ **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **tool_uuids** | [**List[Optional[str]]**](str.md)| Ordered list of tool UUIDs that comprise this skill | [optional] 
  **snippet_uuids** | [**List[Optional[str]]**](str.md)| Ordered list of snippet UUIDs that comprise this skill | [optional] 
 
