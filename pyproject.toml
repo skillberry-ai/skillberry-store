@@ -118,7 +118,11 @@ dependencies = [
   "opentelemetry-instrumentation-requests",
   "faiss-cpu",
   "openapi-generator-cli[jdk4py]==7.20.0",
+  "openapi-generator-cli",
   "toml-cli"
+  "tomli",
+  "tomli-w",
+  "sentence_transformers",
 ]
 
 [project.optional-dependencies]

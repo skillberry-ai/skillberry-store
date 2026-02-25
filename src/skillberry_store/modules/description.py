@@ -4,9 +4,7 @@ from pathlib import Path
 from typing import Optional, Any
 
 from fastapi import HTTPException
-from skillberry_store.modules.description_vector_index import (
-    DescriptionVectorIndex,
-)
+from skillberry_store.vdbs.vector_db_interface import VectorDBInterface, text_to_vector
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +19,12 @@ _embedding_model_search_k = os.getenv(
 )
 
 INDEX_RELATIVE_DIRECTORY = "/index/"
-INDEX_FILE_NAME = "descriptions_index.faiss"
+INDEX_FILE_NAME_BASE = "descriptions_index."
 
 
 class Description:
     def __init__(
-        self, descriptions_directory: str, vector_index: DescriptionVectorIndex
+        self, descriptions_directory: str, vector_index: VectorDBInterface, vdb_type: str,
     ):
         """
         Initialize the Descriptions with a directory to store descriptions.
@@ -36,8 +34,9 @@ class Description:
         os.makedirs(self.descriptions_directory, exist_ok=True)
         index_directory = descriptions_directory + INDEX_RELATIVE_DIRECTORY
         os.makedirs(index_directory, exist_ok=True)
+        index_file_name = INDEX_FILE_NAME_BASE + vdb_type
         self.vector_index = vector_index(
-            index_file=index_directory + INDEX_FILE_NAME,
+            persist_path=index_directory + index_file_name,
             dimension=_dimension,
         )
 
@@ -77,8 +76,13 @@ class Description:
                 f.write(description)
 
             # Add description embedding to the vector index
-            self.vector_index.add_description(
-                description=description, filename=filename
+            embedding = text_to_vector(description)
+            print("************************* description = ", description)
+            print("************************* embedding = ", embedding)
+            self.vector_index.add_vector(
+                    id = filename,
+                    vector = embedding,
+                    metadata={},
             )
 
             logger.info(f"Description and embedding saved for file: {filename}")
@@ -106,6 +110,12 @@ class Description:
                 f.write(new_description)
 
             # Update the description in the vector index
+            embedding = text_to_vector(new_description)
+            self.vector_index.update_vector(
+                    id = filename,
+                    vector = embedding,
+                    #metadata={},
+            )
             self.vector_index.update_description(new_description, filename)
             logger.info(f"Description and embedding updated for file: {filename}")
             return {
@@ -125,7 +135,7 @@ class Description:
         description_file_path = self.get_description_file_path(filename)
         try:
             if os.path.exists(description_file_path):
-                self.vector_index.delete_description(filename)
+                self.vector_index.delete_vector(filename)
                 os.remove(description_file_path)
                 logger.info(f"Description deleted for file: {filename}")
                 return {
@@ -145,7 +155,7 @@ class Description:
     def search_description(
         self, search_term: str, k: int = _embedding_model_search_k
     ) -> list[dict[str, str | Any]]:
-        matched_files = self.vector_index.search(search_term, k)
-
+        embedding = text_to_vector(search_term)
+        matched_files = self.vector_index.search(embedding, k)
         logger.info(f"Search results for term '{search_term}': {matched_files}")
         return matched_files

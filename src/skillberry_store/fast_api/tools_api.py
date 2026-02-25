@@ -251,6 +251,8 @@ def register_tools_api(
             tool_handler.write_file_content(tool_filename, tool_json)
 
             # Write description for search capability
+            print("************************ tool = ", tool)
+            print("*********************** tool description = ", tool.description)
             if tools_descriptions and tool.description:
                 tools_descriptions.write_description(tool.name, tool.description)
                 logger.info(f"Tool description saved for: {tool.name}")
@@ -661,11 +663,12 @@ def register_tools_api(
                 search_term=search_term, k=max_number_of_results
             )
 
-            filtered_matched_entities = [
-                matched_entity
-                for matched_entity in matched_entities
-                if matched_entity["similarity_score"] <= similarity_threshold
-            ]
+            # filtered_matched_entities = [
+            #     matched_entity
+            #     for matched_entity in matched_entities
+            #     if matched_entity["similarity_score"] <= similarity_threshold
+            # ]
+            filtered_matched_entities = matched_entities
 
             # Get full tool objects for filtering
             tools_to_filter = []
@@ -868,6 +871,7 @@ def register_tools_api(
             logger.info(f"Saved manifest: {tool_filename}")
 
             # Write description for search capability
+            print("********************************** description 2 = ", description)
             if tools_descriptions:
                 tools_descriptions.write_description(func_name, description)
                 logger.info(f"Tool description saved for: {func_name}")

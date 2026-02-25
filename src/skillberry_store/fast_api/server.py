@@ -19,9 +19,7 @@ from skillberry_store.fast_api.tools_api import register_tools_api
 from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.modules.description import Description
-from skillberry_store.modules.description_vector_index import (
-    DescriptionVectorIndex,
-)
+from skillberry_store.vdbs.identify_vdb import identify_vector_db
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.tools.configure import (
     get_files_directory_path,
@@ -59,6 +57,7 @@ class SBSettings(BaseSettings):
         "INFO", validation_alias="UVICORN_LOG_LEVEL"
     )
     observability: bool = Field(True, validation_alias="OBSERVABILITY")
+    sbs_vdb: str = Field("faiss", env="SBS_VDB")
 
     @property
     def display_host(self) -> str:
@@ -75,12 +74,13 @@ class SBS(FastAPI):
         self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
         self.logger = logging.getLogger(__name__)
-        
+        logger.info(f"SBSettings sbs_vdb = {self.settings.sbs_vdb}")
+
         # Store description instances in app state for access by admin API
-        self.state.tools_descriptions = tools_descriptions_api()
-        self.state.snippets_descriptions = snippets_descriptions_api()
-        self.state.skills_descriptions = skills_descriptions_api()
-        self.state.vmcp_descriptions = vmcp_descriptions_api()
+        self.state.tools_descriptions = tools_descriptions_api(self.settings.sbs_vdb)
+        self.state.snippets_descriptions = snippets_descriptions_api(self.settings.sbs_vdb)
+        self.state.skills_descriptions = skills_descriptions_api(self.settings.sbs_vdb)
+        self.state.vmcp_descriptions = vmcp_descriptions_api(self.settings.sbs_vdb)
         
         sts_url = f"http://{self.settings.sbs_host}:{self.settings.sbs_port}"
         register_vmcp_api(
@@ -142,58 +142,66 @@ class SBS(FastAPI):
         )
 
 
-def tools_descriptions_api():
+def tools_descriptions_api(sbs_vdb: str):
     """Initialize tools descriptions APIs with proper persistency/db and APIs.
 
     Returns:
         Description: Description instance configured with vector index for tools.
     """
     tools_descriptions_directory = get_tools_descriptions_directory()
+    vector_index = identify_vector_db(sbs_vdb)
     tools_descriptions = Description(
         descriptions_directory=tools_descriptions_directory,
-        vector_index=DescriptionVectorIndex,
+        vector_index=vector_index,
+        vdb_type=sbs_vdb,
     )
     return tools_descriptions
 
 
-def snippets_descriptions_api():
+def snippets_descriptions_api(sbs_vdb: str):
     """Initialize snippets descriptions APIs with proper persistency/db and APIs.
 
     Returns:
         Description: Description instance configured with vector index for snippets.
     """
     snippets_descriptions_directory = get_snippets_descriptions_directory()
+    vector_index = identify_vector_db(sbs_vdb)
     snippets_descriptions = Description(
         descriptions_directory=snippets_descriptions_directory,
-        vector_index=DescriptionVectorIndex,
+        vector_index=vector_index,
+        vdb_type=sbs_vdb,
     )
     return snippets_descriptions
 
 
-def skills_descriptions_api():
+def skills_descriptions_api(sbs_vdb: str):
     """Initialize skills descriptions APIs with proper persistency/db and APIs.
 
     Returns:
         Description: Description instance configured with vector index for skills.
     """
     skills_descriptions_directory = get_skills_descriptions_directory()
+    vector_index = identify_vector_db(sbs_vdb)
     skills_descriptions = Description(
         descriptions_directory=skills_descriptions_directory,
-        vector_index=DescriptionVectorIndex,
+        vector_index=vector_index,
+        vdb_type=sbs_vdb,
     )
     return skills_descriptions
 
 
-def vmcp_descriptions_api():
+def vmcp_descriptions_api(sbs_vdb: str):
     """Initialize vmcp descriptions APIs with proper persistency/db and APIs.
 
     Returns:
         Description: Description instance configured with vector index for vmcp servers.
     """
     vmcp_descriptions_directory = get_vmcp_descriptions_directory()
+    vector_index = identify_vector_db(sbs_vdb)
     vmcp_descriptions = Description(
         descriptions_directory=vmcp_descriptions_directory,
-        vector_index=DescriptionVectorIndex,
+        vector_index=vector_index,
+        vdb_type=sbs_vdb,
     )
     return vmcp_descriptions
 
