@@ -266,11 +266,11 @@ export function SnippetDetailPage() {
                 </DescriptionListGroup>
               )}
 
-              {snippet.updated_at && (
+              {snippet.modified_at && (
                 <DescriptionListGroup>
-                  <DescriptionListTerm>Last Updated</DescriptionListTerm>
+                  <DescriptionListTerm>Last Modified</DescriptionListTerm>
                   <DescriptionListDescription>
-                    {new Date(snippet.updated_at).toLocaleString()}
+                    {new Date(snippet.modified_at).toLocaleString()}
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}

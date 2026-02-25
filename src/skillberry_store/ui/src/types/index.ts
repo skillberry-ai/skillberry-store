@@ -27,7 +27,7 @@ export interface Tool {
   extra?: Record<string, any>;
   author?: string;
   created_at?: string;
-  updated_at?: string;
+  modified_at?: string;
 }
 
 export interface Skill {
@@ -42,7 +42,7 @@ export interface Skill {
   extra?: Record<string, any>;
   author?: string;
   created_at?: string;
-  updated_at?: string;
+  modified_at?: string;
 }
 
 export interface Snippet {
@@ -57,7 +57,7 @@ export interface Snippet {
   extra?: Record<string, any>;
   author?: string;
   created_at?: string;
-  updated_at?: string;
+  modified_at?: string;
 }
 
 export interface VMCPServer {
@@ -77,6 +77,8 @@ export interface VMCPServer {
     tools: string[];
   };
   running?: boolean;
+  created_at?: string;
+  modified_at?: string;
 }
 
 export interface SearchResult {

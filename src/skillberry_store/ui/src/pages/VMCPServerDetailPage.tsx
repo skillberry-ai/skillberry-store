@@ -333,6 +333,24 @@ export function VMCPServerDetailPage() {
                 </DescriptionListGroup>
               )}
 
+              {server.created_at && (
+                <DescriptionListGroup>
+                  <DescriptionListTerm>Created</DescriptionListTerm>
+                  <DescriptionListDescription>
+                    {new Date(server.created_at).toLocaleString()}
+                  </DescriptionListDescription>
+                </DescriptionListGroup>
+              )}
+
+              {server.modified_at && (
+                <DescriptionListGroup>
+                  <DescriptionListTerm>Last Modified</DescriptionListTerm>
+                  <DescriptionListDescription>
+                    {new Date(server.modified_at).toLocaleString()}
+                  </DescriptionListDescription>
+                </DescriptionListGroup>
+              )}
+
               <DescriptionListGroup>
                 <DescriptionListTerm>UUID</DescriptionListTerm>
                 <DescriptionListDescription>

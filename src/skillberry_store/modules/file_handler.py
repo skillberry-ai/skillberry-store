@@ -37,6 +37,8 @@ class FileHandler:
             "pre_" + inspect.stack()[0].function, directory_path=self.directory_path
         )
         try:
+            # Ensure directory exists before listing
+            os.makedirs(self.directory_path, exist_ok=True)
             files = os.listdir(self.directory_path)
             ShellHook().execute(
                 "post_" + inspect.stack()[0].function,
@@ -67,6 +69,8 @@ class FileHandler:
             directory_path=self.directory_path,
             filename=filename,
         )
+        # Ensure directory exists before reading
+        os.makedirs(self.directory_path, exist_ok=True)
         file_path = os.path.join(self.directory_path, filename)
         if not os.path.exists(file_path):
             ShellHook().execute(
@@ -88,7 +92,7 @@ class FileHandler:
                     directory_path=self.directory_path,
                     filename=filename,
                 )
-                logger.error(f"Error reading file '{file.filename}': {e}")
+                logger.error(f"Error reading file '{filename}': {e}")
                 raise HTTPException(
                     status_code=500, detail=f"Error reading file: {str(e)}"
                 )
@@ -121,6 +125,8 @@ class FileHandler:
         Raises:
             HTTPException: If there is an error saving the file.
         """
+        # Ensure directory exists before writing
+        os.makedirs(self.directory_path, exist_ok=True)
         file_path = os.path.join(self.directory_path, filename)
 
         ShellHook().execute(
@@ -167,6 +173,8 @@ class FileHandler:
             directory_path=self.directory_path,
             filename=filename,
         )
+        # Ensure directory exists before writing
+        os.makedirs(self.directory_path, exist_ok=True)
         file_path = os.path.join(self.directory_path, filename)
         try:
             with open(file_path, "wb") as f:
@@ -197,6 +205,8 @@ class FileHandler:
             directory_path=self.directory_path,
             filename=filename,
         )
+        # Ensure directory exists before deleting
+        os.makedirs(self.directory_path, exist_ok=True)
         file_path = os.path.join(self.directory_path, filename)
         try:
             if os.path.exists(file_path):

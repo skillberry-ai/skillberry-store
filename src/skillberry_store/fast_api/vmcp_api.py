@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, Request
 from prometheus_client import Counter, Histogram
@@ -105,6 +106,11 @@ def register_vmcp_api(
         if not vmcp.uuid:
             vmcp.uuid = str(uuid.uuid4())
             logger.info(f"Generated UUID for vmcp server '{vmcp.name}': {vmcp.uuid}")
+
+        # Set timestamps
+        current_time = datetime.now(timezone.utc).isoformat()
+        vmcp.created_at = current_time
+        vmcp.modified_at = current_time
 
         # Check if vmcp server already exists
         existing_vmcp = vmcp_handler.list_files()
@@ -254,7 +260,7 @@ def register_vmcp_api(
             server_files = [f for f in all_files if f.endswith('.json')]
             
             # Build full server objects by combining persistent and runtime data
-            servers_dict = {}
+            servers_list = []
             for filename in server_files:
                 server_name = filename[:-5]  # Remove .json extension
                 try:
@@ -283,6 +289,7 @@ def register_vmcp_api(
                         "tags": vmcp_data.get("tags", []),
                         "port": vmcp_data.get("port"),
                         "skill_uuid": vmcp_data.get("skill_uuid"),
+                        "modified_at": vmcp_data.get("modified_at", ""),
                         "running": runtime_server is not None,
                         "runtime": {
                             "name": runtime_server.name if runtime_server else "",
@@ -291,9 +298,15 @@ def register_vmcp_api(
                             "tools": runtime_server.tools if runtime_server else [],
                         } if runtime_server else None,
                     }
-                    servers_dict[server_name] = server_info
+                    servers_list.append(server_info)
                 except Exception as e:
                     logger.warning(f"Error loading server {server_name}: {e}")
+            
+            # Sort by modified_at in descending order (most recent first)
+            servers_list.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            
+            # Convert to dict with server names as keys
+            servers_dict = {server["name"]: server for server in servers_list}
             
             logger.info(f"Listed {len(servers_dict)} vmcp servers")
             return {"virtual_mcp_servers": servers_dict}
@@ -429,6 +442,9 @@ def register_vmcp_api(
                 raise HTTPException(
                     status_code=404, detail=f"VMCP server '{name}' not found."
                 )
+
+            # Update modified timestamp
+            vmcp.modified_at = datetime.now(timezone.utc).isoformat()
 
             # Extract env_id from request headers
             headers = request.headers
@@ -708,6 +724,9 @@ def register_vmcp_api(
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
             )
+
+            # Sort by modified_at in descending order (most recent first)
+            filtered_vmcp_servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
             # Return only filename and similarity_score (filename is the vmcp server name)
             result = [

@@ -388,11 +388,11 @@ export function ToolDetailPage() {
                     </DescriptionListGroup>
                   )}
 
-                  {tool.updated_at && (
+                  {tool.modified_at && (
                     <DescriptionListGroup>
-                      <DescriptionListTerm>Last Updated</DescriptionListTerm>
+                      <DescriptionListTerm>Last Modified</DescriptionListTerm>
                       <DescriptionListDescription>
-                        {new Date(tool.updated_at).toLocaleString()}
+                        {new Date(tool.modified_at).toLocaleString()}
                       </DescriptionListDescription>
                     </DescriptionListGroup>
                   )}

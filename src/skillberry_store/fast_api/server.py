@@ -211,15 +211,24 @@ def custom_openapi(app: FastAPI, openapi_tags):
     if "components" in openapi_schema and "schemas" in openapi_schema["components"]:
         schemas = openapi_schema["components"]["schemas"]
         
-        # Fix the add_tool endpoint schema
-        if "Body_add_tool_from_python_tools_add_post" in schemas:
-            tool_schema = schemas["Body_add_tool_from_python_tools_add_post"]
-            if "properties" in tool_schema and "tool" in tool_schema["properties"]:
-                tool_prop = tool_schema["properties"]["tool"]
-                # Remove contentMediaType and add format: binary
-                if "contentMediaType" in tool_prop:
-                    del tool_prop["contentMediaType"]
-                tool_prop["format"] = "binary"
+        # Define all file upload endpoints and their file parameter names
+        file_upload_fixes = [
+            ("Body_add_tool_from_python_tools_add_post", "tool"),
+            ("Body_create_tool_tools__post", "module"),
+            ("Body_create_snippet_snippets__post", "file"),
+            ("Body_import_anthropic_skill_skills_import_anthropic_post", "zip_file"),
+        ]
+        
+        # Apply fix to all file upload schemas
+        for schema_name, file_param in file_upload_fixes:
+            if schema_name in schemas:
+                schema = schemas[schema_name]
+                if "properties" in schema and file_param in schema["properties"]:
+                    file_prop = schema["properties"][file_param]
+                    # Remove contentMediaType and add format: binary
+                    if "contentMediaType" in file_prop:
+                        del file_prop["contentMediaType"]
+                    file_prop["format"] = "binary"
 
     app.openapi_schema = openapi_schema
     return app.openapi_schema
