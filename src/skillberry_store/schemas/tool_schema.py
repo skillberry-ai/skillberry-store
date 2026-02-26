@@ -87,5 +87,12 @@ class ToolSchema(ManifestSchema):
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ToolSchema":
-        """Create a ToolSchema instance from a dictionary."""
-        return cls(**data)
+        """Create a ToolSchema instance from a dictionary.
+        
+        Only passes known fields to avoid **kwargs issues.
+        """
+        # Get the model's field names to filter out unknown fields
+        valid_fields = cls.model_fields.keys()
+        filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+        
+        return cls(**filtered_data)

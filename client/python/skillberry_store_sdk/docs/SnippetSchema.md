@@ -12,7 +12,9 @@ Name | Type | Description | Notes
 **description** | **str** |  | [optional] 
 **state** | [**ManifestState**](ManifestState.md) | Lifecycle state | [optional] 
 **tags** | **List[str]** |  | [optional] 
-**extra** | **Dict[str, object]** |  | [optional] 
+**extra** | **str** |  | [optional] 
+**created_at** | **str** |  | [optional] 
+**modified_at** | **str** |  | [optional] 
 **content** | **str** | The text content of the snippet | 
 **content_type** | [**ContentType**](ContentType.md) | MIME type of the snippet content | [optional] 
 
