@@ -37,7 +37,7 @@ if __name__ == "__main__":
         assert len(tools) == 1
         tool = tools[0]
         
-        assert tool.name == 'pdf_extract_form_structure'
+        assert tool.name == 'extract_form_structure'
         assert 'Extract form structure' in tool.description
         assert tool.module_content == content
         assert tool.programming_language == 'python'
@@ -61,7 +61,7 @@ images = convert_from_path(pdf_path)
         assert len(tools) == 1
         tool = tools[0]
         
-        assert tool.name == 'pdf_convert_pdf'
+        assert tool.name == 'convert_pdf'
         assert tool.description == 'Convert PDF to images'
         assert tool.programming_language == 'python'
     
@@ -81,7 +81,7 @@ done
         assert len(tools) == 1
         tool = tools[0]
         
-        assert tool.name == 'pdf_process_pdfs'
+        assert tool.name == 'process_pdfs'
         assert tool.description == 'Process PDF files in a directory'
         assert tool.module_content == content
         assert tool.programming_language == 'bash'
@@ -102,7 +102,7 @@ def subtract(a, b):
         
         # Should extract both functions, not treat as standalone script
         assert len(tools) == 2
-        assert tools[0].name == 'test_add'
-        assert tools[1].name == 'test_subtract'
+        assert tools[0].name == 'add'
+        assert tools[1].name == 'subtract'
         assert 'script' not in tools[0].tags
         assert 'script' not in tools[1].tags

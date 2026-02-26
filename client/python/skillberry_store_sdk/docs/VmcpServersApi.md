@@ -14,7 +14,7 @@ Method | HTTP request | Description
 
 
 # **create_vmcp_server_vmcp_servers_post**
-> object create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+> object create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, port=port, skill_uuid=skill_uuid)
 
 Create Vmcp Server
 
@@ -47,14 +47,12 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[Optional[str]] | List of tags for categorizing (optional)
     extra = None # Dict[str, object] | Optional key-value pairs for additional flexible information (optional)
-    created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
-    modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     port = 56 # int | Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. (optional)
     skill_uuid = 'skill_uuid_example' # str | UUID of the skill registered with the virtual MCP server (optional)
 
     try:
         # Create Vmcp Server
-        api_response = api_instance.create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+        api_response = api_instance.create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, port=port, skill_uuid=skill_uuid)
         print("The response of VmcpServersApi->create_vmcp_server_vmcp_servers_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -75,8 +73,6 @@ Name | Type | Description  | Notes
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[Optional[str]]**](str.md)| List of tags for categorizing | [optional] 
  **extra** | [**Dict[str, object]**](object.md)| Optional key-value pairs for additional flexible information | [optional] 
- **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
- **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **port** | **int**| Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. | [optional] 
  **skill_uuid** | **str**| UUID of the skill registered with the virtual MCP server | [optional] 
 
@@ -447,7 +443,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **update_vmcp_server_vmcp_servers_name_put**
-> object update_vmcp_server_vmcp_servers_name_put(name, name2=name2, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+> object update_vmcp_server_vmcp_servers_name_put(name, name2=name2, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, port=port, skill_uuid=skill_uuid)
 
 Update Vmcp Server
 
@@ -481,14 +477,12 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
     extra = None # Dict[str, object] | Optional key-value pairs for additional flexible information (optional)
-    created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
-    modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     port = 56 # int | Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. (optional)
     skill_uuid = 'skill_uuid_example' # str | UUID of the skill registered with the virtual MCP server (optional)
 
     try:
         # Update Vmcp Server
-        api_response = api_instance.update_vmcp_server_vmcp_servers_name_put(name, name2=name2, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+        api_response = api_instance.update_vmcp_server_vmcp_servers_name_put(name, name2=name2, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, port=port, skill_uuid=skill_uuid)
         print("The response of VmcpServersApi->update_vmcp_server_vmcp_servers_name_put:\n")
         pprint(api_response)
     except Exception as e:
@@ -510,8 +504,6 @@ Name | Type | Description  | Notes
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
  **extra** | [**Dict[str, object]**](object.md)| Optional key-value pairs for additional flexible information | [optional] 
- **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
- **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **port** | **int**| Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. | [optional] 
  **skill_uuid** | **str**| UUID of the skill registered with the virtual MCP server | [optional] 
 

@@ -1,5 +1,6 @@
 """Pydantic schema for manifest objects."""
 
+import json
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
@@ -47,9 +48,9 @@ class ManifestSchema(BaseModel):
         default_factory=list,
         description="List of tags for categorizing"
     )
-    extra: Optional[Dict[str, Any]] = Field(
+    extra: Optional[str] = Field(
         default=None,
-        description="Optional key-value pairs for additional flexible information"
+        description="Optional JSON string for additional flexible information (e.g., '{\"key\": \"value\"}')"
     )
     created_at: Optional[str] = Field(
         default=None,
@@ -61,10 +62,29 @@ class ManifestSchema(BaseModel):
     )
         
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the manifest schema to a dictionary."""
-        return self.model_dump(exclude_none=False)
+        """Convert the manifest schema to a dictionary.
+        
+        Parses the extra field from JSON string to dict if present.
+        """
+        result = self.model_dump(exclude_none=False)
+        # Parse extra from JSON string to dict if present
+        if result.get("extra") and isinstance(result["extra"], str):
+            try:
+                result["extra"] = json.loads(result["extra"])
+            except (json.JSONDecodeError, TypeError):
+                # If parsing fails, keep as string
+                pass
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ManifestSchema":
-        """Create a ManifestSchema instance from a dictionary."""
-        return cls(**data)
+        """Create a ManifestSchema instance from a dictionary.
+        
+        Converts the extra field from dict to JSON string if present.
+        """
+        # Make a copy to avoid modifying the original
+        data_copy = data.copy()
+        # Convert extra from dict to JSON string if present
+        if "extra" in data_copy and isinstance(data_copy["extra"], dict):
+            data_copy["extra"] = json.dumps(data_copy["extra"])
+        return cls(**data_copy)

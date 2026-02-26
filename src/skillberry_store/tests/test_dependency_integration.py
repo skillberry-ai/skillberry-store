@@ -170,12 +170,13 @@ def my_tool(user_id: str):
             execute_python_locally=True
         )
         
-        # Should raise an error about missing function
-        with pytest.raises(Exception) as exc_info:
-            await executor.execute_file(parameters={"user_id": "123"})
+        # Should return an error about missing function
+        result = await executor.execute_file(parameters={"user_id": "123"})
         
+        # Verify the result contains an error
+        assert "error" in result
         # Verify the error message mentions the missing function
-        assert "missing_function" in str(exc_info.value) or "not defined" in str(exc_info.value)
+        assert "missing_function" in str(result["error"]) or "not defined" in str(result["error"])
 
     @pytest.mark.asyncio
     async def test_nested_dependency_calls(self):
