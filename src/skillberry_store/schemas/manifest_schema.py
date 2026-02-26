@@ -81,10 +81,16 @@ class ManifestSchema(BaseModel):
         """Create a ManifestSchema instance from a dictionary.
         
         Converts the extra field from dict to JSON string if present.
+        Only passes known fields to avoid **kwargs issues.
         """
         # Make a copy to avoid modifying the original
         data_copy = data.copy()
         # Convert extra from dict to JSON string if present
         if "extra" in data_copy and isinstance(data_copy["extra"], dict):
             data_copy["extra"] = json.dumps(data_copy["extra"])
-        return cls(**data_copy)
+        
+        # Get the model's field names to filter out unknown fields
+        valid_fields = cls.model_fields.keys()
+        filtered_data = {k: v for k, v in data_copy.items() if k in valid_fields}
+        
+        return cls(**filtered_data)
