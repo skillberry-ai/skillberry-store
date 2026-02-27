@@ -235,7 +235,18 @@ class VirtualMcpServer:
                     params = []
                     for param_name, param_info in properties.items():
                         logging.info(f"@@@@@ param_info: {param_info} @@@@@")
-                        description = param_info["description"]
+                        
+                        # Skip variadic parameters like *args, **kwargs
+                        if param_name.startswith('*'):
+                            logging.warning(f"Skipping variadic parameter: {param_name}")
+                            continue
+                        
+                        # Validate param_info has required keys
+                        if not isinstance(param_info, dict) or "type" not in param_info:
+                            logging.warning(f"Skipping invalid parameter {param_name}: missing 'type' field")
+                            continue
+                        
+                        description = param_info.get("description", f"Parameter {param_name}")
                         _type = param_info["type"]
 
                         # annotate the parameter so that is appears inside MCP tool
@@ -342,7 +353,17 @@ class VirtualMcpServer:
                 snippet_name = snippet.get("name")
                 snippet_description = snippet.get("description", "")
                 snippet_content = snippet.get("content", "")
-                
+
+                # Skip snippets with missing or invalid name
+                if not snippet_name or not isinstance(snippet_name, str):
+                    logging.warning(f"Skipping snippet with missing or invalid name: {snippet}")
+                    continue
+
+                # Skip snippets with missing content
+                if snippet_content is None:
+                    logging.warning(f"Skipping snippet '{snippet_name}': missing 'content' field")
+                    continue
+
                 # Create a prompt function with proper closure
                 def make_prompt_func(name, desc, content):
                     # Use the @prompt decorator from FastMCP
