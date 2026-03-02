@@ -441,7 +441,10 @@ def parse_code_file(
             ))
             return tools
         
-        for func in functions:
+        # If there is exactly one function, use the entire file content as the module
+        # so that imports and module-level globals are preserved.
+        if len(functions) == 1:
+            func = functions[0]
             description, params, returns = parse_python_function(func['code'], func['name'])
             tags = [
                 f"file:{file_path}",
@@ -449,18 +452,39 @@ def parse_code_file(
                 'python',
                 'anthropic',
             ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
-            
+
             tools.append(ParsedTool(
                 name=func['name'],
                 source_file_name=file_name,
                 description=description,
-                module_content=func['code'],
-                tags=list(dict.fromkeys(tags)),  # Remove duplicates while preserving order
+                module_content=content,  # Use full file content to preserve imports/globals
+                tags=list(dict.fromkeys(tags)),
                 version='1.0.0',
                 params=params,
                 returns=returns,
                 programming_language='python'
             ))
+        else:
+            for func in functions:
+                description, params, returns = parse_python_function(func['code'], func['name'])
+                tags = [
+                    f"file:{file_path}",
+                    f"skill:{skill_name}",
+                    'python',
+                    'anthropic',
+                ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
+
+                tools.append(ParsedTool(
+                    name=func['name'],
+                    source_file_name=file_name,
+                    description=description,
+                    module_content=content,  # Use full file content so imports and globals are preserved
+                    tags=list(dict.fromkeys(tags)),  # Remove duplicates while preserving order
+                    version='1.0.0',
+                    params=params,
+                    returns=returns,
+                    programming_language='python'
+                ))
     
     elif ext in ('sh', 'bash'):
         functions = extract_bash_functions(content)
@@ -500,7 +524,10 @@ def parse_code_file(
             ))
             return tools
         
-        for func in functions:
+        # If there is exactly one function, use the entire file content as the module
+        # so that any preamble (shebang, sourced files, env vars) is preserved.
+        if len(functions) == 1:
+            func = functions[0]
             description, params, returns = parse_bash_function(func['code'], func['name'])
             tags = [
                 f"file:{file_path}",
@@ -508,18 +535,39 @@ def parse_code_file(
                 'bash',
                 'anthropic',
             ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
-            
+
             tools.append(ParsedTool(
                 name=func['name'],
                 source_file_name=file_name,
                 description=description,
-                module_content=func['code'],
-                tags=list(dict.fromkeys(tags)),  # Remove duplicates while preserving order
+                module_content=content,  # Use full file content to preserve preamble
+                tags=list(dict.fromkeys(tags)),
                 version='1.0.0',
                 params=params,
                 returns=returns,
                 programming_language='bash'
             ))
+        else:
+            for func in functions:
+                description, params, returns = parse_bash_function(func['code'], func['name'])
+                tags = [
+                    f"file:{file_path}",
+                    f"skill:{skill_name}",
+                    'bash',
+                    'anthropic',
+                ] + [p for p in file_path.split('/') if p and p not in ('.', '..')]
+
+                tools.append(ParsedTool(
+                    name=func['name'],
+                    source_file_name=file_name,
+                    description=description,
+                    module_content=content,  # Use full file content so preamble and globals are preserved
+                    tags=list(dict.fromkeys(tags)),  # Remove duplicates while preserving order
+                    version='1.0.0',
+                    params=params,
+                    returns=returns,
+                    programming_language='bash'
+                ))
     
     return tools
 

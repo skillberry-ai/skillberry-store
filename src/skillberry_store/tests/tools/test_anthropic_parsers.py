@@ -254,7 +254,56 @@ def subtract(a, b):
         assert tools[0].programming_language == "python"
         assert "file:scripts/utils.py" in tools[0].tags
         assert "skill:test_skill" in tools[0].tags
-    
+
+    def test_parse_code_file_python_multi_function_module_content_is_full_file(self):
+        """Test that each tool's module_content is the full file when multiple functions exist."""
+        code = """import os
+
+GLOBAL_VAR = 42
+
+def add(a, b):
+    '''Add two numbers'''
+    return a + b
+
+def subtract(a, b):
+    '''Subtract two numbers'''
+    return a - b
+"""
+        tools = parse_code_file(code, "utils.py", "scripts/utils.py", "test_skill")
+        assert len(tools) == 2
+        # Every tool must carry the full file so imports and globals are available
+        for tool in tools:
+            assert tool.module_content == code
+            assert "import os" in tool.module_content
+            assert "GLOBAL_VAR" in tool.module_content
+
+    def test_parse_code_file_python_single_function_module_content_is_full_file(self):
+        """Test that module_content is the full file when there is exactly one function."""
+        code = """import math
+
+def compute(x):
+    '''Compute something'''
+    return math.sqrt(x)
+"""
+        tools = parse_code_file(code, "compute.py", "scripts/compute.py", "test_skill")
+        assert len(tools) == 1
+        assert tools[0].name == "compute"
+        assert tools[0].module_content == code
+        assert "import math" in tools[0].module_content
+
+    def test_parse_code_file_python_no_functions_module_content_is_full_file(self):
+        """Test that module_content is the full file when there are no functions."""
+        code = """# A standalone script
+import sys
+
+print("Hello from script")
+sys.exit(0)
+"""
+        tools = parse_code_file(code, "run.py", "scripts/run.py", "test_skill")
+        assert len(tools) == 1
+        assert tools[0].module_content == code
+        assert "import sys" in tools[0].module_content
+
     def test_parse_code_file_bash(self):
         """Test parsing Bash code file."""
         code = """
@@ -271,6 +320,26 @@ calculate() {
         assert tools[0].name == "greet"
         assert tools[1].name == "calculate"
         assert tools[0].programming_language == "bash"
+
+    def test_parse_code_file_bash_multi_function_module_content_is_full_file(self):
+        """Test that each bash tool's module_content is the full file when multiple functions exist."""
+        code = """#!/bin/bash
+export ENV_VAR="value"
+
+greet() {
+    echo "Hello $1"
+}
+
+calculate() {
+    echo $((1 + 2))
+}
+"""
+        tools = parse_code_file(code, "script.sh", "scripts/script.sh", "test_skill")
+        assert len(tools) == 2
+        for tool in tools:
+            assert tool.module_content == code
+            assert "#!/bin/bash" in tool.module_content
+            assert "ENV_VAR" in tool.module_content
     
     def test_parse_code_files_mixed(self):
         """Test parsing multiple code files."""
