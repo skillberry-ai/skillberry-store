@@ -316,9 +316,26 @@ class VirtualMcpServer:
                         return cleaned_return_value
 
                     logging.info(f"return_value from invoke_tool: {return_value}")
-                    # BTA @tool invocation logic
-                    return_value = return_value["return value"]
-                    # BTA @tool invocation logic
+                    
+                    # Check if the response contains an error
+                    if isinstance(return_value, dict) and "error" in return_value:
+                        error_msg = return_value["error"]
+                        # Include stderr if available for more context
+                        if "stderr" in return_value and return_value["stderr"]:
+                            error_msg = f"{error_msg}\n\nStderr:\n{return_value['stderr']}"
+                        cleaned_return_value = f"EXCEPTION:{error_msg}"
+                        logging.error(f"Tool execution returned error: {cleaned_return_value}")
+                        return cleaned_return_value
+                    
+                    # BTA @tool invocation logic - extract return value
+                    if isinstance(return_value, dict) and "return value" in return_value:
+                        return_value = return_value["return value"]
+                    else:
+                        # Fallback: if response doesn't have expected format, return as-is
+                        logging.warning(f"Unexpected return value format: {return_value}")
+                        return str(return_value)
+                    
+                    # BTA @tool invocation logic - clean up the return value
                     cleaned_return_value = return_value.strip().replace('"', "")
                     logging.info(
                         f"====> returning response from the function: {cleaned_return_value}"
