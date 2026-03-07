@@ -320,10 +320,11 @@ class VirtualMcpServer:
                     # Check if the response contains an error
                     if isinstance(return_value, dict) and "error" in return_value:
                         error_msg = return_value["error"]
-                        # Include stderr if available for more context
-                        if "stderr" in return_value and return_value["stderr"]:
-                            error_msg = f"{error_msg}\n\nStderr:\n{return_value['stderr']}"
-                        cleaned_return_value = f"EXCEPTION:{error_msg}"
+                        # # Include stderr if available for more context
+                        # if "stderr" in return_value and return_value["stderr"]:
+                        #     error_msg = f"{error_msg}\n\nStderr:\n{return_value['stderr']}"
+                        # cleaned_return_value = f"EXCEPTION:{error_msg}"
+                        cleaned_return_value = str(error_msg)
                         logging.error(f"Tool execution returned error: {cleaned_return_value}")
                         return cleaned_return_value
                     
