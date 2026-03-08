@@ -4,7 +4,7 @@ A flexible, extensible framework for working with any large-language-model (LLM)
 
 ## Features
 
-- **Unified interface** for multiple LLM providers (OpenAI, Azure OpenAI, IBM WatsonX, LiteLLM, RITS)
+- **Unified interface** for multiple LLM providers (OpenAI, Azure OpenAI, IBM WatsonX, LiteLLM, RITS, IBM LiteLLM)
 - **Tool calling support** across all providers with standardized response format
 - **Structured output validation** with JSON Schema and Pydantic models
 - **Optional dependencies** for each provider to keep installations lean
@@ -129,7 +129,7 @@ print(f"Available LiteLLM providers: {list_available_llms()}")
 Example output:
 
 ```python
-"Available LiteLLM providers: ['auto_from_env', 'litellm', 'litellm.output_val', 'litellm.rits', 'litellm.rits.output_val', 'litellm.watsonx', 'litellm.watsonx.output_val', 'litellm.ollama', 'litellm.ollama.output_val', 'openai.sync', 'openai.async', 'openai.sync.output_val', 'openai.async.output_val', 'azure_openai.sync', 'azure_openai.async', 'azure_openai.sync.output_val', 'azure_openai.async.output_val', 'watsonx', 'watsonx.output_val']"
+"Available LiteLLM providers: ['auto_from_env', 'litellm', 'litellm.output_val', 'litellm.rits', 'litellm.rits.output_val', 'litellm.watsonx', 'litellm.watsonx.output_val', 'litellm.ibm', 'litellm.ibm.output_val', 'litellm.ollama', 'litellm.ollama.output_val', 'openai.sync', 'openai.async', 'openai.sync.output_val', 'openai.async.output_val', 'azure_openai.sync', 'azure_openai.async', 'azure_openai.sync.output_val', 'azure_openai.async.output_val', 'watsonx', 'watsonx.output_val']"
 ```
 ---
 
@@ -141,6 +141,7 @@ Comprehensive examples for each client are available in the `llm_examples/` dire
 - **`litellm_rits.py`** - LiteLLM RITS client examples with hosted models
 - **`litellm_ollama.py`** - LiteLLM Ollama client examples with local models
 - **`litellm_watsonx.py`** - LiteLLM WatsonX client examples with Granite models
+- **`litellm_ibm.py`** - LiteLLM IBM client examples with IBM's third-party LiteLLM service
 - **`ibm_watsonx_ai.py`** - IBM WatsonX AI client examples with native IBM SDK
 
 Each example file demonstrates:
@@ -514,6 +515,75 @@ weather = client.generate(
     schema=Weather,
     max_retries=2,
     include_schema_in_system_prompt=True, # Whether to add the Json Schema to the system prompt, or not
+)
+```
+
+### IBM LiteLLM Adapter  
+**Path:** `providers/litellm/ibm_litellm.py`  
+**Registered names:**  
+- `litellm.ibm` -> plain text adapter  
+- `litellm.ibm.output_val` -> validating adapter
+
+**Features:**  
+- Specialized LiteLLM adapter for IBM's third-party LiteLLM service.  
+- Automatically sets:  
+  - `api_base="https://ete-litellm.bx.cloud9.ibm.com"` (default, can be overridden)
+  - `custom_llm_provider="openai"`  
+  - Authentication with `IBM_THIRD_PARTY_API_KEY`
+- Supports multiple model providers through IBM's LiteLLM gateway (GCP/claude, Azure/gpt-4o, etc.)
+- Inherits all validation and retry logic from the validating LiteLLM base class
+
+**Parameter Mapping:**  
+IBM LiteLLM inherits the same parameter mapping as the base LiteLLM adapter.
+
+**Usage with GenerationArgs:**
+```python
+from llm_client.llm import GenerationArgs, get_llm
+
+generation_args = GenerationArgs(
+    max_tokens=200,
+    temperature=0.3,
+    top_p=0.9
+)
+
+client = get_llm("litellm.ibm")
+response = client.generate(
+    "Explain distributed systems", 
+    generation_args=generation_args, 
+    model_name="GCP/claude-3-7-sonnet"
+)
+```
+
+**Environment variables:**  
+- `IBM_THIRD_PARTY_API_KEY` (required - your IBM API key)
+- `IBM_LITELLM_API_BASE` (optional - defaults to https://ete-litellm.bx.cloud9.ibm.com)
+
+**Example:**  
+```python
+from llm_client.llm import get_llm
+from pydantic import BaseModel
+
+# Basic usage
+client = get_llm("litellm.ibm")(
+    model_name="GCP/claude-3-7-sonnet"
+)
+response = client.generate("Write a short joke")
+
+# With structured output validation
+structured_client = get_llm("litellm.ibm.output_val")(
+    model_name="GCP/claude-3-7-sonnet",
+    include_schema_in_system_prompt=True
+)
+
+class Person(BaseModel):
+    name: str
+    age: int
+    occupation: str
+
+person = structured_client.generate(
+    "Extract info: Alice is 30 years old and works as a software engineer.",
+    schema=Person,
+    max_retries=2
 )
 ```
 

@@ -70,6 +70,10 @@ def _import_providers():
             OllamaLiteLLMClient,
             OllamaLiteLLMClientOutputVal,
         )
+        from .providers.litellm.ibm_litellm import (
+            IBMLiteLLMClient,
+            IBMLiteLLMClientOutputVal,
+        )
 
         __all__.extend(
             [
@@ -81,6 +85,8 @@ def _import_providers():
                 "OllamaLiteLLMClientOutputVal",
                 "WatsonxLiteLLMClient",
                 "WatsonxLiteLLMClientOutputVal",
+                "IBMLiteLLMClient",
+                "IBMLiteLLMClientOutputVal",
             ]
         )
 
@@ -128,7 +134,6 @@ def _import_providers():
         __all__.extend(["WatsonxLLMClient", "WatsonxLLMClientOutputVal"])
 
     except ImportError as e:
-        print(f"Optional dependency for IBM Watson not found: {e}")
         pass
 
 
