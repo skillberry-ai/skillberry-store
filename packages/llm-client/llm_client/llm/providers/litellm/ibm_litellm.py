@@ -45,13 +45,11 @@ class IBMLiteLLMClient(LiteLLMClient):
                 raise EnvironmentError(
                     f"Missing API key; please set the '{IBM_THIRD_PARTY_API_KEY}' environment variable."
                 )
-
         # Set default API base if not provided
         if not api_base:
             api_base = os.getenv(
                 IBM_LITELLM_API_BASE, "https://ete-litellm.bx.cloud9.ibm.com"
             )
-
         # Call parent constructor with all required lite parameters
         super().__init__(
             model_name=model_name,
@@ -102,13 +100,11 @@ class IBMLiteLLMClientOutputVal(LiteLLMClientOutputVal):
                 raise EnvironmentError(
                     f"Missing API key; please set the '{IBM_THIRD_PARTY_API_KEY}' environment variable."
                 )
-
         # Set default API base if not provided
         if not api_base:
             api_base = os.getenv(
                 IBM_LITELLM_API_BASE, "https://ete-litellm.bx.cloud9.ibm.com"
             )
-
         # Call parent constructor with all required lite parameters
         super().__init__(
             model_name=model_name,
@@ -117,4 +113,49 @@ class IBMLiteLLMClientOutputVal(LiteLLMClientOutputVal):
             api_key=api_key,
             custom_llm_provider="openai",
             **lite_kwargs,
+        )
+
+    def generate(
+        self,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Synchronous chat generation with validation + retries.
+        This method is a wrapper around the generate method of the parent class,
+        ensuring that the schema_field is set to None, as RITS has problems with litellm schema validation.
+        Therefore, we disable schema validation for RITS models, and use the default validation.
+        Args:
+            **kwargs: Additional keyword arguments passed to the generate method.
+        Returns:
+            Any: The generated response from the model.
+        """
+
+        # Delegate to ValidatingLLMClient.generate
+        return super().generate(
+            **{
+                "schema_field": None,
+                **kwargs,
+            }
+        )
+
+    async def generate_async(
+        self,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Asynchronous chat generation with validation + retries.
+        This method is a wrapper around the generate_async method of the parent class,
+        ensuring that the schema_field is set to None, as RITS has problems with litellm schema validation.
+        Therefore, we disable schema validation for RITS models, and use the default validation.
+        Args:
+            **kwargs: Additional keyword arguments passed to the generate_async method.
+        Returns:
+            Any: The generated response from the model.
+        """
+
+        return await super().generate_async(
+            **{
+                "schema_field": None,
+                **kwargs,
+            }
         )
