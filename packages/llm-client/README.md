@@ -16,56 +16,63 @@ A flexible, extensible framework for working with any large-language-model (LLM)
 
 ## Installation
 
+First, clone the repository:
+
+```bash
+git clone git@github.ibm.com:Blueberry/llm-client.git
+cd llm-client
+```
+
+Then install with pip:
+
+```bash
+pip install -e .
+```
+
 ### Installation with Providers
 
-Install with specific provider support (first clone this repository to your machine):
+Install with specific provider support:
 
 #### LiteLLM (Recommended Default)
 
 ```bash
-pip install llm-client[litellm]
-```
-
-If you are using MacOS run this instead:
-
-```bash
-pip install "llm-client[litellm]"
+pip install -e ".[litellm]"
 ```
 
 #### OpenAI / Azure OpenAI
 
 ```bash
-pip install llm-client[openai]
+pip install -e ".[openai]"
 ```
 
 #### IBM WatsonX AI
 
 ```bash
-pip install llm-client[watsonx]
+pip install -e ".[watsonx]"
 ```
 
 #### RITS
 
 ```bash
-pip install llm-client[rits]
+pip install -e ".[rits]"
 ```
 
 #### Ollama
 
 ```bash
-pip install llm-client[ollama]
+pip install -e ".[ollama]"
 ```
 
 #### All Providers
 
 ```bash
-pip install llm-client[all]
+pip install -e ".[all]"
 ```
 
 #### Development
 
 ```bash
-pip install llm-client[dev]
+pip install -e ".[dev]"
 ```
 
 For detailed installation instructions, see [INSTALL.md](INSTALL.md).
