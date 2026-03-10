@@ -285,9 +285,6 @@ class VirtualMcpServer:
                     """
                     Invocation function of the MCP tool.
 
-                    Note: same return_value interpretation logic as defined
-                    in BTA 'define_tool_dynamically' method.
-
                     """
                     # Convert args and kwargs back to a dictionary
                     param_names = list(properties.keys())
@@ -310,15 +307,36 @@ class VirtualMcpServer:
                         )
                     except Exception as e:
                         logging.info(f"@@@@@ handler: Error '{str(e)}'  @@@@@")
-                        # BTA @tool invocation logic
+                        # tool invocation logic
                         cleaned_return_value = f"EXCEPTION:Error executing tool: {e}"
                         logging.info(f"cleaned_return_value: {cleaned_return_value}")
                         return cleaned_return_value
 
                     logging.info(f"return_value from invoke_tool: {return_value}")
-                    # BTA @tool invocation logic
-                    return_value = return_value["return value"]
-                    # BTA @tool invocation logic
+                    
+                    # Check if the response contains an error
+                    if isinstance(return_value, dict) and "error" in return_value:
+                        error_msg = return_value["error"]
+                        # TODO (weit): Revise the below commented out block - it seems that
+                        # stderr is always none.
+                        # -------------------------------------------------
+                        # # Include stderr if available for more context
+                        # if "stderr" in return_value and return_value["stderr"]:
+                        #     error_msg = f"{error_msg}\n\nStderr:\n{return_value['stderr']}"
+                        # cleaned_return_value = f"EXCEPTION:{error_msg}"
+                        cleaned_return_value = str(error_msg)
+                        logging.error(f"Tool execution returned error: {cleaned_return_value}")
+                        return cleaned_return_value
+                    
+                    # extract return value
+                    if isinstance(return_value, dict) and "return value" in return_value:
+                        return_value = return_value["return value"]
+                    else:
+                        # Fallback: if response doesn't have expected format, return as-is
+                        logging.warning(f"Unexpected return value format: {return_value}")
+                        return str(return_value)
+                    
+                    # clean up the return value
                     cleaned_return_value = return_value.strip().replace('"', "")
                     logging.info(
                         f"====> returning response from the function: {cleaned_return_value}"
