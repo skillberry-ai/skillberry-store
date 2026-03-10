@@ -1,5 +1,12 @@
 .DEFAULT_GOAL := help
 
+# function for converting space-separated list to comma-separated list
+empty :=
+space := $(empty) $(empty)
+comma := ,
+to_csv = $(subst $(space),$(comma),$(strip $1))
+
+
 ARCH := $(shell uname -m)
 OS := $(shell uname -s)
 
@@ -91,10 +98,6 @@ else
 endif
 
 BUILD_DATE := $(shell date +%Y-%m-%d\ %H:%M)
-
-ifeq ($(ARCH), arm64)
-	DOCKER_FILE := Dockerfile-$(ARCH)
-endif
 
 .PHONY: help
 help: ## Display this help.
