@@ -124,16 +124,17 @@ base-image-rm: docker-check ## Remove the local base image
 	rm -f .stamps/base-image-build
 
 .PHONY: docker-build 
-docker-build: docker-check update-git-version ssh-agent .stamps/docker-build	## Build service in docker image
+docker-build: docker-check update-git-version .stamps/docker-build	## Build service in docker image
 
 # We actually build a new image only if the code changed by checking code-scan stamp
-.stamps/docker-build: .stamps/code-scan
+.stamps/docker-build: ssh-agent .stamps/code-scan
 	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "Build date: $(BUILD_DATE)"
 	@echo "Building for $(ARCH) using the Docker file $(DOCKER_FILE): $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
-	@if [ "$(DOCKER)" = "docker" ]; then \
+	@. stamps/ssh-agent.env; \
+	if [ "$(DOCKER)" = "docker" ]; then \
 		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
 		--file $(DOCKER_FILE) \
 		--load \
