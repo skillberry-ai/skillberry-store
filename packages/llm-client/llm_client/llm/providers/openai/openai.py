@@ -282,7 +282,7 @@ class AsyncOpenAIClient(BaseOpenAIClient, LLMClient):
 
 
 @register_llm("openai.sync.output_val")
-class SyncOpenAIClientOutputVal(BaseOpenAIClient, ValidatingLLMClient):
+class SyncOpenAIClientOutputVal(BaseValidatingOpenAIClient, ValidatingLLMClient):
     """
     Validating adapter for openai.OpenAI with structured output support.
     """
@@ -300,14 +300,14 @@ class SyncOpenAIClientOutputVal(BaseOpenAIClient, ValidatingLLMClient):
 
     def _register_methods(self) -> None:
         self.set_method_config(
-            GenerationMode.CHAT.value, "chat.completions.parse", "messages"
+            GenerationMode.CHAT.value, "chat.completions.create", "messages"
         )
 
     def generate(
         self,
         prompt: Union[str, List[Dict[str, str]]],
         schema: Optional[Any] = None,
-        schema_field: Optional[str] = "response_format",
+        schema_field: Optional[str] = "",
         retries: int = 3,
         **kwargs: Any,
     ) -> Any:
@@ -342,7 +342,7 @@ class SyncOpenAIClientOutputVal(BaseOpenAIClient, ValidatingLLMClient):
 
 
 @register_llm("openai.async.output_val")
-class AsyncOpenAIClientOutputVal(BaseOpenAIClient, ValidatingLLMClient):
+class AsyncOpenAIClientOutputVal(BaseValidatingOpenAIClient, ValidatingLLMClient):
     """
     Validating adapter for openai.AsyncOpenAI with structured output support.
     """
@@ -360,14 +360,14 @@ class AsyncOpenAIClientOutputVal(BaseOpenAIClient, ValidatingLLMClient):
 
     def _register_methods(self) -> None:
         self.set_method_config(
-            GenerationMode.CHAT_ASYNC.value, "chat.completions.parse", "messages"
+            GenerationMode.CHAT_ASYNC.value, "chat.completions.create", "messages"
         )
 
     async def generate_async(
         self,
         prompt: Union[str, List[Dict[str, str]]],
         schema: Optional[Any] = None,
-        schema_field: Optional[str] = "response_format",
+        schema_field: Optional[str] = "",
         retries: int = 3,
         **kwargs: Any,
     ) -> Any:
@@ -484,14 +484,14 @@ class SyncAzureOpenAIClientOutputVal(BaseValidatingOpenAIClient):
 
     def _register_methods(self) -> None:
         self.set_method_config(
-            GenerationMode.CHAT.value, "chat.completions.parse", "messages"
+            GenerationMode.CHAT.value, "chat.completions.create", "messages"
         )
 
     def generate(
         self,
         prompt: Union[str, List[Dict[str, str]]],
         schema: Optional[Any] = None,
-        schema_field: Optional[str] = "response_format",
+        schema_field: Optional[str] = "",
         retries: int = 3,
         **kwargs: Any,
     ) -> Any:
@@ -544,14 +544,14 @@ class AsyncAzureOpenAIClientOutputVal(BaseValidatingOpenAIClient):
 
     def _register_methods(self) -> None:
         self.set_method_config(
-            GenerationMode.CHAT_ASYNC.value, "chat.completions.parse", "messages"
+            GenerationMode.CHAT_ASYNC.value, "chat.completions.create", "messages"
         )
 
     async def generate_async(
         self,
         prompt: Union[str, List[Dict[str, str]]],
         schema: Optional[Any] = None,
-        schema_field: Optional[str] = "response_format",
+        schema_field: Optional[str] = "",
         retries: int = 3,
         **kwargs: Any,
     ) -> Any:
