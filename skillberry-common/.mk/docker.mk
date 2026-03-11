@@ -1,5 +1,8 @@
 ##@ Docker container management
 
+# Supported container architectures
+SUPPORTED_ARCHS := linux/amd64 linux/arm64
+
 # Docker registry host
 REGISTRY_HOST ?= skillberry-1.vpc.cloud9.ibm.com:8800
 # change DOCKER_PROJECT to "skillberry" for public images
@@ -73,6 +76,7 @@ endif
 # Check if the user has aliased Docker to Podman in their shell configuration file
 # If the user has aliased Docker to Podman, set the DOCKER variable to podman 
 # If the user has not aliased Docker to Podman, set the DOCKER variable to docker
+.PHONY: docker-check 
 docker-check:
 	@echo "Checking whether Docker or Podman is installed..."
 	@if ! command -v docker > /dev/null && ! command -v podman > /dev/null; then \
@@ -80,29 +84,37 @@ docker-check:
         exit 1; \
     fi
 
-.PHONY: base-image-build 
-base-image-build: docker-check .stamps/base-image-build	## Build skillberry base image
+.PHONY: multiarch-check
+multiarch-check:
+	@echo "Verifying multi-arch container build is enabled and supports: $(SUPPORTED_ARCHS)"
+	@$(SB_COMMON_PATH)/scripts/check-multiarch.sh $(DOCKER) $(SUPPORTED_ARCHS) || exit 1
 
-# Build base image if it does not exist
+.PHONY: base-image-build 
+base-image-build: multiarch-check .stamps/base-image-build	## Build skillberry base image
+
+# Build base multi-arch image if it does not exist
 .stamps/base-image-build: 
-	@echo "Building BASE IMAGE for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
-	@echo "Building BASE IMAGE: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
+	@echo "Building Base Image using $(DOCKER) version: $(shell $(DOCKER) --version)"
+	@echo "Supported Architectures: $(SUPPORTED_ARCHS)"
+	@echo "Base Image Name: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
 	@echo "Using ROOT IMAGE: $(ROOT_IMAGE)"
 	@if [ "$(DOCKER)" = "docker" ]; then \
 		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
 		--file $(BASE_DOCKER_FILE) \
-		--load \
+		--platform $(call to_csv,$(SUPPORTED_ARCHS)) \
 		--build-arg ROOT_IMAGE=$(ROOT_IMAGE) \
 		-t $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
-		.; \
+		. \
+		|| exit 1; \
 		touch .stamps/base-image-build; \
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		$(DOCKER) build --no-cache=true \
 		--file $(BASE_DOCKER_FILE) \
-		--load \
+		--platform $(call to_csv,$(SUPPORTED_ARCHS)) \
 		--build-arg ROOT_IMAGE=$(ROOT_IMAGE) \
+		--manifest $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
 		-t $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
-		.; \
+		. || exit 1; \
 		touch .stamps/base-image-build; \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
