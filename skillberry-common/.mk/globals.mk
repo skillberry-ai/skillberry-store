@@ -135,7 +135,11 @@ ssh-agent: .stamps/ssh-agent.env
 	@if [ -z "$$SSH_AUTH_SOCK" ]; then \
 		echo "Starting SSH agent"; \
 		ssh-agent -s > .stamps/ssh-agent.env; \
-		. .stamps/ssh-agent.env; \
-		ssh-add $(SSH_KEY); \
-	fi
+	else \
+		echo "Capturing running SSH agent"; \
+		echo "SSH_AUTH_SOCK=$$SSH_AUTH_SOCK" > .stamps/ssh-agent.env; \
+	fi 
+	@. .stamps/ssh-agent.env; \
+	ssh-add $(SSH_KEY); 
+
 
