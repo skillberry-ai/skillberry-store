@@ -129,9 +129,13 @@ check-rits-watsonx-envs:
 	fi
 
 .PHONY: ssh-agent
-ssh-agent:
+ssh-agent: .stamps/ssh-agent.env
+
+.stamps/ssh-agent.env:
 	@if [ -z "$$SSH_AUTH_SOCK" ]; then \
-		eval $$(ssh-agent -s); \
+		echo "Starting SSH agent"; \
+		ssh-agent -s > .stamps/ssh-agent.env; \
+		. .stamps/ssh-agent.env; \
 		ssh-add $(SSH_KEY); \
 	fi
 
