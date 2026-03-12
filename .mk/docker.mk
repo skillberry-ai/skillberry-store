@@ -67,7 +67,8 @@ DOCKER := podman
 endif
 endif
 
-# Compute DOCKER_ARCH based on the container runtime
+# Compute DOCKER_ARCH based on the container runtime. Value is docker-specific, e.g., linux/amd64, linux/arm64, etc.
+# If the container runtime is not recognized, the value is set to "unknown"
 ifeq ($(DOCKER),docker)
 DOCKER_ARCH := $(shell docker version --format '{{.Server.Os}}/{{.Server.Arch}}' 2>/dev/null || echo "unknown")
 else ifeq ($(DOCKER),podman)
@@ -145,16 +146,17 @@ base-image-rm: docker-check ## Remove the local base image
 	rm -f .stamps/base-image-build
 
 .PHONY: docker-build 
-docker-build: docker-check update-git-version ssh-agent .stamps/docker-build	## Build service in docker image
+docker-build: docker-check update-git-version .stamps/docker-build	## Build service in docker image
 
 # We actually build a new image only if the code changed by checking code-scan stamp
-.stamps/docker-build: .stamps/code-scan
+.stamps/docker-build: .stamps/ssh-agent.env .stamps/code-scan
 	@echo "Building for $(DOCKER_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "Build date: $(BUILD_DATE)"
 	@echo "Building using the Docker file: $(DOCKER_FILE)"
-	@if [ "$(DOCKER)" = "docker" ]; then \
+	@. .stamps/ssh-agent.env; \
+	if [ "$(DOCKER)" = "docker" ]; then \
 		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
 		--file $(DOCKER_FILE) \
 		--platform $(DOCKER_ARCH) \

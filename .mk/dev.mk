@@ -4,7 +4,7 @@
 # Spec options: v1 v1.v2 v1.v2.v3
 # Can add "+" to specify minimal version
 # Example: 3.13+ 3.12.9 3.11.5+
-SUPPORTED_PYTHON_VERSIONS ?= 3.11
+SUPPORTED_PYTHON_VERSIONS := 3.11 3.12.10
 
 # Service name in lowercase
 SERVICE_NAME_LC = $(shell printf "%s" "$(SERVICE_NAME)" | tr '[:upper:]' '[:lower:]')
@@ -188,7 +188,7 @@ update-sdk: ## Update the SDK, if needed
 		echo "Service has no SDK, skipping"; \
 	fi
 
-PYTHON_SDK_DIR = client/python/$(SERVICE_NAME_CN)_sdk/
+PYTHON_SDK_DIR = client/python/$(SERVICE_NAME_CN)_sdk
 
 generate-sdk: install-requirements # Generate SDK
 	@mkdir -p $(PYTHON_SDK_DIR)
