@@ -67,6 +67,15 @@ DOCKER := podman
 endif
 endif
 
+# Compute DOCKER_ARCH based on the container runtime
+ifeq ($(DOCKER),docker)
+DOCKER_ARCH := $(shell docker version --format '{{.Server.Os}}/{{.Server.Arch}}' 2>/dev/null || echo "unknown")
+else ifeq ($(DOCKER),podman)
+DOCKER_ARCH := $(shell podman info --format '{{.Host.OS}}/{{.Host.Arch}}' 2>/dev/null || echo "unknown")
+else
+DOCKER_ARCH := unknown
+endif
+
 # Print the value of DOCKER
 @echo "Using Docker: $(DOCKER)"
 
@@ -140,15 +149,15 @@ docker-build: docker-check update-git-version ssh-agent .stamps/docker-build	## 
 
 # We actually build a new image only if the code changed by checking code-scan stamp
 .stamps/docker-build: .stamps/code-scan
-	@echo "Building for $(ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
+	@echo "Building for $(DOCKER_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "Build date: $(BUILD_DATE)"
-	@echo "Building for $(ARCH) using the Docker file $(DOCKER_FILE): $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
+	@echo "Building using the Docker file: $(DOCKER_FILE)"
 	@if [ "$(DOCKER)" = "docker" ]; then \
-		$(DOCKER) build \
+		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
 		--file $(DOCKER_FILE) \
-		--load \
+		--platform $(DOCKER_ARCH) \
 		--build-arg BASE_IMAGE_FULL_NAME=$(BASE_IMAGE_FULL_NAME) \
 		--build-arg BASE_IMAGE_TAG=$(BASE_IMAGE_TAG) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
@@ -164,6 +173,7 @@ docker-build: docker-check update-git-version ssh-agent .stamps/docker-build	## 
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		$(DOCKER) build --no-cache=true \
 		--file $(DOCKER_FILE) \
+		--platform $(DOCKER_ARCH) \
 		--build-arg BASE_IMAGE_FULL_NAME=$(BASE_IMAGE_FULL_NAME) \
 		--build-arg BASE_IMAGE_TAG=$(BASE_IMAGE_TAG) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
