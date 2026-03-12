@@ -1,0 +1,27 @@
+[project]
+name = "your asset name, e.g., skillberry-tool-maker"
+version = "your version, e.g., 0.1.0"
+description = "Brief human description, e.g., Skillberry Tool Maker"
+authors = [{ name = "Eran Raichstein", email = "eranra@il.ibm.com" }, { name = "Avi Weit", email = "weit@il.ibm.com" }]
+dependencies = [
+  "Enter your specific dependencies here",
+  "openapi-generator-cli[jdk4py]==7.20.0",
+  "toml-cli"
+]
+
+[tool.uv.sources]
+llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+include-package-data = true
+
+[project.scripts]
+# Add one CLI line to start your service, e.g.:
+# sbtm-srv = "skillberry_tool_maker.main:main"

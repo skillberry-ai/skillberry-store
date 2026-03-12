@@ -207,14 +207,11 @@ generate-sdk: install-requirements # Generate SDK
 	@echo "==> Updating setup.py to add CLI entry point..."
 	@sed -i '/package_data=/i\    entry_points={\n        "console_scripts": [\n            "$(ACRONYM_LC)=$(SERVICE_NAME_CN)_sdk.sdk_cli:cli",\n        ],\n    },' $(PYTHON_SDK_DIR)/setup.py
 	@echo "==> Fixing pyproject.toml build backend to use Poetry..."
-	@sed -i 's|requires = \["setuptools"\]|requires = ["poetry-core>=1.0.0"]|' $(PYTHON_SDK_DIR)/pyproject.toml
-	@sed -i 's|build-backend = "setuptools.build_meta"|build-backend = "poetry.core.masonry.api"|' $(PYTHON_SDK_DIR)/pyproject.toml
+	@toml set --to-array --toml-path $(PYTHON_SDK_DIR)/pyproject.toml "build-system.requires" "[\"poetry-core>=1.0.0\"]"
+	@toml set --toml-path $(PYTHON_SDK_DIR)/pyproject.toml "build-system.build-backend" "poetry.core.masonry.api"
 	@echo "==> Adding CLI entry point to [tool.poetry.scripts]..."
-	@if grep -q '^\[tool\.poetry\.scripts\]' $(PYTHON_SDK_DIR)/pyproject.toml; then \
-		sed -i '/^\[tool\.poetry\.scripts\]/a $(ACRONYM_LC) = "$(SERVICE_NAME_CN)_sdk.sdk_cli:cli"' $(PYTHON_SDK_DIR)/pyproject.toml; \
-	else \
-		sed -i '/^\[tool\.poetry\.dev-dependencies\]/i [tool.poetry.scripts]\n$(ACRONYM_LC) = "$(SERVICE_NAME_CN)_sdk.sdk_cli:cli"\n' $(PYTHON_SDK_DIR)/pyproject.toml; \
-	fi
+	@toml add_section --toml-path $(PYTHON_SDK_DIR)/pyproject.toml "tool.poetry.scripts"
+	@toml set --toml-path $(PYTHON_SDK_DIR)/pyproject.toml "tool.poetry.scripts.$(ACRONYM_LC)" "$(SERVICE_NAME_CN)_sdk/sdk_cli.py:cli"
 	@echo "==> Removing [project.scripts] section if it exists..."
 	@sed -i '/^\[project\.scripts\]/,/^$$/d' $(PYTHON_SDK_DIR)/pyproject.toml
 	@echo "==> SDK generation complete with CLI support"
