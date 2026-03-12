@@ -188,7 +188,7 @@ update-sdk: ## Update the SDK, if needed
 		echo "Service has no SDK, skipping"; \
 	fi
 
-PYTHON_SDK_DIR = client/python/$(SERVICE_NAME_CN)_sdk/
+PYTHON_SDK_DIR = client/python/$(SERVICE_NAME_CN)_sdk
 
 generate-sdk: install-requirements # Generate SDK
 	@mkdir -p $(PYTHON_SDK_DIR)
