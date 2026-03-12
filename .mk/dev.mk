@@ -211,7 +211,7 @@ generate-sdk: install-requirements # Generate SDK
 	@toml set --toml-path $(PYTHON_SDK_DIR)/pyproject.toml "build-system.build-backend" "poetry.core.masonry.api"
 	@echo "==> Adding CLI entry point to [tool.poetry.scripts]..."
 	@toml add_section --toml-path $(PYTHON_SDK_DIR)/pyproject.toml "tool.poetry.scripts"
-	@toml set --toml-path $(PYTHON_SDK_DIR)/pyproject.toml "tool.poetry.scripts.$(ACRONYM_LC)" "$(SERVICE_NAME_CN)_sdk/sdk_cli.py:cli"
+	@toml set --toml-path $(PYTHON_SDK_DIR)/pyproject.toml "tool.poetry.scripts.$(ACRONYM_LC)" "$(SERVICE_NAME_CN)_sdk/sdk_cli:cli"
 	@echo "==> Removing [project.scripts] section if it exists..."
 	@sed -i '/^\[project\.scripts\]/,/^$$/d' $(PYTHON_SDK_DIR)/pyproject.toml
 	@echo "==> SDK generation complete with CLI support"
