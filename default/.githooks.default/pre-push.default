@@ -1,0 +1,20 @@
+#!/usr/bin/sh
+
+# $1 -- Name of the remote to which the push is being done
+# $2 -- URL to which the push is being done
+
+remote="$1"
+url="$2"
+
+# This hook makes sure that when we push to a branch the code quality is ready for a pull request.
+# This quality check is skipped by default, unless you set the env var 'ENABLE_QC'. 
+echo "========> Executing make ci_pull_request to make sure that this push is ready for PR"
+
+if [ -n "$ENABLE_QC" ]; then
+    make ci_pull_request && echo "========> Done." || { echo "========> Failed."; exit 1; }
+    exit 0
+fi    
+
+echo "========> ENABLE_QC is not set. Skipping quality check."
+
+exit 0
