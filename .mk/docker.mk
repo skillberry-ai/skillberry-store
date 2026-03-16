@@ -37,6 +37,9 @@ FULL_IMAGE_NAME = $(REPOSITORY_NAME)/$(IMAGE_NAME)
 
 DOCKER_FILE ?= Dockerfile
 
+# Container volume mounts as docker run args
+VOLUME_FLAGS = $(foreach vol,$(CNTR_MOUNTS),-v $(vol))
+
 
 # Search the shell configuration file to check for aliases
 # This assumes you are using zsh or bash
@@ -168,6 +171,7 @@ docker-build: docker-check update-git-version .stamps/docker-build	## Build serv
 		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 		--ssh default=$$SSH_AUTH_SOCK \
+		$(VOLUME_FLAGS) \
 		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(FULL_IMAGE_NAME):latest \
 		. || exit 1; \
@@ -184,6 +188,7 @@ docker-build: docker-check update-git-version .stamps/docker-build	## Build serv
 		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 		--ssh default=$$SSH_AUTH_SOCK \
+		$(VOLUME_FLAGS) \
 		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(FULL_IMAGE_NAME):latest \
 		. || exit 1; \

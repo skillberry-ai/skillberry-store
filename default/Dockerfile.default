@@ -62,5 +62,8 @@ COPY --from=builder /app /app
 # Expose all service ports
 EXPOSE $SERVICE_PORTS
 
+# Uncommend below and specify mount points - see example
+# VOLUME ["/app/data", "/app/logs"]
+
 # Set the entrypoint command (adjust if running FastAPI, Flask, Django, etc.)
 CMD ["sh", "-c", "make run"]
