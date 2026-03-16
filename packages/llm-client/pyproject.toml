@@ -18,6 +18,7 @@ keywords = ["llm", "openai", "watsonx", "litellm", "ai", "machine-learning"]
 dependencies = [
     "pydantic>=2.0.0",
     "jsonschema>=4.0.0",
+    "rich>=13.0.0",
 ]
 
 [project.optional-dependencies]
@@ -63,6 +64,7 @@ dev = [
     "flake8>=6.0.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
+    "rich>=13.0.0",  # Include Rich in dev by default
 ]
 
 [tool.setuptools.packages.find]

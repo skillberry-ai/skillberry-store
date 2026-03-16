@@ -22,6 +22,13 @@ from .llm import (
     GenerationArgs,
 )
 
+# Re-export logging utilities
+from .llm.logging_utils import (
+    configure_logging,
+    LogConfig,
+    get_logger,
+)
+
 __all__ = [
     "__version__",
     "LLMClient",
@@ -35,4 +42,7 @@ __all__ = [
     "GenerationMode",
     "LLMResponse",
     "GenerationArgs",
+    "configure_logging",
+    "LogConfig",
+    "get_logger",
 ]

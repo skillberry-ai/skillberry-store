@@ -1,11 +1,13 @@
 import inspect
 import asyncio
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 # Import from parent module to ensure singleton registry
 from . import _REGISTRY
 from .types import GenerationMode, GenerationArgs, ParameterMapper
+from .logging_utils import get_logger
 
 T = TypeVar("T", bound="LLMClient")
 Hook = Callable[[str, Dict[str, Any]], None]
@@ -140,11 +142,19 @@ class LLMClient(ABC):
             TypeError: if `client` is provided but is not instance of provider_class.
             RuntimeError: if provider_class instantiation fails.
         """
+        # Initialize logger
+        self._logger = get_logger(self.__class__.__name__)
+
         self._hooks: List[Hook] = hooks or []
         self._method_configs: Dict[str, MethodConfig] = {}
         self._parameter_mapper: Optional[ParameterMapper] = None
 
         self._other_kwargs = provider_kwargs
+
+        # Log initialization
+        self._logger.log_initialization(
+            provider_class=self.provider_class().__name__, config=provider_kwargs
+        )
         if client is not None:
             if not isinstance(client, self.provider_class()):
                 raise TypeError(
@@ -176,6 +186,11 @@ class LLMClient(ABC):
 
         self._register_methods()
         self._setup_parameter_mapper()
+
+        # Log method registration
+        if self._logger.logger.isEnabledFor(10):  # DEBUG level
+            methods_info = {k: v.path for k, v in self._method_configs.items()}
+            self._logger.log_method_registration(methods_info)
 
     @classmethod
     @abstractmethod
@@ -330,6 +345,11 @@ class LLMClient(ABC):
         # Map generic arguments to provider-specific parameters
         if generation_args and self._parameter_mapper:
             mapped_args = self._parameter_mapper.map_args(generation_args, mode_str)
+            # Log parameter mapping
+            if self._logger.logger.isEnabledFor(10):  # DEBUG level
+                self._logger.log_parameter_mapping(
+                    generation_args.to_dict() if generation_args else {}, mapped_args
+                )
             # Provider-specific kwargs take precedence over mapped args
             for k, v in mapped_args.items():
                 if k not in call_args:
@@ -341,15 +361,36 @@ class LLMClient(ABC):
             if k not in call_args and k in sig.parameters:
                 call_args[k] = v
 
+        # Log generation start
+        self._logger.log_generation_start(mode_str, prompt, call_args)
+
         # Filter sensitive arguments before logging
         filtered_args = self._filter_sensitive_args(call_args)
         self._emit("before_generate", {"mode": mode_str, "args": filtered_args})
+
+        start_time = time.time()
         try:
             raw = fn(**call_args)
+            duration = time.time() - start_time
         except Exception as e:
+            duration = time.time() - start_time
+            self._logger.log_error(
+                e, {"mode": mode_str, "duration": duration}, "generate"
+            )
             self._emit("error", {"phase": "generate", "error": str(e)})
             raise
+
+        # Log raw response
+        self._logger.log_raw_response(raw, duration)
+
         text = self._parse_llm_response(raw)
+
+        # Log parsed response
+        self._logger.log_parsed_response(text, len(str(text)))
+
+        # Log completion
+        self._logger.log_generation_complete(duration=duration, length=len(str(text)))
+
         self._emit("after_generate", {"mode": mode_str, "response": text})
         return text
 
@@ -393,6 +434,12 @@ class LLMClient(ABC):
             # Map generic arguments to provider-specific parameters
             if generation_args and self._parameter_mapper:
                 mapped_args = self._parameter_mapper.map_args(generation_args, mode_str)
+                # Log parameter mapping
+                if self._logger.logger.isEnabledFor(10):  # DEBUG level
+                    self._logger.log_parameter_mapping(
+                        generation_args.to_dict() if generation_args else {},
+                        mapped_args,
+                    )
                 # Provider-specific kwargs take precedence over mapped args
                 for k, v in mapped_args.items():
                     if k not in call_args:
@@ -404,17 +451,40 @@ class LLMClient(ABC):
                 if k not in call_args and k in sig.parameters:
                     call_args[k] = v
 
+            # Log generation start
+            self._logger.log_generation_start(mode_str, prompt, call_args)
+
             # Filter sensitive arguments before logging
             filtered_args = self._filter_sensitive_args(call_args)
             self._emit(
                 "before_generate_async", {"mode": mode_str, "args": filtered_args}
             )
+
+            start_time = time.time()
             try:
                 raw = await fn(**call_args)
+                duration = time.time() - start_time
             except Exception as e:
+                duration = time.time() - start_time
+                self._logger.log_error(
+                    e, {"mode": mode_str, "duration": duration}, "generate_async"
+                )
                 self._emit("error", {"phase": "generate_async", "error": str(e)})
                 raise
+
+            # Log raw response
+            self._logger.log_raw_response(raw, duration)
+
             text = self._parse_llm_response(raw)
+
+            # Log parsed response
+            self._logger.log_parsed_response(text, len(str(text)))
+
+            # Log completion
+            self._logger.log_generation_complete(
+                duration=duration, length=len(str(text))
+            )
+
             self._emit("after_generate_async", {"mode": mode_str, "response": text})
             return text
 

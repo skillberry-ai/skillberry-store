@@ -2,8 +2,14 @@ import asyncio
 from typing import List, Optional
 from pydantic import BaseModel
 
+from llm_client import configure_logging
 from llm_client.llm import get_llm, GenerationMode
 from llm_client.llm.types import GenerationArgs
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Configure Rich Logging (with visual formatting)
+# ──────────────────────────────────────────────────────────────────────────────
+configure_logging(level="DEBUG")  # Set to INFO, DEBUG, WARNING, ERROR as needed
 
 
 # ──────────────────────────────────────────────────────────────────────────────

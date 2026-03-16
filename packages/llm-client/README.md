@@ -669,6 +669,306 @@ response = client.generate("Explain quantum computing")
 
 ---
 
+## Logging and Debugging
+
+The LLM Client library includes a comprehensive logging system that provides detailed visibility into API calls, payloads, responses, and errors. This is essential for debugging, monitoring, and understanding the behavior of your LLM interactions.
+
+### Features
+
+- **Multi-level logging**: DEBUG, INFO, WARNING, ERROR, CRITICAL
+- **Visual formatting**: Rich library integration for beautiful console output
+- **Detailed API tracking**: Log request payloads, raw responses, parsed outputs, and timing
+- **Sensitive data filtering**: Automatic redaction of API keys, tokens, and credentials
+- **File output**: Optional logging to files with automatic rotation
+- **Easy configuration**: Environment variables or programmatic setup
+- **Non-invasive**: Opt-in logging that doesn't affect existing code
+
+### Quick Start
+
+#### Basic Setup
+
+```python
+from llm_client import configure_logging
+
+# Configure logging with default settings (INFO level, console only)
+configure_logging()
+
+# Now all LLM operations will be logged
+from llm_client.llm import get_llm
+client = get_llm("openai.sync")(api_key="your-key")
+response = client.generate("Hello, world!", model="gpt-4o")
+```
+
+#### Environment Variables
+
+The easiest way to enable logging is through environment variables:
+
+```bash
+# Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+export LLM_CLIENT_LOG_LEVEL=DEBUG
+
+# Optional: Enable file logging
+export LLM_CLIENT_LOG_DIR=/path/to/logs
+```
+
+```python
+from llm_client import configure_logging
+
+# Automatically uses environment variables
+configure_logging()
+```
+
+#### Programmatic Configuration
+
+For more control, configure logging programmatically:
+
+```python
+from llm_client import configure_logging, LogConfig
+
+# Create custom configuration
+config = LogConfig(
+    level="DEBUG",              # Log level
+    log_dir="/path/to/logs",    # Optional: directory for log files
+    max_payload_length=2000,    # Truncate large payloads
+    enable_rich=True,           # Use Rich for beautiful formatting
+    log_file_prefix="llm_client" # Prefix for log files
+)
+
+configure_logging(config)
+```
+
+### Log Levels
+
+Choose the appropriate log level for your needs:
+
+- **`DEBUG`**: Most verbose - logs all API calls, payloads, raw responses, parsing steps, and internal operations
+- **`INFO`**: Standard logging - logs API calls, responses, and important events
+- **`WARNING`**: Only warnings and errors - logs potential issues and failures
+- **`ERROR`**: Only errors - logs failures and exceptions
+- **`CRITICAL`**: Only critical failures - logs severe errors that may cause system failure
+
+### What Gets Logged
+
+#### Generation Calls (INFO level)
+
+```
+🚀 Starting generation
+   Mode: chat
+   Prompt: "Explain quantum computing"
+   Model: gpt-4o
+   Parameters: {'temperature': 0.7, 'max_tokens': 100}
+```
+
+#### API Payloads (DEBUG level)
+
+```
+📤 API Request Payload
+   {
+     "model": "gpt-4o",
+     "messages": [{"role": "user", "content": "Explain quantum computing"}],
+     "temperature": 0.7,
+     "max_tokens": 100
+   }
+```
+
+#### Raw LLM Responses (DEBUG level)
+
+```
+📥 Raw LLM Response (duration: 1.23s)
+   {
+     "id": "chatcmpl-...",
+     "object": "chat.completion",
+     "created": 1234567890,
+     "model": "gpt-4o",
+     "choices": [{
+       "message": {
+         "role": "assistant",
+         "content": "Quantum computing is..."
+       },
+       "finish_reason": "stop"
+     }],
+     "usage": {
+       "prompt_tokens": 10,
+       "completion_tokens": 50,
+       "total_tokens": 60
+     }
+   }
+```
+
+#### Parsed Responses (DEBUG level)
+
+```
+📝 Parsed Response
+   "Quantum computing is a revolutionary approach..."
+```
+
+#### Completion (INFO level)
+
+```
+✅ Generation completed
+   Duration: 1.23s
+   Tokens: 60 (10 prompt + 50 completion)
+```
+
+#### Errors (ERROR level)
+
+```
+❌ Generation failed
+   Error: OpenAI API error: Rate limit exceeded
+   Duration: 0.45s
+   Traceback: ...
+```
+
+### Sensitive Data Protection
+
+The logging system automatically filters sensitive information:
+
+- API keys (`api_key`, `OPENAI_API_KEY`, etc.)
+- Authentication tokens (`token`, `auth_token`, `bearer_token`)
+- Passwords and secrets (`password`, `secret`, `credential`)
+- Authorization headers
+
+Filtered values are replaced with `***REDACTED***` in logs.
+
+### File Logging
+
+Enable file logging to persist logs for later analysis:
+
+```python
+from llm_client import configure_logging, LogConfig
+
+config = LogConfig(
+    level="DEBUG",
+    log_dir="/var/log/llm_client",  # Directory for log files
+    log_file_prefix="my_app"        # Prefix for log files
+)
+
+configure_logging(config)
+```
+
+Log files are automatically:
+- Named with timestamps: `my_app_20260316_203045.log`
+- Rotated when they reach 10MB
+- Limited to 5 backup files
+- Created with proper permissions
+
+### Advanced Usage
+
+#### Custom Logger Instance
+
+Get a logger instance for your own modules:
+
+```python
+from llm_client import get_logger
+
+logger = get_logger("my_module")
+logger.info("Custom log message")
+logger.debug("Detailed debug info")
+```
+
+#### Conditional Logging
+
+```python
+from llm_client import configure_logging, LogConfig
+import os
+
+# Only enable debug logging in development
+config = LogConfig(
+    level="DEBUG" if os.getenv("ENV") == "dev" else "INFO"
+)
+
+configure_logging(config)
+```
+
+#### Integration with Existing Logging
+
+The LLM Client logging system integrates with Python's standard logging:
+
+```python
+import logging
+from llm_client import configure_logging
+
+# Configure your app's logging
+logging.basicConfig(level=logging.INFO)
+
+# Configure LLM Client logging (uses same root logger)
+configure_logging()
+```
+
+### Example Output
+
+With Rich formatting enabled (default), you'll see beautifully formatted logs:
+
+```
+[2026-03-16 20:30:45] INFO     🚀 Starting generation
+                               Mode: chat
+                               Prompt: "Explain quantum computing"
+                               Model: gpt-4o
+
+[2026-03-16 20:30:45] DEBUG    📤 API Request Payload
+                               {
+                                 "model": "gpt-4o",
+                                 "messages": [...]
+                               }
+
+[2026-03-16 20:30:46] DEBUG    📥 Raw LLM Response (duration: 1.23s)
+                               {
+                                 "choices": [{
+                                   "message": {
+                                     "content": "Quantum computing..."
+                                   }
+                                 }]
+                               }
+
+[2026-03-16 20:30:46] INFO     ✅ Generation completed
+                               Duration: 1.23s
+                               Tokens: 60
+```
+
+### Best Practices
+
+1. **Use DEBUG in development**: Get full visibility into API interactions
+2. **Use INFO in production**: Balance between visibility and performance
+3. **Enable file logging for production**: Persist logs for troubleshooting
+4. **Review logs regularly**: Identify patterns, errors, and optimization opportunities
+5. **Protect sensitive data**: The system filters common patterns, but review your logs
+6. **Monitor log file sizes**: Configure rotation to prevent disk space issues
+
+### Troubleshooting
+
+#### Logs not appearing?
+
+```python
+# Ensure logging is configured
+from llm_client import configure_logging
+configure_logging()
+
+# Check log level
+import logging
+print(logging.getLogger("llm_client").level)
+```
+
+#### Want more detail?
+
+```python
+# Switch to DEBUG level
+from llm_client import configure_logging, LogConfig
+configure_logging(LogConfig(level="DEBUG"))
+```
+
+#### Rich formatting not working?
+
+```python
+# Install Rich library
+# pip install "llm-client[dev]"
+
+# Or disable Rich formatting
+from llm_client import configure_logging, LogConfig
+configure_logging(LogConfig(enable_rich=False))
+```
+
+---
+
 ## Supported Features by Provider
 
 | Feature | OpenAI | Azure OpenAI | LiteLLM | LiteLLM RITS | LiteLLM WatsonX | IBM WatsonX AI |
