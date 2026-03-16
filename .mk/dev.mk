@@ -72,8 +72,8 @@ install-requirements: update-git-version git-hooks-setup verify-venv .stamps/ins
 	@true
 
 verify-venv:
-	@$(SB_COMMON_PATH)/scripts/check_venv.sh $(SUPPORTED_PYTHON_VERSIONS)
-	@pip install uv
+	@$(SB_COMMON_PATH)/scripts/check_venv.sh $(SUPPORTED_PYTHON_VERSIONS) || exit 1
+	@python -m pip install uv
 
 # Need to actually install only when pyproject.toml changes
 .stamps/install-requirements-$(ODEPS): pyproject.toml .venv
