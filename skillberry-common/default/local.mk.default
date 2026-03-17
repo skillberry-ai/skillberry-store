@@ -17,6 +17,8 @@ SERVICE_PORT_ROLES := space-separated one-word role labels matching the above po
 SERVICE_HOST := IP to listen on for the service, e.g., 0.0.0.0
 # If your service can generate SDK (OpenAPI), set the flag below to 1
 SERVICE_HAS_SDK := 1
+# If this service container uses persistent mounts, please specify here as pairs of mount:path - separated by space, e.g. /data:/mydata /logs:/tmp/logs
+CNTR_MOUNTS := 
 # ----------------------------------------------------
 
 # CUSTOM Makefile stuff here

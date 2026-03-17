@@ -240,7 +240,11 @@ class ValidatingLLMClient(LLMClient, ABC):
                 kwargs[schema_field] = new_schema
 
         last_error: Optional[str] = None
-        for _ in range(1, retries + 1):
+        max_retries = retries if retries is not None else 3
+        for attempt in range(1, max_retries + 1):
+            # Log validation attempt
+            self._logger.log_validation_attempt(attempt, max_retries, schema)
+
             # Filter out schema-related kwargs for the base class
             filtered_kwargs = {
                 k: v
@@ -256,10 +260,22 @@ class ValidatingLLMClient(LLMClient, ABC):
             raw = super().generate(**{"prompt": current, **filtered_kwargs})
             try:
                 if isinstance(raw, str):
-                    return self._validate(raw, schema)
+                    validated = self._validate(raw, schema)
+                    self._logger.log_validation_success(attempt)
+                    return validated
+                self._logger.log_validation_success(attempt)
                 return raw
             except OutputValidationError as e:
                 last_error = str(e)
+                self._logger.log_validation_attempt(
+                    attempt, max_retries, schema, error=last_error
+                )
+
+                if attempt < max_retries:
+                    self._logger.log_retry(
+                        attempt + 1, max_retries, "Validation failed"
+                    )
+
                 correction = (
                     f"The previous response did not conform: {last_error}\nPlease correct it."
                     " And remember to output ONLY the requested schema, without any additional text."
@@ -277,7 +293,13 @@ class ValidatingLLMClient(LLMClient, ABC):
                         {"role": "assistant", "content": raw},
                         {"role": "user", "content": correction},
                     ]
-        raise OutputValidationError(f"Failed after {retries} attempts: {last_error}")
+
+        self._logger.error(
+            f"Validation failed after {max_retries} attempts: {last_error}"
+        )
+        raise OutputValidationError(
+            f"Failed after {max_retries} attempts: {last_error}"
+        )
 
     async def generate_async(
         self,
@@ -304,7 +326,11 @@ class ValidatingLLMClient(LLMClient, ABC):
                 kwargs[schema_field] = new_schema
 
         last_error: Optional[str] = None
-        for _ in range(1, retries + 1):
+        max_retries = retries if retries is not None else 3
+        for attempt in range(1, max_retries + 1):
+            # Log validation attempt
+            self._logger.log_validation_attempt(attempt, max_retries, schema)
+
             # Filter out schema-related kwargs for the base class
             filtered_kwargs = {
                 k: v
@@ -320,10 +346,22 @@ class ValidatingLLMClient(LLMClient, ABC):
             raw = await super().generate_async(**{"prompt": current, **filtered_kwargs})
             try:
                 if isinstance(raw, str):
-                    return self._validate(raw, schema)
+                    validated = self._validate(raw, schema)
+                    self._logger.log_validation_success(attempt)
+                    return validated
+                self._logger.log_validation_success(attempt)
                 return raw
             except OutputValidationError as e:
                 last_error = str(e)
+                self._logger.log_validation_attempt(
+                    attempt, max_retries, schema, error=last_error
+                )
+
+                if attempt < max_retries:
+                    self._logger.log_retry(
+                        attempt + 1, max_retries, "Validation failed"
+                    )
+
                 correction = (
                     f"The previous response did not conform: {last_error}\nPlease correct it."
                     " And remember to output ONLY the requested schema, without any additional text."
@@ -341,4 +379,10 @@ class ValidatingLLMClient(LLMClient, ABC):
                         {"role": "assistant", "content": raw},
                         {"role": "user", "content": correction},
                     ]
-        raise OutputValidationError(f"Failed after {retries} attempts: {last_error}")
+
+        self._logger.error(
+            f"Validation failed after {max_retries} attempts: {last_error}"
+        )
+        raise OutputValidationError(
+            f"Failed after {max_retries} attempts: {last_error}"
+        )
