@@ -31,7 +31,6 @@ except ImportError as e:
         allow_module_level=True
     )
 
-from skillberry_store.tests.e2e.fixtures import run_sbs
 
 BASE_URL = "http://localhost:8000"
 

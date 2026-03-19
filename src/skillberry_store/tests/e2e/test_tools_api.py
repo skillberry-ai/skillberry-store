@@ -8,7 +8,6 @@ import json
 import pytest
 import httpx
 
-from skillberry_store.tests.e2e.fixtures import run_sbs
 
 BASE_URL = "http://localhost:8000"
 
