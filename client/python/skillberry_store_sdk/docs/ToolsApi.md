@@ -20,7 +20,24 @@ Method | HTTP request | Description
 
 Add Tool From Python
 
-Add a tool by automatically extracting parameters from Python code docstring.  This endpoint uploads a Python file and automatically generates a tool manifest by parsing the function's docstring. The docstring must follow standard Python documentation conventions (Google, NumPy, or Sphinx style).  Args:     tool: The Python file to upload containing the function.     tool_name: Optional name of the specific function to extract. If not provided,               the first function in the file will be used.     update: Whether to update if a tool with the same name already exists.  Returns:     dict: Success message with the tool name, uuid, and module_name.  Raises:     HTTPException: If file is not Python (400), tool already exists (409),                   or any other error occurs (500).
+Add a tool by automatically extracting parameters from Python code docstring.
+
+This endpoint uploads a Python file and automatically generates a tool manifest
+by parsing the function's docstring. The docstring must follow standard Python
+documentation conventions (Google, NumPy, or Sphinx style).
+
+Args:
+    tool: The Python file to upload containing the function.
+    tool_name: Optional name of the specific function to extract. If not provided,
+              the first function in the file will be used.
+    update: Whether to update if a tool with the same name already exists.
+
+Returns:
+    dict: Success message with the tool name, uuid, and module_name.
+
+Raises:
+    HTTPException: If file is not Python (400), tool already exists (409),
+                  or any other error occurs (500).
 
 ### Example
 
@@ -92,16 +109,26 @@ No authorization required
 
 Create Tool
 
-Create a new tool with required file upload.  The form fields are dynamically generated from ToolSchema. Any changes to ToolSchema will automatically reflect in this API.  Args:     tool: Tool schema with all fields (auto-generated from ToolSchema).     module: Required file upload for the tool module (e.g., Python file).  Returns:     dict: Success message with the tool name and uuid.  Raises:     HTTPException: If tool already exists (409) or creation fails (500).
+Create a new tool with required file upload.
+
+The form fields are dynamically generated from ToolSchema.
+Any changes to ToolSchema will automatically reflect in this API.
+
+Args:
+    tool: Tool schema with all fields (auto-generated from ToolSchema).
+    module: Required file upload for the tool module (e.g., Python file).
+
+Returns:
+    dict: Success message with the tool name and uuid.
+
+Raises:
+    HTTPException: If tool already exists (409) or creation fails (500).
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.manifest_state import ManifestState
-from skillberry_store_sdk.models.tool_params_schema import ToolParamsSchema
-from skillberry_store_sdk.models.tool_returns_schema import ToolReturnsSchema
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -193,7 +220,17 @@ No authorization required
 
 Delete Tool
 
-Delete a tool by name.  Args:     name: The name of the tool to delete.           Also deletes the associated module file if it exists.  Returns:     dict: Success message.  Raises:     HTTPException: If tool not found (404) or deletion fails (500).
+Delete a tool by name.
+
+Args:
+    name: The name of the tool to delete.
+          Also deletes the associated module file if it exists.
+
+Returns:
+    dict: Success message.
+
+Raises:
+    HTTPException: If tool not found (404) or deletion fails (500).
 
 ### Example
 
@@ -261,7 +298,21 @@ No authorization required
 
 Execute Tool
 
-Execute a tool by name with the provided parameters.  This endpoint mirrors the functionality of /manifests/execute/{uid} but works with tool names instead of manifest UIDs.  Args:     name: The name of the tool to execute.     request: Represents an incoming fast api request object.     parameters: Dictionary of key/value pairs to be passed to the tool execution (Optional).  Returns:     dict: Tool execution output.  Raises:     HTTPException: If tool not found (404) or execution fails (500).
+Execute a tool by name with the provided parameters.
+
+This endpoint mirrors the functionality of /manifests/execute/{uid} but works
+with tool names instead of manifest UIDs.
+
+Args:
+    name: The name of the tool to execute.
+    request: Represents an incoming fast api request object.
+    parameters: Dictionary of key/value pairs to be passed to the tool execution (Optional).
+
+Returns:
+    dict: Tool execution output.
+
+Raises:
+    HTTPException: If tool not found (404) or execution fails (500).
 
 ### Example
 
@@ -331,7 +382,20 @@ No authorization required
 
 Get Tool Module
 
-Get the module file content for a specific tool.  Note: For MCP tools, this returns the generated function signature. For code tools, this returns the actual module file content.  Args:     name: The name of the tool.  Returns:     PlainTextResponse: The module file content as plain text.  Raises:     HTTPException: If tool not found (404), module not specified (404),                   module file not found (404), or retrieval fails (500).
+Get the module file content for a specific tool.
+
+Note: For MCP tools, this returns the generated function signature.
+For code tools, this returns the actual module file content.
+
+Args:
+    name: The name of the tool.
+
+Returns:
+    PlainTextResponse: The module file content as plain text.
+
+Raises:
+    HTTPException: If tool not found (404), module not specified (404),
+                  module file not found (404), or retrieval fails (500).
 
 ### Example
 
@@ -399,7 +463,16 @@ No authorization required
 
 Get Tool
 
-Get a specific tool by name.  Args:     name: The name of the tool.  Returns:     dict: The tool object.  Raises:     HTTPException: If tool not found (404) or retrieval fails (500).
+Get a specific tool by name.
+
+Args:
+    name: The name of the tool.
+
+Returns:
+    dict: The tool object.
+
+Raises:
+    HTTPException: If tool not found (404) or retrieval fails (500).
 
 ### Example
 
@@ -467,7 +540,13 @@ No authorization required
 
 List Tools
 
-List all tools.  Returns:     list: A list of all tool objects.  Raises:     HTTPException: If listing fails (500).
+List all tools.
+
+Returns:
+    list: A list of all tool objects.
+
+Raises:
+    HTTPException: If listing fails (500).
 
 ### Example
 
@@ -530,14 +609,25 @@ No authorization required
 
 Search Tools
 
-Return a list of tools that are similar to the given search term.  Returns tools that are below the similarity threshold and match the filters.  Args:     search_term: Search term.     max_number_of_results: Number of results to return.     similarity_threshold: Threshold to be used.     manifest_filter: Manifest properties to filter (e.g., \"tags:python\", \"state:approved\").     lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).  Returns:     list: A list of matched tool names and similarity scores.
+Return a list of tools that are similar to the given search term.
+
+Returns tools that are below the similarity threshold and match the filters.
+
+Args:
+    search_term: Search term.
+    max_number_of_results: Number of results to return.
+    similarity_threshold: Threshold to be used.
+    manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+    lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+
+Returns:
+    list: A list of matched tool names and similarity scores.
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.lifecycle_state import LifecycleState
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -607,7 +697,17 @@ No authorization required
 
 Update Tool
 
-Update an existing tool.  Args:     name: The name of the tool to update.     tool: The updated tool schema.  Returns:     dict: Success message.  Raises:     HTTPException: If tool not found (404) or update fails (500).
+Update an existing tool.
+
+Args:
+    name: The name of the tool to update.
+    tool: The updated tool schema.
+
+Returns:
+    dict: Success message.
+
+Raises:
+    HTTPException: If tool not found (404) or update fails (500).
 
 ### Example
 

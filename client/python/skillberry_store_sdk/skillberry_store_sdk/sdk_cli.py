@@ -43,7 +43,7 @@ def get_restish_config_path() -> Path:
     return config_dir / "apis.json"
 
 
-def ensure_api_configured(api_name: str, api_url: str, force_update: bool = False) -> None:
+def ensure_api_configured(api_name: str, api_url: str, force_update: bool = False) -> str:
     """Ensure the API is configured in restish with correct URL."""
     config_path = get_restish_config_path()
     
@@ -62,39 +62,42 @@ def ensure_api_configured(api_name: str, api_url: str, force_update: bool = Fals
     
     # Check if API is configured with correct URL
     needs_update = False
-    if force_update or api_name not in config:
+    if force_update or api_name not in config or "base" not in config[api_name]:
         needs_update = True
     # elif config[API_NAME].get("base") != API_URL:
     #     needs_update = True
     
-    if needs_update:
+    if not needs_update:
+        return config[api_name]["base"]
 
-        # To avoid conflicts, remove any existing API configuration with the same base URL
-        for name, api_config in list(config.items()):
-            if api_config.get("base") == api_url:
-                del config[name]
-                print(f"Removed conflicting API configuration: {name}", file=sys.stderr)
+    # To avoid conflicts, remove any existing API configuration with the same base URL
+    for name, api_config in list(config.items()):
+        if isinstance(api_config, dict) and ("base" in api_config) and api_config["base"] == api_url:
+            del config[name]
+            print(f"Removed conflicting API configuration: {name}", file=sys.stderr)
 
-        # Configure the API
-        config[api_name] = {
-            "base": api_url,
-            "spec_files": [f"{api_url}/openapi.json"]
-        }
-        
-        # Write updated config
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-        
-        # Sync the API spec
-        try:
-            subprocess.run(
-                ["restish", "api", "sync", api_name],
-                check=True,
-                capture_output=True
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Warning: Failed to sync API spec: {e}", file=sys.stderr)
-            sys.exit(1)
+    # Configure the API
+    config[api_name] = {
+        "base": api_url,
+        "spec_files": [f"{api_url}/openapi.json"]
+    }
+    
+    # Write updated config
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    # Sync the API spec
+    try:
+        subprocess.run(
+            ["restish", "api", "sync", api_name],
+            check=True,
+            capture_output=True
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: Failed to sync API spec: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    return api_url
 
 
 def cli() -> None:
@@ -116,7 +119,7 @@ def cli() -> None:
             sys.exit(1)
     
     # Ensure API is configured
-    ensure_api_configured(API_NAME, API_URL)
+    api_url = ensure_api_configured(API_NAME, API_URL)
     
     # Delegate to restish, passing all arguments and filtering output
     try:
@@ -145,10 +148,12 @@ def cli() -> None:
                 skip_section = False
             
             if not skip_section:
+                line  = line.replace("restish ", "")
                 filtered_lines.append(line)
         
         # If we found and skipped Global Flags section, append custom text
         if found_global_flags:
+            filtered_lines.append(f"Connected to URL: {api_url}\n")
             filtered_lines.append("General commands:")
             filtered_lines.append(f"  connect <URL>\t\t\tconnect to an alternate {API_NAME} URL\n")
         

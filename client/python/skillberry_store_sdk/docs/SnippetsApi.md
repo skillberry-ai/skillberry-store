@@ -17,15 +17,27 @@ Method | HTTP request | Description
 
 Create Snippet
 
-Create a new snippet.  The form fields are dynamically generated from SnippetSchema. Any changes to SnippetSchema will automatically reflect in this API.  Args:     snippet: The snippet schema containing content and metadata (auto-generated from SnippetSchema).             If uuid is not provided, it will be automatically generated.     file: Optional file upload for large content. If provided, overrides snippet.content.  Returns:     dict: Success message with the snippet name and uuid.  Raises:     HTTPException: If snippet already exists (409) or creation fails (500).
+Create a new snippet.
+
+The form fields are dynamically generated from SnippetSchema.
+Any changes to SnippetSchema will automatically reflect in this API.
+
+Args:
+    snippet: The snippet schema containing content and metadata (auto-generated from SnippetSchema).
+            If uuid is not provided, it will be automatically generated.
+    file: Optional file upload for large content. If provided, overrides snippet.content.
+
+Returns:
+    dict: Success message with the snippet name and uuid.
+
+Raises:
+    HTTPException: If snippet already exists (409) or creation fails (500).
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.content_type import ContentType
-from skillberry_store_sdk.models.manifest_state import ManifestState
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -109,7 +121,16 @@ No authorization required
 
 Delete Snippet
 
-Delete a snippet by name.  Args:     name: The name of the snippet to delete.  Returns:     dict: Success message.  Raises:     HTTPException: If snippet not found (404) or deletion fails (500).
+Delete a snippet by name.
+
+Args:
+    name: The name of the snippet to delete.
+
+Returns:
+    dict: Success message.
+
+Raises:
+    HTTPException: If snippet not found (404) or deletion fails (500).
 
 ### Example
 
@@ -177,7 +198,16 @@ No authorization required
 
 Get Snippet
 
-Get a specific snippet by name.  Args:     name: The name of the snippet.  Returns:     dict: The snippet object.  Raises:     HTTPException: If snippet not found (404) or retrieval fails (500).
+Get a specific snippet by name.
+
+Args:
+    name: The name of the snippet.
+
+Returns:
+    dict: The snippet object.
+
+Raises:
+    HTTPException: If snippet not found (404) or retrieval fails (500).
 
 ### Example
 
@@ -245,7 +275,13 @@ No authorization required
 
 List Snippets
 
-List all snippets.  Returns:     list: A list of all snippet objects.  Raises:     HTTPException: If listing fails (500).
+List all snippets.
+
+Returns:
+    list: A list of all snippet objects.
+
+Raises:
+    HTTPException: If listing fails (500).
 
 ### Example
 
@@ -308,14 +344,25 @@ No authorization required
 
 Search Snippets
 
-Return a list of snippets that are similar to the given search term.  Returns snippets that are below the similarity threshold and match the filters.  Args:     search_term: Search term.     max_number_of_results: Number of results to return.     similarity_threshold: Threshold to be used.     manifest_filter: Manifest properties to filter (e.g., \"tags:python\", \"state:approved\").     lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).  Returns:     list: A list of matched snippet names and similarity scores.
+Return a list of snippets that are similar to the given search term.
+
+Returns snippets that are below the similarity threshold and match the filters.
+
+Args:
+    search_term: Search term.
+    max_number_of_results: Number of results to return.
+    similarity_threshold: Threshold to be used.
+    manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+    lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+
+Returns:
+    list: A list of matched snippet names and similarity scores.
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.lifecycle_state import LifecycleState
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -385,7 +432,17 @@ No authorization required
 
 Update Snippet
 
-Update an existing snippet.  Args:     name: The name of the snippet to update.     snippet: The updated snippet schema.  Returns:     dict: Success message.  Raises:     HTTPException: If snippet not found (404) or update fails (500).
+Update an existing snippet.
+
+Args:
+    name: The name of the snippet to update.
+    snippet: The updated snippet schema.
+
+Returns:
+    dict: Success message.
+
+Raises:
+    HTTPException: If snippet not found (404) or update fails (500).
 
 ### Example
 
