@@ -120,6 +120,7 @@ class TestLLMClient:
     def test_init_with_client_needs_init(self):
         """Test initialization with client_needs_init=True."""
         mock_provider = Mock()
+        mock_provider.__name__ = "MockProvider"  # Add __name__ attribute to the class
         mock_provider.return_value = Mock()
 
         with patch.object(MockLLMClient, "provider_class", return_value=mock_provider):
