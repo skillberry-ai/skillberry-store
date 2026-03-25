@@ -16,7 +16,7 @@ Method | HTTP request | Description
 
 
 # **add_tool_from_python_tools_add_post**
-> object add_tool_from_python_tools_add_post(tool, tool_name=tool_name, update=update)
+> Dict[str, object] add_tool_from_python_tools_add_post(tool, tool_name=tool_name, update=update)
 
 Add Tool From Python
 
@@ -84,7 +84,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-**object**
+**Dict[str, object]**
 
 ### Authorization
 
@@ -105,7 +105,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **create_tool_tools_post**
-> object create_tool_tools_post(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, params=params, returns=returns, dependencies=dependencies)
+> Dict[str, object] create_tool_tools_post(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, params=params, returns=returns, dependencies=dependencies)
 
 Create Tool
 
@@ -150,7 +150,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = 'extra_example' # str | Optional JSON string for additional flexible information (e.g., '{\"key\": \"value\"}') (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     module_name = 'module_name_example' # str | Name of the module containing the tool (optional)
@@ -183,7 +183,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | **str**| Optional JSON string for additional flexible information (e.g., &#39;{\&quot;key\&quot;: \&quot;value\&quot;}&#39;) | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **module_name** | **str**| Name of the module containing the tool | [optional] 
@@ -195,7 +195,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-**object**
+**Dict[str, object]**
 
 ### Authorization
 
@@ -216,7 +216,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **delete_tool_tools_name_delete**
-> object delete_tool_tools_name_delete(name)
+> Dict[str, object] delete_tool_tools_name_delete(name)
 
 Delete Tool
 
@@ -273,7 +273,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-**object**
+**Dict[str, object]**
 
 ### Authorization
 
@@ -294,7 +294,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **execute_tool_tools_name_execute_post**
-> object execute_tool_tools_name_execute_post(name, request_body=request_body)
+> Dict[str, object] execute_tool_tools_name_execute_post(name, request_body=request_body)
 
 Execute Tool
 
@@ -357,7 +357,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-**object**
+**Dict[str, object]**
 
 ### Authorization
 
@@ -459,7 +459,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **get_tool_tools_name_get**
-> object get_tool_tools_name_get(name)
+> Dict[str, object] get_tool_tools_name_get(name)
 
 Get Tool
 
@@ -515,7 +515,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-**object**
+**Dict[str, object]**
 
 ### Authorization
 
@@ -536,7 +536,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **list_tools_tools_get**
-> object list_tools_tools_get()
+> List[Dict[str, object]] list_tools_tools_get()
 
 List Tools
 
@@ -585,7 +585,7 @@ This endpoint does not need any parameter.
 
 ### Return type
 
-**object**
+**List[Dict[str, object]]**
 
 ### Authorization
 
@@ -605,7 +605,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **search_tools_search_tools_get**
-> object search_tools_search_tools_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
+> List[object] search_tools_search_tools_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
 
 Search Tools
 
@@ -672,7 +672,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-**object**
+**List[object]**
 
 ### Authorization
 
@@ -693,7 +693,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **update_tool_tools_name_put**
-> object update_tool_tools_name_put(name, tool_schema)
+> Dict[str, Optional[str]] update_tool_tools_name_put(name, tool_schema)
 
 Update Tool
 
@@ -753,7 +753,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-**object**
+**Dict[str, Optional[str]]**
 
 ### Authorization
 
