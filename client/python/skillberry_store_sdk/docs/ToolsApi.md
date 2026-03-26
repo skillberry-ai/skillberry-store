@@ -693,7 +693,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **update_tool_tools_name_put**
-> Dict[str, Optional[str]] update_tool_tools_name_put(name, tool_schema)
+> Dict[str, object] update_tool_tools_name_put(name, tool_schema)
 
 Update Tool
 
@@ -753,7 +753,7 @@ Name | Type | Description  | Notes
 
 ### Return type
 
-**Dict[str, Optional[str]]**
+**Dict[str, object]**
 
 ### Authorization
 

@@ -384,7 +384,7 @@ def register_tools_api(
             )
 
     @app.put("/tools/{name}", tags=[tags])
-    def update_tool(name: str, tool: ToolSchema) -> Dict[str, str]:
+    def update_tool(name: str, tool: ToolSchema) -> Dict:
         """Update an existing tool.
 
         Args:
