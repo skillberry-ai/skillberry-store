@@ -24,7 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 # LiteLLM provider (default)
 litellm = [
-    "litellm>=1.0.0",
+    "litellm>=1.0.0,<1.82.7",
 ]
 
 # OpenAI provider (includes Azure OpenAI)
@@ -39,17 +39,17 @@ watsonx = [
 
 # RITS provider (uses LiteLLM)
 rits = [
-    "litellm>=1.0.0",
+    "litellm>=1.0.0,<1.82.7",
 ]
 
 # Ollama provider (uses LiteLLM)
 ollama = [
-    "litellm>=1.0.0",
+    "litellm>=1.0.0,<1.82.7",
 ]
 
 # All providers
 all = [
-    "litellm>=1.0.0",
+    "litellm>=1.0.0,<1.82.7",
     "openai>=1.0.0",
     "ibm-watsonx-ai>=1.0.0",
 ]
