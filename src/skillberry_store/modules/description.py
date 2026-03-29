@@ -77,8 +77,6 @@ class Description:
 
             # Add description embedding to the vector index
             embedding = text_to_vector(description)
-            print("************************* description = ", description)
-            print("************************* embedding = ", embedding)
             self.vector_index.add_vector(
                     id = filename,
                     vector = embedding,
