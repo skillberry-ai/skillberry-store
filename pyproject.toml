@@ -116,13 +116,16 @@ dependencies = [
   "opentelemetry-exporter-otlp",
   "opentelemetry-instrumentation-fastapi",
   "opentelemetry-instrumentation-requests",
-  "faiss-cpu",
   "openapi-generator-cli[jdk4py]==7.20.0",
   "openapi-generator-cli",
+  "faiss-cpu",
+  "chromadb",
+  "lancedb",
   "toml-cli"
   "tomli",
   "tomli-w",
   "sentence_transformers",
+  "pandas",
 ]
 
 [project.optional-dependencies]

@@ -80,7 +80,7 @@ class Description:
             self.vector_index.add_vector(
                     id = filename,
                     vector = embedding,
-                    metadata={},
+                    metadata = {"placeholder": "default"},
             )
 
             logger.info(f"Description and embedding saved for file: {filename}")
@@ -112,7 +112,7 @@ class Description:
             self.vector_index.update_vector(
                     id = filename,
                     vector = embedding,
-                    #metadata={},
+                    metadata = {"placeholder": "default"},
             )
             self.vector_index.update_description(new_description, filename)
             logger.info(f"Description and embedding updated for file: {filename}")
