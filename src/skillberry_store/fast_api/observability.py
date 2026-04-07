@@ -28,9 +28,15 @@ def observability_setup():
 
 def prometheus_setup():
     """Configures Prometheus metrics for a FastAPI app."""
+    
+    # Skip Prometheus if port is 0 (disabled)
+    if PROMETHEUS_METRICS_PORT == 0:
+        logging.info("Prometheus metrics disabled (PROMETHEUS_METRICS_PORT=0)")
+        return
 
     # Setup Metrics
     start_http_server(port=PROMETHEUS_METRICS_PORT)
+    logging.info(f"Prometheus metrics server started on port {PROMETHEUS_METRICS_PORT}")
 
 
 def otel_setup():

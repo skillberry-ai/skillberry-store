@@ -19,14 +19,26 @@ Method | HTTP request | Description
 
 Create Skill
 
-Create a new skill.  The form fields are dynamically generated from SkillSchema. Any changes to SkillSchema will automatically reflect in this API.  Args:     skill: The skill schema with tool_uuids and snippet_uuids (auto-generated from SkillSchema).            If uuid is not provided, it will be automatically generated.  Returns:     dict: Success message with the skill name and uuid.  Raises:     HTTPException: If skill already exists (409) or creation fails (500).
+Create a new skill.
+
+The form fields are dynamically generated from SkillSchema.
+Any changes to SkillSchema will automatically reflect in this API.
+
+Args:
+    skill: The skill schema with tool_uuids and snippet_uuids (auto-generated from SkillSchema).
+           If uuid is not provided, it will be automatically generated.
+
+Returns:
+    dict: Success message with the skill name and uuid.
+
+Raises:
+    HTTPException: If skill already exists (409) or creation fails (500).
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.manifest_state import ManifestState
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -47,7 +59,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = 'extra_example' # str | Optional JSON string for additional flexible information (e.g., '{\"key\": \"value\"}') (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     tool_uuids = ['tool_uuids_example'] # List[Optional[str]] | Ordered list of tool UUIDs that comprise this skill (optional)
@@ -75,7 +87,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | **str**| Optional JSON string for additional flexible information (e.g., &#39;{\&quot;key\&quot;: \&quot;value\&quot;}&#39;) | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **tool_uuids** | [**List[Optional[str]]**](str.md)| Ordered list of tool UUIDs that comprise this skill | [optional] 
@@ -108,7 +120,16 @@ No authorization required
 
 Delete Skill
 
-Delete a skill by name.  Args:     name: The name of the skill to delete.  Returns:     dict: Success message.  Raises:     HTTPException: If skill not found (404) or deletion fails (500).
+Delete a skill by name.
+
+Args:
+    name: The name of the skill to delete.
+
+Returns:
+    dict: Success message.
+
+Raises:
+    HTTPException: If skill not found (404) or deletion fails (500).
 
 ### Example
 
@@ -176,7 +197,16 @@ No authorization required
 
 Export Anthropic Skill
 
-Export a skill to Anthropic format as a ZIP file.  Args:     name: The name of the skill to export      Returns:     ZIP file with the skill in Anthropic format      Raises:     HTTPException: If skill not found or export fails
+Export a skill to Anthropic format as a ZIP file.
+
+Args:
+    name: The name of the skill to export
+    
+Returns:
+    ZIP file with the skill in Anthropic format
+    
+Raises:
+    HTTPException: If skill not found or export fails
 
 ### Example
 
@@ -244,7 +274,16 @@ No authorization required
 
 Get Skill
 
-Get a specific skill by name with populated tool and snippet objects.  Args:     name: The name of the skill.  Returns:     dict: The skill object with full tool and snippet details.  Raises:     HTTPException: If skill not found (404) or retrieval fails (500).
+Get a specific skill by name with populated tool and snippet objects.
+
+Args:
+    name: The name of the skill.
+
+Returns:
+    dict: The skill object with full tool and snippet details.
+
+Raises:
+    HTTPException: If skill not found (404) or retrieval fails (500).
 
 ### Example
 
@@ -312,7 +351,20 @@ No authorization required
 
 Import Anthropic Skill
 
-Import an Anthropic skill from GitHub URL, ZIP file, or local folder.  Args:     source_type: 'url', 'zip', or 'folder'     github_url: GitHub repository URL (required if source_type='url')     zip_file: ZIP file upload (required if source_type='zip')     folder_path: Local folder path (required if source_type='folder')     snippet_mode: 'file' or 'paragraph' - how to import text files      Returns:     dict: Import result with created tools, snippets, and skill info      Raises:     HTTPException: If import fails
+Import an Anthropic skill from GitHub URL, ZIP file, or local folder.
+
+Args:
+    source_type: 'url', 'zip', or 'folder'
+    github_url: GitHub repository URL (required if source_type='url')
+    zip_file: ZIP file upload (required if source_type='zip')
+    folder_path: Local folder path (required if source_type='folder')
+    snippet_mode: 'file' or 'paragraph' - how to import text files
+    
+Returns:
+    dict: Import result with created tools, snippets, and skill info
+    
+Raises:
+    HTTPException: If import fails
 
 ### Example
 
@@ -388,7 +440,13 @@ No authorization required
 
 List Skills
 
-List all skills with populated tool and snippet objects.  Returns:     list: A list of all skill objects with full tool and snippet details.  Raises:     HTTPException: If listing fails (500).
+List all skills with populated tool and snippet objects.
+
+Returns:
+    list: A list of all skill objects with full tool and snippet details.
+
+Raises:
+    HTTPException: If listing fails (500).
 
 ### Example
 
@@ -451,14 +509,25 @@ No authorization required
 
 Search Skills
 
-Return a list of skills that are similar to the given search term.  Returns skills that are below the similarity threshold and match the filters.  Args:     search_term: Search term.     max_number_of_results: Number of results to return.     similarity_threshold: Threshold to be used.     manifest_filter: Manifest properties to filter (e.g., \"tags:python\", \"state:approved\").     lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).  Returns:     list: A list of matched skill names and similarity scores.
+Return a list of skills that are similar to the given search term.
+
+Returns skills that are below the similarity threshold and match the filters.
+
+Args:
+    search_term: Search term.
+    max_number_of_results: Number of results to return.
+    similarity_threshold: Threshold to be used.
+    manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+    lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+
+Returns:
+    list: A list of matched skill names and similarity scores.
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.lifecycle_state import LifecycleState
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -528,7 +597,17 @@ No authorization required
 
 Update Skill
 
-Update an existing skill.  Args:     name: The name of the skill to update.     skill: The updated skill schema.  Returns:     dict: Success message.  Raises:     HTTPException: If skill not found (404) or update fails (500).
+Update an existing skill.
+
+Args:
+    name: The name of the skill to update.
+    skill: The updated skill schema.
+
+Returns:
+    dict: Success message.
+
+Raises:
+    HTTPException: If skill not found (404) or update fails (500).
 
 ### Example
 

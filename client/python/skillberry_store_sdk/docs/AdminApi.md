@@ -14,7 +14,16 @@ Method | HTTP request | Description
 
 Get Metrics
 
-Proxy endpoint to fetch Prometheus metrics.  This endpoint proxies requests to the Prometheus metrics server to avoid CORS issues when accessing metrics from the UI.  Returns:     PlainTextResponse: The raw Prometheus metrics in text format.      Raises:     HTTPException: If metrics server is not accessible (503).
+Proxy endpoint to fetch Prometheus metrics.
+
+This endpoint proxies requests to the Prometheus metrics server
+to avoid CORS issues when accessing metrics from the UI.
+
+Returns:
+    PlainTextResponse: The raw Prometheus metrics in text format.
+    
+Raises:
+    HTTPException: If metrics server is not accessible (503).
 
 ### Example
 
@@ -77,7 +86,10 @@ No authorization required
 
 Health Check
 
-Health check endpoint.  Returns:     dict: Health status of the service.
+Health check endpoint.
+
+Returns:
+    dict: Health status of the service.
 
 ### Example
 
@@ -140,7 +152,22 @@ No authorization required
 
 Purge All Data
 
-Delete all backend components including skills, tools, snippets, VMCP servers, and their descriptions.  This endpoint performs a hard delete by: 1. Stopping all running VMCP servers 2. Clearing VMCP servers persistent storage 3. Removing all data directories 4. Recreating empty directories 5. Resetting in-memory vector indexes  Use with caution as this operation is irreversible.  Returns:     dict: Success message with details of deleted directories.  Raises:     HTTPException: If deletion fails (500 status code).
+Delete all backend components including skills, tools, snippets, VMCP servers, and their descriptions.
+
+This endpoint performs a hard delete by:
+1. Stopping all running VMCP servers
+2. Clearing VMCP servers persistent storage
+3. Removing all data directories
+4. Recreating empty directories
+5. Resetting in-memory vector indexes
+
+Use with caution as this operation is irreversible.
+
+Returns:
+    dict: Success message with details of deleted directories.
+
+Raises:
+    HTTPException: If deletion fails (500 status code).
 
 ### Example
 

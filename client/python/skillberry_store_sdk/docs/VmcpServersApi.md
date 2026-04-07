@@ -18,14 +18,25 @@ Method | HTTP request | Description
 
 Create Vmcp Server
 
-Create a new virtual MCP server.  Creates both the persistent JSON representation and starts the runtime server.  Args:     vmcp: The vmcp schema (auto-generated from VmcpSchema).     request: The incoming request object for context extraction.  Returns:     dict: Success message with the vmcp server name, uuid, and port.  Raises:     HTTPException: If vmcp server already exists (409) or creation fails (500).
+Create a new virtual MCP server.
+
+Creates both the persistent JSON representation and starts the runtime server.
+
+Args:
+    vmcp: The vmcp schema (auto-generated from VmcpSchema).
+    request: The incoming request object for context extraction.
+
+Returns:
+    dict: Success message with the vmcp server name, uuid, and port.
+
+Raises:
+    HTTPException: If vmcp server already exists (409) or creation fails (500).
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.manifest_state import ManifestState
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -46,7 +57,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[Optional[str]] | List of tags for categorizing (optional)
-    extra = 'extra_example' # str | Optional JSON string for additional flexible information (e.g., '{\"key\": \"value\"}') (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     port = 56 # int | Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. (optional)
@@ -74,7 +85,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[Optional[str]]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | **str**| Optional JSON string for additional flexible information (e.g., &#39;{\&quot;key\&quot;: \&quot;value\&quot;}&#39;) | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **port** | **int**| Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. | [optional] 
@@ -107,7 +118,18 @@ No authorization required
 
 Delete Vmcp Server
 
-Delete a virtual MCP server by name.  Stops the runtime server and removes persistent data.  Args:     name: The name of the vmcp server to delete.  Returns:     dict: Success message.  Raises:     HTTPException: If vmcp server not found (404) or deletion fails (500).
+Delete a virtual MCP server by name.
+
+Stops the runtime server and removes persistent data.
+
+Args:
+    name: The name of the vmcp server to delete.
+
+Returns:
+    dict: Success message.
+
+Raises:
+    HTTPException: If vmcp server not found (404) or deletion fails (500).
 
 ### Example
 
@@ -175,7 +197,18 @@ No authorization required
 
 Get Vmcp Server
 
-Get a specific virtual MCP server by name.  Returns both persistent and runtime information.  Args:     name: The name of the vmcp server.  Returns:     dict: The vmcp server object with runtime details.  Raises:     HTTPException: If vmcp server not found (404) or retrieval fails (500).
+Get a specific virtual MCP server by name.
+
+Returns both persistent and runtime information.
+
+Args:
+    name: The name of the vmcp server.
+
+Returns:
+    dict: The vmcp server object with runtime details.
+
+Raises:
+    HTTPException: If vmcp server not found (404) or retrieval fails (500).
 
 ### Example
 
@@ -243,7 +276,15 @@ No authorization required
 
 List Vmcp Servers
 
-List all virtual MCP servers.  Returns both persistent and runtime information.  Returns:     dict: Dictionary containing a dict of virtual MCP servers with full details.  Raises:     HTTPException: If listing fails (500).
+List all virtual MCP servers.
+
+Returns both persistent and runtime information.
+
+Returns:
+    dict: Dictionary containing a dict of virtual MCP servers with full details.
+
+Raises:
+    HTTPException: If listing fails (500).
 
 ### Example
 
@@ -306,14 +347,25 @@ No authorization required
 
 Search Vmcp Servers
 
-Search for vmcp servers by description.  Returns vmcp servers that are below the similarity threshold and match the filters.  Args:     search_term: Search term.     max_number_of_results: Number of results to return.     similarity_threshold: Threshold to be used.     manifest_filter: Manifest properties to filter (e.g., \"tags:python\", \"state:approved\").     lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).  Returns:     list: A list of matched vmcp server names and similarity scores.
+Search for vmcp servers by description.
+
+Returns vmcp servers that are below the similarity threshold and match the filters.
+
+Args:
+    search_term: Search term.
+    max_number_of_results: Number of results to return.
+    similarity_threshold: Threshold to be used.
+    manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+    lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+
+Returns:
+    list: A list of matched vmcp server names and similarity scores.
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.lifecycle_state import LifecycleState
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -383,7 +435,20 @@ No authorization required
 
 Start Vmcp Server
 
-Start or restart a virtual MCP server.  This endpoint allows starting a server that exists in persistent storage but is not currently running in the runtime manager.  Args:     name: The name of the vmcp server to start.     request: The incoming request object for context extraction.  Returns:     dict: Success message with the server port.  Raises:     HTTPException: If vmcp server not found (404) or start fails (500).
+Start or restart a virtual MCP server.
+
+This endpoint allows starting a server that exists in persistent storage
+but is not currently running in the runtime manager.
+
+Args:
+    name: The name of the vmcp server to start.
+    request: The incoming request object for context extraction.
+
+Returns:
+    dict: Success message with the server port.
+
+Raises:
+    HTTPException: If vmcp server not found (404) or start fails (500).
 
 ### Example
 
@@ -451,14 +516,26 @@ No authorization required
 
 Update Vmcp Server
 
-Update an existing virtual MCP server.  Updates both persistent data and restarts the runtime server.  Args:     name: The name of the vmcp server to update.     vmcp: The updated vmcp schema.     request: The incoming request object for context extraction.  Returns:     dict: Success message with new port.  Raises:     HTTPException: If vmcp server not found (404) or update fails (500).
+Update an existing virtual MCP server.
+
+Updates both persistent data and restarts the runtime server.
+
+Args:
+    name: The name of the vmcp server to update.
+    vmcp: The updated vmcp schema.
+    request: The incoming request object for context extraction.
+
+Returns:
+    dict: Success message with new port.
+
+Raises:
+    HTTPException: If vmcp server not found (404) or update fails (500).
 
 ### Example
 
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.manifest_state import ManifestState
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -480,7 +557,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = 'extra_example' # str | Optional JSON string for additional flexible information (e.g., '{\"key\": \"value\"}') (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     port = 56 # int | Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. (optional)
@@ -509,7 +586,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | **str**| Optional JSON string for additional flexible information (e.g., &#39;{\&quot;key\&quot;: \&quot;value\&quot;}&#39;) | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **port** | **int**| Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. | [optional] 

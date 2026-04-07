@@ -11,7 +11,6 @@ import pytest
 import pytest_asyncio
 import httpx
 
-from skillberry_store.tests.e2e.fixtures import run_sbs
 from skillberry_store.tests.utils import clean_test_tmp_dir
 
 BASE_URL = "http://localhost:8000"

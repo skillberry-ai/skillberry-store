@@ -2,9 +2,10 @@
 
 import json
 import logging
+from starlette.responses import PlainTextResponse
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Type, TypeVar, Annotated, Dict, Any
+from typing import Optional, Type, TypeVar, Annotated, Dict, Any, List
 from inspect import Parameter, Signature
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Request
 from fastapi.responses import PlainTextResponse
@@ -98,7 +99,7 @@ def register_tools_api(
     async def create_tool(
         tool: Annotated[ToolSchema, Query()],
         module: UploadFile = File(...),
-    ):
+    ) -> Dict[str, Any]: 
         """Create a new tool with required file upload.
 
         The form fields are dynamically generated from ToolSchema.
@@ -185,7 +186,7 @@ def register_tools_api(
             )
 
     @app.get("/tools/", tags=[tags])
-    def list_tools():
+    def list_tools() -> List[Dict[str, Any]]:
         """List all tools.
 
         Returns:
@@ -222,7 +223,7 @@ def register_tools_api(
             )
 
     @app.get("/tools/{name}", tags=[tags])
-    def get_tool(name: str):
+    def get_tool(name: str) -> Dict[str, Any]:
         """Get a specific tool by name.
 
         Args:
@@ -256,7 +257,7 @@ def register_tools_api(
             )
 
     @app.get("/tools/{name}/module", tags=[tags], response_class=PlainTextResponse)
-    async def get_tool_module(name: str):
+    async def get_tool_module(name: str) -> PlainTextResponse:
         """Get the module file content for a specific tool.
 
         Note: For MCP tools, this returns the generated function signature.
@@ -320,7 +321,7 @@ def register_tools_api(
             )
 
     @app.delete("/tools/{name}", tags=[tags])
-    def delete_tool(name: str):
+    def delete_tool(name: str) -> Dict:
         """Delete a tool by name.
 
         Args:
@@ -383,7 +384,7 @@ def register_tools_api(
             )
 
     @app.put("/tools/{name}", tags=[tags])
-    def update_tool(name: str, tool: ToolSchema):
+    def update_tool(name: str, tool: ToolSchema) -> Dict:
         """Update an existing tool.
 
         Args:
@@ -426,7 +427,7 @@ def register_tools_api(
     @app.post("/tools/{name}/execute", tags=[tags])
     async def execute_tool(
         name: str, request: Request, parameters: Optional[Dict[str, Any]] = None
-    ):
+    ) -> Dict:
         """Execute a tool by name with the provided parameters.
 
         This endpoint mirrors the functionality of /manifests/execute/{uid} but works
@@ -574,7 +575,7 @@ def register_tools_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
-    ):
+    ) -> List:
         """Return a list of tools that are similar to the given search term.
 
         Returns tools that are below the similarity threshold and match the filters.
@@ -656,7 +657,7 @@ def register_tools_api(
         tool: UploadFile = File(...),
         tool_name: Optional[str] = None,
         update: bool = False,
-    ):
+    ) -> Dict[str, Any]:
         """Add a tool by automatically extracting parameters from Python code docstring.
 
         This endpoint uploads a Python file and automatically generates a tool manifest
