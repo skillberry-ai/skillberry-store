@@ -1,7 +1,8 @@
 """Pydantic schema for manifest objects."""
 
+import json
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -47,7 +48,7 @@ class ManifestSchema(BaseModel):
         default_factory=list,
         description="List of tags for categorizing"
     )
-    extra: Dict[str, Any] = Field(
+    extra: Dict[str, Any] | str = Field(
         default_factory=dict,
         description="Optional dictionary for additional flexible information"
     )
@@ -59,6 +60,22 @@ class ManifestSchema(BaseModel):
         default=None,
         description="ISO 8601 timestamp when last modified"
     )
+
+    @field_validator("extra", mode="before")
+    @classmethod
+    def parse_extra_json_string(cls, value):
+        """Accept JSON-encoded query values for flexible metadata."""
+        if value in (None, ""):
+            return {}
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError("extra must be a dictionary or JSON object string") from exc
+            if not isinstance(parsed, dict):
+                raise ValueError("extra must be a dictionary or JSON object string")
+            return parsed
+        return value
         
     def to_dict(self) -> Dict[str, Any]:
         """Convert the manifest schema to a dictionary."""
