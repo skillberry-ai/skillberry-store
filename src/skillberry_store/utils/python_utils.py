@@ -1,6 +1,34 @@
 import ast
 
 from docstring_parser import parse, ParseError
+from docstring_parser.common import DocstringParam
+
+
+def _annotation_to_string(annotation) -> str:
+    if annotation is None:
+        return "string"
+    try:
+        return ast.unparse(annotation)
+    except Exception:
+        return "string"
+
+
+def _fill_missing_docstring_params(docstring_obj, node: ast.FunctionDef) -> None:
+    """Use function signature annotations when the docstring parser misses params."""
+    existing_params = {param.arg_name for param in docstring_obj.params}
+    for arg in node.args.args:
+        if arg.arg in existing_params:
+            continue
+        docstring_obj.meta.append(
+            DocstringParam(
+                args=[],
+                description=f"The {arg.arg} parameter.",
+                arg_name=arg.arg,
+                type_name=_annotation_to_string(arg.annotation),
+                is_optional=False,
+                default=None,
+            )
+        )
 
 
 def get_function_node(tool_bytes: bytes, tool_name: str):
@@ -52,6 +80,7 @@ def extract_docstring(tool_bytes: bytes, tool_name: str = None) -> str:
                         assert (
                             docstring_obj.short_description is not None
                         ), "Missing docstring description"
+                        _fill_missing_docstring_params(docstring_obj, node)
                         assert len(node.args.args) == len(
                             docstring_obj.params
                         ), "Missing docstring parameters"
