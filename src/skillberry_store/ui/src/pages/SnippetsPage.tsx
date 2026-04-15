@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
+import { exportSnippets, importSnippets, downloadJSON } from '../utils/exportImportHelpers';
 import {
   PageSection,
   Title,
@@ -167,16 +168,12 @@ export function SnippetsPage() {
 
   const handleExport = () => {
     const selectedSnippetObjects = snippets?.filter(s => selectedSnippets.includes(s.name)) || [];
-    const exportData = JSON.stringify(selectedSnippetObjects, null, 2);
-    const blob = new Blob([exportData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `snippets-export-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    
+    // Use helper function to export snippets
+    const snippetsForExport = exportSnippets(selectedSnippetObjects);
+    
+    // Download as JSON file
+    downloadJSON(snippetsForExport, `snippets-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
   const handleImport = async () => {
@@ -194,14 +191,8 @@ export function SnippetsPage() {
         return;
       }
 
-      // Import each snippet
-      for (const snippet of importedSnippets) {
-        try {
-          await snippetsApi.create(snippet);
-        } catch (error: any) {
-          console.error(`Failed to import snippet ${snippet.name}:`, error);
-        }
-      }
+      // Use helper function to import snippets
+      await importSnippets(importedSnippets);
 
       queryClient.invalidateQueries({ queryKey: ['snippets'] });
       setIsImportModalOpen(false);

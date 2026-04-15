@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
+import { exportTools, importTools, downloadJSON } from '../utils/exportImportHelpers';
 import {
   PageSection,
   Title,
@@ -139,29 +140,11 @@ export function ToolsPage() {
   const handleExport = async () => {
     const selectedToolObjects = tools?.filter(t => selectedTools.includes(t.name)) || [];
     
-    // Fetch module content for each tool
-    const toolsWithModules = await Promise.all(
-      selectedToolObjects.map(async (tool) => {
-        try {
-          const module = await toolsApi.getModule(tool.name);
-          return { ...tool, module_content: module };
-        } catch (error) {
-          console.error(`Failed to fetch module for ${tool.name}:`, error);
-          return { ...tool, module_content: null };
-        }
-      })
-    );
+    // Use helper function to export tools with module content
+    const toolsWithModules = await exportTools(selectedToolObjects);
     
-    const exportData = JSON.stringify(toolsWithModules, null, 2);
-    const blob = new Blob([exportData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `tools-export-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Download as JSON file
+    downloadJSON(toolsWithModules, `tools-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
   const handleImport = async () => {
@@ -179,19 +162,8 @@ export function ToolsPage() {
         return;
       }
 
-      // Import each tool
-      for (const tool of importedTools) {
-        try {
-          if (tool.module_content) {
-            // Create a File object from the module content
-            const moduleBlob = new Blob([tool.module_content], { type: 'text/x-python' });
-            const moduleFile = new File([moduleBlob], `${tool.name}.py`, { type: 'text/x-python' });
-            await toolsApi.create(moduleFile, tool.name, true);
-          }
-        } catch (error: any) {
-          console.error(`Failed to import tool ${tool.name}:`, error);
-        }
-      }
+      // Use helper function to import tools
+      await importTools(importedTools);
 
       queryClient.invalidateQueries({ queryKey: ['tools'] });
       setIsImportModalOpen(false);

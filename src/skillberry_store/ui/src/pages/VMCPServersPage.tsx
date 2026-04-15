@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
+import { exportVMCPServers, importVMCPServers, downloadJSON } from '../utils/exportImportHelpers';
 import {
   PageSection,
   Title,
@@ -216,16 +217,12 @@ export function VMCPServersPage() {
 
   const handleExport = () => {
     const selectedServerObjects = servers?.filter(s => selectedServers.includes(s.name)) || [];
-    const exportData = JSON.stringify(selectedServerObjects, null, 2);
-    const blob = new Blob([exportData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `vmcp-servers-export-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    
+    // Use helper function to export VMCP servers
+    const serversForExport = exportVMCPServers(selectedServerObjects);
+    
+    // Download as JSON file
+    downloadJSON(serversForExport, `vmcp-servers-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
   const handleImport = async () => {
@@ -243,14 +240,8 @@ export function VMCPServersPage() {
         return;
       }
 
-      // Import each server
-      for (const server of importedServers) {
-        try {
-          await vmcpApi.create(server);
-        } catch (error: any) {
-          console.error(`Failed to import VMCP server ${server.name}:`, error);
-        }
-      }
+      // Use helper function to import VMCP servers
+      await importVMCPServers(importedServers);
 
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
       setIsImportModalOpen(false);
