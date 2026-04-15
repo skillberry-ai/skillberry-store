@@ -35,6 +35,88 @@ from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
 
+
+def load_tool_dependencies(
+    dependencies: List[str],
+    tool_handler: FileHandler,
+    file_handler: FileHandler,
+    tool_name: str,
+    visited: Optional[set] = None
+) -> tuple[List[str], List[Dict[str, Any]]]:
+    """
+    Recursively load dependency file contents and manifests for a tool and all its nested dependencies.
+    
+    Args:
+        dependencies: List of dependency tool names
+        tool_handler: FileHandler for tool manifests
+        file_handler: FileHandler for module files
+        tool_name: Name of the tool requesting dependencies (for logging)
+        visited: Set of already visited dependency names to avoid circular dependencies
+    
+    Returns:
+        Tuple of:
+        - List of dependency file contents as strings (in dependency order)
+        - List of dependency manifests as dictionaries (in dependency order)
+    """
+    if visited is None:
+        visited = set()
+    
+    dependent_file_contents = []
+    dependent_tools_as_dict = []
+    
+    if not dependencies:
+        return dependent_file_contents, dependent_tools_as_dict
+    
+    logger.info(f"Loading {len(dependencies)} dependencies for tool '{tool_name}'")
+    
+    for dep_name in dependencies:
+        # Skip if already visited (avoid circular dependencies)
+        if dep_name in visited:
+            logger.debug(f"Skipping already loaded dependency: {dep_name}")
+            continue
+        
+        visited.add(dep_name)
+        
+        try:
+            # Load dependency tool manifest
+            dep_filename = f"{dep_name}.json"
+            dep_content = tool_handler.read_file(dep_filename, raw_content=True)
+            if isinstance(dep_content, str):
+                dep_dict = json.loads(dep_content)
+                
+                # Recursively load nested dependencies first
+                nested_dependencies = dep_dict.get("dependencies", [])
+                if nested_dependencies:
+                    logger.info(f"Loading nested dependencies for '{dep_name}'")
+                    nested_contents, nested_dicts = load_tool_dependencies(
+                        dependencies=nested_dependencies,
+                        tool_handler=tool_handler,
+                        file_handler=file_handler,
+                        tool_name=dep_name,
+                        visited=visited
+                    )
+                    dependent_file_contents.extend(nested_contents)
+                    dependent_tools_as_dict.extend(nested_dicts)
+                
+                # Load dependency module content
+                dep_module_name = dep_dict.get("module_name")
+                if dep_module_name:
+                    dep_module_content = file_handler.read_file(dep_module_name, raw_content=True)
+                    if isinstance(dep_module_content, str):
+                        dependent_file_contents.append(dep_module_content)
+                        dependent_tools_as_dict.append(dep_dict)
+                        logger.info(f"Loaded dependency: {dep_name}")
+                    else:
+                        logger.warning(f"Could not load module content for dependency: {dep_name}")
+                else:
+                    logger.warning(f"Dependency {dep_name} has no module_name")
+            else:
+                logger.warning(f"Could not load dependency manifest: {dep_name}")
+        except Exception as e:
+            logger.warning(f"Failed to load dependency {dep_name}: {e}")
+    
+    return dependent_file_contents, dependent_tools_as_dict
+
 # observability - metrics
 prom_prefix = "sts_fastapi_tools_"
 create_tool_counter = Counter(
@@ -503,36 +585,13 @@ def register_tools_api(
                     )
 
             # Load dependencies if they exist
-            dependent_file_contents = []
-            dependent_tools_as_dict = []
-            
             dependencies = tool_dict.get("dependencies", [])
-            if dependencies:
-                logger.info(f"Loading {len(dependencies)} dependencies for tool '{name}'")
-                for dep_name in dependencies:
-                    try:
-                        # Load dependency tool manifest
-                        dep_filename = f"{dep_name}.json"
-                        dep_content = tool_handler.read_file(dep_filename, raw_content=True)
-                        if isinstance(dep_content, str):
-                            dep_dict = json.loads(dep_content)
-                            dependent_tools_as_dict.append(dep_dict)
-                            
-                            # Load dependency module content
-                            dep_module_name = dep_dict.get("module_name")
-                            if dep_module_name:
-                                dep_module_content = file_handler.read_file(dep_module_name, raw_content=True)
-                                if isinstance(dep_module_content, str):
-                                    dependent_file_contents.append(dep_module_content)
-                                    logger.info(f"Loaded dependency: {dep_name}")
-                                else:
-                                    logger.warning(f"Could not load module content for dependency: {dep_name}")
-                            else:
-                                logger.warning(f"Dependency {dep_name} has no module_name")
-                        else:
-                            logger.warning(f"Could not load dependency manifest: {dep_name}")
-                    except Exception as e:
-                        logger.warning(f"Failed to load dependency {dep_name}: {e}")
+            dependent_file_contents, dependent_tools_as_dict = load_tool_dependencies(
+                dependencies=dependencies,
+                tool_handler=tool_handler,
+                file_handler=file_handler,
+                tool_name=name
+            )
 
             # Execute the tool using FileExecutor
             file_executor = FileExecutor(

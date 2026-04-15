@@ -173,7 +173,6 @@ def detect_tool_dependencies(content: str, function_name: str, available_tools: 
                             if func_name not in dependencies:
                                 dependencies.append(func_name)
                                 logger.info(f"Detected dependency: {func_name}")
-                
                 break  # Found the function, no need to continue
         
         return dependencies
