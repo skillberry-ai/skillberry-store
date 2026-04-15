@@ -58,7 +58,9 @@ def main():
         # Register cleanup handlers
         atexit.register(cleanup_all)
         signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        # SIGTERM is not supported on Windows
+        if os.name != "nt":
+            signal.signal(signal.SIGTERM, signal_handler)
         
         # Start UI server
         ui_started = ui_manager.start()
@@ -68,8 +70,8 @@ def main():
 
     print(f"\n{'='*60}")
     if ui_started:
-        print(f"  Skillberry Store UI: http://{server.settings.sbs_host}:{ui_manager.ui_port}")
-    print(f"  Backend API: http://{server.settings.sbs_host}:{server.settings.sbs_port}/docs")
+        print(f"  Skillberry Store UI: http://{server.settings.display_host}:{ui_manager.ui_port}")
+    print(f"  Backend API: http://{server.settings.display_host}:{server.settings.sbs_port}/docs")
     print(f"{'='*60}\n")
     sys.stdout.flush()
 

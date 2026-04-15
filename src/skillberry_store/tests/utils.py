@@ -1,27 +1,30 @@
+import asyncio
+import json
 import os
 import shutil
-import asyncio
-import httpx
-import json
 from urllib.parse import quote
+
+import httpx
+
+from skillberry_store.tools.configure import _default_sbs_dir
 
 
 def clean_test_tmp_dir():
     """Removes temporary directories used by the tools service."""
 
     paths = [
-        "/tmp/files",
-        "/tmp/snippets",
-        "/tmp/tools",
-        "/tmp/skills",
-        "/tmp/vmcp",
-        "/tmp/metadata",
-        "/tmp/tools_descriptions",
-        "/tmp/snippets_descriptions",
-        "/tmp/skills_descriptions",
-        "/tmp/vmcp_descriptions"
+        _default_sbs_dir("files"),
+        _default_sbs_dir("snippets"),
+        _default_sbs_dir("tools"),
+        _default_sbs_dir("skills"),
+        _default_sbs_dir("vmcp"),
+        _default_sbs_dir("metadata"),
+        _default_sbs_dir("tools_descriptions"),
+        _default_sbs_dir("snippets_descriptions"),
+        _default_sbs_dir("skills_descriptions"),
+        _default_sbs_dir("vmcp_descriptions"),
     ]
-    
+
     for path in paths:
         if os.path.exists(path):
             print(f"Removing: {path}")
@@ -52,7 +55,7 @@ async def add_tool_manifest(
     name: str = "multiply", mcp_url: str = "http://localhost:8080/sse"
 ):
     """Registers a tool with the tools service via HTTP POST.
-    
+
     Note: This function is deprecated and should use the /tools/ endpoint instead.
     """
 

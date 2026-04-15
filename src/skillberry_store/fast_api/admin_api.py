@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 
 from skillberry_store.tools.configure import (
+    _default_sbs_dir,
     get_files_directory_path,
     get_tools_directory,
     get_skills_directory,
@@ -22,8 +23,11 @@ from skillberry_store.tools.configure import (
 
 logger = logging.getLogger(__name__)
 
-# VMCP servers persistent file location
-VMCP_SERVERS_FILE = os.environ.get("VMCP_SERVERS_FILE", "/tmp/vmcp_servers.json")
+# VMCP servers persistent file location (uses cross-platform temp dir instead of /tmp/)
+VMCP_SERVERS_FILE = os.environ.get(
+    "VMCP_SERVERS_FILE",
+    os.path.join(_default_sbs_dir(""), "vmcp_servers.json"),
+)
 
 # Prometheus metrics port
 PROMETHEUS_METRICS_PORT = int(os.getenv("PROMETHEUS_METRICS_PORT", 8090))
