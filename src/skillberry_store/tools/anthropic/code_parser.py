@@ -3,8 +3,12 @@
 
 """Parser for code files (Python, Bash) to convert them into tools."""
 
+import ast
+import logging
 import re
 from typing import List, Dict, Any, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 class ParsedTool:
@@ -50,8 +54,61 @@ class ParsedTool:
         return result
 
 
+def _ast_annotation_to_json_type(annotation: Optional[ast.expr]) -> str:
+    """Convert AST type annotation to JSON schema type.
+    
+    Args:
+        annotation: AST annotation node
+        
+    Returns:
+        JSON schema type string
+    """
+    if annotation is None:
+        return 'string'
+    
+    # Handle simple types like str, int, bool, etc.
+    if isinstance(annotation, ast.Name):
+        type_name = annotation.id.lower()
+        if type_name in ('int', 'integer'):
+            return 'integer'
+        elif type_name in ('float', 'number'):
+            return 'number'
+        elif type_name in ('bool', 'boolean'):
+            return 'boolean'
+        elif type_name in ('str', 'string'):
+            return 'string'
+        elif type_name in ('list', 'tuple'):
+            return 'array'
+        elif type_name in ('dict', 'dictionary'):
+            return 'object'
+        elif type_name == 'none':
+            return 'null'
+    
+    # Handle subscripted types like List[str], Optional[int], etc.
+    elif isinstance(annotation, ast.Subscript):
+        if isinstance(annotation.value, ast.Name):
+            base_type = annotation.value.id.lower()
+            if base_type in ('list', 'tuple', 'sequence'):
+                return 'array'
+            elif base_type in ('dict', 'mapping'):
+                return 'object'
+            elif base_type == 'optional':
+                # For Optional[T], extract T
+                if isinstance(annotation.slice, ast.Name):
+                    return _ast_annotation_to_json_type(annotation.slice)
+    
+    # Handle Union types
+    elif isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        # This handles Union types with | operator (Python 3.10+)
+        # For now, just return string as default
+        return 'string'
+    
+    # Default to string for unknown types
+    return 'string'
+
+
 def parse_python_function(function_code: str, function_name: str) -> Tuple[str, Optional[Dict], Optional[Dict]]:
-    """Parse Python function to extract metadata.
+    """Parse Python function to extract metadata using AST only.
     
     Args:
         function_code: The function code
@@ -59,153 +116,160 @@ def parse_python_function(function_code: str, function_name: str) -> Tuple[str, 
         
     Returns:
         Tuple of (description, params, returns)
+        
+    Raises:
+        SyntaxError: If the function code cannot be parsed
     """
-    lines = function_code.split('\n')
     description = ''
     params: Dict[str, Any] = {}
     required: List[str] = []
     returns: Optional[Dict[str, str]] = None
     
-    # Extract docstring
-    in_docstring = False
-    docstring_lines: List[str] = []
+    # First, try to fix common syntax issues in the function code
+    # Handle cases like "param: 0" which should be "param=0" (default without type)
+    # This is invalid Python syntax but may appear in user code
+    fixed_code = function_code
     
-    for line in lines:
-        trimmed = line.strip()
+    # Pattern to match parameter definitions like "param: value," where value is not a type
+    # This handles cases like "total_baggages: 0," which should be "total_baggages=0,"
+    import_pattern = r'(\w+):\s*(\d+|"[^"]*"|\'[^\']*\'|True|False|None)\s*([,)])'
+    
+    def fix_param(match):
+        param_name = match.group(1)
+        value = match.group(2)
+        separator = match.group(3)
+        # Check if this looks like a default value (number, string, bool, None)
+        # rather than a type annotation
+        return f'{param_name}={value}{separator}'
+    
+    # Try to fix the syntax
+    fixed_code = re.sub(import_pattern, fix_param, function_code)
+    
+    # Additional fix: reorder parameters to put those with defaults at the end
+    # This handles cases where non-default params come after default params
+    def reorder_params(code: str) -> str:
+        """Reorder function parameters to put defaults at the end."""
+        # Find function signature
+        func_pattern = r'(def\s+\w+\s*\()([^)]+)(\):)'
+        match = re.search(func_pattern, code, re.DOTALL)
+        if not match:
+            return code
         
-        # Detect docstring start/end
-        if trimmed.startswith('"""') or trimmed.startswith("'''"):
-            if in_docstring:
-                break  # End of docstring
+        prefix = match.group(1)
+        params_str = match.group(2)
+        suffix = match.group(3)
+        
+        # Split parameters
+        params = [p.strip() for p in params_str.split(',') if p.strip()]
+        
+        # Separate params with and without defaults
+        params_no_default = []
+        params_with_default = []
+        
+        for param in params:
+            if '=' in param:
+                params_with_default.append(param)
             else:
-                in_docstring = True
-                content = trimmed[3:]
-                if content and not (content.endswith('"""') or content.endswith("'''")):
-                    docstring_lines.append(content)
-                continue
+                params_no_default.append(param)
         
-        if in_docstring:
-            docstring_lines.append(trimmed)
+        # Reorder: no defaults first, then with defaults
+        reordered = params_no_default + params_with_default
+        new_params_str = ',\n    '.join(reordered)
+        
+        # Reconstruct function
+        return code[:match.start()] + prefix + new_params_str + suffix + code[match.end():]
     
-    # Parse docstring for description and parameters
-    if docstring_lines:
+    fixed_code = reorder_params(fixed_code)
+    
+    # Parse function using AST
+    try:
+        tree = ast.parse(fixed_code)
+    except SyntaxError:
+        # If fixing didn't work, try original code
+        try:
+            tree = ast.parse(function_code)
+        except SyntaxError as e:
+            # Last resort: try to parse with reordering only (no value fixes)
+            reordered_only = reorder_params(function_code)
+            tree = ast.parse(reordered_only)
+    
+    # Find the function definition
+    func_def = None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == function_name:
+            func_def = node
+            break
+    
+    if not func_def:
+        raise ValueError(f"Function '{function_name}' not found in code")
+    
+    # Extract docstring using AST
+    docstring = ast.get_docstring(func_def)
+    docstring_params: Dict[str, str] = {}
+    
+    if docstring:
+        # Parse docstring for description and parameter descriptions
+        lines = docstring.split('\n')
         current_section = 'description'
         
-        for line in docstring_lines:
-            if 'args:' in line.lower() or 'parameters:' in line.lower():
+        for line in lines:
+            line_stripped = line.strip()
+            
+            if 'args:' in line_stripped.lower() or 'parameters:' in line_stripped.lower():
                 current_section = 'params'
                 continue
-            elif 'returns:' in line.lower():
+            elif 'returns:' in line_stripped.lower():
                 current_section = 'returns'
                 continue
             
-            if current_section == 'description' and line:
-                description += (' ' if description else '') + line
-            elif current_section == 'params' and line:
+            if current_section == 'description' and line_stripped:
+                description += (' ' if description else '') + line_stripped
+            elif current_section == 'params' and line_stripped:
                 # Parse parameter line: "param_name (type): description"
-                param_match = re.match(r'^\s*(\w+)\s*(?:\(([^)]+)\))?\s*:\s*(.+)', line)
+                param_match = re.match(r'^\s*(\w+)\s*(?:\(([^)]+)\))?\s*:\s*(.+)', line_stripped)
                 if param_match:
                     param_name, param_type, param_desc = param_match.groups()
-                    params[param_name] = {
-                        'type': param_type or 'string',
-                        'description': param_desc.strip(),
-                    }
-                    required.append(param_name)
-            elif current_section == 'returns' and line:
+                    docstring_params[param_name] = param_desc.strip()
+            elif current_section == 'returns' and line_stripped:
                 if not returns:
                     returns = {'type': 'string', 'description': ''}
-                returns['description'] += (' ' if returns['description'] else '') + line
+                returns['description'] += (' ' if returns['description'] else '') + line_stripped
     
-    # Parse function signature for parameters if not in docstring
-    signature_match = re.search(r'def\s+\w+\s*\(([^)]*)\)', function_code)
-    if signature_match:
-        params_str = signature_match.group(1)
-        params_list = [p.strip() for p in params_str.split(',') if p.strip() and p.strip() != 'self']
+    # Extract parameters from AST
+    for arg in func_def.args.args:
+        if arg.arg == 'self':
+            continue
         
-        for param in params_list:
-            # Split by '=' to separate parameter from default value
-            parts = param.split('=')
-            param_part = parts[0].strip()
-            default_value = parts[1].strip() if len(parts) > 1 else None
-            
-            # Split by ':' to separate name from type annotation
-            if ':' in param_part:
-                clean_name, type_annotation = param_part.split(':', 1)
-                clean_name = clean_name.strip()
-                type_annotation = type_annotation.strip()
-            else:
-                clean_name = param_part
-                type_annotation = None
-            
-            if clean_name not in params:
-                # Map Python type annotations to JSON schema types
-                json_type = 'string'
-                if type_annotation:
-                    lower_type = type_annotation.lower()
-                    if 'int' in lower_type:
-                        json_type = 'integer'
-                    elif 'float' in lower_type or 'number' in lower_type:
-                        json_type = 'number'
-                    elif 'bool' in lower_type:
-                        json_type = 'boolean'
-                    elif 'list' in lower_type or 'tuple' in lower_type:
-                        json_type = 'array'
-                    elif 'dict' in lower_type:
-                        json_type = 'object'
-                    elif 'str' in lower_type:
-                        json_type = 'string'
-                
-                params[clean_name] = {
-                    'type': json_type,
-                    'description': f"Parameter {clean_name}" + (f" ({type_annotation})" if type_annotation else ""),
-                }
-                
-                # Add to required list if no default value
-                if not default_value:
-                    required.append(clean_name)
-            else:
-                # Parameter was in docstring, update type if we have annotation
-                if type_annotation:
-                    lower_type = type_annotation.lower()
-                    if 'int' in lower_type:
-                        params[clean_name]['type'] = 'integer'
-                    elif 'float' in lower_type or 'number' in lower_type:
-                        params[clean_name]['type'] = 'number'
-                    elif 'bool' in lower_type:
-                        params[clean_name]['type'] = 'boolean'
-                    elif 'list' in lower_type or 'tuple' in lower_type:
-                        params[clean_name]['type'] = 'array'
-                    elif 'dict' in lower_type:
-                        params[clean_name]['type'] = 'object'
-                    elif 'str' in lower_type:
-                        params[clean_name]['type'] = 'string'
-                
-                # If has default value, remove from required
-                if default_value and clean_name in required:
-                    required.remove(clean_name)
+        param_name = arg.arg
+        
+        # Get type from annotation
+        json_type = _ast_annotation_to_json_type(arg.annotation)
+        
+        # Get description from docstring if available
+        param_desc = docstring_params.get(param_name, f"Parameter {param_name}")
+        
+        params[param_name] = {
+            'type': json_type,
+            'description': param_desc,
+        }
     
-    # Parse return type annotation from function signature
-    return_type_match = re.search(r'def\s+\w+\s*\([^)]*\)\s*->\s*([^:]+):', function_code)
-    if return_type_match:
-        return_type_annotation = return_type_match.group(1).strip()
-        return_json_type = 'string'
+    # Check for default values
+    num_defaults = len(func_def.args.defaults)
+    num_args = len(func_def.args.args)
+    
+    # Parameters without defaults are required
+    for i, arg in enumerate(func_def.args.args):
+        if arg.arg == 'self':
+            continue
         
-        lower_return_type = return_type_annotation.lower()
-        if 'int' in lower_return_type:
-            return_json_type = 'integer'
-        elif 'float' in lower_return_type or 'number' in lower_return_type:
-            return_json_type = 'number'
-        elif 'bool' in lower_return_type:
-            return_json_type = 'boolean'
-        elif 'list' in lower_return_type or 'tuple' in lower_return_type:
-            return_json_type = 'array'
-        elif 'dict' in lower_return_type:
-            return_json_type = 'object'
-        elif 'str' in lower_return_type:
-            return_json_type = 'string'
-        elif lower_return_type == 'none':
-            return_json_type = 'null'
-        
+        # If this parameter has a default value, it's optional
+        has_default = i >= (num_args - num_defaults)
+        if not has_default:
+            required.append(arg.arg)
+    
+    # Extract return type annotation
+    if func_def.returns:
+        return_json_type = _ast_annotation_to_json_type(func_def.returns)
         if not returns:
             returns = {'type': return_json_type, 'description': ''}
         else:
@@ -445,7 +509,20 @@ def parse_code_file(
         # so that imports and module-level globals are preserved.
         if len(functions) == 1:
             func = functions[0]
-            description, params, returns = parse_python_function(func['code'], func['name'])
+            try:
+                description, params, returns = parse_python_function(func['code'], func['name'])
+            except (SyntaxError, ValueError) as e:
+                # If parsing individual function fails, try parsing the whole file
+                logger.warning(f"Failed to parse function '{func['name']}' individually: {e}")
+                logger.info(f"Attempting to parse entire file instead...")
+                try:
+                    description, params, returns = parse_python_function(content, func['name'])
+                except Exception as e2:
+                    logger.error(f"Failed to parse function '{func['name']}': {e2}")
+                    description = f"Function {func['name']}"
+                    params = None
+                    returns = None
+            
             tags = [
                 f"file:{file_path}",
                 f"skill:{skill_name}",
@@ -466,7 +543,20 @@ def parse_code_file(
             ))
         else:
             for func in functions:
-                description, params, returns = parse_python_function(func['code'], func['name'])
+                try:
+                    description, params, returns = parse_python_function(func['code'], func['name'])
+                except (SyntaxError, ValueError) as e:
+                    # If parsing individual function fails, try parsing the whole file
+                    logger.warning(f"Failed to parse function '{func['name']}' individually: {e}")
+                    logger.info(f"Attempting to parse entire file instead...")
+                    try:
+                        description, params, returns = parse_python_function(content, func['name'])
+                    except Exception as e2:
+                        logger.error(f"Failed to parse function '{func['name']}': {e2}")
+                        description = f"Function {func['name']}"
+                        params = None
+                        returns = None
+                
                 tags = [
                     f"file:{file_path}",
                     f"skill:{skill_name}",
