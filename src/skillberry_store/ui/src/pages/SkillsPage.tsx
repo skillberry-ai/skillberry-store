@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
+import { exportSkills, importSkills, downloadJSON } from '../utils/exportImportHelpers';
 import {
   PageSection,
   Title,
@@ -36,9 +37,10 @@ import {
   MenuToggleElement,
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
-import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon } from '@patternfly/react-icons';
+import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon, UploadIcon } from '@patternfly/react-icons';
 import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
 import type { Skill } from '@/types';
+import { AnthropicSkillImporter } from '../components/AnthropicSkillImporter';
 
 type SortableColumn = 'name' | 'description' | 'version';
 
@@ -66,6 +68,7 @@ export function SkillsPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importError, setImportError] = useState('');
+  const [isAnthropicImportModalOpen, setIsAnthropicImportModalOpen] = useState(false);
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
   
@@ -287,26 +290,21 @@ export function SkillsPage() {
   const handleExport = async () => {
     const selectedSkillObjects = skills?.filter(s => selectedSkills.includes(s.name)) || [];
     
-    // Convert skills to export format with only tool and snippet names
-    const skillsForExport = selectedSkillObjects.map(skill => ({
-      name: skill.name,
-      version: skill.version,
-      description: skill.description,
-      tags: skill.tags,
-      toolNames: skill.tools?.map(t => t.name) || [],
-      snippetNames: skill.snippets?.map(s => s.name) || [],
-    }));
+    // Use helper function to export skills with UUIDs (matching backend format)
+    const skillsForExport = exportSkills(selectedSkillObjects);
     
-    const exportData = JSON.stringify(skillsForExport, null, 2);
-    const blob = new Blob([exportData], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `skills-export-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // Generate filename based on selected skills
+    let filename: string;
+    if (selectedSkillObjects.length === 1) {
+      // Single skill: use skill name
+      filename = `${selectedSkillObjects[0].name}.json`;
+    } else {
+      // Multiple skills: use date-based name
+      filename = `skills-export-${new Date().toISOString().split('T')[0]}.json`;
+    }
+    
+    // Download as JSON file
+    downloadJSON(skillsForExport, filename);
   };
 
   const handleImport = async () => {
@@ -324,17 +322,10 @@ export function SkillsPage() {
         return;
       }
 
-      // Import each skill directly (tools and snippets should already exist)
-      for (const skill of importedSkills) {
-        try {
-          await skillsApi.create(skill);
-        } catch (error: any) {
-          console.error(`Failed to import skill ${skill.name}:`, error);
-        }
-      }
+      // Use helper function to import skills
+      await importSkills(importedSkills);
 
       queryClient.invalidateQueries({ queryKey: ['skills'] });
-      queryClient.invalidateQueries({ queryKey: ['tools'] });
       setIsImportModalOpen(false);
       setImportFile(null);
       setImportError('');
@@ -490,7 +481,16 @@ export function SkillsPage() {
                 icon={<ImportIcon />}
                 onClick={() => setIsImportModalOpen(true)}
               >
-                Import
+                Import JSON
+              </Button>
+            </ToolbarItem>
+            <ToolbarItem>
+              <Button
+                variant="secondary"
+                icon={<UploadIcon />}
+                onClick={() => setIsAnthropicImportModalOpen(true)}
+              >
+                Import Anthropic Skill
               </Button>
             </ToolbarItem>
             <ToolbarItem>
@@ -946,7 +946,7 @@ export function SkillsPage() {
           </Alert>
         )}
         <Text style={{ marginBottom: '1rem' }}>
-          Select a JSON file containing an array of skill objects (with full tool and snippet objects) to import.
+          Select a JSON file containing an array of skill objects (with tool_uuids and snippet_uuids) to import.
         </Text>
         <FileUpload
           id="import-file"
@@ -959,6 +959,17 @@ export function SkillsPage() {
           accept=".json"
         />
       </Modal>
+
+      {/* Anthropic Skill Import Modal */}
+      <AnthropicSkillImporter
+        isOpen={isAnthropicImportModalOpen}
+        onClose={() => setIsAnthropicImportModalOpen(false)}
+        onImportComplete={() => {
+          queryClient.invalidateQueries({ queryKey: ['skills'] });
+          queryClient.invalidateQueries({ queryKey: ['tools'] });
+          queryClient.invalidateQueries({ queryKey: ['snippets'] });
+        }}
+      />
     </>
   );
 }

@@ -193,6 +193,11 @@ export const snippetsApi = {
       snippet.tags.forEach(tag => params.append('tags', tag));
     }
     
+    // Add extra field as JSON string if present
+    if (snippet.extra && Object.keys(snippet.extra).length > 0) {
+      params.append('extra', JSON.stringify(snippet.extra));
+    }
+    
     const response = await fetch(`${API_BASE}/snippets/?${params}`, {
       method: 'POST',
     });
@@ -259,6 +264,10 @@ export const vmcpApi = {
     if (server.skill_uuid) params.append('skill_uuid', server.skill_uuid);
     if (server.tags) {
       server.tags.forEach(tag => params.append('tags', tag));
+    }
+    // Add extra field as JSON string if present
+    if (server.extra && Object.keys(server.extra).length > 0) {
+      params.append('extra', JSON.stringify(server.extra));
     }
 
     const response = await fetch(`${API_BASE}/vmcp_servers/?${params}`, {
