@@ -112,7 +112,7 @@ cd skillberry-store
 
 On Linux, macOS, or WSL:
 ```bash
-make install_requirements
+make install-requirements
 ```
 
 On Windows (no WSL needed):
