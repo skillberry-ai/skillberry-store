@@ -1,0 +1,15 @@
+def add_vectors(vector1: list[float], vector2: list[float]) -> list[float]:
+    """
+    Add two vectors element-wise.
+
+    Parameters:
+        vector1 (list[float]): The first vector.
+        vector2 (list[float]): The second vector.
+
+    Returns:
+        list[float]: The resulting vector after element-wise addition.
+    """
+    if len(vector1) != len(vector2):
+        raise ValueError("Both vectors must have the same length.")
+
+    return [x + y for x, y in zip(vector1, vector2)]

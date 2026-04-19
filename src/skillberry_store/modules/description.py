@@ -114,7 +114,6 @@ class Description:
                     vector = embedding,
                     metadata = {"placeholder": "default"},
             )
-            self.vector_index.update_description(new_description, filename)
             logger.info(f"Description and embedding updated for file: {filename}")
             return {
                 "message": f"Description and embedding updated for file '{filename}'."
