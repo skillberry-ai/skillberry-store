@@ -661,12 +661,15 @@ def register_tools_api(
                 search_term=search_term, k=max_number_of_results
             )
 
-            # TODO - for now, skip the filtering
-            return matched_entities
+            filtered_matched_entities = [
+                matched_entity
+                for matched_entity in matched_entities
+                if matched_entity["similarity_score"] <= similarity_threshold
+            ]
 
             # Get full tool objects for filtering
             tools_to_filter = []
-            for matched_entity in matched_entities:
+            for matched_entity in filtered_matched_entities:
                 tool_name = matched_entity.get("filename") or matched_entity.get("name")
                 if not tool_name:
                     logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")

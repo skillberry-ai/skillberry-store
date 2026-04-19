@@ -17,7 +17,7 @@ class FaissDB(VectorDBInterface):
     """
     
     def __init__(self, dimension: int = 384, index_type: str = "Flat", 
-                 metric: str = "cosine", persist_path: str = "./faiss_db"):
+                 metric: str = "l2", persist_path: str = "./faiss_db"):
         """
         Initialize FAISS index
         
@@ -160,17 +160,18 @@ class FaissDB(VectorDBInterface):
                 match = all(metadata.get(k) == v for k, v in filters.items())
                 if not match:
                     continue
-            
+
             # Convert distance to similarity score
             if self.metric == "cosine" or self.metric == "ip":
                 score = float(dist)  # Already similarity for IP
             else:  # L2 distance
                 score = 1.0 / (1.0 + float(dist))
-            
+
             results.append({
                 "filename": str_id,
                 "id": str_id,
                 "score": score,
+                "similarity_score": float(dist),
                 "metadata": metadata
             })
         

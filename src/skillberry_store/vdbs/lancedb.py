@@ -52,8 +52,10 @@ class LanceDB(VectorDBInterface):
         
         return [
             {
+                "filename": row["id"],
                 "id": row["id"],
                 "score": 1 / (1 + row["_distance"]),
+                "similarity_score": row["_distance"],
                 "metadata": row["metadata"]
             }
             for _, row in results.iterrows()
