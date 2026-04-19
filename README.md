@@ -25,7 +25,7 @@ This service implements a smart skills repository for agentic workflows. Manage,
 
 
 ```bash
-make docker_run
+make docker-run
 ```
 
 > Note: use `make help` for a complete list of options
@@ -49,10 +49,6 @@ To disable the UI and run only the backend:
 ```bash
 ENABLE_UI=false make run
 ```
-
-### Using the skillberry SDK 🔌
-
-For more detailed information and programmatic usage, refer to the [Skillberry SDK](https://github.ibm.com/skillberry/skillberry-store-sdk).
 
 ## Prerequisites 🛠️
 
@@ -237,4 +233,3 @@ Traces are available in Jaeger at http://localhost:16686.
 
 * Customizing configurations details can be found [here](docs/config-env-vars.md)
 * Guthub support details can be found [here](docs/github_using_hooks.md)
-* Registry details can be found [here](docs/container-reigistry.md)
