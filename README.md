@@ -30,6 +30,7 @@ make docker_run
 
 > Note: use `make help` for a complete list of options
 
+You can control where SBS stores its data by setting `SBS_BASE_DIR` (defaults to the system temp directory).
 
 ### Interacting with the UI 👨‍💻
 
@@ -102,64 +103,33 @@ See [DESIGN_REQUIREMENTS.md](DESIGN_REQUIREMENTS.md)
 
 ## Local installation 📦
 
+We support Linux, macOS, and Windows.
+
 ```bash
 git clone git@github.ibm.com:skillberry/skillberry-store.git
 cd skillberry-store
+```
+
+On Linux, macOS, or WSL:
+```bash
 make install_requirements
 ```
 
-**Alternative — install with uv (no Makefile needed):**
-
-```bash
-git clone git@github.ibm.com:skillberry/skillberry-store.git
-cd skillberry-store
-uv venv .venv --python 3.11
-source .venv/bin/activate
-uv pip install -e .
-```
-
-## Windows installation (with uv, no WSL needed) 🪟
-
-Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), and optionally Node.js 18+ for the Web UI.
-
+On Windows (no WSL needed):
 ```cmd
-git clone git@github.ibm.com:skillberry/skillberry-store.git
-cd skillberry-store
-uv venv .venv --python 3.11
-.venv\Scripts\activate
-uv pip install -e .
+pip install -e .
 ```
-
-Start the service:
-
-```cmd
-sbs-srv
-```
-
-Or alternatively: `python -m skillberry_store.main`
-
-By default, SBS stores data in the system temp directory. To use a local directory instead, set `SBS_BASE_DIR` before starting:
-
-```cmd
-set SBS_BASE_DIR=./store_database
-sbs-srv
-```
-
-Or add it to a `.env` file in the repo root (already in `.gitignore`):
-
-```
-SBS_BASE_DIR=./store_database
-```
-
-- **API docs**: http://localhost:8000/docs
-- **Web UI**: http://localhost:8002 (requires Node.js)
-
-To run without the Web UI: `set ENABLE_UI=false` before starting.
 
 ## Start the Service locally (alternative to docker) 🚀
 
+On Linux, macOS, or WSL:
 ```bash
 make run
+```
+
+On Windows:
+```cmd
+sbs-srv
 ```
 
 *Notes:*
