@@ -60,6 +60,11 @@ class SBSettings(BaseSettings):
     )
     observability: bool = Field(True, validation_alias="OBSERVABILITY")
 
+    @property
+    def display_host(self) -> str:
+        """Return a browser-friendly host (0.0.0.0 is not browsable on Windows)."""
+        return "localhost" if self.sbs_host == "0.0.0.0" else self.sbs_host
+
 
 class SBS(FastAPI):
     def __init__(self, **settings: Any):
@@ -114,9 +119,9 @@ class SBS(FastAPI):
     def run(self):
         """Starts the FastAPI app using Uvicorn."""
         self.logger.info("Starting SBS server")
-        self.logger.info(f"API server running at: http://{self.settings.sbs_host}:{self.settings.sbs_port}")
+        self.logger.info(f"API server running at: http://{self.settings.display_host}:{self.settings.sbs_port}")
         # self.logger.info(f"UI available at: http://localhost:{self.settings.ui_port}")
-        self.logger.info(f"API documentation at: http://{self.settings.sbs_host}:{self.settings.sbs_port}/docs")
+        self.logger.info(f"API documentation at: http://{self.settings.display_host}:{self.settings.sbs_port}/docs")
 
         if self.settings.observability:
             observability_setup()

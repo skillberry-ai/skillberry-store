@@ -30,6 +30,7 @@ make docker-run
 
 > Note: use `make help` for a complete list of options
 
+You can control where SBS stores its data by setting `SBS_BASE_DIR` (defaults to the system temp directory).
 
 ### Interacting with the UI 👨‍💻
 
@@ -98,16 +99,33 @@ See [DESIGN_REQUIREMENTS.md](DESIGN_REQUIREMENTS.md)
 
 ## Local installation 📦
 
+We support Linux, macOS, and Windows.
+
 ```bash
 git clone git@github.ibm.com:skillberry/skillberry-store.git
 cd skillberry-store
-make install_requirements
+```
+
+On Linux, macOS, or WSL:
+```bash
+make install-requirements
+```
+
+On Windows (no WSL needed):
+```cmd
+pip install -e .
 ```
 
 ## Start the Service locally (alternative to docker) 🚀
 
+On Linux, macOS, or WSL:
 ```bash
 make run
+```
+
+On Windows:
+```cmd
+sbs-srv
 ```
 
 *Notes:*

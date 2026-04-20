@@ -50,6 +50,7 @@ class UIManager:
                 cwd=self.ui_dir,
                 capture_output=True,
                 text=True,
+                shell=(os.name == "nt"),  # Windows requires shell=True to resolve npm.cmd
                 timeout=300,  # 5 minutes timeout
             )
             if result.returncode == 0:
@@ -94,6 +95,7 @@ class UIManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                shell=(os.name == "nt"),  # Windows requires shell=True to resolve npx.cmd
                 preexec_fn=os.setsid if os.name != "nt" else None,
             )
 

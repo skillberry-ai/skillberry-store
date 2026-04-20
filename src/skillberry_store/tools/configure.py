@@ -1,12 +1,23 @@
 import logging
 import os
 import sys
+import tempfile
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+
+def _default_sbs_dir(subdir: str) -> str:
+    """Return a cross-platform default directory under the system temp folder.
+
+    The base directory can be overridden via the SBS_BASE_DIR environment variable.
+    If not set, falls back to the OS temp directory.
+    """
+    base = os.getenv("SBS_BASE_DIR") or os.path.join(tempfile.gettempdir(), "skillberry-store")
+    return os.path.join(base, subdir)
 
 
 def configure_logging(lvl=logging.INFO):
@@ -106,7 +117,7 @@ def get_files_directory_path():
     if len(sys.argv) > 1:
         logger.info(f"Using directory path from command line: {sys.argv[1]}")
         return sys.argv[1]
-    default_path = "/tmp/files"
+    default_path = _default_sbs_dir("files")
     logger.info(f"Using default directory path: {default_path}")
     return default_path
 
@@ -119,7 +130,7 @@ def get_tools_descriptions_directory():
     if env_path:
         logger.info(f"Using tools descriptions directory from environment: {env_path}")
         return env_path
-    default_path = "/tmp/tools_descriptions"
+    default_path = _default_sbs_dir("tools_descriptions")
     logger.info(f"Using default tools descriptions directory: {default_path}")
     return default_path
 
@@ -132,7 +143,7 @@ def get_metadata_directory():
     if env_path:
         logger.info(f"Using metadata directory from environment: {env_path}")
         return env_path
-    default_path = "/tmp/metadata"
+    default_path = _default_sbs_dir("metadata")
     logger.info(f"Using default metadata directory: {default_path}")
     return default_path
 
@@ -145,7 +156,7 @@ def get_snippets_directory():
     if env_path:
         logger.info(f"Using snippets directory from environment: {env_path}")
         return env_path
-    default_path = "/tmp/snippets"
+    default_path = _default_sbs_dir("snippets")
     logger.info(f"Using default snippets directory: {default_path}")
     return default_path
 
@@ -158,7 +169,7 @@ def get_skills_directory():
     if env_path:
         logger.info(f"Using skills directory from environment: {env_path}")
         return env_path
-    default_path = "/tmp/skills"
+    default_path = _default_sbs_dir("skills")
     logger.info(f"Using default skills directory: {default_path}")
     return default_path
 
@@ -171,7 +182,7 @@ def get_tools_directory():
     if env_path:
         logger.info(f"Using tools directory from environment: {env_path}")
         return env_path
-    default_path = "/tmp/tools"
+    default_path = _default_sbs_dir("tools")
     logger.info(f"Using default tools directory: {default_path}")
     return default_path
 
@@ -186,7 +197,7 @@ def get_snippets_descriptions_directory():
             f"Using snippets descriptions directory from environment: {env_path}"
         )
         return env_path
-    default_path = "/tmp/snippets_descriptions"
+    default_path = _default_sbs_dir("snippets_descriptions")
     logger.info(f"Using default snippets descriptions directory: {default_path}")
     return default_path
 
@@ -199,7 +210,7 @@ def get_skills_descriptions_directory():
     if env_path:
         logger.info(f"Using skills descriptions directory from environment: {env_path}")
         return env_path
-    default_path = "/tmp/skills_descriptions"
+    default_path = _default_sbs_dir("skills_descriptions")
     logger.info(f"Using default skills descriptions directory: {default_path}")
     return default_path
 
@@ -212,7 +223,7 @@ def get_vmcp_directory():
     if env_path:
         logger.info(f"Using vmcp directory from environment: {env_path}")
         return env_path
-    default_path = "/tmp/vmcp"
+    default_path = _default_sbs_dir("vmcp")
     logger.info(f"Using default vmcp directory: {default_path}")
     return default_path
 
@@ -225,7 +236,7 @@ def get_vmcp_descriptions_directory():
     if env_path:
         logger.info(f"Using vmcp descriptions directory from environment: {env_path}")
         return env_path
-    default_path = "/tmp/vmcp_descriptions"
+    default_path = _default_sbs_dir("vmcp_descriptions")
     logger.info(f"Using default vmcp descriptions directory: {default_path}")
     return default_path
 

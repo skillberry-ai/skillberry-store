@@ -1,3 +1,7 @@
+.env
+**.venv-wsl
+**.claude
+
 .idea/
 
 # Byte-compiled / optimized / DLL files
