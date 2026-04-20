@@ -17,7 +17,7 @@ class ChromaVectorDB:
         self.collection_name = collection_name
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "l2"}
         )
 
     def add_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]):
@@ -51,7 +51,7 @@ class ChromaVectorDB:
             output.append({
                 "filename": results['ids'][0][i],
                 "id": results['ids'][0][i],
-                "score": 1 - results['distances'][0][i],  # Convert distance to similarity
+                "score": 1 / (1 + results['distances'][0][i]),  # Convert distance to similarity
                 "similarity_score": results['distances'][0][i],
                 "metadata": results['metadatas'][0][i] if results['metadatas'] else {}
             })
