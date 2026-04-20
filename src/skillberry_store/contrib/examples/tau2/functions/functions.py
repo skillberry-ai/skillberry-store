@@ -18,7 +18,13 @@ def _make_api_call(**kwargs):
     if response.status_code != 200:
         raise requests.exceptions.HTTPError(f"HTTP {response.status_code}: {response.text}")
     
-    return response.json()
+    result = response.json()
+    # Tau2 environment manager stores the response as flattened json string inside "content" key.
+    # However, on a failure - content key is a string containing the error message
+    try:
+        return json.loads(result["content"])
+    except (json.JSONDecodeError, TypeError):
+        return result["content"]
 
 def book_reservation(
     user_id: str,
@@ -298,3 +304,5 @@ def transfer_to_human_agents(summary: str) -> str:
         A message indicating the user has been transferred to a human agent.
     """
     return "Transfer successful"
+
+# Made with Bob

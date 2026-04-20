@@ -171,28 +171,6 @@ The UI source code is located in `src/skillberry_store/ui/` and includes:
 - `src/services/` - API client layer
 - `src/types/` - TypeScript type definitions
 
-## Loading example tools into the Service 📂
-
-- Set the home directory and the EXAMPLESPATH for skillberry-store environment variables 🌐
-
-```bash
-export SBS_HOME=$(pwd)
-export EXAMPLESPATH=$SBS_HOME/src/skillberry_store/contrib/examples
-```
-
-- Load example tools:
-
-```bash
-make ARGS="genai/transformations/client-win-functions.py GetYear GetQuarter GetCurrencySymbol ParseDealSize" load_tools
-```
-
-- Alternatively load the example tools using json schema: 
-
-```bash
-make ARGS="ClientWinMVP/json ClientWinMVP/functions/transformations.py GetYear GetQuarter GetCurrency GetDealAmount identity" load_tools_json
-```
-
-
 ## Engage with the Service via OpenAPI 📜
 
 Open a browser against `http://127.0.0.1:8000/docs` .
