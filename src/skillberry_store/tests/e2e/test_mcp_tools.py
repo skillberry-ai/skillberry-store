@@ -165,7 +165,6 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
         
         # For MCP tools, we don't need to upload a module file
         # Create the tool JSON manually
-        import json
         tool_json = json.dumps(mcp_tool_data, indent=4)
         
         # Write the tool JSON directly to the tools directory
@@ -175,6 +174,30 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
         tool_handler = FileHandler(tools_directory)
         tool_handler.write_file_content(f"{tool_name}.json", tool_json)
         
+        # Step 4a: Verify the tool is visible in the tools list
+        print("\n" + "="*60)
+        print("Step 4a: Verifying tool is in tools list...")
+        print("="*60)
+        list_response = await client.get(f"{BASE_URL}/tools/")
+        assert list_response.status_code == 200, f"Failed to list tools: {list_response.text}"
+        tools_list = list_response.json()
+        tool_names = [t.get("name") for t in tools_list]
+        print(f"Available tools: {tool_names}")
+        assert tool_name in tool_names, f"Tool '{tool_name}' not found in tools list"
+        
+        # Find our tool in the list and verify its properties
+        our_tool = next((t for t in tools_list if t.get("name") == tool_name), None)
+        assert our_tool is not None, f"Tool '{tool_name}' not found in tools list"
+        print(f"Tool found in list: {our_tool.get('name')}")
+        print(f"  - packaging_format: {our_tool.get('packaging_format')}")
+        print(f"  - mcp_url: {our_tool.get('mcp_url')}")
+        print(f"  - state: {our_tool.get('state')}")
+        
+        # Verify the tool properties match what we created
+        assert our_tool.get("packaging_format") == "mcp", f"Expected packaging_format 'mcp', got '{our_tool.get('packaging_format')}'"
+        assert our_tool.get("mcp_url") == vmcp_url, f"Expected mcp_url '{vmcp_url}', got '{our_tool.get('mcp_url')}'"
+        print("✓ Tool verified in tools list with correct properties")
+        
         # Step 5: Execute the MCP tool
         # Note: MCP tools expect string parameters
         print("\n" + "="*60)
@@ -183,11 +206,16 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
         execute_params = {"first": "Hello", "second": "World"}
         print(f"Executing tool '{tool_name}' with params: {execute_params}")
         
-        execute_response = await client.post(
-            f"{BASE_URL}/tools/{tool_name}/execute",
-            json=execute_params,
-            timeout=20.0  # Increase timeout significantly for MCP tool execution
-        )
+        try:
+            execute_response = await client.post(
+                f"{BASE_URL}/tools/{tool_name}/execute",
+                json=execute_params,
+                timeout=60.0  # Increase timeout to accommodate MCP initialization (10s) + tool listing (10s) + execution (30s) + buffer
+            )
+        except Exception as e:
+            print(f"Failed to execute MCP tool: {e}")
+            raise
+
         print(f"Execution response status: {execute_response.status_code}")
         assert execute_response.status_code == 200, f"MCP tool execution failed: {execute_response.text}"
         result = execute_response.json()
@@ -361,7 +389,6 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
         }
         
         # Write the tool JSON directly
-        import json
         tool_json = json.dumps(mcp_tool_data, indent=4)
         from skillberry_store.tools.configure import get_tools_directory
         from skillberry_store.modules.file_handler import FileHandler
@@ -420,7 +447,6 @@ async def test_mcp_tool_not_found(run_sbs):
         }
         
         # Write the tool JSON directly
-        import json
         tool_json = json.dumps(mcp_tool_data, indent=4)
         from skillberry_store.tools.configure import get_tools_directory
         from skillberry_store.modules.file_handler import FileHandler

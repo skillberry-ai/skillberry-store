@@ -89,7 +89,12 @@ class VirtualMcpServer:
             )
         ]
         logging.info("CORS middleware configured for FastMCP server")
-        
+
+        # Cache of tool_name -> raw manifest dict, populated during _register_tools so that
+        # invoke_tool can execute code tools directly without re-reading files (which may have
+        # been overwritten by an MCP wrapper with the same name after server creation).
+        self._tool_manifests: dict = {}
+
         self._register_tools()
         self._register_prompts()
         self._start_server()
@@ -157,6 +162,7 @@ class VirtualMcpServer:
                     if isinstance(content, str):
                         tool_dict = json.loads(content)
                         print(f"DEBUG list_tools: Got tool {tool_name} from file: {tool_dict.get('name')}")
+                        self._tool_manifests[tool_name] = tool_dict
                         tools.append(self.tool_dict_to_mcp_tool(tool_dict))
                     else:
                         logging.warning(f"Failed to read tool {tool_name}: invalid content type")
@@ -166,6 +172,7 @@ class VirtualMcpServer:
                     response.raise_for_status()
                     tool_dict = response.json()
                     print(f"DEBUG list_tools: Got tool {tool_name} from HTTP: {tool_dict.get('name')}")
+                    self._tool_manifests[tool_name] = tool_dict
                     tools.append(self.tool_dict_to_mcp_tool(tool_dict))
             except Exception as e:
                 logging.warning(f"Failed to get tool {tool_name}: {e}")
@@ -424,28 +431,40 @@ class VirtualMcpServer:
             raise ValueError(f"Tool {tool_name} not found")
 
         try:
-            # Use HTTP requests to execute tools via the tools API
-            headers = {}
-            if env_id:
-                # Pass env_id in the skillberry-context header
-                headers["skillberry-context-env_id"] = env_id
-            
-            response = requests.post(
-                f"{self.sts_url}/tools/{tool_name}/execute",
-                json=parameters,
-                headers=headers
+            from skillberry_store.tools.configure import get_files_directory_path
+            from skillberry_store.modules.file_handler import FileHandler
+            from skillberry_store.modules.file_executor import FileExecutor
+
+            # Use the manifest cached at server creation time so that a later overwrite of the
+            # tool JSON file (e.g. by an MCP wrapper with the same name) cannot cause
+            # infinite recursion back through this server.
+            tool_dict = self._tool_manifests.get(tool_name)
+            if tool_dict is None:
+                raise ValueError(f"No cached manifest for tool '{tool_name}'")
+
+            module_name = tool_dict.get("module_name")
+            if not module_name:
+                raise ValueError(f"Tool '{tool_name}' has no module_name in cached manifest")
+
+            file_handler = FileHandler(get_files_directory_path())
+            module_content = file_handler.read_file(module_name, raw_content=True)
+            if not isinstance(module_content, str):
+                raise ValueError(f"Could not read module for tool '{tool_name}'")
+
+            executor = FileExecutor(
+                name=tool_name,
+                file_content=module_content,
+                file_manifest=tool_dict,
             )
-            response.raise_for_status()
-            result = response.json()
-            
+            result = await executor.execute_file(parameters=parameters, env_id=env_id)
+
             # Record successful execution metrics
             duration = time.time() - start_time
             invoke_successfully_vmcp_tool_counter.labels(server_name=self.name, tool_name=tool_name).inc()
             invoke_successfully_vmcp_tool_latency.labels(server_name=self.name, tool_name=tool_name).observe(duration)
-            
+
             return result
         except Exception as e:
-            # Re-raise the exception after recording the attempt
             logging.error(f"Error invoking tool {tool_name} on VMCP server {self.name}: {e}")
             raise
 

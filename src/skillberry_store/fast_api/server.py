@@ -120,7 +120,21 @@ class SBS(FastAPI):
 
         if self.settings.observability:
             observability_setup()
-        uvicorn.run(self, host=self.settings.sbs_host, port=self.settings.sbs_port)
+        
+        # Configure uvicorn logging - create custom config to ensure all requests are logged
+        import copy
+        from uvicorn.config import LOGGING_CONFIG
+        log_config = copy.deepcopy(LOGGING_CONFIG)
+        log_config["formatters"]["access"]["fmt"] = '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+        log_config["loggers"]["uvicorn.access"]["level"] = "DEBUG"  # Ensure all access logs are shown
+        
+        uvicorn.run(
+            self,
+            host=self.settings.sbs_host,
+            port=self.settings.sbs_port,
+            access_log=True,
+            log_config=log_config
+        )
 
 
 def tools_descriptions_api():

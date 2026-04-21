@@ -30,6 +30,7 @@ from skillberry_store.fast_api.server_utils import (
     get_mcp_tools,
     mcp_json_converter,
     mcp_content,
+    mcp_content_from_manifest,
 )
 from skillberry_store.fast_api.search_filters import apply_search_filters
 
@@ -526,11 +527,12 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or execution fails (500).
         """
-        logger.info(f"Request to execute tool: {name} with parameters: {parameters}")
+        logger.info(f"[execute_tool] START - Request to execute tool: {name} with parameters: {parameters}")
         execute_tool_counter.labels(name=name).inc()
         start_time = time.time()
 
         try:
+            logger.info(f"[execute_tool] Reading tool manifest for: {name}")
             # Get the tool metadata
             tool_filename = f"{name}.json"
             content = tool_handler.read_file(tool_filename, raw_content=True)
@@ -559,14 +561,10 @@ def register_tools_api(
 
             # Handle MCP packaging format
             if tool_dict.get("packaging_format") == "mcp":
-                # Ensure the tool exists in MCP
-                tools = await get_mcp_tools(tool_dict)
-                if not tools:
-                    raise HTTPException(
-                        status_code=404, detail=f"MCP tool '{name}' not found."
-                    )
-                tool_mcp_dict = vars(tools[0])
-                module_content = mcp_content(tool_mcp_dict)
+                # Build the function stub from the stored manifest — no SSE round-trip needed
+                # here. FileExecutor.execute_python_file_in_mcp_server opens its own connection
+                # and will surface a clear error if the tool is absent on the MCP server.
+                module_content = mcp_content_from_manifest(tool_dict)
             else:
                 # Handle code packaging format
                 # Check if module_name exists
