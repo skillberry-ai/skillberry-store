@@ -307,28 +307,45 @@ class FileExecutor:
         """
         Executes a Python file using MCP server
         """
+        import asyncio
 
         # To experiment with the MCP server, see the instructions in the `contrib/mcp/README.md` file.
 
         async def execute_mcp_tool(
             _url: str, _function_name: str, _mcp_args_dict: dict
         ):
-            async with sse_client(_url) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
+            logger.info(f"[execute_mcp_tool] Connecting to SSE client at: {_url}")
+            try:
+                async with sse_client(_url, sse_read_timeout=30) as (read, write):
+                    logger.info(f"[execute_mcp_tool] SSE client connected, creating ClientSession")
+                    async with ClientSession(read, write) as session:
+                        # Add timeout for initialization
+                        logger.info(f"[execute_mcp_tool] Initializing MCP session...")
+                        await asyncio.wait_for(session.initialize(), timeout=10.0)
+                        logger.info(f"[execute_mcp_tool] MCP session initialized")
 
-                    tools = await session.list_tools()
+                        # Add timeout for listing tools
+                        logger.info(f"[execute_mcp_tool] Listing tools from MCP server...")
+                        tools = await asyncio.wait_for(session.list_tools(), timeout=10.0)
+                        logger.info(f"[execute_mcp_tool] Retrieved {len(tools.tools) if tools and tools.tools else 0} tools")
 
-                    for tool in tools.tools:
-                        logging.info(f"tool: {tool.name}")
-                        if _function_name == tool.name:
-                            logging.info(f"tool found: {tool.name}")
-                            _return_value = await session.call_tool(
-                                tool.name, arguments=_mcp_args_dict
-                            )
-                            return _return_value.content[0].text
+                        for tool in tools.tools:
+                            logger.info(f"[execute_mcp_tool] Checking tool: {tool.name}")
+                            if _function_name == tool.name:
+                                logger.info(f"[execute_mcp_tool] Tool found: {tool.name}, executing...")
+                                # Add timeout for tool execution
+                                _return_value = await asyncio.wait_for(
+                                    session.call_tool(tool.name, arguments=_mcp_args_dict),
+                                    timeout=30.0
+                                )
+                                logger.info(f"[execute_mcp_tool] Tool execution completed successfully")
+                                return _return_value.content[0].text
 
-                    return None
+                        logger.warning(f"[execute_mcp_tool] Tool '{_function_name}' not found in MCP server")
+                        return None
+            except Exception as e:
+                logger.error(f"[execute_mcp_tool] Exception during MCP tool execution: {e}", exc_info=True)
+                raise
 
         logger.info(f"Executing python code using a MCP server")
 
@@ -352,33 +369,52 @@ class FileExecutor:
                 f"function_imports:{function_imports}\n"
             )
 
-            mcp_args_dict = {}
-            for parameter_definition in parameter_definitions:
-                parameter_definition_name = parameter_definition[0]
-                parameter_definition_type = parameter_definition[1]
-                parameter_definition_kind = parameter_definition[2]
-                if parameters.get(parameter_definition_name) is None:
-                    if parameter_definition_kind == "positional":
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Missing parameter: "
-                            f"name:{parameter_definition_name}, "
-                            f"type:{parameter_definition_type}",
-                        )
-                    else:
-                        continue
+            if not parameter_definitions:
+                # Stub has no parameters (e.g. MCP manifest was written without params field).
+                # Pass the caller's parameters through as-is so the MCP server receives them.
+                mcp_args_dict = dict(parameters)
+            else:
+                mcp_args_dict = {}
+                for parameter_definition in parameter_definitions:
+                    parameter_definition_name = parameter_definition[0]
+                    parameter_definition_type = parameter_definition[1]
+                    parameter_definition_kind = parameter_definition[2]
+                    if parameters.get(parameter_definition_name) is None:
+                        if parameter_definition_kind == "positional":
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Missing parameter: "
+                                f"name:{parameter_definition_name}, "
+                                f"type:{parameter_definition_type}",
+                            )
+                        else:
+                            continue
 
-                converted_arg = arg_convert(
-                    parameters.get(parameter_definition_name), parameter_definition_type
-                )
-                if parameter_definition_kind == "positional":
-                    mcp_args_dict[parameter_definition_name] = converted_arg
-                else:
+                    converted_arg = arg_convert(
+                        parameters.get(parameter_definition_name), parameter_definition_type
+                    )
                     mcp_args_dict[parameter_definition_name] = converted_arg
             mcp_server_url = self.manifest.get("mcp_url") or default_mcp_server_url
-            return_value = await execute_mcp_tool(
-                mcp_server_url, function_name, mcp_args_dict
-            )
+            logger.info(f"[execute_python_file_in_mcp_server] Connecting to MCP server at: {mcp_server_url}")
+            logger.info(f"[execute_python_file_in_mcp_server] Calling tool '{function_name}' with args: {mcp_args_dict}")
+            
+            try:
+                logger.info(f"[execute_python_file_in_mcp_server] About to call execute_mcp_tool...")
+                return_value = await execute_mcp_tool(
+                    mcp_server_url, function_name, mcp_args_dict
+                )
+                logger.info(f"[execute_python_file_in_mcp_server] execute_mcp_tool returned: {return_value}")
+            except asyncio.TimeoutError as te:
+                logger.error(f"[execute_python_file_in_mcp_server] Timeout connecting to MCP server at {mcp_server_url}: {te}", exc_info=True)
+                return {
+                    "error": f"Timeout connecting to MCP server at {mcp_server_url}. "
+                             f"Please verify the server is running and accessible.",
+                }
+            except Exception as mcp_e:
+                logger.error(f"[execute_python_file_in_mcp_server] Error calling MCP tool: {mcp_e}", exc_info=True)
+                return {
+                    "error": f"Error calling MCP tool '{function_name}': {str(mcp_e)}",
+                }
 
             if return_value is None:
                 raise HTTPException(
@@ -387,6 +423,8 @@ class FileExecutor:
 
             logger.info(f"Python code executed successfully: {return_value}")
             return {"return value": f"{return_value}"}
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error executing Python file in MCP server: {e}")
             return {

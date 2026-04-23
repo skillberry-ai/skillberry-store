@@ -167,3 +167,5 @@ cython_debug/
 src/skillberry_store/fast_api/git_version.py
 
 .stamps/
+
+.claude/settings.local.json
