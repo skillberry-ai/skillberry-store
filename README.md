@@ -178,7 +178,7 @@ Open a browser against `http://127.0.0.1:8000/docs` .
 
 ## Engage with the Service through a Python Client 🐍
 
-The service can be consumed via skillberry store service sdk. Refer to [skillberry-store-sdk](https://github.ibm.com/skillberry/skillberry-store-sdk) for installation and usage.
+The service can be consumed via skillberry store service sdk. Refer to [skillberry-store-sdk](client/python/skillberry_store_sdk/README.md) for installation and usage.
 
 ## Engage with the Service via CLI 💻
 
@@ -203,22 +203,9 @@ For detailed CLI documentation, see [docs/cli.md](docs/cli.md).
 Each control API function is available as an MCP tool to be used by agentic AI workflows.  
 To access use an MCP client against `http://127.0.0.1:8000/control_sse` .  
 
-## Run SBS in MCP Server Mode 🖥️
-
-To run SBS in MCP server mode, allowing it to connect to any agent framework that supports MCP, set the MCP_MODE variable:
-
-```bash
-MCP_MODE=True make run
-```
-
-### Examples of using SBS with Agentic Frameworks 🤖
-
-Follow the steps outlined in [Run SBS with Agent Frameworks](src/skillberry_store/contrib/examples/agent_framework/agent_framework.md).
-> Note: the example makes use of SBS in MCP mode
-
 ### Support Multiple MCP Backends
 
-Follow the steps outlined in [Connecting MCP as a backend](src/skillberry_store/contrib/mcp/README.md).
+Follow the steps outlined in [Connecting MCP as a backend](docs/mcp-backend.md).
 
 ## Run SBS with GitHub backend
 

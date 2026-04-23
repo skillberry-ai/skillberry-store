@@ -309,7 +309,7 @@ class FileExecutor:
         """
         import asyncio
 
-        # To experiment with the MCP server, see the instructions in the `contrib/mcp/README.md` file.
+        # To experiment with the MCP server, see the instructions in the `docs/mcp-backend.md` file.
 
         async def execute_mcp_tool(
             _url: str, _function_name: str, _mcp_args_dict: dict
