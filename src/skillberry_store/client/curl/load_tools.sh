@@ -94,6 +94,7 @@ shift # Shift the first argument (the tools file) so that $@ contains only the t
 # and generate the manifests for each tool
 for value in "$@"; do
     echo "${bold}Generating tool: '$value'${normal}"
+    py_file=$TOOLS_FILE
     curl -X POST \
         -H 'accept: application/json' \
         -H 'Content-Type: multipart/form-data' \
