@@ -121,7 +121,7 @@ dependencies = [
   "faiss-cpu",
   "chromadb",
   "lancedb",
-  "toml-cli"
+  "toml-cli",
   "tomli",
   "tomli-w",
   "sentence_transformers",

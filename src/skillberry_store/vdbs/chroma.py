@@ -5,10 +5,11 @@ import shutil
 import os
 from pathlib import Path
 import logging
+from skillberry_store.vdbs.vector_db_interface import VectorDBInterface
 logger = logging.getLogger(__name__)
 
 
-class ChromaVectorDB:
+class ChromaVectorDB(VectorDBInterface):
     def __init__(self, dimension: int = 384, persist_path: str = "./chroma_db", collection_name: str = "my_collection"):
         """Initialize Chroma client"""
         self.persist_path = persist_path
@@ -75,3 +76,5 @@ class ChromaVectorDB:
         """Get number of vectors in collection"""
         return self.collection.count()
 
+    def close(self) -> None:
+        pass
