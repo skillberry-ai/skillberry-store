@@ -95,15 +95,17 @@ async def run_sbs(request):
     # Give streaming threads a moment to start
     await asyncio.sleep(0.1)
     
-    # Give the server a moment to start before checking
-    await asyncio.sleep(2)
-    
-    # Check if process is still running
-    if main_proc.returncode is not None:
-        logger.error("Server failed to start!")
-        raise RuntimeError("Server process terminated unexpectedly")
-    
-    await wait_until_server_ready(timeout=60)
+    # Wait for server to be ready (this will timeout if server fails to start)
+    try:
+        await wait_until_server_ready(timeout=60)
+    except TimeoutError as e:
+        # Check if process terminated
+        if main_proc.returncode is not None:
+            logger.error(f"Server process terminated with code {main_proc.returncode}")
+            raise RuntimeError(f"Server process terminated unexpectedly with code {main_proc.returncode}")
+        else:
+            logger.error("Server failed to become ready within timeout")
+            raise
 
     yield
 

@@ -12,10 +12,10 @@
 # - The tools file is in the correct format and contains the necessary metadata for each tool
 # 
 # Environment Variables:
-# 
+#
 # $> export SBS_HOME=/your/path/to/skillberry-store
-# $> export EXAMPLESPATH=/your/path/to/skillberry-store/contrib/examples/you/example/path
-# 
+# $> export EXAMPLESPATH=/your/path/to/skillberry-store/src/skillberry_store/contrib/examples/tools
+#
 # Usage:
 # - If the script is called from the command line:
 #   $> ./load_tools.sh <tools_file> <tool_name> [<tool_name> ...]"

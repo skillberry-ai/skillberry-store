@@ -73,7 +73,7 @@ read -n 1 -s -r -p "==> Press any key to continue...\n"
 
 # step (3) load a tool into the SBS service (this will call the relevant hook and will push the tool to the github repo)
 pushd .
-SBS_HOME=$(pwd) EXAMPLESPATH=$(pwd) client/curl/load_tools.sh contrib/examples/ClientWinMVP/functions/transformations.py GetYear
+SBS_HOME=$(pwd) EXAMPLESPATH=$(pwd)/src/skillberry_store/contrib/examples/tools client/curl/load_tools.sh genai/transformations/client-win-functions.py GetYear
 cd ../../../
 popd
 

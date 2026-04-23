@@ -29,7 +29,7 @@ def test_load_tools(sbs_server):
 
     my_env = os.environ.copy()
     my_env["SBS_HOME"] = base_dir
-    examples_path = base_dir + "/src/skillberry_store/contrib/examples"
+    examples_path = base_dir + "/src/skillberry_store/contrib/examples/tools"
     my_env["EXAMPLESPATH"] = examples_path
 
     load_tools_command = cwd + "/src/skillberry_store/client/curl/load_tools.sh"
