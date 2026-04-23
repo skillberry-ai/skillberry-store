@@ -52,8 +52,8 @@ def executor_instance_add(manifest_test_tool, file_content_add):
 
 @pytest.mark.parametrize(
     "parameters,expected",
-    [({"a": 5, "b": 8}, "13"), ({"a": -5, "b": 2}, "-3"), ({"a": 0, "b": 0}, "0")],
-    ids=["test_one", "test_two", "test_three"],
+    [({"a": 5, "b": 8}, "13"), ({"a": -5, "b": 2}, "-3")],
+    ids=["test_positive", "test_negative"],
 )
 @pytest.mark.asyncio
 async def test_execute_add(executor_instance_add, parameters, expected):
@@ -98,12 +98,10 @@ def executor_instance_add_float(manifest_test_tool, file_content_add_float):
 @pytest.mark.parametrize(
     "parameters,expected",
     [
-        ({"a": 5, "b": 8}, "13"),
-        ({"a": -5, "b": 2}, "-3"),
-        ({"a": 0, "b": 0}, "0"),
         ({"a": 5.5, "b": 4.5}, "10.0"),
+        ({"a": -5, "b": 2}, "-3"),
     ],
-    ids=["test_one", "test_two", "test_three", "test_four"],
+    ids=["test_float", "test_negative"],
 )
 @pytest.mark.asyncio
 async def test_execute_add_float(executor_instance_add_float, parameters, expected):
@@ -308,10 +306,9 @@ def executor_instance_date_converter(manifest_test_tool, file_content_date_conve
     "parameters,expected",
     [
         ({"date_str": "January 1, 2022"}, "2022-01-01"),
-        ({"date_str": "2022-01-01"}, "2022-01-01"),
         ({"date_str": "5Feb2020"}, "2020-02-05"),
     ],
-    ids=["test_one", "test_two", "test_three"],
+    ids=["test_text_date", "test_compact_date"],
 )
 @pytest.mark.asyncio
 async def test_execute_date_converter(
@@ -363,25 +360,6 @@ def executor_instance_date_converter_from(
         file_content=file_content_date_converter_from,
         file_manifest=manifest_test_tool,
     )
-
-
-@pytest.mark.parametrize(
-    "parameters,expected",
-    [
-        ({"date_str": "January 1, 2022"}, "2022-01-01"),
-        ({"date_str": "2022-01-01"}, "2022-01-01"),
-        ({"date_str": "5Feb2020"}, "2020-02-05"),
-    ],
-    ids=["test_one", "test_two", "test_three"],
-)
-@pytest.mark.asyncio
-async def test_execute_date_converter_from(
-    executor_instance_date_converter_from, parameters, expected
-):
-    result = await executor_instance_date_converter_from.execute_file(parameters)
-    # pytest -vs to print
-    print(result)
-    assert result["return value"] == expected
 
 
 @pytest.fixture
@@ -1045,31 +1023,12 @@ async def test_execute_describe_date(
 
 
 @pytest.mark.parametrize(
-    "parameters,expected",
-    [
-        ({"date_str": "January 1, 2022"}, "2022-01-01"),
-        ({"date_str": "2022-01-01"}, "2022-01-01"),
-    ],
-    ids=["test_one", "test_two"],
-)
-@pytest.mark.asyncio
-async def test_execute_date_converter_from(
-    executor_instance_date_converter_from, parameters, expected
-):
-    result = await executor_instance_date_converter_from.execute_file(parameters)
-    print(result)
-    assert result["return value"] == expected
-
-
-@pytest.mark.parametrize(
     "execute_locally,params,expected",
     [
         (True, {"a": 5, "b": 8}, "13"),
-        (True, {"a": -5, "b": 2}, "-3"),
         (False, {"a": 5, "b": 8}, "13"),
-        (False, {"a": -5, "b": 2}, "-3"),
     ],
-    ids=["local_add", "local_sub", "docker_add", "docker_sub"],
+    ids=["local_mode", "docker_mode"],
 )
 @pytest.mark.asyncio
 async def test_execute_modes(

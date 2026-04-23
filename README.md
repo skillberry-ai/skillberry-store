@@ -13,6 +13,7 @@ This service implements a smart skills repository for agentic workflows. Manage,
 - **Tools Persistence**: Support persistence of tools into filesystem, GitHub repos etc.
 - **Observability**: Provide metrics and traces for operational and behavioural analysis of tools usage.
 - **OpenAPI frontend**: FastAPI endpoint to interact and manage tools (using tools-manifest artifacts)
+- **CLI Support**: Command-line interface for all API operations.
 - **MCP frontend**: Expose virtual [MCP](https://github.com/modelcontextprotocol)  servers for any subset of the tools or all of them.
 - **Support Multiple MCP backends**: Consume and route additional tools from multiple backend MCP servers.
 - **Agentic Framework Integration**: Connect to different agentic frameworks via the MCP frontend.
@@ -178,6 +179,24 @@ Open a browser against `http://127.0.0.1:8000/docs` .
 ## Engage with the Service through a Python Client 🐍
 
 The service can be consumed via skillberry store service sdk. Refer to [skillberry-store-sdk](https://github.ibm.com/skillberry/skillberry-store-sdk) for installation and usage.
+
+## Engage with the Service via CLI 💻
+
+A CLI (auto-generated) that provides command-line access to all API operations.
+Example usage:
+
+```bash
+# Install the SDK (includes CLI)
+pip install skillberry-store-sdk
+
+# Use the CLI
+sbs --help                                 # Show available commands
+sbs connect http://prod:8000               # Connect to different server
+sbs list-skills-skills-get list            # List all skills
+sbs get-tool-tools-name-get convert        # Get a specific tool
+```
+
+For detailed CLI documentation, see [docs/cli.md](docs/cli.md).
 
 ## Engage with the Service via MCP 📜
 

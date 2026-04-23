@@ -31,7 +31,7 @@ EXPECTED_FUNCTIONS = [
 @pytest.fixture
 def tau2_functions_file():
     """Load the tau2 functions.py file."""
-    file_path = Path(__file__).parent.parent / 'contrib' / 'examples' / 'tau2' / 'functions' / 'functions.py'
+    file_path = Path(__file__).parent.parent / 'contrib' / 'examples' / 'tools' / 'tau2' / 'functions' / 'functions.py'
     with open(file_path, 'r') as f:
         content = f.read()
     return content, str(file_path)
