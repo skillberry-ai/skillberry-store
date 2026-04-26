@@ -227,3 +227,54 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             dict: Health status of the service.
         """
         return {"status": "healthy"}
+
+    @app.get("/health/ready", tags=[tags])
+    def readiness_check():
+        """Readiness check endpoint - verifies all description directories are initialized.
+
+        Returns:
+            dict: Readiness status with details about each directory (HTTP 200 when ready).
+        
+        Raises:
+            HTTPException: 500 status when still initializing.
+        """
+        checks = {}
+        
+        # Check all known description objects in app.state
+        description_attrs = [
+            'tools_descriptions',
+            'snippets_descriptions',
+            'skills_descriptions',
+            'vmcp_descriptions'
+        ]
+        
+        for attr_name in description_attrs:
+            desc_obj = getattr(app.state, attr_name, None)
+            if desc_obj and hasattr(desc_obj, 'descriptions_directory'):
+                dir_path = desc_obj.descriptions_directory
+                checks[attr_name] = {
+                    "path": dir_path,
+                    "exists": os.path.exists(dir_path)
+                }
+            else:
+                checks[attr_name] = {
+                    "path": None,
+                    "exists": False
+                }
+        
+        # Server is ready if all checks pass
+        all_ready = all(check["exists"] for check in checks.values())
+        
+        if not all_ready:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "status": "initializing",
+                    "checks": checks
+                }
+            )
+        
+        return {
+            "status": "ready",
+            "checks": checks
+        }

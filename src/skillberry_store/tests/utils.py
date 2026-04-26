@@ -31,7 +31,7 @@ def clean_test_tmp_dir():
             shutil.rmtree(path, ignore_errors=False)
 
 
-async def wait_until_server_ready(url="http://127.0.0.1:8000/tools/", timeout=15):
+async def wait_until_server_ready(url="http://127.0.0.1:8000/health/ready", timeout=60):
     """Waits until the server at the given URL responds with HTTP 200 or times out."""
 
     start = asyncio.get_event_loop().time()
