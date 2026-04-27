@@ -33,8 +33,9 @@ class FaissDB(VectorDBInterface):
         self.persist_path = persist_path
 
         # Create persist directory if it doesn't exist
+        os.makedirs(os.path.dirname(persist_path), exist_ok=True)
         os.makedirs(persist_path, exist_ok=True)
-        
+
         # Initialize index
         self.index = self._create_index()
         
