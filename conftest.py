@@ -8,5 +8,8 @@ def pytest_configure(config):
     if os.getenv("SBS_TEST_DEBUG", "").lower() == "true":
         config.option.log_cli = True
         config.option.log_cli_level = "DEBUG"
+    else:
+        # Explicitly disable CLI logging when not in debug mode
+        config.option.log_cli = False
 
 # Made with Bob
