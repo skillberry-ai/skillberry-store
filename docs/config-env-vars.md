@@ -37,3 +37,20 @@ This table lists embedding configuration used by SBS service, along with the env
 | Model search k  | 5                                                 | `EMBEDDING_MODEL_SEARCH_K`     |
 
 > You can override the default values by setting the corresponding environment variables in your deployment configuration.
+
+
+This table lists test configuration used by SBS service, along with the environment variables that can be used to override them.
+
+| Configuration   | Default value | Environment Variables Override | Notes                                    |
+|-----------------|---------------|--------------------------------|------------------------------------------|
+| Test debug mode | False         | `SBS_TEST_DEBUG`               | If True - enable debug logging for tests |
+
+> You can override the default values by setting the corresponding environment variables in your deployment configuration.
+
+### Example: Running tests with debug logs enabled
+
+To enable debug logging when running tests with make:
+
+```bash
+SBS_TEST_DEBUG=true make test
+```
