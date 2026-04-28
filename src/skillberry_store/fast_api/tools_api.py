@@ -14,10 +14,17 @@ from prometheus_client import Counter, Histogram
 import time
 
 from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.modules.file_executor import FileExecutor, detect_tool_dependencies
+from skillberry_store.modules.file_executor import (
+    FileExecutor,
+    detect_tool_dependencies,
+)
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
-from skillberry_store.schemas.tool_schema import ToolSchema, ToolParamsSchema, ToolReturnsSchema
+from skillberry_store.schemas.tool_schema import (
+    ToolSchema,
+    ToolParamsSchema,
+    ToolReturnsSchema,
+)
 from skillberry_store.schemas.manifest_schema import ManifestState
 from skillberry_store.tools.configure import (
     is_auto_detect_dependencies_enabled,
@@ -42,18 +49,18 @@ def load_tool_dependencies(
     tool_handler: FileHandler,
     file_handler: FileHandler,
     tool_name: str,
-    visited: Optional[set] = None
+    visited: Optional[set] = None,
 ) -> tuple[List[str], List[Dict[str, Any]]]:
     """
     Recursively load dependency file contents and manifests for a tool and all its nested dependencies.
-    
+
     Args:
         dependencies: List of dependency tool names
         tool_handler: FileHandler for tool manifests
         file_handler: FileHandler for module files
         tool_name: Name of the tool requesting dependencies (for logging)
         visited: Set of already visited dependency names to avoid circular dependencies
-    
+
     Returns:
         Tuple of:
         - List of dependency file contents as strings (in dependency order)
@@ -61,30 +68,30 @@ def load_tool_dependencies(
     """
     if visited is None:
         visited = set()
-    
+
     dependent_file_contents = []
     dependent_tools_as_dict = []
-    
+
     if not dependencies:
         return dependent_file_contents, dependent_tools_as_dict
-    
+
     logger.info(f"Loading {len(dependencies)} dependencies for tool '{tool_name}'")
-    
+
     for dep_name in dependencies:
         # Skip if already visited (avoid circular dependencies)
         if dep_name in visited:
             logger.debug(f"Skipping already loaded dependency: {dep_name}")
             continue
-        
+
         visited.add(dep_name)
-        
+
         try:
             # Load dependency tool manifest
             dep_filename = f"{dep_name}.json"
             dep_content = tool_handler.read_file(dep_filename, raw_content=True)
             if isinstance(dep_content, str):
                 dep_dict = json.loads(dep_content)
-                
+
                 # Recursively load nested dependencies first
                 nested_dependencies = dep_dict.get("dependencies", [])
                 if nested_dependencies:
@@ -94,29 +101,34 @@ def load_tool_dependencies(
                         tool_handler=tool_handler,
                         file_handler=file_handler,
                         tool_name=dep_name,
-                        visited=visited
+                        visited=visited,
                     )
                     dependent_file_contents.extend(nested_contents)
                     dependent_tools_as_dict.extend(nested_dicts)
-                
+
                 # Load dependency module content
                 dep_module_name = dep_dict.get("module_name")
                 if dep_module_name:
-                    dep_module_content = file_handler.read_file(dep_module_name, raw_content=True)
+                    dep_module_content = file_handler.read_file(
+                        dep_module_name, raw_content=True
+                    )
                     if isinstance(dep_module_content, str):
                         dependent_file_contents.append(dep_module_content)
                         dependent_tools_as_dict.append(dep_dict)
                         logger.info(f"Loaded dependency: {dep_name}")
                     else:
-                        logger.warning(f"Could not load module content for dependency: {dep_name}")
+                        logger.warning(
+                            f"Could not load module content for dependency: {dep_name}"
+                        )
                 else:
                     logger.warning(f"Dependency {dep_name} has no module_name")
             else:
                 logger.warning(f"Could not load dependency manifest: {dep_name}")
         except Exception as e:
             logger.warning(f"Failed to load dependency {dep_name}: {e}")
-    
+
     return dependent_file_contents, dependent_tools_as_dict
+
 
 # observability - metrics
 prom_prefix = "sts_fastapi_tools_"
@@ -130,7 +142,8 @@ get_tool_counter = Counter(
     f"{prom_prefix}get_tool_counter", "Count number of tool get operations"
 )
 get_tool_module_counter = Counter(
-    f"{prom_prefix}get_tool_module_counter", "Count number of tool module get operations"
+    f"{prom_prefix}get_tool_module_counter",
+    "Count number of tool module get operations",
 )
 delete_tool_counter = Counter(
     f"{prom_prefix}delete_tool_counter", "Count number of tool delete operations"
@@ -157,7 +170,8 @@ search_tools_counter = Counter(
     f"{prom_prefix}search_tools_counter", "Count number of tool search operations"
 )
 add_tool_from_python_counter = Counter(
-    f"{prom_prefix}add_tool_from_python_counter", "Count number of tool add from Python operations"
+    f"{prom_prefix}add_tool_from_python_counter",
+    "Count number of tool add from Python operations",
 )
 
 
@@ -182,7 +196,7 @@ def register_tools_api(
     async def create_tool(
         tool: Annotated[ToolSchema, Query()],
         module: UploadFile = File(...),
-    ) -> Dict[str, Any]: 
+    ) -> Dict[str, Any]:
         """Create a new tool with required file upload.
 
         The form fields are dynamically generated from ToolSchema.
@@ -233,16 +247,24 @@ def register_tools_api(
             if not tool.dependencies and is_auto_detect_dependencies_enabled():
                 try:
                     # Get list of available tools
-                    available_tools = [f.replace('.json', '') for f in tool_handler.list_files()]
+                    available_tools = [
+                        f.replace(".json", "") for f in tool_handler.list_files()
+                    ]
                     # Detect dependencies from code
                     detected_deps = detect_tool_dependencies(
-                        file_content.decode('utf-8') if isinstance(file_content, bytes) else file_content,
+                        (
+                            file_content.decode("utf-8")
+                            if isinstance(file_content, bytes)
+                            else file_content
+                        ),
                         tool.name,
-                        available_tools
+                        available_tools,
                     )
                     if detected_deps:
                         tool.dependencies = detected_deps
-                        logger.info(f"Auto-detected dependencies for '{tool.name}': {detected_deps}")
+                        logger.info(
+                            f"Auto-detected dependencies for '{tool.name}': {detected_deps}"
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
 
@@ -379,8 +401,10 @@ def register_tools_api(
                     )
                 tool_mcp_dict = vars(tools[0])
                 module_content = mcp_content(tool_mcp_dict)
-                return PlainTextResponse(content=module_content, media_type="text/plain")
-            
+                return PlainTextResponse(
+                    content=module_content, media_type="text/plain"
+                )
+
             # Handle code packaging format
             # Check if module_name exists
             module_name = tool_dict.get("module_name")
@@ -527,7 +551,9 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or execution fails (500).
         """
-        logger.info(f"[execute_tool] START - Request to execute tool: {name} with parameters: {parameters}")
+        logger.info(
+            f"[execute_tool] START - Request to execute tool: {name} with parameters: {parameters}"
+        )
         execute_tool_counter.labels(name=name).inc()
         start_time = time.time()
 
@@ -579,7 +605,8 @@ def register_tools_api(
                 module_content = file_handler.read_file(module_name, raw_content=True)
                 if not isinstance(module_content, str):
                     raise HTTPException(
-                        status_code=500, detail=f"Invalid module content for tool '{name}'"
+                        status_code=500,
+                        detail=f"Invalid module content for tool '{name}'",
                     )
 
             # Load dependencies if they exist
@@ -588,7 +615,7 @@ def register_tools_api(
                 dependencies=dependencies,
                 tool_handler=tool_handler,
                 file_handler=file_handler,
-                tool_name=name
+                tool_name=name,
             )
 
             # Execute the tool using FileExecutor
@@ -605,12 +632,14 @@ def register_tools_api(
             result = await file_executor.execute_file(
                 parameters=exec_parameters, env_id=env_id
             )
-            
+
             # Check if the result contains an error payload
             if isinstance(result, dict) and "error" in result:
                 error_message = result.get("error", "Unknown error")
-                logger.error(f"Tool '{name}' execution failed with error: {error_message}")
-                
+                logger.error(
+                    f"Tool '{name}' execution failed with error: {error_message}"
+                )
+
                 # Determine appropriate HTTP status code based on error message
                 # Tool not found on MCP server -> 404
                 # Connection/timeout/other MCP errors -> 500
@@ -618,18 +647,15 @@ def register_tools_api(
                     status_code = 404
                 else:
                     status_code = 500
-                
-                raise HTTPException(
-                    status_code=status_code,
-                    detail=error_message
-                )
-            
+
+                raise HTTPException(status_code=status_code, detail=error_message)
+
             # Record successful execution metrics
             duration = time.time() - start_time
             execute_successfully_tool_counter.labels(name=name).inc()
             execute_successfully_tool_latency.labels(name=name).observe(duration)
             logger.info(f"Tool '{name}' executed successfully with result: {result}")
-            
+
             return result
 
         except HTTPException:
@@ -687,17 +713,23 @@ def register_tools_api(
             for matched_entity in filtered_matched_entities:
                 tool_name = matched_entity.get("filename") or matched_entity.get("name")
                 if not tool_name:
-                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    logger.warning(
+                        f"Matched entity missing 'filename' or 'name' field: {matched_entity}"
+                    )
                     continue
                 try:
                     tool_filename = f"{tool_name}.json"
                     content = tool_handler.read_file(tool_filename, raw_content=True)
                     if isinstance(content, str):
                         tool_dict = json.loads(content)
-                        tool_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                        tool_dict["similarity_score"] = matched_entity.get(
+                            "similarity_score", 0.0
+                        )
                         tools_to_filter.append(tool_dict)
                 except Exception as e:
-                    logger.warning(f"Could not load tool {tool_name} for filtering: {e}")
+                    logger.warning(
+                        f"Could not load tool {tool_name} for filtering: {e}"
+                    )
 
             # Apply manifest and lifecycle filters
             filtered_tools = apply_search_filters(
@@ -711,7 +743,10 @@ def register_tools_api(
 
             # Return only filename and similarity_score (filename is the tool name)
             result = [
-                {"filename": tool.get("name", ""), "similarity_score": tool.get("similarity_score", 0.0)}
+                {
+                    "filename": tool.get("name", ""),
+                    "similarity_score": tool.get("similarity_score", 0.0),
+                }
                 for tool in filtered_tools
                 if tool.get("name")  # Only include if name exists
             ]
@@ -753,16 +788,16 @@ def register_tools_api(
         add_tool_from_python_counter.inc()
 
         # Validate that the uploaded file is a Python file
-        if not tool.filename or not tool.filename.endswith('.py'):
+        if not tool.filename or not tool.filename.endswith(".py"):
             raise HTTPException(
                 status_code=400,
-                detail="Only Python (.py) files are supported. Please upload a valid Python file."
+                detail="Only Python (.py) files are supported. Please upload a valid Python file.",
             )
 
         try:
             # Read the uploaded file content
             tool_bytes = await tool.read()
-            
+
             # Extract function name and docstring from the Python code
             try:
                 # extract_docstring returns (func_name, docstring_obj) tuple
@@ -773,7 +808,7 @@ def register_tools_api(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Failed to parse Python code or extract docstring: {str(e)}. "
-                           "Ensure the function has a properly formatted docstring with parameters."
+                    "Ensure the function has a properly formatted docstring with parameters.",
                 )
 
             # Build the tool schema from the docstring
@@ -782,26 +817,26 @@ def register_tools_api(
             if not description:
                 raise HTTPException(
                     status_code=400,
-                    detail="Function docstring must include a description."
+                    detail="Function docstring must include a description.",
                 )
 
             # Extract parameters from docstring
             params_properties = {}
             required_params = []
-            
+
             for param in docstring_obj.params:  # type: ignore
                 params_properties[param.arg_name] = {
                     "type": param.type_name if param.type_name else "string",
-                    "description": param.description if param.description else ""
+                    "description": param.description if param.description else "",
                 }
                 required_params.append(param.arg_name)
-            
+
             # Extract return information
             returns_schema = None
             if docstring_obj.returns:  # type: ignore
                 returns_schema = ToolReturnsSchema(
                     type=docstring_obj.returns.type_name if docstring_obj.returns.type_name else None,  # type: ignore
-                    description=docstring_obj.returns.description if docstring_obj.returns.description else None  # type: ignore
+                    description=docstring_obj.returns.description if docstring_obj.returns.description else None,  # type: ignore
                 )
 
             # Check if tool already exists
@@ -812,10 +847,10 @@ def register_tools_api(
                 if not update:
                     raise HTTPException(
                         status_code=409,
-                        detail=f"Tool '{func_name}' already exists. Set update=true to overwrite."
+                        detail=f"Tool '{func_name}' already exists. Set update=true to overwrite.",
                     )
                 logger.info(f"Updating existing tool: {func_name}")
-                
+
                 # Delete old description if updating
                 if tools_descriptions:
                     try:
@@ -837,16 +872,24 @@ def register_tools_api(
             if is_auto_detect_dependencies_enabled():
                 try:
                     # Get list of available tools
-                    available_tools = [f.replace('.json', '') for f in tool_handler.list_files()]
+                    available_tools = [
+                        f.replace(".json", "") for f in tool_handler.list_files()
+                    ]
                     # Detect dependencies from code
                     detected_deps = detect_tool_dependencies(
-                        tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
+                        (
+                            tool_bytes.decode("utf-8")
+                            if isinstance(tool_bytes, bytes)
+                            else tool_bytes
+                        ),
                         func_name,
-                        available_tools
+                        available_tools,
                     )
                     if detected_deps:
                         dependencies = detected_deps
-                        logger.info(f"Auto-detected dependencies for '{func_name}': {detected_deps}")
+                        logger.info(
+                            f"Auto-detected dependencies for '{func_name}': {detected_deps}"
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
 
@@ -855,12 +898,12 @@ def register_tools_api(
                 type="object",
                 properties=params_properties,
                 required=required_params,
-                optional=[]
+                optional=[],
             )
-            
+
             # Set timestamps
             current_time = datetime.now(timezone.utc).isoformat()
-            
+
             tool_schema = ToolSchema(
                 name=func_name,
                 description=description,
@@ -874,7 +917,7 @@ def register_tools_api(
                 returns=returns_schema,
                 dependencies=dependencies,
                 created_at=current_time,
-                modified_at=current_time
+                modified_at=current_time,
             )
 
             # Save the manifest
@@ -901,10 +944,7 @@ def register_tools_api(
             raise
         except Exception as e:
             logger.error(f"Error adding tool: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error adding tool: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Error adding tool: {str(e)}")
             raise HTTPException(
                 status_code=500, detail=f"Error searching tools: {str(e)}"
             )

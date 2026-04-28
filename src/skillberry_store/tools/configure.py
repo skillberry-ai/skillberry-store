@@ -16,7 +16,9 @@ def _default_sbs_dir(subdir: str) -> str:
     The base directory can be overridden via the SBS_BASE_DIR environment variable.
     If not set, falls back to the OS temp directory.
     """
-    base = os.getenv("SBS_BASE_DIR") or os.path.join(tempfile.gettempdir(), "skillberry-store")
+    base = os.getenv("SBS_BASE_DIR") or os.path.join(
+        tempfile.gettempdir(), "skillberry-store"
+    )
     return os.path.join(base, subdir)
 
 
@@ -240,10 +242,11 @@ def get_vmcp_descriptions_directory():
     logger.info(f"Using default vmcp descriptions directory: {default_path}")
     return default_path
 
+
 def is_auto_detect_dependencies_enabled():
     """
     Check if automatic tool dependency detection is enabled.
-    
+
     Returns:
         bool: True if auto-detection is enabled (default), False otherwise.
     """

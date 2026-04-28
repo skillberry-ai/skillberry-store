@@ -131,20 +131,24 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
     """
     import asyncio
     import logging
-    
+
     logger = logging.getLogger(__name__)
     mcp_url = manifest_as_dict.get("mcp_url", {})
     logger.info(f"[get_mcp_tools] Starting - Connecting to MCP server at: {mcp_url}")
     logger.debug(f"[get_mcp_tools] Manifest dict: {manifest_as_dict}")
-    
+
     try:
         logger.info(f"[get_mcp_tools] Creating SSE client connection...")
         async with sse_client(mcp_url, sse_read_timeout=30) as (read, write):
-            logger.info(f"[get_mcp_tools] SSE client connected, creating ClientSession...")
+            logger.info(
+                f"[get_mcp_tools] SSE client connected, creating ClientSession..."
+            )
             async with ClientSession(read, write) as session:
                 tool_name = manifest_as_dict.get("name", {})
-                logger.info(f"[get_mcp_tools] ClientSession created, tool_name: {tool_name}")
-                
+                logger.info(
+                    f"[get_mcp_tools] ClientSession created, tool_name: {tool_name}"
+                )
+
                 # Add timeout for initialization
                 logger.info("[get_mcp_tools] Initializing MCP session...")
                 await asyncio.wait_for(session.initialize(), timeout=10.0)
@@ -153,8 +157,10 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
                 # Add timeout for listing tools
                 logger.info("[get_mcp_tools] Listing tools from MCP server...")
                 tools = await asyncio.wait_for(session.list_tools(), timeout=10.0)
-                logger.info(f"[get_mcp_tools] Retrieved {len(tools.tools) if tools and tools.tools else 0} tools from MCP server")
-                
+                logger.info(
+                    f"[get_mcp_tools] Retrieved {len(tools.tools) if tools and tools.tools else 0} tools from MCP server"
+                )
+
                 # TODO:
                 if not tools:
                     logger.warning("[get_mcp_tools] No tools returned from MCP server")
@@ -164,25 +170,35 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
                     logger.info(f"[get_mcp_tools] Searching for tool: {tool_name}")
                     for tool in tools.tools:
                         if tool.name == manifest_as_dict.get("name", {}):
-                            logger.info(f"[get_mcp_tools] Found matching tool: {tool.name}")
+                            logger.info(
+                                f"[get_mcp_tools] Found matching tool: {tool.name}"
+                            )
                             return [tool]
-                    logger.warning(f"[get_mcp_tools] Tool '{tool_name}' not found in MCP server")
+                    logger.warning(
+                        f"[get_mcp_tools] Tool '{tool_name}' not found in MCP server"
+                    )
                     return None
                 else:
-                    logger.info(f"[get_mcp_tools] Returning all {len(tools.tools)} tools")
+                    logger.info(
+                        f"[get_mcp_tools] Returning all {len(tools.tools)} tools"
+                    )
                     # add: 'if tools.tools and len(tools.tools) > 0 else None' ?
                     return tools.tools
     except asyncio.TimeoutError as te:
-        logger.error(f"[get_mcp_tools] Timeout connecting to MCP server at {mcp_url}: {te}")
+        logger.error(
+            f"[get_mcp_tools] Timeout connecting to MCP server at {mcp_url}: {te}"
+        )
         raise HTTPException(
             status_code=504,
-            detail=f"Timeout connecting to MCP server at {mcp_url}. Please verify the server is running and accessible."
+            detail=f"Timeout connecting to MCP server at {mcp_url}. Please verify the server is running and accessible.",
         )
     except Exception as e:
-        logger.error(f"[get_mcp_tools] Error connecting to MCP server at {mcp_url}: {e}", exc_info=True)
+        logger.error(
+            f"[get_mcp_tools] Error connecting to MCP server at {mcp_url}: {e}",
+            exc_info=True,
+        )
         raise HTTPException(
-            status_code=500,
-            detail=f"Error connecting to MCP server: {str(e)}"
+            status_code=500, detail=f"Error connecting to MCP server: {str(e)}"
         )
 
 

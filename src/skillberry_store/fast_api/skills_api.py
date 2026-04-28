@@ -62,7 +62,7 @@ def register_skills_api(
     skill_handler = FileHandler(skills_directory)
     tools_handler = FileHandler(get_tools_directory())
     snippets_handler = FileHandler(get_snippets_directory())
-    
+
     def populate_skill_objects(skill_dict):
         """Populate full tool and snippet objects from UUIDs."""
         # Populate tools
@@ -73,7 +73,9 @@ def register_skills_api(
                 for filename in tools_handler.list_files():
                     if filename.endswith(".json"):
                         try:
-                            content = tools_handler.read_file(filename, raw_content=True)
+                            content = tools_handler.read_file(
+                                filename, raw_content=True
+                            )
                             if isinstance(content, str):
                                 tool_dict = json.loads(content)
                                 if tool_dict.get("uuid") == tool_uuid:
@@ -84,7 +86,7 @@ def register_skills_api(
             skill_dict["tools"] = tools
         else:
             skill_dict["tools"] = []
-            
+
         # Populate snippets
         if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
             snippets = []
@@ -93,24 +95,28 @@ def register_skills_api(
                 for filename in snippets_handler.list_files():
                     if filename.endswith(".json"):
                         try:
-                            content = snippets_handler.read_file(filename, raw_content=True)
+                            content = snippets_handler.read_file(
+                                filename, raw_content=True
+                            )
                             if isinstance(content, str):
                                 snippet_dict = json.loads(content)
                                 if snippet_dict.get("uuid") == snippet_uuid:
                                     snippets.append(snippet_dict)
                                     break
                         except Exception as e:
-                            logger.warning(f"Error reading snippet file {filename}: {e}")
+                            logger.warning(
+                                f"Error reading snippet file {filename}: {e}"
+                            )
             skill_dict["snippets"] = snippets
         else:
             skill_dict["snippets"] = []
-            
+
         return skill_dict
 
     @app.post("/skills/", tags=[tags])
     def create_skill(skill: Annotated[SkillSchema, Query()]):
         """Create a new skill.
-        
+
         The form fields are dynamically generated from SkillSchema.
         Any changes to SkillSchema will automatically reflect in this API.
 
@@ -372,19 +378,27 @@ def register_skills_api(
             # Get full skill objects for filtering
             skills_to_filter = []
             for matched_entity in filtered_matched_entities:
-                skill_name = matched_entity.get("filename") or matched_entity.get("name")
+                skill_name = matched_entity.get("filename") or matched_entity.get(
+                    "name"
+                )
                 if not skill_name:
-                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    logger.warning(
+                        f"Matched entity missing 'filename' or 'name' field: {matched_entity}"
+                    )
                     continue
                 try:
                     skill_filename = f"{skill_name}.json"
                     content = skill_handler.read_file(skill_filename, raw_content=True)
                     if isinstance(content, str):
                         skill_dict = json.loads(content)
-                        skill_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                        skill_dict["similarity_score"] = matched_entity.get(
+                            "similarity_score", 0.0
+                        )
                         skills_to_filter.append(skill_dict)
                 except Exception as e:
-                    logger.warning(f"Could not load skill {skill_name} for filtering: {e}")
+                    logger.warning(
+                        f"Could not load skill {skill_name} for filtering: {e}"
+                    )
 
             # Apply manifest and lifecycle filters
             filtered_skills = apply_search_filters(
@@ -398,7 +412,10 @@ def register_skills_api(
 
             # Return only filename and similarity_score (filename is the skill name)
             result = [
-                {"filename": skill.get("name", ""), "similarity_score": skill.get("similarity_score", 0.0)}
+                {
+                    "filename": skill.get("name", ""),
+                    "similarity_score": skill.get("similarity_score", 0.0),
+                }
                 for skill in filtered_skills
                 if skill.get("name")  # Only include if name exists
             ]
@@ -420,176 +437,207 @@ def register_skills_api(
         snippet_mode: str = Form("file"),
     ):
         """Import an Anthropic skill from GitHub URL, ZIP file, or local folder.
-        
+
         Args:
             source_type: 'url', 'zip', or 'folder'
             github_url: GitHub repository URL (required if source_type='url')
             zip_file: ZIP file upload (required if source_type='zip')
             folder_path: Local folder path (required if source_type='folder')
             snippet_mode: 'file' or 'paragraph' - how to import text files
-            
+
         Returns:
             dict: Import result with created tools, snippets, and skill info
-            
+
         Raises:
             HTTPException: If import fails
         """
         logger.info(f"Request to import Anthropic skill from {source_type}")
-        
+
         try:
             from skillberry_store.tools.anthropic.importer import import_anthropic_skill
-            
+
             # Prepare source data based on type
             source_data = None
-            if source_type == 'url':
+            if source_type == "url":
                 if not github_url:
-                    raise HTTPException(status_code=400, detail="github_url is required for source_type='url'")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="github_url is required for source_type='url'",
+                    )
                 source_data = github_url
-            elif source_type == 'zip':
+            elif source_type == "zip":
                 if not zip_file:
-                    raise HTTPException(status_code=400, detail="zip_file is required for source_type='zip'")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="zip_file is required for source_type='zip'",
+                    )
                 source_data = await zip_file.read()
-            elif source_type == 'folder':
+            elif source_type == "folder":
                 if not folder_path:
-                    raise HTTPException(status_code=400, detail="folder_path is required for source_type='folder'")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="folder_path is required for source_type='folder'",
+                    )
                 source_data = folder_path
             else:
-                raise HTTPException(status_code=400, detail=f"Invalid source_type: {source_type}. Must be 'url', 'zip', or 'folder'")
-            
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid source_type: {source_type}. Must be 'url', 'zip', or 'folder'",
+                )
+
             # Import the skill
-            skill_name, skill_description, tools, snippets, ignored_files = import_anthropic_skill(
-                source_type=source_type,
-                source_data=source_data,
-                snippet_mode=snippet_mode
+            skill_name, skill_description, tools, snippets, ignored_files = (
+                import_anthropic_skill(
+                    source_type=source_type,
+                    source_data=source_data,
+                    snippet_mode=snippet_mode,
+                )
             )
-            
+
             # Create tools
             created_tool_uuids = []
             # First pass: collect all tool names for dependency detection
             all_tool_names = [t.name for t in tools]
-            
+
             for tool in tools:
                 try:
                     tool_dict = tool.to_dict()
                     tool_uuid = str(uuid.uuid4())
-                    
+
                     # Prepare tool data
-                    ext = '.py' if tool_dict['programmingLanguage'] == 'python' else '.sh'
+                    ext = (
+                        ".py" if tool_dict["programmingLanguage"] == "python" else ".sh"
+                    )
                     module_filename = f"{tool_dict['name']}{ext}"
-                    
+
                     tool_data = {
-                        'uuid': tool_uuid,
-                        'name': tool_dict['name'],
-                        'version': tool_dict['version'],
-                        'description': tool_dict['description'],
-                        'tags': tool_dict['tags'],
-                        'programming_language': tool_dict['programmingLanguage'],
-                        'module_name': module_filename,
-                        'packaging_format': 'code',
-                        'state': 'approved',
+                        "uuid": tool_uuid,
+                        "name": tool_dict["name"],
+                        "version": tool_dict["version"],
+                        "description": tool_dict["description"],
+                        "tags": tool_dict["tags"],
+                        "programming_language": tool_dict["programmingLanguage"],
+                        "module_name": module_filename,
+                        "packaging_format": "code",
+                        "state": "approved",
                     }
-                    
-                    if 'params' in tool_dict and tool_dict['params']:
-                        tool_data['params'] = tool_dict['params']
-                    if 'returns' in tool_dict and tool_dict['returns']:
-                        tool_data['returns'] = tool_dict['returns']
-                    
+
+                    if "params" in tool_dict and tool_dict["params"]:
+                        tool_data["params"] = tool_dict["params"]
+                    if "returns" in tool_dict and tool_dict["returns"]:
+                        tool_data["returns"] = tool_dict["returns"]
+
                     # Auto-detect dependencies for Python tools if enabled
-                    if tool_dict['programmingLanguage'] == 'python' and is_auto_detect_dependencies_enabled():
+                    if (
+                        tool_dict["programmingLanguage"] == "python"
+                        and is_auto_detect_dependencies_enabled()
+                    ):
                         try:
                             # Get list of available tools (existing + being imported)
-                            existing_tools = [f.replace('.json', '') for f in tools_handler.list_files()]
+                            existing_tools = [
+                                f.replace(".json", "")
+                                for f in tools_handler.list_files()
+                            ]
                             available_tools = list(set(existing_tools + all_tool_names))
                             # Detect dependencies from code
                             detected_deps = detect_tool_dependencies(
-                                tool_dict['moduleContent'],
-                                tool_dict['name'],
-                                available_tools
+                                tool_dict["moduleContent"],
+                                tool_dict["name"],
+                                available_tools,
                             )
                             if detected_deps:
-                                tool_data['dependencies'] = detected_deps
-                                logger.info(f"Auto-detected dependencies for '{tool_dict['name']}': {detected_deps}")
+                                tool_data["dependencies"] = detected_deps
+                                logger.info(
+                                    f"Auto-detected dependencies for '{tool_dict['name']}': {detected_deps}"
+                                )
                         except Exception as e:
-                            logger.warning(f"Failed to auto-detect dependencies for {tool_dict['name']}: {e}")
-                    
+                            logger.warning(
+                                f"Failed to auto-detect dependencies for {tool_dict['name']}: {e}"
+                            )
+
                     # Save tool JSON
                     tool_filename = f"{tool_dict['name']}.json"
                     tool_json = json.dumps(tool_data, indent=4)
                     tools_handler.write_file_content(tool_filename, tool_json)
-                    
+
                     # Save tool module
-                    from skillberry_store.tools.configure import get_files_directory_path
+                    from skillberry_store.tools.configure import (
+                        get_files_directory_path,
+                    )
                     from skillberry_store.modules.file_handler import FileHandler
+
                     files_handler = FileHandler(get_files_directory_path())
-                    files_handler.write_file_content(module_filename, tool_dict['moduleContent'])
-                    
+                    files_handler.write_file_content(
+                        module_filename, tool_dict["moduleContent"]
+                    )
+
                     created_tool_uuids.append(tool_uuid)
                     logger.info(f"Created tool: {tool_dict['name']}")
                 except Exception as e:
                     logger.error(f"Failed to create tool {tool.name}: {e}")
-            
+
             # Create snippets
             created_snippet_uuids = []
             for snippet in snippets:
                 try:
                     snippet_dict = snippet.to_dict()
                     snippet_uuid = str(uuid.uuid4())
-                    
+
                     # Prepare snippet data
                     snippet_data = {
-                        'uuid': snippet_uuid,
-                        'name': snippet_dict['name'],
-                        'version': snippet_dict['version'],
-                        'description': snippet_dict['description'],
-                        'content': snippet_dict['content'],
-                        'tags': snippet_dict['tags'],
-                        'content_type': 'text/plain',
-                        'state': 'approved',
+                        "uuid": snippet_uuid,
+                        "name": snippet_dict["name"],
+                        "version": snippet_dict["version"],
+                        "description": snippet_dict["description"],
+                        "content": snippet_dict["content"],
+                        "tags": snippet_dict["tags"],
+                        "content_type": "text/plain",
+                        "state": "approved",
                     }
-                    
+
                     # Save snippet JSON
                     snippet_filename = f"{snippet_dict['name']}.json"
                     snippet_json = json.dumps(snippet_data, indent=4)
                     snippets_handler.write_file_content(snippet_filename, snippet_json)
-                    
+
                     created_snippet_uuids.append(snippet_uuid)
                     logger.info(f"Created snippet: {snippet_dict['name']}")
                 except Exception as e:
                     logger.error(f"Failed to create snippet {snippet.name}: {e}")
-            
+
             # Create skill
             skill_uuid = str(uuid.uuid4())
             skill_data = {
-                'uuid': skill_uuid,
-                'name': skill_name,
-                'version': '1.0.0',
-                'description': skill_description,
-                'tags': ['anthropic', 'imported'],
-                'tool_uuids': created_tool_uuids,
-                'snippet_uuids': created_snippet_uuids,
-                'state': 'approved',
+                "uuid": skill_uuid,
+                "name": skill_name,
+                "version": "1.0.0",
+                "description": skill_description,
+                "tags": ["anthropic", "imported"],
+                "tool_uuids": created_tool_uuids,
+                "snippet_uuids": created_snippet_uuids,
+                "state": "approved",
             }
-            
+
             skill_filename = f"{skill_name}.json"
             skill_json = json.dumps(skill_data, indent=4)
             skill_handler.write_file_content(skill_filename, skill_json)
-            
+
             # Write description for search capability
             if skills_descriptions and skill_description:
                 skills_descriptions.write_description(skill_name, skill_description)
-            
+
             logger.info(f"Successfully imported Anthropic skill: {skill_name}")
-            
+
             return {
-                'success': True,
-                'message': f"Successfully imported Anthropic skill '{skill_name}'",
-                'skill_name': skill_name,
-                'skill_uuid': skill_uuid,
-                'tools_created': len(created_tool_uuids),
-                'snippets_created': len(created_snippet_uuids),
-                'ignored_files': ignored_files,
+                "success": True,
+                "message": f"Successfully imported Anthropic skill '{skill_name}'",
+                "skill_name": skill_name,
+                "skill_uuid": skill_uuid,
+                "tools_created": len(created_tool_uuids),
+                "snippets_created": len(created_snippet_uuids),
+                "ignored_files": ignored_files,
             }
-            
+
         except HTTPException:
             raise
         except Exception as e:
@@ -601,21 +649,23 @@ def register_skills_api(
     @app.get("/skills/{name}/export-anthropic", tags=[tags])
     async def export_anthropic_skill(name: str):
         """Export a skill to Anthropic format as a ZIP file.
-        
+
         Args:
             name: The name of the skill to export
-            
+
         Returns:
             ZIP file with the skill in Anthropic format
-            
+
         Raises:
             HTTPException: If skill not found or export fails
         """
         logger.info(f"Request to export skill to Anthropic format: {name}")
-        
+
         try:
-            from skillberry_store.tools.anthropic.exporter import export_skill_to_anthropic_format
-            
+            from skillberry_store.tools.anthropic.exporter import (
+                export_skill_to_anthropic_format,
+            )
+
             # Get skill
             skill_filename = f"{name}.json"
             content = skill_handler.read_file(skill_filename, raw_content=True)
@@ -624,73 +674,92 @@ def register_skills_api(
                     status_code=500, detail=f"Invalid content type for skill '{name}'"
                 )
             skill_dict = json.loads(content)
-            
+
             # Get tools
             tools = []
             tool_modules = {}
-            if 'tool_uuids' in skill_dict and skill_dict['tool_uuids']:
-                for tool_uuid in skill_dict['tool_uuids']:
+            if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
+                for tool_uuid in skill_dict["tool_uuids"]:
                     for filename in tools_handler.list_files():
-                        if filename.endswith('.json'):
+                        if filename.endswith(".json"):
                             try:
-                                tool_content = tools_handler.read_file(filename, raw_content=True)
+                                tool_content = tools_handler.read_file(
+                                    filename, raw_content=True
+                                )
                                 if isinstance(tool_content, str):
                                     tool_dict = json.loads(tool_content)
-                                    if tool_dict.get('uuid') == tool_uuid:
+                                    if tool_dict.get("uuid") == tool_uuid:
                                         tools.append(tool_dict)
                                         # Get tool module
-                                        tool_name = tool_dict['name']
-                                        lang = tool_dict.get('programming_language', 'python').lower()
-                                        ext = '.py' if lang == 'python' else '.sh'
+                                        tool_name = tool_dict["name"]
+                                        lang = tool_dict.get(
+                                            "programming_language", "python"
+                                        ).lower()
+                                        ext = ".py" if lang == "python" else ".sh"
                                         module_filename = f"{tool_name}{ext}"
                                         try:
-                                            from skillberry_store.tools.configure import get_files_directory_path
-                                            from skillberry_store.modules.file_handler import FileHandler
-                                            files_handler = FileHandler(get_files_directory_path())
-                                            module_content = files_handler.read_file(module_filename, raw_content=True)
+                                            from skillberry_store.tools.configure import (
+                                                get_files_directory_path,
+                                            )
+                                            from skillberry_store.modules.file_handler import (
+                                                FileHandler,
+                                            )
+
+                                            files_handler = FileHandler(
+                                                get_files_directory_path()
+                                            )
+                                            module_content = files_handler.read_file(
+                                                module_filename, raw_content=True
+                                            )
                                             if isinstance(module_content, str):
                                                 tool_modules[tool_name] = module_content
                                         except Exception as e:
-                                            logger.warning(f"Could not read module for tool {tool_name}: {e}")
+                                            logger.warning(
+                                                f"Could not read module for tool {tool_name}: {e}"
+                                            )
                                         break
                             except Exception as e:
-                                logger.warning(f"Error reading tool file {filename}: {e}")
-            
+                                logger.warning(
+                                    f"Error reading tool file {filename}: {e}"
+                                )
+
             # Get snippets
             snippets = []
-            if 'snippet_uuids' in skill_dict and skill_dict['snippet_uuids']:
-                for snippet_uuid in skill_dict['snippet_uuids']:
+            if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
+                for snippet_uuid in skill_dict["snippet_uuids"]:
                     for filename in snippets_handler.list_files():
-                        if filename.endswith('.json'):
+                        if filename.endswith(".json"):
                             try:
-                                snippet_content = snippets_handler.read_file(filename, raw_content=True)
+                                snippet_content = snippets_handler.read_file(
+                                    filename, raw_content=True
+                                )
                                 if isinstance(snippet_content, str):
                                     snippet_dict = json.loads(snippet_content)
-                                    if snippet_dict.get('uuid') == snippet_uuid:
+                                    if snippet_dict.get("uuid") == snippet_uuid:
                                         snippets.append(snippet_dict)
                                         break
                             except Exception as e:
-                                logger.warning(f"Error reading snippet file {filename}: {e}")
-            
+                                logger.warning(
+                                    f"Error reading snippet file {filename}: {e}"
+                                )
+
             # Export to Anthropic format
             zip_content = export_skill_to_anthropic_format(
                 skill=skill_dict,
                 tools=tools,
                 snippets=snippets,
-                tool_modules=tool_modules
+                tool_modules=tool_modules,
             )
-            
+
             logger.info(f"Successfully exported skill '{name}' to Anthropic format")
-            
+
             # Return as downloadable ZIP file
             return Response(
                 content=zip_content,
-                media_type='application/zip',
-                headers={
-                    'Content-Disposition': f'attachment; filename="{name}.zip"'
-                }
+                media_type="application/zip",
+                headers={"Content-Disposition": f'attachment; filename="{name}.zip"'},
             )
-            
+
         except HTTPException:
             raise
         except Exception as e:

@@ -138,23 +138,26 @@ def extract_function_and_imports(
     except SyntaxError:
         return None, [], []
 
-def detect_tool_dependencies(content: str, function_name: str, available_tools: List[str]) -> List[str]:
+
+def detect_tool_dependencies(
+    content: str, function_name: str, available_tools: List[str]
+) -> List[str]:
     """
     Detect tool dependencies by analyzing function calls in Python code.
-    
+
     Args:
         content: Python source code as string
         function_name: Name of the function to analyze
         available_tools: List of available tool names to match against
-    
+
     Returns:
         List of tool names that are called within the function
     """
     dependencies = []
-    
+
     try:
         tree = ast.parse(content)
-        
+
         # Find the target function
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name == function_name:
@@ -167,20 +170,19 @@ def detect_tool_dependencies(content: str, function_name: str, available_tools: 
                             func_name = child.func.id
                         elif isinstance(child.func, ast.Attribute):
                             func_name = child.func.attr
-                        
+
                         # Check if this function name matches any available tool
                         if func_name and func_name in available_tools:
                             if func_name not in dependencies:
                                 dependencies.append(func_name)
                                 logger.info(f"Detected dependency: {func_name}")
                 break  # Found the function, no need to continue
-        
+
         return dependencies
-    
+
     except SyntaxError as e:
         logger.warning(f"Failed to parse Python code for dependency detection: {e}")
         return []
-
 
 
 class FileExecutor:
@@ -317,7 +319,9 @@ class FileExecutor:
             logger.info(f"[execute_mcp_tool] Connecting to SSE client at: {_url}")
             try:
                 async with sse_client(_url, sse_read_timeout=30) as (read, write):
-                    logger.info(f"[execute_mcp_tool] SSE client connected, creating ClientSession")
+                    logger.info(
+                        f"[execute_mcp_tool] SSE client connected, creating ClientSession"
+                    )
                     async with ClientSession(read, write) as session:
                         # Add timeout for initialization
                         logger.info(f"[execute_mcp_tool] Initializing MCP session...")
@@ -325,26 +329,45 @@ class FileExecutor:
                         logger.info(f"[execute_mcp_tool] MCP session initialized")
 
                         # Add timeout for listing tools
-                        logger.info(f"[execute_mcp_tool] Listing tools from MCP server...")
-                        tools = await asyncio.wait_for(session.list_tools(), timeout=10.0)
-                        logger.info(f"[execute_mcp_tool] Retrieved {len(tools.tools) if tools and tools.tools else 0} tools")
+                        logger.info(
+                            f"[execute_mcp_tool] Listing tools from MCP server..."
+                        )
+                        tools = await asyncio.wait_for(
+                            session.list_tools(), timeout=10.0
+                        )
+                        logger.info(
+                            f"[execute_mcp_tool] Retrieved {len(tools.tools) if tools and tools.tools else 0} tools"
+                        )
 
                         for tool in tools.tools:
-                            logger.info(f"[execute_mcp_tool] Checking tool: {tool.name}")
+                            logger.info(
+                                f"[execute_mcp_tool] Checking tool: {tool.name}"
+                            )
                             if _function_name == tool.name:
-                                logger.info(f"[execute_mcp_tool] Tool found: {tool.name}, executing...")
+                                logger.info(
+                                    f"[execute_mcp_tool] Tool found: {tool.name}, executing..."
+                                )
                                 # Add timeout for tool execution
                                 _return_value = await asyncio.wait_for(
-                                    session.call_tool(tool.name, arguments=_mcp_args_dict),
-                                    timeout=30.0
+                                    session.call_tool(
+                                        tool.name, arguments=_mcp_args_dict
+                                    ),
+                                    timeout=30.0,
                                 )
-                                logger.info(f"[execute_mcp_tool] Tool execution completed successfully")
+                                logger.info(
+                                    f"[execute_mcp_tool] Tool execution completed successfully"
+                                )
                                 return _return_value.content[0].text
 
-                        logger.warning(f"[execute_mcp_tool] Tool '{_function_name}' not found in MCP server")
+                        logger.warning(
+                            f"[execute_mcp_tool] Tool '{_function_name}' not found in MCP server"
+                        )
                         return None
             except Exception as e:
-                logger.error(f"[execute_mcp_tool] Exception during MCP tool execution: {e}", exc_info=True)
+                logger.error(
+                    f"[execute_mcp_tool] Exception during MCP tool execution: {e}",
+                    exc_info=True,
+                )
                 raise
 
         logger.info(f"Executing python code using a MCP server")
@@ -391,27 +414,42 @@ class FileExecutor:
                             continue
 
                     converted_arg = arg_convert(
-                        parameters.get(parameter_definition_name), parameter_definition_type
+                        parameters.get(parameter_definition_name),
+                        parameter_definition_type,
                     )
                     mcp_args_dict[parameter_definition_name] = converted_arg
             mcp_server_url = self.manifest.get("mcp_url") or default_mcp_server_url
-            logger.info(f"[execute_python_file_in_mcp_server] Connecting to MCP server at: {mcp_server_url}")
-            logger.info(f"[execute_python_file_in_mcp_server] Calling tool '{function_name}' with args: {mcp_args_dict}")
-            
+            logger.info(
+                f"[execute_python_file_in_mcp_server] Connecting to MCP server at: {mcp_server_url}"
+            )
+            logger.info(
+                f"[execute_python_file_in_mcp_server] Calling tool '{function_name}' with args: {mcp_args_dict}"
+            )
+
             try:
-                logger.info(f"[execute_python_file_in_mcp_server] About to call execute_mcp_tool...")
+                logger.info(
+                    f"[execute_python_file_in_mcp_server] About to call execute_mcp_tool..."
+                )
                 return_value = await execute_mcp_tool(
                     mcp_server_url, function_name, mcp_args_dict
                 )
-                logger.info(f"[execute_python_file_in_mcp_server] execute_mcp_tool returned: {return_value}")
+                logger.info(
+                    f"[execute_python_file_in_mcp_server] execute_mcp_tool returned: {return_value}"
+                )
             except asyncio.TimeoutError as te:
-                logger.error(f"[execute_python_file_in_mcp_server] Timeout connecting to MCP server at {mcp_server_url}: {te}", exc_info=True)
+                logger.error(
+                    f"[execute_python_file_in_mcp_server] Timeout connecting to MCP server at {mcp_server_url}: {te}",
+                    exc_info=True,
+                )
                 return {
                     "error": f"Timeout connecting to MCP server at {mcp_server_url}. "
-                             f"Please verify the server is running and accessible.",
+                    f"Please verify the server is running and accessible.",
                 }
             except Exception as mcp_e:
-                logger.error(f"[execute_python_file_in_mcp_server] Error calling MCP tool: {mcp_e}", exc_info=True)
+                logger.error(
+                    f"[execute_python_file_in_mcp_server] Error calling MCP tool: {mcp_e}",
+                    exc_info=True,
+                )
                 return {
                     "error": f"Error calling MCP tool '{function_name}': {str(mcp_e)}",
                 }
@@ -554,11 +592,11 @@ class FileExecutor:
         except ContainerError as e:
             # Docker container execution failed - extract detailed error information
             logger.error(f"Docker container execution failed: {e}")
-            
+
             # ContainerError contains the output in its string representation
             error_str = str(e)
             stderr_output = ""
-            
+
             # The error message format is typically:
             # "Command '...' in image '...' returned non-zero exit status X: b'<stderr content>'"
             if ": b'" in error_str:
@@ -566,11 +604,15 @@ class FileExecutor:
                 start_idx = error_str.find(": b'") + 4
                 end_idx = error_str.rfind("'")
                 if start_idx > 3 and end_idx > start_idx:
-                    stderr_output = error_str[start_idx:end_idx].replace('\\n', '\n')
-            
+                    stderr_output = error_str[start_idx:end_idx].replace("\\n", "\n")
+
             # Build detailed error message
-            error_details = stderr_output if stderr_output else f"Docker execution failed: {error_str}"
-            
+            error_details = (
+                stderr_output
+                if stderr_output
+                else f"Docker execution failed: {error_str}"
+            )
+
             return {
                 "error": error_details,
                 "stderr": stderr_output if stderr_output else None,
@@ -580,7 +622,7 @@ class FileExecutor:
             # Extract error details from exception message if it contains traceback
             error_msg = str(e)
             stderr_output = None
-            
+
             # Check if the error message contains a traceback (common in Docker errors)
             if "Traceback" in error_msg or "Error:" in error_msg:
                 # Try to extract the actual error from the exception
@@ -589,8 +631,10 @@ class FileExecutor:
                     start_idx = error_msg.find(": b'") + 4
                     end_idx = error_msg.rfind("'")
                     if start_idx > 3 and end_idx > start_idx:
-                        stderr_output = error_msg[start_idx:end_idx].replace('\\n', '\n')
-            
+                        stderr_output = error_msg[start_idx:end_idx].replace(
+                            "\\n", "\n"
+                        )
+
             return {
                 "error": stderr_output if stderr_output else error_msg,
                 "stderr": stderr_output,
@@ -671,12 +715,12 @@ class FileExecutor:
                 stdout_output = stdout_capture.getvalue().strip()
                 logger.error(f"Execution failed: {str(exec_error)}")
                 logger.error(f"Error output: '{error_output}'")
-                
+
                 # Build comprehensive error message
                 error_msg = str(exec_error)
                 if error_output:
                     error_msg = f"{error_msg}\n\nStderr:\n{error_output}"
-                
+
                 return {
                     "error": error_msg,
                     "stderr": error_output if error_output else None,
@@ -717,7 +761,11 @@ class FileExecutor:
 
 
 def generate_wrapper_any_types(
-    code_str: str, func_name: str, parameters: dict, dependent_codes_str: list[str], env_id=None
+    code_str: str,
+    func_name: str,
+    parameters: dict,
+    dependent_codes_str: list[str],
+    env_id=None,
 ) -> str:
     # Parse the main code to find the function definition
     tree = ast.parse(code_str)
@@ -736,8 +784,10 @@ def generate_wrapper_any_types(
     func_name_call_code = f"{func_name}({arg_str})"
 
     # env_id declaration at the very top (before any dependent code)
-    env_id_declaration = f"env_id = {repr(env_id)}\n" if env_id is not None else "env_id = None\n"
-    
+    env_id_declaration = (
+        f"env_id = {repr(env_id)}\n" if env_id is not None else "env_id = None\n"
+    )
+
     # Main wrapper code
     main_code = f"""
 import json
