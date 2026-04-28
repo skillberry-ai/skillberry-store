@@ -1,4 +1,4 @@
-# skillberry-dev-common
+# skillberry-common
 
 Common development utilities and Makefile targets for SkillBerry projects.
 
@@ -9,17 +9,5 @@ Common development utilities and Makefile targets for SkillBerry projects.
 - Git hooks setup
 - Python virtual environment validation
 - RITS API key and WatsonX environment checks
-
-## Setup
-
-Add as a git submodule to your project:
-```bash
-git submodule add https://github.ibm.com/skillberry/skillberry-common.git
-```
-
-## Usage
-
-Include in your project's Makefile:
-```makefile
-include skillberry-dev-common/.mk/common.mk
-```
+- Docker (multi-arch) - both `skillberry-base` image and project-specific image
+- Default configs for skillberry projects
