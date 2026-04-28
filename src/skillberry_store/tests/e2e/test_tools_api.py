@@ -227,7 +227,7 @@ async def test_get_tool(run_sbs):
         assert response.status_code == 200
         tool = response.json()
         assert tool.get("name") == "test_tool"
-        assert tool.get("description") == "A test tool for demonstration"
+        assert tool.get("description") == "A test tool"
         assert tool.get("module_name") == "test_tool.py"
         assert tool.get("programming_language") == "python"
 
