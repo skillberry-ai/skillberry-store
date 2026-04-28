@@ -102,6 +102,11 @@ def register_vmcp_api(
         logger.info(f"Request to create vmcp server: {vmcp.name}")
         create_vmcp_counter.inc()
 
+        # Validate slug — VMCP names are used as `claude mcp add <name>` args
+        # and URL segments so they must match the Anthropic skill format.
+        from skillberry_store.schemas.name_validation import validate_store_name
+        validate_store_name(vmcp.name, kind="VMCP server")
+
         # Generate UUID if not provided
         if not vmcp.uuid:
             vmcp.uuid = str(uuid.uuid4())

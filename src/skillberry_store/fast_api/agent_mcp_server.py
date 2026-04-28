@@ -23,6 +23,7 @@ from skillberry_store.modules.tool_health import (
     find_dependents as _find_dependents,
     list_broken_tools as _list_broken_tools,
 )
+from skillberry_store.schemas.name_validation import validate_store_name_message
 from skillberry_store.tools.configure import (
     get_tools_directory,
     get_files_directory_path,
@@ -331,6 +332,11 @@ def create_agent_mcp_server(app, port: int = 9999):
                 - 'bundled_related'  — same as 'related' but skips tools with bundled_with_mcps==False
                   (if you want those included, pick 'related' instead)
         """
+        # Slug validation — names are used as URL segments and `claude mcp add
+        # <name>` arguments, so enforce the Anthropic Agent Skills format.
+        invalid_msg = validate_store_name_message(name, kind="skill")
+        if invalid_msg is not None:
+            return json.dumps({"error": invalid_msg})
         skill_filename = f"{name}.json"
         if skill_filename in skill_handler.list_files():
             return f"Error: Skill '{name}' already exists"

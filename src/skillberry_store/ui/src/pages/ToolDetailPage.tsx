@@ -56,7 +56,7 @@ export function ToolDetailPage() {
     name: '',
     description: '',
     version: '',
-    state: 'approved' as 'unknown' | 'any' | 'new' | 'checked' | 'approved',
+    state: 'approved' as 'unknown' | 'any' | 'new' | 'checked' | 'approved' | 'broken',
     tags: [] as string[],
     module_name: '',
     programming_language: 'python',
@@ -323,17 +323,23 @@ export function ToolDetailPage() {
                     </DescriptionListGroup>
                   )}
 
-                  {(tool as any).mcp_dependencies && (tool as any).mcp_dependencies.length > 0 && (
+                  {((tool as any).mcp_server || ((tool as any).mcp_dependencies && (tool as any).mcp_dependencies.length > 0)) && (
                     <DescriptionListGroup>
                       <DescriptionListTerm>External MCP dependencies</DescriptionListTerm>
                       <DescriptionListDescription>
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          {(tool as any).mcp_dependencies.map((name: string) => (
-                            <a key={name} href={`/external-mcps/${encodeURIComponent(name)}`}>
-                              <Label color="purple">{name}</Label>
-                            </a>
-                          ))}
-                        </div>
+                        {(tool as any).mcp_dependencies && (tool as any).mcp_dependencies.length > 0 ? (
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            {(tool as any).mcp_dependencies.map((name: string) => (
+                              <a key={name} href={`/external-mcps/${encodeURIComponent(name)}`}>
+                                <Label color="purple">{name}</Label>
+                              </a>
+                            ))}
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--pf-v5-global--Color--200)' }}>
+                            — none (this tool is itself an MCP primitive; dependencies are aggregated only for composites)
+                          </span>
+                        )}
                       </DescriptionListDescription>
                     </DescriptionListGroup>
                   )}

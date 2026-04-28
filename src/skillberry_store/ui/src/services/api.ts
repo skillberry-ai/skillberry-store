@@ -12,6 +12,15 @@ import type {
 
 const API_BASE = '/api';
 
+// Anthropic Agent Skills naming format — used for skill, VMCP, external MCP,
+// and tool names. Source: https://code.claude.com/docs/en/skills frontmatter.
+export const STORE_NAME_PATTERN = /^[a-z0-9-]{1,64}$/;
+export const STORE_NAME_HINT =
+  "Lowercase letters, digits, and hyphens (-) only; 1 to 64 characters. No spaces, underscores, or uppercase. Examples: 'docs-research', 'context7', 'pdf-to-markdown'.";
+export function isValidStoreName(name: string): boolean {
+  return STORE_NAME_PATTERN.test(name);
+}
+
 class ApiError extends Error {
   constructor(
     message: string,

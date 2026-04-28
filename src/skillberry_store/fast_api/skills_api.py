@@ -23,6 +23,7 @@ from skillberry_store.tools.configure import (
 )
 from skillberry_store.fast_api.search_filters import apply_search_filters
 from skillberry_store.fast_api.skill_export_utils import get_skill_export_data
+from skillberry_store.schemas.name_validation import validate_store_name
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,10 @@ def register_skills_api(
         """
         logger.info(f"Request to create skill: {skill.name}")
         create_skill_counter.inc()
+
+        # Validate the skill name as an MCP-safe slug — spaces / uppercase
+        # would break `claude mcp add <name>` and URL-segment usage.
+        validate_store_name(skill.name, kind="skill")
 
         # Generate UUID if not provided
         if not skill.uuid:

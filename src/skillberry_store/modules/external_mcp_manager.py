@@ -100,6 +100,20 @@ def normalize_mcp_input(
 
 
 def _normalize_entry(name: str, raw: Dict[str, Any]) -> Dict[str, Any]:
+    # External MCP names become primitive prefixes (`<name>__<tool>`) and
+    # are used as URL segments in /external-mcps/{name}; enforce the same
+    # Anthropic slug format we require for skills and VMCPs.
+    from skillberry_store.schemas.name_validation import (
+        is_valid_store_name,
+        format_hint,
+        STORE_NAME_PATTERN,
+    )
+    if not is_valid_store_name(name):
+        raise ValueError(
+            f"entry {name!r}: invalid MCP server name. "
+            f"{format_hint('External MCP')} (pattern: {STORE_NAME_PATTERN})"
+        )
+
     transport = raw.get("transport") or raw.get("type")
     if transport is None:
         if raw.get("command"):

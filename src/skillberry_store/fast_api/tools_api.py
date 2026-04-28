@@ -461,7 +461,17 @@ def register_tools_api(
 
             # Handle MCP packaging format
             if tool_dict.get("packaging_format") == "mcp":
-                # Generate content from MCP tool
+                # New External-MCP primitives (mcp_server set) already carry
+                # the full params in the manifest — build the stub locally,
+                # no SSE round-trip. This also works when the upstream MCP is
+                # down.
+                if tool_dict.get("mcp_server"):
+                    return PlainTextResponse(
+                        content=mcp_content_from_manifest(tool_dict),
+                        media_type="text/plain",
+                    )
+                # Legacy single-tool MCP entries (mcp_url set, no mcp_server)
+                # still fetch live since their params may be stale.
                 tools = await get_mcp_tools(tool_dict)
                 if not tools:
                     raise HTTPException(
