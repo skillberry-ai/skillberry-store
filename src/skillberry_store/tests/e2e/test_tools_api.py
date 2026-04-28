@@ -17,7 +17,7 @@ BASE_URL = "http://localhost:8000"
 async def test_create_tool(run_sbs):
     """Test creating a new tool."""
     tool_params = {
-        "name": "test_tool",
+        "name": "test_tool_create",
         "description": "A test tool for demonstration",
         "programming_language": "python",
         "packaging_format": "code",
@@ -39,19 +39,23 @@ async def test_create_tool(run_sbs):
 
     async with httpx.AsyncClient() as client:
         files = {
-            "module": ("test_tool.py", file_content, "text/x-python")
+            "module": ("test_tool_create.py", file_content, "text/x-python")
         }
         response = await client.post(f"{BASE_URL}/tools/", params=tool_params, files=files)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
-        assert data.get("name") == "test_tool"
+        assert data.get("name") == "test_tool_create"
         assert "created successfully" in data.get("message", "")
         # Verify UUID was generated
         assert "uuid" in data
         assert data.get("uuid") is not None
         assert len(data.get("uuid")) == 36  # UUID4 format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
         # Verify module_name was set automatically
-        assert data.get("module_name") == "test_tool.py"
+        assert data.get("module_name") == "test_tool_create.py"
+        
+        # Clean up
+        delete_response = await client.delete(f"{BASE_URL}/tools/test_tool_create")
+        assert delete_response.status_code == 200
 
 @pytest.mark.asyncio
 async def test_create_tool_with_file(run_sbs):

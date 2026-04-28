@@ -606,14 +606,29 @@ def register_tools_api(
                 parameters=exec_parameters, env_id=env_id
             )
             
-            # Record successful execution metrics only if no error
-            if not (isinstance(result, dict) and "error" in result):
-                duration = time.time() - start_time
-                execute_successfully_tool_counter.labels(name=name).inc()
-                execute_successfully_tool_latency.labels(name=name).observe(duration)
-                logger.info(f"Tool '{name}' executed successfully with result: {result}")
-            else:
-                logger.error(f"Tool '{name}' execution failed with error: {result.get('error')}")
+            # Check if the result contains an error payload
+            if isinstance(result, dict) and "error" in result:
+                error_message = result.get("error", "Unknown error")
+                logger.error(f"Tool '{name}' execution failed with error: {error_message}")
+                
+                # Determine appropriate HTTP status code based on error message
+                # Tool not found on MCP server -> 404
+                # Connection/timeout/other MCP errors -> 500
+                if "not found" in error_message.lower():
+                    status_code = 404
+                else:
+                    status_code = 500
+                
+                raise HTTPException(
+                    status_code=status_code,
+                    detail=error_message
+                )
+            
+            # Record successful execution metrics
+            duration = time.time() - start_time
+            execute_successfully_tool_counter.labels(name=name).inc()
+            execute_successfully_tool_latency.labels(name=name).observe(duration)
+            logger.info(f"Tool '{name}' executed successfully with result: {result}")
             
             return result
 
