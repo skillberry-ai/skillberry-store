@@ -2,7 +2,11 @@
 name = "skillberry-store"
 version = "0.1.0"
 description = "SkillBerry Store service"
-authors = [{ name = "Eran Raichstein", email = "eranra@il.ibm.com" }, { name = "David Breitgand", email = "davidbr@il.ibm.com" }, { name = "Avi Weit", email = "weit@il.ibm.com" }]
+authors = [{ name = "Eran Raichstein", email = "eranra@il.ibm.com" }, 
+            { name = "David Breitgand", email = "davidbr@il.ibm.com" }, 
+            { name = "Avi Weit", email = "weit@il.ibm.com" }, 
+            { name = "Erez Hadad", email = "erezh@il.ibm.com" },
+            { name = "Osher Elhadad", email = "Osher.Elhadad@ibm.com" }]
 requires-python = ">=3.11"
 dependencies = [
   "annotated-types>=0.7.0",
