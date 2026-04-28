@@ -172,15 +172,14 @@ def build_file_structure_from_tools(
             # Normalize the file path to remove skill name prefix
             normalized_path = normalize_file_path(file_path, skill_name)
             
-            # Get module content
-            content = ''
-            if tool_modules and tool['name'] in tool_modules:
-                content = tool_modules[tool['name']]
-            
-            # Group tools by file path
-            if normalized_path in files:
-                files[normalized_path] += '\n\n' + content
-            else:
+            # Only write each file once (first tool wins)
+            # This prevents duplicates since module_content already contains the complete file
+            if normalized_path not in files:
+                # Get module content
+                content = ''
+                if tool_modules and tool['name'] in tool_modules:
+                    content = tool_modules[tool['name']]
+                
                 files[normalized_path] = content
     
     return files
