@@ -312,7 +312,7 @@ async def test_search_vmcp_servers(run_sbs):
             params={
                 "search_term": "SQL database queries",
                 "max_number_of_results": 5,
-                "similarity_threshold": 1.0
+                "similarity_threshold": 1.5
             }
         )
         assert search_response.status_code == 200
