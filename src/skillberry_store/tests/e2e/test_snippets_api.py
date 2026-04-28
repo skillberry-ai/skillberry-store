@@ -49,7 +49,7 @@ async def test_create_duplicate_snippet(run_sbs):
     """Test that creating a duplicate snippet fails."""
     content = "This is the content of my test snippet."
     snippet_data = {
-        "name": "test_snippet",
+        "name": "test_snippet_duplicate",
         "description": "A test snippet for demonstration",
         "content": content,  # Required field
         "content_type": "text/plain"
@@ -60,8 +60,12 @@ async def test_create_duplicate_snippet(run_sbs):
     }
 
     async with httpx.AsyncClient() as client:
+        # First, create the snippet
         response = await client.post(f"{BASE_URL}/snippets/", params=snippet_data, files=files)
-        # Should fail with 409 Conflict
+        assert response.status_code == 200
+        
+        # Now try to create a duplicate - should fail with 409 Conflict
+        response = await client.post(f"{BASE_URL}/snippets/", params=snippet_data, files=files)
         assert response.status_code == 409
         assert "already exists" in response.json().get("detail", "")
 
