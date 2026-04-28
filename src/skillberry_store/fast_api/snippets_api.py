@@ -57,10 +57,10 @@ def register_snippets_api(
     @app.post("/snippets/", tags=[tags])
     async def create_snippet(
         snippet: Annotated[SnippetSchema, Query()],
-        file: Optional[UploadFile] = File(None)
+        file: Optional[UploadFile] = File(None),
     ):
         """Create a new snippet.
-        
+
         The form fields are dynamically generated from SnippetSchema.
         Any changes to SnippetSchema will automatically reflect in this API.
 
@@ -92,8 +92,10 @@ def register_snippets_api(
         if file:
             try:
                 content_bytes = await file.read()
-                snippet.content = content_bytes.decode('utf-8')
-                logger.info(f"Read {len(snippet.content)} characters from uploaded file")
+                snippet.content = content_bytes.decode("utf-8")
+                logger.info(
+                    f"Read {len(snippet.content)} characters from uploaded file"
+                )
             except Exception as e:
                 logger.error(f"Error reading uploaded file: {e}")
                 raise HTTPException(
@@ -333,19 +335,29 @@ def register_snippets_api(
             # Get full snippet objects for filtering
             snippets_to_filter = []
             for matched_entity in filtered_matched_entities:
-                snippet_name = matched_entity.get("filename") or matched_entity.get("name")
+                snippet_name = matched_entity.get("filename") or matched_entity.get(
+                    "name"
+                )
                 if not snippet_name:
-                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    logger.warning(
+                        f"Matched entity missing 'filename' or 'name' field: {matched_entity}"
+                    )
                     continue
                 try:
                     snippet_filename = f"{snippet_name}.json"
-                    content = snippet_handler.read_file(snippet_filename, raw_content=True)
+                    content = snippet_handler.read_file(
+                        snippet_filename, raw_content=True
+                    )
                     if isinstance(content, str):
                         snippet_dict = json.loads(content)
-                        snippet_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                        snippet_dict["similarity_score"] = matched_entity.get(
+                            "similarity_score", 0.0
+                        )
                         snippets_to_filter.append(snippet_dict)
                 except Exception as e:
-                    logger.warning(f"Could not load snippet {snippet_name} for filtering: {e}")
+                    logger.warning(
+                        f"Could not load snippet {snippet_name} for filtering: {e}"
+                    )
 
             # Apply manifest and lifecycle filters
             filtered_snippets = apply_search_filters(
@@ -359,7 +371,10 @@ def register_snippets_api(
 
             # Return only filename and similarity_score (filename is the snippet name)
             result = [
-                {"filename": snippet.get("name", ""), "similarity_score": snippet.get("similarity_score", 0.0)}
+                {
+                    "filename": snippet.get("name", ""),
+                    "similarity_score": snippet.get("similarity_score", 0.0),
+                }
                 for snippet in filtered_snippets
                 if snippet.get("name")  # Only include if name exists
             ]

@@ -63,15 +63,15 @@ class VirtualMcpServer:
                 raise ValueError(f"Port {port} is not available")
 
         logging.info(f"Creating VirtualMcpServer '{name}' on port {self.port}")
-        
+
         # Create FastMCP instance
         self.mcp = FastMCP(name=name, port=self.port)
-        
+
         # Configure CORS middleware for browser access
         # This will be passed to mcp.run() in _start_server()
         from starlette.middleware import Middleware
         from starlette.middleware.cors import CORSMiddleware
-        
+
         self.cors_middleware = [
             Middleware(
                 CORSMiddleware,
@@ -155,23 +155,29 @@ class VirtualMcpServer:
                     import json
                     from skillberry_store.tools.configure import get_tools_directory
                     from skillberry_store.modules.file_handler import FileHandler
-                    
+
                     tools_handler = FileHandler(get_tools_directory())
                     tool_filename = f"{tool_name}.json"
                     content = tools_handler.read_file(tool_filename, raw_content=True)
                     if isinstance(content, str):
                         tool_dict = json.loads(content)
-                        print(f"DEBUG list_tools: Got tool {tool_name} from file: {tool_dict.get('name')}")
+                        print(
+                            f"DEBUG list_tools: Got tool {tool_name} from file: {tool_dict.get('name')}"
+                        )
                         self._tool_manifests[tool_name] = tool_dict
                         tools.append(self.tool_dict_to_mcp_tool(tool_dict))
                     else:
-                        logging.warning(f"Failed to read tool {tool_name}: invalid content type")
+                        logging.warning(
+                            f"Failed to read tool {tool_name}: invalid content type"
+                        )
                 else:
                     # Fallback to HTTP when app is not available
                     response = requests.get(f"{self.sts_url}/tools/{tool_name}")
                     response.raise_for_status()
                     tool_dict = response.json()
-                    print(f"DEBUG list_tools: Got tool {tool_name} from HTTP: {tool_dict.get('name')}")
+                    print(
+                        f"DEBUG list_tools: Got tool {tool_name} from HTTP: {tool_dict.get('name')}"
+                    )
                     self._tool_manifests[tool_name] = tool_dict
                     tools.append(self.tool_dict_to_mcp_tool(tool_dict))
             except Exception as e:
@@ -196,22 +202,30 @@ class VirtualMcpServer:
                     import json
                     from skillberry_store.tools.configure import get_snippets_directory
                     from skillberry_store.modules.file_handler import FileHandler
-                    
+
                     snippets_handler = FileHandler(get_snippets_directory())
                     snippet_filename = f"{snippet_name}.json"
-                    content = snippets_handler.read_file(snippet_filename, raw_content=True)
+                    content = snippets_handler.read_file(
+                        snippet_filename, raw_content=True
+                    )
                     if isinstance(content, str):
                         snippet_dict = json.loads(content)
-                        print(f"DEBUG list_snippets: Got snippet {snippet_name} from file: {snippet_dict.get('name')}")
+                        print(
+                            f"DEBUG list_snippets: Got snippet {snippet_name} from file: {snippet_dict.get('name')}"
+                        )
                         snippets.append(snippet_dict)
                     else:
-                        logging.warning(f"Failed to read snippet {snippet_name}: invalid content type")
+                        logging.warning(
+                            f"Failed to read snippet {snippet_name}: invalid content type"
+                        )
                 else:
                     # Fallback to HTTP when app is not available
                     response = requests.get(f"{self.sts_url}/snippets/{snippet_name}")
                     response.raise_for_status()
                     snippet_dict = response.json()
-                    print(f"DEBUG list_snippets: Got snippet {snippet_name} from HTTP: {snippet_dict.get('name')}")
+                    print(
+                        f"DEBUG list_snippets: Got snippet {snippet_name} from HTTP: {snippet_dict.get('name')}"
+                    )
                     snippets.append(snippet_dict)
             except Exception as e:
                 logging.warning(f"Failed to get snippet {snippet_name}: {e}")
@@ -242,18 +256,24 @@ class VirtualMcpServer:
                     params = []
                     for param_name, param_info in properties.items():
                         logging.info(f"@@@@@ param_info: {param_info} @@@@@")
-                        
+
                         # Skip variadic parameters like *args, **kwargs
-                        if param_name.startswith('*'):
-                            logging.warning(f"Skipping variadic parameter: {param_name}")
+                        if param_name.startswith("*"):
+                            logging.warning(
+                                f"Skipping variadic parameter: {param_name}"
+                            )
                             continue
-                        
+
                         # Validate param_info has required keys
                         if not isinstance(param_info, dict) or "type" not in param_info:
-                            logging.warning(f"Skipping invalid parameter {param_name}: missing 'type' field")
+                            logging.warning(
+                                f"Skipping invalid parameter {param_name}: missing 'type' field"
+                            )
                             continue
-                        
-                        description = param_info.get("description", f"Parameter {param_name}")
+
+                        description = param_info.get(
+                            "description", f"Parameter {param_name}"
+                        )
                         _type = param_info["type"]
 
                         # annotate the parameter so that is appears inside MCP tool
@@ -320,7 +340,7 @@ class VirtualMcpServer:
                         return cleaned_return_value
 
                     logging.info(f"return_value from invoke_tool: {return_value}")
-                    
+
                     # Check if the response contains an error
                     if isinstance(return_value, dict) and "error" in return_value:
                         error_msg = return_value["error"]
@@ -332,17 +352,24 @@ class VirtualMcpServer:
                         #     error_msg = f"{error_msg}\n\nStderr:\n{return_value['stderr']}"
                         # cleaned_return_value = f"EXCEPTION:{error_msg}"
                         cleaned_return_value = str(error_msg)
-                        logging.error(f"Tool execution returned error: {cleaned_return_value}")
+                        logging.error(
+                            f"Tool execution returned error: {cleaned_return_value}"
+                        )
                         return cleaned_return_value
-                    
+
                     # extract return value
-                    if isinstance(return_value, dict) and "return value" in return_value:
+                    if (
+                        isinstance(return_value, dict)
+                        and "return value" in return_value
+                    ):
                         return_value = return_value["return value"]
                     else:
                         # Fallback: if response doesn't have expected format, return as-is
-                        logging.warning(f"Unexpected return value format: {return_value}")
+                        logging.warning(
+                            f"Unexpected return value format: {return_value}"
+                        )
                         return str(return_value)
-                    
+
                     # clean up the return value
                     cleaned_return_value = return_value.strip().replace('"', "")
                     logging.info(
@@ -369,7 +396,7 @@ class VirtualMcpServer:
     def _register_prompts(self):
         """
         Register snippets as prompts with the FastMCP server.
-        
+
         Uses the @prompt decorator pattern to register each snippet as an MCP prompt.
         """
         snippets = self.list_snippets()
@@ -381,12 +408,16 @@ class VirtualMcpServer:
 
                 # Skip snippets with missing or invalid name
                 if not snippet_name or not isinstance(snippet_name, str):
-                    logging.warning(f"Skipping snippet with missing or invalid name: {snippet}")
+                    logging.warning(
+                        f"Skipping snippet with missing or invalid name: {snippet}"
+                    )
                     continue
 
                 # Skip snippets with missing content
                 if snippet_content is None:
-                    logging.warning(f"Skipping snippet '{snippet_name}': missing 'content' field")
+                    logging.warning(
+                        f"Skipping snippet '{snippet_name}': missing 'content' field"
+                    )
                     continue
 
                 # Create a prompt function with proper closure
@@ -396,13 +427,16 @@ class VirtualMcpServer:
                     def prompt_func():
                         """Returns the snippet content as a prompt."""
                         return content
+
                     return prompt_func
-                
+
                 # Register the prompt
                 make_prompt_func(snippet_name, snippet_description, snippet_content)
                 logging.info(f"Registered prompt '{snippet_name}' with MCP server")
             except Exception as e:
-                logging.error(f"Failed to register prompt for snippet {snippet.get('name', 'unknown')}: {e}")
+                logging.error(
+                    f"Failed to register prompt for snippet {snippet.get('name', 'unknown')}: {e}"
+                )
 
     async def invoke_tool(self, tool_name: str, parameters: dict, env_id: str):
         """
@@ -422,11 +456,13 @@ class VirtualMcpServer:
             invoke_successfully_vmcp_tool_counter,
             invoke_successfully_vmcp_tool_latency,
         )
-        
+
         # Record invocation attempt
-        invoke_vmcp_tool_counter.labels(server_name=self.name, tool_name=tool_name).inc()
+        invoke_vmcp_tool_counter.labels(
+            server_name=self.name, tool_name=tool_name
+        ).inc()
         start_time = time.time()
-        
+
         if tool_name not in self.tools:
             raise ValueError(f"Tool {tool_name} not found")
 
@@ -444,7 +480,9 @@ class VirtualMcpServer:
 
             module_name = tool_dict.get("module_name")
             if not module_name:
-                raise ValueError(f"Tool '{tool_name}' has no module_name in cached manifest")
+                raise ValueError(
+                    f"Tool '{tool_name}' has no module_name in cached manifest"
+                )
 
             file_handler = FileHandler(get_files_directory_path())
             module_content = file_handler.read_file(module_name, raw_content=True)
@@ -460,21 +498,27 @@ class VirtualMcpServer:
 
             # Record successful execution metrics
             duration = time.time() - start_time
-            invoke_successfully_vmcp_tool_counter.labels(server_name=self.name, tool_name=tool_name).inc()
-            invoke_successfully_vmcp_tool_latency.labels(server_name=self.name, tool_name=tool_name).observe(duration)
+            invoke_successfully_vmcp_tool_counter.labels(
+                server_name=self.name, tool_name=tool_name
+            ).inc()
+            invoke_successfully_vmcp_tool_latency.labels(
+                server_name=self.name, tool_name=tool_name
+            ).observe(duration)
 
             return result
         except Exception as e:
-            logging.error(f"Error invoking tool {tool_name} on VMCP server {self.name}: {e}")
+            logging.error(
+                f"Error invoking tool {tool_name} on VMCP server {self.name}: {e}"
+            )
             raise
 
     def tool_dict_to_mcp_tool(self, tool_dict: dict):
         """
         Convert SBS tool dictionary to MCP tool format.
-        
+
         Args:
             tool_dict: Tool dictionary from the tools API (has same structure as manifest)
-        
+
         Returns:
             mcp.types.Tool: MCP tool object
         """
@@ -504,17 +548,17 @@ class VirtualMcpServer:
 
         def run_server():
             logging.info(f"Starting FastMCP server '{self.name}' on port {self.port}")
-            
+
             # Get the SSE app and manually add CORS middleware
-            if hasattr(self, 'cors_middleware'):
+            if hasattr(self, "cors_middleware"):
                 try:
                     # Get the Starlette app from FastMCP
                     app = self.mcp.sse_app()
-                    
+
                     # Add CORS middleware to the existing app
                     # We need to add it to app.user_middleware since the app is already created
                     from starlette.middleware.cors import CORSMiddleware
-                    
+
                     app.add_middleware(
                         CORSMiddleware,
                         allow_origins=["*"],
@@ -523,8 +567,10 @@ class VirtualMcpServer:
                         allow_credentials=True,
                         expose_headers=["*"],
                     )
-                    
-                    logging.info(f"CORS middleware added, starting server on port {self.port}")
+
+                    logging.info(
+                        f"CORS middleware added, starting server on port {self.port}"
+                    )
                     # Run the app with uvicorn
                     uvicorn.run(app, host="127.0.0.1", port=self.port, log_level="info")
                 except Exception as e:
@@ -559,6 +605,7 @@ class VirtualMcpServer:
             "tools": self.tools,
             "snippets": self.snippets,
         }
+
 
 def param_type_to_python_type(param_type: str) -> Any:
     """

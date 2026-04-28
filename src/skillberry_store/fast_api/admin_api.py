@@ -40,16 +40,17 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         app: The FastAPI application instance.
         tags: FastAPI tags for grouping the endpoints in documentation.
     """
+
     @app.get("/admin/metrics", tags=[tags], response_class=PlainTextResponse)
     async def get_metrics():
         """Proxy endpoint to fetch Prometheus metrics.
-        
+
         This endpoint proxies requests to the Prometheus metrics server
         to avoid CORS issues when accessing metrics from the UI.
-        
+
         Returns:
             PlainTextResponse: The raw Prometheus metrics in text format.
-            
+
         Raises:
             HTTPException: If metrics server is not accessible (503).
         """
@@ -58,25 +59,25 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             async with httpx.AsyncClient() as client:
                 response = await client.get(metrics_url, timeout=5.0)
                 if response.status_code == 200:
-                    return PlainTextResponse(content=response.text, media_type="text/plain")
+                    return PlainTextResponse(
+                        content=response.text, media_type="text/plain"
+                    )
                 else:
                     raise HTTPException(
                         status_code=503,
-                        detail=f"Metrics server returned status {response.status_code}"
+                        detail=f"Metrics server returned status {response.status_code}",
                     )
         except httpx.ConnectError:
             raise HTTPException(
                 status_code=503,
                 detail=f"Cannot connect to metrics server on port {PROMETHEUS_METRICS_PORT}. "
-                       f"Ensure PROMETHEUS_METRICS_PORT environment variable is set correctly."
+                f"Ensure PROMETHEUS_METRICS_PORT environment variable is set correctly.",
             )
         except Exception as e:
             logger.error(f"Error fetching metrics: {e}")
             raise HTTPException(
-                status_code=503,
-                detail=f"Error fetching metrics: {str(e)}"
+                status_code=503, detail=f"Error fetching metrics: {str(e)}"
             )
-
 
     @app.delete("/admin/purge-all", tags=[tags])
     async def purge_all_data():
@@ -104,23 +105,27 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         vmcp_servers_count = 0
         try:
             # Use the existing vmcp_server_manager from app.state
-            if hasattr(app, 'state') and hasattr(app.state, 'vmcp_server_manager'):
+            if hasattr(app, "state") and hasattr(app.state, "vmcp_server_manager"):
                 vmcp_manager = app.state.vmcp_server_manager
-                
+
                 # Get list of all servers before stopping them
                 server_names = vmcp_manager.list_servers()
                 vmcp_servers_count = len(server_names)
-                
+
                 # Stop and remove all servers
                 for server_name in server_names:
                     try:
                         vmcp_manager.remove_server(server_name)
                         logger.info(f"Stopped and removed VMCP server: {server_name}")
                     except Exception as e:
-                        logger.warning(f"Failed to stop VMCP server {server_name}: {str(e)}")
-                
+                        logger.warning(
+                            f"Failed to stop VMCP server {server_name}: {str(e)}"
+                        )
+
                 vmcp_stopped = True
-                logger.info(f"All {vmcp_servers_count} VMCP servers stopped and removed")
+                logger.info(
+                    f"All {vmcp_servers_count} VMCP servers stopped and removed"
+                )
             else:
                 logger.warning("vmcp_server_manager not found in app.state")
         except Exception as e:
@@ -155,7 +160,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                 # Recreate the directory
                 Path(dir_path).mkdir(parents=True, exist_ok=True)
                 logger.info(f"Recreated empty directory: {dir_path}")
-                
+
                 # For description directories, also recreate the /index/ subdirectory
                 if "descriptions" in dir_name:
                     index_dir = os.path.join(dir_path, "index")
@@ -165,33 +170,35 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             except Exception as e:
                 error_msg = f"Failed to delete {dir_name} at {dir_path}: {str(e)}"
                 logger.error(error_msg)
-                failed_dirs.append({"name": dir_name, "path": dir_path, "error": str(e)})
+                failed_dirs.append(
+                    {"name": dir_name, "path": dir_path, "error": str(e)}
+                )
 
         # Step 3: Reset in-memory vector indexes
         vector_indexes_reset = False
         try:
-            if hasattr(app, 'state'):
+            if hasattr(app, "state"):
                 # Reinitialize all description instances with empty vector indexes
-                if hasattr(app.state, 'descriptions'):
+                if hasattr(app.state, "descriptions"):
                     app.state.descriptions.load_index()
                     logger.info("Reset descriptions vector index")
-                
-                if hasattr(app.state, 'tools_descriptions'):
+
+                if hasattr(app.state, "tools_descriptions"):
                     app.state.tools_descriptions.load_index()
                     logger.info("Reset tools_descriptions vector index")
-                
-                if hasattr(app.state, 'snippets_descriptions'):
+
+                if hasattr(app.state, "snippets_descriptions"):
                     app.state.snippets_descriptions.load_index()
                     logger.info("Reset snippets_descriptions vector index")
-                
-                if hasattr(app.state, 'skills_descriptions'):
+
+                if hasattr(app.state, "skills_descriptions"):
                     app.state.skills_descriptions.load_index()
                     logger.info("Reset skills_descriptions vector index")
-                
-                if hasattr(app.state, 'vmcp_descriptions'):
+
+                if hasattr(app.state, "vmcp_descriptions"):
                     app.state.vmcp_descriptions.load_index()
                     logger.info("Reset vmcp_descriptions vector index")
-                
+
                 vector_indexes_reset = True
                 logger.info("All in-memory vector indexes reset successfully")
         except Exception as e:
@@ -209,7 +216,9 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                 },
             )
 
-        logger.info(f"Successfully purged all data. Deleted directories: {deleted_dirs}, stopped {vmcp_servers_count} VMCP servers")
+        logger.info(
+            f"Successfully purged all data. Deleted directories: {deleted_dirs}, stopped {vmcp_servers_count} VMCP servers"
+        )
         return {
             "message": "All backend data successfully purged",
             "deleted_directories": deleted_dirs,
@@ -234,47 +243,37 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
 
         Returns:
             dict: Readiness status with details about each directory (HTTP 200 when ready).
-        
+
         Raises:
             HTTPException: 500 status when still initializing.
         """
         checks = {}
-        
+
         # Check all known description objects in app.state
         description_attrs = [
-            'tools_descriptions',
-            'snippets_descriptions',
-            'skills_descriptions',
-            'vmcp_descriptions'
+            "tools_descriptions",
+            "snippets_descriptions",
+            "skills_descriptions",
+            "vmcp_descriptions",
         ]
-        
+
         for attr_name in description_attrs:
             desc_obj = getattr(app.state, attr_name, None)
-            if desc_obj and hasattr(desc_obj, 'descriptions_directory'):
+            if desc_obj and hasattr(desc_obj, "descriptions_directory"):
                 dir_path = desc_obj.descriptions_directory
                 checks[attr_name] = {
                     "path": dir_path,
-                    "exists": os.path.exists(dir_path)
+                    "exists": os.path.exists(dir_path),
                 }
             else:
-                checks[attr_name] = {
-                    "path": None,
-                    "exists": False
-                }
-        
+                checks[attr_name] = {"path": None, "exists": False}
+
         # Server is ready if all checks pass
         all_ready = all(check["exists"] for check in checks.values())
-        
+
         if not all_ready:
             raise HTTPException(
-                status_code=500,
-                detail={
-                    "status": "initializing",
-                    "checks": checks
-                }
+                status_code=500, detail={"status": "initializing", "checks": checks}
             )
-        
-        return {
-            "status": "ready",
-            "checks": checks
-        }
+
+        return {"status": "ready", "checks": checks}

@@ -76,17 +76,17 @@ def register_vmcp_api(
     """
     vmcp_directory = get_vmcp_directory()
     vmcp_handler = FileHandler(vmcp_directory)
-    
+
     # Initialize the server manager for runtime management
     vmcp_server_manager = VirtualMcpServerManager(sts_url=sts_url, app=app)
-    
+
     # Store in app state for cleanup access
     app.state.vmcp_server_manager = vmcp_server_manager
 
     @app.post("/vmcp_servers/", tags=[tags])
     def create_vmcp_server(vmcp: Annotated[VmcpSchema, Query()], request: Request):
         """Create a new virtual MCP server.
-        
+
         Creates both the persistent JSON representation and starts the runtime server.
 
         Args:
@@ -123,11 +123,11 @@ def register_vmcp_api(
 
         # Extract env_id from request headers
         headers = request.headers
-        skillberry_context = unflatten_keys(dict(headers)).get(SKILLBERRY_CONTEXT.lower())
+        skillberry_context = unflatten_keys(dict(headers)).get(
+            SKILLBERRY_CONTEXT.lower()
+        )
         env_id = (
-            skillberry_context.get("env_id")
-            if skillberry_context is not None
-            else ""
+            skillberry_context.get("env_id") if skillberry_context is not None else ""
         )
 
         try:
@@ -136,16 +136,24 @@ def register_vmcp_api(
             snippet_names = []
             print(f"DEBUG: vmcp.skill_uuid = {vmcp.skill_uuid}")
             if vmcp.skill_uuid:
-                print(f"DEBUG: Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}")
-                logger.info(f"Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}")
+                print(
+                    f"DEBUG: Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}"
+                )
+                logger.info(
+                    f"Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}"
+                )
                 # Load the skill to get tool UUIDs and snippet UUIDs
-                from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
+                from skillberry_store.tools.configure import (
+                    get_skills_directory,
+                    get_tools_directory,
+                    get_snippets_directory,
+                )
                 from skillberry_store.modules.file_handler import FileHandler
-                
+
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
                 snippets_handler = FileHandler(get_snippets_directory())
-                
+
                 # Find skill by UUID
                 skill_tool_uuids = []
                 skill_snippet_uuids = []
@@ -154,61 +162,85 @@ def register_vmcp_api(
                 for filename in skill_files:
                     if filename.endswith(".json"):
                         try:
-                            content = skills_handler.read_file(filename, raw_content=True)
+                            content = skills_handler.read_file(
+                                filename, raw_content=True
+                            )
                             if isinstance(content, str):
                                 skill_dict = json.loads(content)
                                 if skill_dict.get("uuid") == vmcp.skill_uuid:
                                     skill_tool_uuids = skill_dict.get("tool_uuids", [])
-                                    skill_snippet_uuids = skill_dict.get("snippet_uuids", [])
-                                    logger.info(f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs")
+                                    skill_snippet_uuids = skill_dict.get(
+                                        "snippet_uuids", []
+                                    )
+                                    logger.info(
+                                        f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs"
+                                    )
                                     break
                         except Exception as e:
                             logger.warning(f"Error reading skill file {filename}: {e}")
-                
+
                 if not skill_tool_uuids and not skill_snippet_uuids:
-                    logger.warning(f"No tools or snippets found for skill_uuid: {vmcp.skill_uuid}")
-                
+                    logger.warning(
+                        f"No tools or snippets found for skill_uuid: {vmcp.skill_uuid}"
+                    )
+
                 # Resolve tool UUIDs to tool names
                 for tool_uuid in skill_tool_uuids:
                     for filename in tools_handler.list_files():
                         if filename.endswith(".json"):
                             try:
-                                content = tools_handler.read_file(filename, raw_content=True)
+                                content = tools_handler.read_file(
+                                    filename, raw_content=True
+                                )
                                 if isinstance(content, str):
                                     tool_dict = json.loads(content)
                                     if tool_dict.get("uuid") == tool_uuid:
                                         tool_name = tool_dict.get("name")
                                         tool_names.append(tool_name)
-                                        logger.info(f"Resolved tool UUID {tool_uuid} to name '{tool_name}'")
+                                        logger.info(
+                                            f"Resolved tool UUID {tool_uuid} to name '{tool_name}'"
+                                        )
                                         break
                             except Exception as e:
-                                logger.warning(f"Error reading tool file {filename}: {e}")
-                
+                                logger.warning(
+                                    f"Error reading tool file {filename}: {e}"
+                                )
+
                 # Resolve snippet UUIDs to snippet names
                 for snippet_uuid in skill_snippet_uuids:
                     for filename in snippets_handler.list_files():
                         if filename.endswith(".json"):
                             try:
-                                content = snippets_handler.read_file(filename, raw_content=True)
+                                content = snippets_handler.read_file(
+                                    filename, raw_content=True
+                                )
                                 if isinstance(content, str):
                                     snippet_dict = json.loads(content)
                                     if snippet_dict.get("uuid") == snippet_uuid:
                                         snippet_name = snippet_dict.get("name")
                                         snippet_names.append(snippet_name)
-                                        logger.info(f"Resolved snippet UUID {snippet_uuid} to name '{snippet_name}'")
+                                        logger.info(
+                                            f"Resolved snippet UUID {snippet_uuid} to name '{snippet_name}'"
+                                        )
                                         break
                             except Exception as e:
-                                logger.warning(f"Error reading snippet file {filename}: {e}")
-                
-                logger.info(f"Final tool_names list: {tool_names}, snippet_names list: {snippet_names}")
+                                logger.warning(
+                                    f"Error reading snippet file {filename}: {e}"
+                                )
+
+                logger.info(
+                    f"Final tool_names list: {tool_names}, snippet_names list: {snippet_names}"
+                )
             else:
-                logger.info("No skill_uuid provided, creating VMCP server without tools or snippets")
+                logger.info(
+                    "No skill_uuid provided, creating VMCP server without tools or snippets"
+                )
 
             # Start the runtime server using VirtualMcpServerManager
             server = vmcp_server_manager.add_server(
                 name=vmcp.name,
                 description=vmcp.description or "",
-                port=vmcp.port if hasattr(vmcp, 'port') and vmcp.port else None,
+                port=vmcp.port if hasattr(vmcp, "port") and vmcp.port else None,
                 tools=tool_names,
                 snippets=snippet_names,
                 env_id=env_id,
@@ -226,7 +258,9 @@ def register_vmcp_api(
                 vmcp_descriptions.write_description(vmcp.name, vmcp.description)
                 logger.info(f"VMCP server description saved for: {vmcp.name}")
 
-            logger.info(f"VMCP server '{vmcp.name}' created successfully on port {server.port}")
+            logger.info(
+                f"VMCP server '{vmcp.name}' created successfully on port {server.port}"
+            )
             return {
                 "message": f"VMCP server '{vmcp.name}' created successfully.",
                 "name": vmcp.name,
@@ -257,8 +291,8 @@ def register_vmcp_api(
         try:
             # Get all server files from persistent storage
             all_files = vmcp_handler.list_files()
-            server_files = [f for f in all_files if f.endswith('.json')]
-            
+            server_files = [f for f in all_files if f.endswith(".json")]
+
             # Build full server objects by combining persistent and runtime data
             servers_list = []
             for filename in server_files:
@@ -271,14 +305,14 @@ def register_vmcp_api(
                     else:
                         logger.warning(f"Unexpected content type for {filename}")
                         continue
-                    
+
                     # Get runtime data (may be None if server not running)
                     runtime_server = None
                     try:
                         runtime_server = vmcp_server_manager.get_server(server_name)
                     except Exception:
                         pass  # Server not running, which is fine
-                    
+
                     # Combine persistent and runtime data
                     server_info = {
                         "uuid": vmcp_data.get("uuid"),
@@ -291,23 +325,29 @@ def register_vmcp_api(
                         "skill_uuid": vmcp_data.get("skill_uuid"),
                         "modified_at": vmcp_data.get("modified_at", ""),
                         "running": runtime_server is not None,
-                        "runtime": {
-                            "name": runtime_server.name if runtime_server else "",
-                            "description": runtime_server.description if runtime_server else "",
-                            "port": runtime_server.port if runtime_server else None,
-                            "tools": runtime_server.tools if runtime_server else [],
-                        } if runtime_server else None,
+                        "runtime": (
+                            {
+                                "name": runtime_server.name if runtime_server else "",
+                                "description": (
+                                    runtime_server.description if runtime_server else ""
+                                ),
+                                "port": runtime_server.port if runtime_server else None,
+                                "tools": runtime_server.tools if runtime_server else [],
+                            }
+                            if runtime_server
+                            else None
+                        ),
                     }
                     servers_list.append(server_info)
                 except Exception as e:
                     logger.warning(f"Error loading server {server_name}: {e}")
-            
+
             # Sort by modified_at in descending order (most recent first)
             servers_list.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            
+
             # Convert to dict with server names as keys
             servers_dict = {server["name"]: server for server in servers_list}
-            
+
             logger.info(f"Listed {len(servers_dict)} vmcp servers")
             return {"virtual_mcp_servers": servers_dict}
         except Exception as e:
@@ -340,10 +380,11 @@ def register_vmcp_api(
             content = vmcp_handler.read_file(vmcp_filename, raw_content=True)
             if not isinstance(content, str):
                 raise HTTPException(
-                    status_code=500, detail=f"Invalid content type for vmcp server '{name}'"
+                    status_code=500,
+                    detail=f"Invalid content type for vmcp server '{name}'",
                 )
             vmcp_dict = json.loads(content)
-            
+
             # Get runtime details from manager
             try:
                 runtime_details = vmcp_server_manager.get_server_details(name)
@@ -352,7 +393,7 @@ def register_vmcp_api(
             except Exception:
                 vmcp_dict["running"] = False
                 vmcp_dict["runtime"] = None
-            
+
             logger.info(f"Retrieved vmcp server: {name}")
             return vmcp_dict
         except HTTPException:
@@ -414,7 +455,9 @@ def register_vmcp_api(
             )
 
     @app.put("/vmcp_servers/{name}", tags=[tags])
-    def update_vmcp_server(name: str, vmcp: Annotated[VmcpSchema, Query()], request: Request):
+    def update_vmcp_server(
+        name: str, vmcp: Annotated[VmcpSchema, Query()], request: Request
+    ):
         """Update an existing virtual MCP server.
 
         Updates both persistent data and restarts the runtime server.
@@ -448,7 +491,9 @@ def register_vmcp_api(
 
             # Extract env_id from request headers
             headers = request.headers
-            skillberry_context = unflatten_keys(dict(headers)).get(SKILLBERRY_CONTEXT.lower())
+            skillberry_context = unflatten_keys(dict(headers)).get(
+                SKILLBERRY_CONTEXT.lower()
+            )
             env_id = (
                 skillberry_context.get("env_id")
                 if skillberry_context is not None
@@ -466,18 +511,23 @@ def register_vmcp_api(
             tool_names = []
             if vmcp.skill_uuid:
                 # Load the skill to get tool UUIDs
-                from skillberry_store.tools.configure import get_skills_directory, get_tools_directory
+                from skillberry_store.tools.configure import (
+                    get_skills_directory,
+                    get_tools_directory,
+                )
                 from skillberry_store.modules.file_handler import FileHandler
-                
+
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
-                
+
                 # Find skill by UUID
                 skill_tool_uuids = []
                 for filename in skills_handler.list_files():
                     if filename.endswith(".json"):
                         try:
-                            content = skills_handler.read_file(filename, raw_content=True)
+                            content = skills_handler.read_file(
+                                filename, raw_content=True
+                            )
                             if isinstance(content, str):
                                 skill_dict = json.loads(content)
                                 if skill_dict.get("uuid") == vmcp.skill_uuid:
@@ -485,26 +535,30 @@ def register_vmcp_api(
                                     break
                         except Exception as e:
                             logger.warning(f"Error reading skill file {filename}: {e}")
-                
+
                 # Resolve tool UUIDs to tool names
                 for tool_uuid in skill_tool_uuids:
                     for filename in tools_handler.list_files():
                         if filename.endswith(".json"):
                             try:
-                                content = tools_handler.read_file(filename, raw_content=True)
+                                content = tools_handler.read_file(
+                                    filename, raw_content=True
+                                )
                                 if isinstance(content, str):
                                     tool_dict = json.loads(content)
                                     if tool_dict.get("uuid") == tool_uuid:
                                         tool_names.append(tool_dict.get("name"))
                                         break
                             except Exception as e:
-                                logger.warning(f"Error reading tool file {filename}: {e}")
+                                logger.warning(
+                                    f"Error reading tool file {filename}: {e}"
+                                )
 
             # Start new runtime server
             server = vmcp_server_manager.add_server(
                 name=vmcp.name,
                 description=vmcp.description or "",
-                port=vmcp.port if hasattr(vmcp, 'port') and vmcp.port else None,
+                port=vmcp.port if hasattr(vmcp, "port") and vmcp.port else None,
                 tools=tool_names,
                 env_id=env_id,
             )
@@ -515,8 +569,10 @@ def register_vmcp_api(
             # Update persistent data
             vmcp_json = json.dumps(vmcp.to_dict(), indent=4)
             vmcp_handler.write_file_content(vmcp_filename, vmcp_json)
-            
-            logger.info(f"VMCP server '{name}' updated successfully on port {server.port}")
+
+            logger.info(
+                f"VMCP server '{name}' updated successfully on port {server.port}"
+            )
             return {
                 "message": f"VMCP server '{name}' updated successfully.",
                 "port": server.port,
@@ -532,7 +588,7 @@ def register_vmcp_api(
     @app.post("/vmcp_servers/{name}/start", tags=[tags])
     def start_vmcp_server(name: str, request: Request):
         """Start or restart a virtual MCP server.
-        
+
         This endpoint allows starting a server that exists in persistent storage
         but is not currently running in the runtime manager.
 
@@ -547,7 +603,7 @@ def register_vmcp_api(
             HTTPException: If vmcp server not found (404) or start fails (500).
         """
         logger.info(f"Request to start vmcp server: {name}")
-        
+
         try:
             # Check if server already running
             try:
@@ -559,83 +615,106 @@ def register_vmcp_api(
                     }
             except Exception:
                 pass  # Server not running, proceed to start it
-            
+
             # Read persistent data
             vmcp_filename = f"{name}.json"
             content = vmcp_handler.read_file(vmcp_filename, raw_content=True)
             if not isinstance(content, str):
                 raise HTTPException(
-                    status_code=500, detail=f"Invalid content type for vmcp server '{name}'"
+                    status_code=500,
+                    detail=f"Invalid content type for vmcp server '{name}'",
                 )
             vmcp_data = json.loads(content)
-            
+
             # Extract env_id from request headers
             headers = request.headers
-            skillberry_context = unflatten_keys(dict(headers)).get(SKILLBERRY_CONTEXT.lower())
+            skillberry_context = unflatten_keys(dict(headers)).get(
+                SKILLBERRY_CONTEXT.lower()
+            )
             env_id = (
                 skillberry_context.get("env_id")
                 if skillberry_context is not None
                 else ""
             )
-            
+
             # Extract tool names and snippet names from skill_uuid
             tool_names = []
             snippet_names = []
             skill_uuid = vmcp_data.get("skill_uuid")
-            
+
             if skill_uuid:
-                logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid}")
-                from skillberry_store.tools.configure import get_skills_directory, get_tools_directory, get_snippets_directory
-                
+                logger.info(
+                    f"Resolving tools and snippets for skill_uuid: {skill_uuid}"
+                )
+                from skillberry_store.tools.configure import (
+                    get_skills_directory,
+                    get_tools_directory,
+                    get_snippets_directory,
+                )
+
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
                 snippets_handler = FileHandler(get_snippets_directory())
-                
+
                 # Find skill by UUID
                 skill_tool_uuids = []
                 skill_snippet_uuids = []
                 for filename in skills_handler.list_files():
                     if filename.endswith(".json"):
                         try:
-                            skill_content = skills_handler.read_file(filename, raw_content=True)
+                            skill_content = skills_handler.read_file(
+                                filename, raw_content=True
+                            )
                             if isinstance(skill_content, str):
                                 skill_dict = json.loads(skill_content)
                                 if skill_dict.get("uuid") == skill_uuid:
                                     skill_tool_uuids = skill_dict.get("tool_uuids", [])
-                                    skill_snippet_uuids = skill_dict.get("snippet_uuids", [])
-                                    logger.info(f"Found skill with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs")
+                                    skill_snippet_uuids = skill_dict.get(
+                                        "snippet_uuids", []
+                                    )
+                                    logger.info(
+                                        f"Found skill with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs"
+                                    )
                                     break
                         except Exception as e:
                             logger.warning(f"Error reading skill file {filename}: {e}")
-                
+
                 # Resolve tool UUIDs to tool names
                 for tool_uuid in skill_tool_uuids:
                     for filename in tools_handler.list_files():
                         if filename.endswith(".json"):
                             try:
-                                tool_content = tools_handler.read_file(filename, raw_content=True)
+                                tool_content = tools_handler.read_file(
+                                    filename, raw_content=True
+                                )
                                 if isinstance(tool_content, str):
                                     tool_dict = json.loads(tool_content)
                                     if tool_dict.get("uuid") == tool_uuid:
                                         tool_names.append(tool_dict.get("name"))
                                         break
                             except Exception as e:
-                                logger.warning(f"Error reading tool file {filename}: {e}")
-                
+                                logger.warning(
+                                    f"Error reading tool file {filename}: {e}"
+                                )
+
                 # Resolve snippet UUIDs to snippet names
                 for snippet_uuid in skill_snippet_uuids:
                     for filename in snippets_handler.list_files():
                         if filename.endswith(".json"):
                             try:
-                                snippet_content = snippets_handler.read_file(filename, raw_content=True)
+                                snippet_content = snippets_handler.read_file(
+                                    filename, raw_content=True
+                                )
                                 if isinstance(snippet_content, str):
                                     snippet_dict = json.loads(snippet_content)
                                     if snippet_dict.get("uuid") == snippet_uuid:
                                         snippet_names.append(snippet_dict.get("name"))
                                         break
                             except Exception as e:
-                                logger.warning(f"Error reading snippet file {filename}: {e}")
-            
+                                logger.warning(
+                                    f"Error reading snippet file {filename}: {e}"
+                                )
+
             # Start the runtime server
             server = vmcp_server_manager.add_server(
                 name=vmcp_data.get("name"),
@@ -645,8 +724,10 @@ def register_vmcp_api(
                 snippets=snippet_names,
                 env_id=env_id,
             )
-            
-            logger.info(f"VMCP server '{name}' started successfully on port {server.port}")
+
+            logger.info(
+                f"VMCP server '{name}' started successfully on port {server.port}"
+            )
             return {
                 "message": f"VMCP server '{name}' started successfully.",
                 "port": server.port,
@@ -681,7 +762,9 @@ def register_vmcp_api(
         Returns:
             list: A list of matched vmcp server names and similarity scores.
         """
-        logger.info(f"Request to search vmcp server descriptions for term: {search_term}")
+        logger.info(
+            f"Request to search vmcp server descriptions for term: {search_term}"
+        )
         search_vmcp_counter.inc()
 
         if not vmcp_descriptions:
@@ -706,17 +789,23 @@ def register_vmcp_api(
             for matched_entity in filtered_matched_entities:
                 vmcp_name = matched_entity.get("filename") or matched_entity.get("name")
                 if not vmcp_name:
-                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    logger.warning(
+                        f"Matched entity missing 'filename' or 'name' field: {matched_entity}"
+                    )
                     continue
                 try:
                     vmcp_filename = f"{vmcp_name}.json"
                     content = vmcp_handler.read_file(vmcp_filename, raw_content=True)
                     if isinstance(content, str):
                         vmcp_dict = json.loads(content)
-                        vmcp_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                        vmcp_dict["similarity_score"] = matched_entity.get(
+                            "similarity_score", 0.0
+                        )
                         vmcp_servers_to_filter.append(vmcp_dict)
                 except Exception as e:
-                    logger.warning(f"Could not load vmcp server {vmcp_name} for filtering: {e}")
+                    logger.warning(
+                        f"Could not load vmcp server {vmcp_name} for filtering: {e}"
+                    )
 
             # Apply manifest and lifecycle filters
             filtered_vmcp_servers = apply_search_filters(
@@ -726,11 +815,16 @@ def register_vmcp_api(
             )
 
             # Sort by modified_at in descending order (most recent first)
-            filtered_vmcp_servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            filtered_vmcp_servers.sort(
+                key=lambda x: x.get("modified_at", ""), reverse=True
+            )
 
             # Return only filename and similarity_score (filename is the vmcp server name)
             result = [
-                {"filename": vmcp.get("name", ""), "similarity_score": vmcp.get("similarity_score", 0.0)}
+                {
+                    "filename": vmcp.get("name", ""),
+                    "similarity_score": vmcp.get("similarity_score", 0.0),
+                }
                 for vmcp in filtered_vmcp_servers
                 if vmcp.get("name")  # Only include if name exists
             ]

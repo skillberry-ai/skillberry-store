@@ -78,22 +78,30 @@ class SBS(FastAPI):
 
         # Store description instances in app state for access by admin API
         self.state.tools_descriptions = tools_descriptions_api(self.settings.sbs_vdb)
-        self.state.snippets_descriptions = snippets_descriptions_api(self.settings.sbs_vdb)
+        self.state.snippets_descriptions = snippets_descriptions_api(
+            self.settings.sbs_vdb
+        )
         self.state.skills_descriptions = skills_descriptions_api(self.settings.sbs_vdb)
         self.state.vmcp_descriptions = vmcp_descriptions_api(self.settings.sbs_vdb)
-        
+
         sts_url = f"http://{self.settings.sbs_host}:{self.settings.sbs_port}"
         register_vmcp_api(
-            self, sts_url=sts_url, tags="vmcp_servers",
-            vmcp_descriptions=self.state.vmcp_descriptions
+            self,
+            sts_url=sts_url,
+            tags="vmcp_servers",
+            vmcp_descriptions=self.state.vmcp_descriptions,
         )
         register_skills_api(
             self, tags="skills", skills_descriptions=self.state.skills_descriptions
         )
         register_snippets_api(
-            self, tags="snippets", snippets_descriptions=self.state.snippets_descriptions
+            self,
+            tags="snippets",
+            snippets_descriptions=self.state.snippets_descriptions,
         )
-        register_tools_api(self, tags="tools", tools_descriptions=self.state.tools_descriptions)
+        register_tools_api(
+            self, tags="tools", tools_descriptions=self.state.tools_descriptions
+        )
         register_admin_api(self, tags="admin")
 
         # Mount MCP server
@@ -119,26 +127,35 @@ class SBS(FastAPI):
     def run(self):
         """Starts the FastAPI app using Uvicorn."""
         self.logger.info("Starting SBS server")
-        self.logger.info(f"API server running at: http://{self.settings.display_host}:{self.settings.sbs_port}")
+        self.logger.info(
+            f"API server running at: http://{self.settings.display_host}:{self.settings.sbs_port}"
+        )
         # self.logger.info(f"UI available at: http://localhost:{self.settings.ui_port}")
-        self.logger.info(f"API documentation at: http://{self.settings.display_host}:{self.settings.sbs_port}/docs")
+        self.logger.info(
+            f"API documentation at: http://{self.settings.display_host}:{self.settings.sbs_port}/docs"
+        )
 
         if self.settings.observability:
             observability_setup()
-        
+
         # Configure uvicorn logging - create custom config to ensure all requests are logged
         import copy
         from uvicorn.config import LOGGING_CONFIG
+
         log_config = copy.deepcopy(LOGGING_CONFIG)
-        log_config["formatters"]["access"]["fmt"] = '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
-        log_config["loggers"]["uvicorn.access"]["level"] = "DEBUG"  # Ensure all access logs are shown
-        
+        log_config["formatters"]["access"][
+            "fmt"
+        ] = '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+        log_config["loggers"]["uvicorn.access"][
+            "level"
+        ] = "DEBUG"  # Ensure all access logs are shown
+
         uvicorn.run(
             self,
             host=self.settings.sbs_host,
             port=self.settings.sbs_port,
             access_log=True,
-            log_config=log_config
+            log_config=log_config,
         )
 
 
@@ -237,7 +254,7 @@ def custom_openapi(app: FastAPI, openapi_tags):
     # FastAPI generates contentMediaType but OpenAPI generators expect format: binary
     if "components" in openapi_schema and "schemas" in openapi_schema["components"]:
         schemas = openapi_schema["components"]["schemas"]
-        
+
         # Define all file upload endpoints and their file parameter names
         file_upload_fixes = [
             ("Body_add_tool_from_python_tools_add_post", "tool"),
@@ -245,7 +262,7 @@ def custom_openapi(app: FastAPI, openapi_tags):
             ("Body_create_snippet_snippets__post", "file"),
             ("Body_import_anthropic_skill_skills_import_anthropic_post", "zip_file"),
         ]
-        
+
         # Apply fix to all file upload schemas
         for schema_name, file_param in file_upload_fixes:
             if schema_name in schemas:

@@ -68,7 +68,7 @@ class DescriptionVectorIndex:
         index_dir = os.path.dirname(self.index_file)
         if index_dir:
             os.makedirs(index_dir, exist_ok=True)
-        
+
         faiss.write_index(self.index, self.index_file)
 
         # persist the files to FAISS index map

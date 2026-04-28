@@ -50,7 +50,9 @@ class UIManager:
                 cwd=self.ui_dir,
                 capture_output=True,
                 text=True,
-                shell=(os.name == "nt"),  # Windows requires shell=True to resolve npm.cmd
+                shell=(
+                    os.name == "nt"
+                ),  # Windows requires shell=True to resolve npm.cmd
                 timeout=300,  # 5 minutes timeout
             )
             if result.returncode == 0:
@@ -95,7 +97,9 @@ class UIManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                shell=(os.name == "nt"),  # Windows requires shell=True to resolve npx.cmd
+                shell=(
+                    os.name == "nt"
+                ),  # Windows requires shell=True to resolve npx.cmd
                 preexec_fn=os.setsid if os.name != "nt" else None,
             )
 
@@ -105,7 +109,9 @@ class UIManager:
             # Check if process is still running
             if self.process.poll() is None:
                 self._is_running = True
-                logger.info(f"UI server started successfully on http://localhost:{self.ui_port}")
+                logger.info(
+                    f"UI server started successfully on http://localhost:{self.ui_port}"
+                )
                 return True
             else:
                 stdout, stderr = self.process.communicate()
