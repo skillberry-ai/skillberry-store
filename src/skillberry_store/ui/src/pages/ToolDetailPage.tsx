@@ -36,7 +36,7 @@ import {
   FormSelect,
   FormSelectOption,
 } from '@patternfly/react-core';
-import { PlayIcon, TrashIcon, EditIcon } from '@patternfly/react-icons';
+import { PlayIcon, TrashIcon, EditIcon, SaveIcon, TimesIcon } from '@patternfly/react-icons';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { toolsApi } from '@/services/api';
@@ -66,6 +66,8 @@ export function ToolDetailPage() {
   const [tagInput, setTagInput] = useState('');
   const [extraInput, setExtraInput] = useState('{}');
   const [editError, setEditError] = useState('');
+  const [isEditingCode, setIsEditingCode] = useState(false);
+  const [editedCode, setEditedCode] = useState('');
 
   // Fetch tool details
   const { data: tool, isLoading, error } = useQuery({
@@ -110,6 +112,16 @@ export function ToolDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tools'] });
       navigate('/tools');
+    },
+  });
+
+  // Update module mutation
+  const updateModuleMutation = useMutation({
+    mutationFn: (content: string) => toolsApi.updateModule(name!, content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tools', name, 'module'] });
+      queryClient.invalidateQueries({ queryKey: ['tools', name] });
+      setIsEditingCode(false);
     },
   });
 
@@ -272,11 +284,56 @@ export function ToolDetailPage() {
                       <DescriptionListDescription>
                         <Label color={
                           tool.state === 'approved' ? 'green' :
+                          tool.state === 'broken' ? 'red' :
                           tool.state === 'checked' ? 'blue' :
                           tool.state === 'new' ? 'cyan' : 'orange'
                         }>
                           {tool.state}
                         </Label>
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
+                  )}
+
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Health</DescriptionListTerm>
+                    <DescriptionListDescription>
+                      {(tool as any).state === 'broken' ? (
+                        <>
+                          <Label color="red">broken</Label>
+                          {(tool as any).broken_reason && (
+                            <span style={{ marginLeft: '0.5rem', color: 'var(--pf-v5-global--danger-color--100)' }}>
+                              {(tool as any).broken_reason}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <Label color="green">healthy</Label>
+                      )}
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
+
+                  {(tool as any).mcp_server && (
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>Imported from MCP</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        <a href={`/external-mcps/${encodeURIComponent((tool as any).mcp_server)}`}>
+                          <Label color="purple">{(tool as any).mcp_server}</Label>
+                        </a>
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
+                  )}
+
+                  {(tool as any).mcp_dependencies && (tool as any).mcp_dependencies.length > 0 && (
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>External MCP dependencies</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          {(tool as any).mcp_dependencies.map((name: string) => (
+                            <a key={name} href={`/external-mcps/${encodeURIComponent(name)}`}>
+                              <Label color="purple">{name}</Label>
+                            </a>
+                          ))}
+                        </div>
                       </DescriptionListDescription>
                     </DescriptionListGroup>
                   )}
@@ -435,8 +492,53 @@ export function ToolDetailPage() {
           {tool.module_name ? (
             <Tab eventKey={1} title={<TabTitleText>Source Code</TabTitleText>}>
               <Card>
-                <CardTitle>Module Code ({tool.module_name})</CardTitle>
+                <CardTitle style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Module Code ({tool.module_name})</span>
+                  {moduleCode && tool.packaging_format !== 'mcp' && (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {isEditingCode ? (
+                        <>
+                          <Button
+                            variant="primary"
+                            icon={<SaveIcon />}
+                            size="sm"
+                            onClick={() => updateModuleMutation.mutate(editedCode)}
+                            isLoading={updateModuleMutation.isPending}
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            icon={<TimesIcon />}
+                            size="sm"
+                            onClick={() => setIsEditingCode(false)}
+                            isDisabled={updateModuleMutation.isPending}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          icon={<EditIcon />}
+                          size="sm"
+                          onClick={() => {
+                            setEditedCode(moduleCode);
+                            setIsEditingCode(true);
+                          }}
+                        >
+                          Edit Code
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </CardTitle>
                 <CardBody>
+                  {updateModuleMutation.isError && (
+                    <Alert variant="danger" title="Error saving code" isInline style={{ marginBottom: '1rem' }}>
+                      {(updateModuleMutation.error as Error)?.message || 'Failed to save'}
+                    </Alert>
+                  )}
                   {isModuleLoading ? (
                     <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
                       <Spinner size="lg" />
@@ -446,27 +548,46 @@ export function ToolDetailPage() {
                       {(moduleError as Error).message}
                     </Alert>
                   ) : moduleCode ? (
-                    <div style={{
-                      maxHeight: '70vh',
-                      overflow: 'auto',
-                      border: '1px solid #3d3d3d',
-                      borderRadius: '6px'
-                    }}>
-                      <SyntaxHighlighter
-                        language="python"
-                        style={vscDarkPlus}
-                        showLineNumbers={true}
-                        wrapLines={false}
-                        customStyle={{
-                          margin: 0,
-                          fontSize: '15px',
+                    isEditingCode ? (
+                      <TextArea
+                        value={editedCode}
+                        onChange={(_, value) => setEditedCode(value)}
+                        aria-label="Edit source code"
+                        resizeOrientation="vertical"
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: '14px',
                           lineHeight: '1.6',
-                          minHeight: '100%',
+                          minHeight: '60vh',
+                          backgroundColor: '#1e1e1e',
+                          color: '#d4d4d4',
+                          border: '1px solid #3d3d3d',
+                          borderRadius: '6px',
                         }}
-                      >
-                        {moduleCode}
-                      </SyntaxHighlighter>
-                    </div>
+                      />
+                    ) : (
+                      <div style={{
+                        maxHeight: '70vh',
+                        overflow: 'auto',
+                        border: '1px solid #3d3d3d',
+                        borderRadius: '6px'
+                      }}>
+                        <SyntaxHighlighter
+                          language="python"
+                          style={vscDarkPlus}
+                          showLineNumbers={true}
+                          wrapLines={false}
+                          customStyle={{
+                            margin: 0,
+                            fontSize: '15px',
+                            lineHeight: '1.6',
+                            minHeight: '100%',
+                          }}
+                        >
+                          {moduleCode}
+                        </SyntaxHighlighter>
+                      </div>
+                    )
                   ) : (
                     <Text>No module code available</Text>
                   )}

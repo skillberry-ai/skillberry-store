@@ -68,10 +68,22 @@ def main():
         if not ui_started:
             print("Warning: Failed to start UI server. Backend will run without UI.")
 
+    host = server.settings.display_host
+    port = server.settings.sbs_port
+    agent_mcp_port = server.settings.agent_mcp_port
+    agent_mcp_url = f"http://{host}:{agent_mcp_port}/sse"
+
     print(f"\n{'='*60}")
     if ui_started:
-        print(f"  Skillberry Store UI: http://{server.settings.display_host}:{ui_manager.ui_port}")
-    print(f"  Backend API: http://{server.settings.display_host}:{server.settings.sbs_port}/docs")
+        print(f"  Skillberry Store UI: http://{host}:{ui_manager.ui_port}")
+    print(f"  Backend API: http://{host}:{port}/docs")
+    if hasattr(server, 'agent_mcp') and server.agent_mcp is not None:
+        print(f"  Store MCP:   {agent_mcp_url}")
+        print(f"")
+        print(f"  Connect Claude Code to the Store MCP:")
+        print(f"    claude mcp add skillberry-store -s user -t sse {agent_mcp_url}")
+        print(f"  Remove:")
+        print(f"    claude mcp remove skillberry-store -s user")
     print(f"{'='*60}\n")
     sys.stdout.flush()
 

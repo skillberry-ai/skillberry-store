@@ -21,6 +21,7 @@ import {
   Divider,
 } from '@patternfly/react-core';
 import { BarsIcon } from '@patternfly/react-icons';
+import { useActiveManifests } from '@/plugins/registry';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -30,6 +31,8 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+  const activeManifests = useActiveManifests();
+  const pluginNavItems = activeManifests.flatMap((m) => m.navItems);
 
   const navItems = [
     { id: 'home', label: 'Home', path: '/' },
@@ -112,6 +115,17 @@ export function AppLayout({ children }: AppLayoutProps) {
               Virtual MCP Servers
             </NavItem>
 
+            {/* External MCPs (imported MCP servers whose tools this store consumes) */}
+            <NavItem
+              key="external-mcps"
+              itemId="external-mcps"
+              isActive={location.pathname === '/external-mcps' ||
+                       location.pathname.startsWith('/external-mcps')}
+              onClick={() => navigate('/external-mcps')}
+            >
+              External MCPs
+            </NavItem>
+
             <Divider style={{ margin: '0.5rem 0' }} />
 
             {/* Observability */}
@@ -122,6 +136,38 @@ export function AppLayout({ children }: AppLayoutProps) {
               onClick={() => navigate('/observability')}
             >
               Observability
+            </NavItem>
+
+            {/* Connect Your Agent */}
+            <NavItem
+              key="agent-connect"
+              itemId="agent-connect"
+              isActive={location.pathname === '/agent-connect'}
+              onClick={() => navigate('/agent-connect')}
+            >
+              Connect Your Agent
+            </NavItem>
+
+            {/* Plugin-contributed nav items */}
+            {pluginNavItems.map((item) => (
+              <NavItem
+                key={item.id}
+                itemId={item.id}
+                isActive={location.pathname === item.path}
+                onClick={() => navigate(item.path)}
+              >
+                {item.label}
+              </NavItem>
+            ))}
+
+            {/* Plugins */}
+            <NavItem
+              key="plugins"
+              itemId="plugins"
+              isActive={location.pathname === '/plugins'}
+              onClick={() => navigate('/plugins')}
+            >
+              Plugins
             </NavItem>
 
             {/* Admin */}

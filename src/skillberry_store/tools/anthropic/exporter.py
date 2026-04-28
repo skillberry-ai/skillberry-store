@@ -4,8 +4,49 @@
 """Exporter for converting Skillberry skills to Anthropic skill format."""
 
 import io
+import json
+import re
 import zipfile
 from typing import Dict, List, Optional, Any
+
+
+def _redact_mcp_servers_for_export(
+    servers: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, Any]]:
+    """Convert a list of normalized MCP server entries into an `mcpServers` dict
+    where every header value and every env value is replaced with a `${NAME}`
+    placeholder so secrets are never baked into a shareable skill bundle.
+    """
+    out: Dict[str, Dict[str, Any]] = {}
+    for entry in servers:
+        name = entry.get("name")
+        if not name:
+            continue
+        e: Dict[str, Any] = {"type": entry.get("transport") or "sse"}
+        if entry.get("command"):
+            e["command"] = entry["command"]
+        if entry.get("args"):
+            e["args"] = list(entry["args"])
+        if entry.get("url"):
+            e["url"] = entry["url"]
+        env = entry.get("env") or {}
+        if env:
+            e["env"] = {
+                k: "${" + _slugify_env_name(f"{name}_{k}") + "}"
+                for k in env.keys()
+            }
+        headers = entry.get("headers") or {}
+        if headers:
+            e["headers"] = {
+                k: "${" + _slugify_env_name(f"{name}_{k}") + "}"
+                for k in headers.keys()
+            }
+        out[name] = e
+    return out
+
+
+def _slugify_env_name(raw: str) -> str:
+    return re.sub(r"[^A-Z0-9_]", "_", raw.upper()).strip("_") or "SECRET"
 
 
 def extract_file_path_from_tags(tags: Optional[List[str]]) -> Optional[str]:
@@ -265,16 +306,20 @@ def export_skill_to_anthropic_format(
     skill: Dict[str, Any],
     tools: List[Dict[str, Any]],
     snippets: List[Dict[str, Any]],
-    tool_modules: Optional[Dict[str, str]] = None
+    tool_modules: Optional[Dict[str, str]] = None,
+    mcp_servers: Optional[List[Dict[str, Any]]] = None,
 ) -> bytes:
     """Export skill to Anthropic format as a ZIP file.
-    
+
     Args:
         skill: The skill dictionary
         tools: List of tool dictionaries
         snippets: List of snippet dictionaries
         tool_modules: Dictionary mapping tool names to module content
-        
+        mcp_servers: Optional list of external MCP server configs to bundle
+            alongside the skill. Secrets in `headers`/`env` are redacted to
+            `${ENV_VAR}` placeholders before bundling.
+
     Returns:
         ZIP file content as bytes
     """
@@ -324,7 +369,17 @@ def export_skill_to_anthropic_format(
             # Ensure content ends with a single newline (standard for text files)
             normalized_content = content if content.endswith('\n') else content + '\n'
             zip_file.writestr(f"{skill_name}/{file_path}", normalized_content)
-    
+
+        # Bundle external MCP server configs if requested, with secrets
+        # redacted to `${ENV_NAME}` placeholders. The importer side matches
+        # on this exact filename.
+        if mcp_servers:
+            redacted = _redact_mcp_servers_for_export(mcp_servers)
+            zip_file.writestr(
+                f"{skill_name}/mcp-servers.json",
+                json.dumps({"mcpServers": redacted}, indent=2) + "\n",
+            )
+
     # Get the ZIP content
     zip_buffer.seek(0)
     return zip_buffer.read()

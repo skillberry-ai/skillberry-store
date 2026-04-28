@@ -18,12 +18,19 @@ from skillberry_store.fast_api.snippets_api import register_snippets_api
 from skillberry_store.fast_api.tools_api import register_tools_api
 from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
+from skillberry_store.fast_api.external_mcps_api import register_external_mcps_api
 from skillberry_store.modules.description import Description
+from skillberry_store.modules.external_mcp_manager import (
+    ExternalMCPManager,
+    set_current_manager,
+)
 from skillberry_store.vdbs.identify_vdb import identify_vector_db
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.tools.configure import (
+    get_external_mcps_directory,
     get_files_directory_path,
     get_tools_descriptions_directory,
+    get_tools_directory,
     get_snippets_descriptions_directory,
     get_skills_descriptions_directory,
     get_vmcp_descriptions_directory,
@@ -58,6 +65,7 @@ class SBSettings(BaseSettings):
     )
     observability: bool = Field(True, validation_alias="OBSERVABILITY")
     sbs_vdb: str = Field("faiss", env="SBS_VDB")
+    agent_mcp_port: int = Field(9999, validation_alias="SBS_AGENT_MCP_PORT")
 
     @property
     def display_host(self) -> str:
@@ -95,10 +103,68 @@ class SBS(FastAPI):
         )
         register_tools_api(self, tags="tools", tools_descriptions=self.state.tools_descriptions)
         register_admin_api(self, tags="admin")
+        register_external_mcps_api(self, tags="external_mcps")
 
-        # Mount MCP server
-        mcp_server = FastApiMCP(self)
-        mcp_server.mount_sse(mount_path="/control_sse")
+        # ---- Plugins ----
+        # Main code has no knowledge of any specific plugin; it iterates the
+        # registry and mounts whatever is currently enabled in
+        # $SBS_BASE_DIR/plugins/enabled.json. Hot toggling is handled by the
+        # /plugins admin endpoints.
+        from skillberry_store.plugins import active_plugins, mount_plugin
+        for plugin in active_plugins():
+            try:
+                if hasattr(plugin, "bind_app"):
+                    plugin.bind_app(self)
+                mount_plugin(self, plugin)
+                logger.info(f"Mounted plugin '{plugin.id}'")
+            except Exception as e:
+                logger.warning(f"Failed to mount plugin '{plugin.id}': {e}")
+
+        # ---- Full MCP server (auto-generated from every FastAPI route) ----
+        # Mirrors the complete HTTP surface as MCP tools over SSE on the main
+        # server port. Broad coverage, larger context footprint — intended for
+        # control-plane and admin-style access.
+        self.full_mcp = FastApiMCP(self)
+        self.full_mcp.mount_sse(mount_path="/control_sse")
+        logger.info(f"Full MCP server mounted at /control_sse on port {self.settings.sbs_port}")
+
+        # ---- Curated Agent MCP server (hand-picked tools on its own port) ----
+        # Smaller, LLM-friendly tool set defined in agent_mcp_server.py.
+        # Intended as the default endpoint for AI agents.
+        from skillberry_store.fast_api.agent_mcp_server import create_agent_mcp_server
+        try:
+            self.agent_mcp = create_agent_mcp_server(self, port=self.settings.agent_mcp_port)
+            logger.info(f"Curated Agent MCP server started on port {self.settings.agent_mcp_port}")
+        except Exception as e:
+            logger.warning(f"Failed to start curated Agent MCP server: {e}")
+            self.agent_mcp = None
+
+        # ---- External MCP server manager ----
+        # Owns imported `mcpServers` entries (stdio/sse/http), holds one
+        # long-lived ClientSession per server, reconciles primitives into
+        # the tools store at boot and on restart.
+        self.state.external_mcp_manager = ExternalMCPManager(
+            tool_handler=FileHandler(get_tools_directory()),
+            file_handler=FileHandler(get_files_directory_path()),
+            config_handler=FileHandler(get_external_mcps_directory()),
+        )
+        set_current_manager(self.state.external_mcp_manager)
+
+        @self.on_event("startup")
+        async def _start_external_mcps() -> None:
+            try:
+                await self.state.external_mcp_manager.start_all()
+                logger.info("External MCP manager: start_all complete")
+            except Exception as e:
+                logger.error(f"External MCP manager failed to start: {e}", exc_info=True)
+
+        @self.on_event("shutdown")
+        async def _stop_external_mcps() -> None:
+            try:
+                await self.state.external_mcp_manager.stop_all()
+                logger.info("External MCP manager: stop_all complete")
+            except Exception as e:
+                logger.warning(f"External MCP manager shutdown issue: {e}")
 
     def configure_fastapi(self):
         """Configures CORS middleware and OpenAPI documentation settings."""

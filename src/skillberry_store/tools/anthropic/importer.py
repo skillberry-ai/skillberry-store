@@ -214,21 +214,42 @@ def read_from_folder(folder_path: str) -> List[Dict[str, str]]:
     return files
 
 
+def _extract_mcp_servers_payload(files: List[Dict[str, str]]) -> Optional[Dict[str, Any]]:
+    """Look for a sidecar `mcp-servers.json` in the bundle.
+
+    Accepts either the standard `{"mcpServers": {...}}` wrapper shape or a
+    bare name->entry dict. Returns the parsed JSON (any shape `normalize_mcp_input`
+    understands), or None if no file is present / parse fails.
+    """
+    for f in files:
+        name = (f.get('name') or '').lower()
+        if name == 'mcp-servers.json' or name == 'mcp_servers.json':
+            try:
+                import json as _json
+                return _json.loads(f['content'])
+            except Exception:
+                return None
+    return None
+
+
 def import_anthropic_skill(
     source_type: str,
     source_data: Any,
     snippet_mode: str = 'file'
-) -> Tuple[str, str, List[Any], List[Any], List[str]]:
+) -> Tuple[str, str, List[Any], List[Any], List[str], Optional[Dict[str, Any]]]:
     """Import Anthropic skill from various sources.
-    
+
     Args:
         source_type: 'url', 'zip', or 'folder'
         source_data: URL string, ZIP bytes, or list of file dicts
         snippet_mode: 'file' or 'paragraph'
-        
+
     Returns:
-        Tuple of (skill_name, skill_description, tools, snippets, ignored_files)
-        
+        Tuple of (skill_name, skill_description, tools, snippets, ignored_files,
+        mcp_servers_payload). `mcp_servers_payload` is the raw parsed content
+        of a bundled `mcp-servers.json` (or None if absent), suitable to hand
+        straight to `normalize_mcp_input`.
+
     Raises:
         Exception: If import fails
     """
@@ -305,4 +326,15 @@ def import_anthropic_skill(
         tools = code_parse_result['tools']
         ignored_files = code_parse_result['ignoredFiles']
     
-    return skill_name, skill_description, tools, snippets, ignored_files
+    # Step 4: Detect bundled external MCP servers (new-feature-aware imports
+    # carry a sidecar `mcp-servers.json`; legacy bundles simply return None).
+    mcp_servers_payload = _extract_mcp_servers_payload(files)
+
+    return (
+        skill_name,
+        skill_description,
+        tools,
+        snippets,
+        ignored_files,
+        mcp_servers_payload,
+    )

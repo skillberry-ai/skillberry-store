@@ -2,10 +2,11 @@
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Annotated
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from typing import Any, Dict, List, Optional, Annotated
+from fastapi import Body, FastAPI, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.responses import Response
 from prometheus_client import Counter
 
@@ -21,6 +22,7 @@ from skillberry_store.tools.configure import (
     is_auto_detect_dependencies_enabled,
 )
 from skillberry_store.fast_api.search_filters import apply_search_filters
+from skillberry_store.fast_api.skill_export_utils import get_skill_export_data
 
 logger = logging.getLogger(__name__)
 
@@ -413,6 +415,7 @@ def register_skills_api(
 
     @app.post("/skills/import-anthropic", tags=[tags])
     async def import_anthropic_skill(
+        request: Request,
         source_type: str = Form(...),
         github_url: Optional[str] = Form(None),
         zip_file: Optional[UploadFile] = File(None),
@@ -456,8 +459,9 @@ def register_skills_api(
             else:
                 raise HTTPException(status_code=400, detail=f"Invalid source_type: {source_type}. Must be 'url', 'zip', or 'folder'")
             
-            # Import the skill
-            skill_name, skill_description, tools, snippets, ignored_files = import_anthropic_skill(
+            # Import the skill (6-tuple now — the last element is an optional
+            # external-MCP config payload bundled as `mcp-servers.json`).
+            skill_name, skill_description, tools, snippets, ignored_files, mcp_servers_payload = import_anthropic_skill(
                 source_type=source_type,
                 source_data=source_data,
                 snippet_mode=snippet_mode
@@ -578,8 +582,39 @@ def register_skills_api(
             if skills_descriptions and skill_description:
                 skills_descriptions.write_description(skill_name, skill_description)
             
+            # Auto-register any external MCP servers bundled with the skill.
+            # Duplicates (name already registered) are skipped — we never
+            # overwrite a live server's config on import.
+            mcp_results = []
+            if mcp_servers_payload:
+                try:
+                    from skillberry_store.modules.external_mcp_manager import normalize_mcp_input
+                    mgr = getattr(request.app.state, "external_mcp_manager", None)
+                    if mgr is None:
+                        logger.warning("Skill bundles an mcp-servers.json but the external MCP manager is not available.")
+                    else:
+                        try:
+                            entries = normalize_mcp_input(mcp_servers_payload)
+                        except ValueError as e:
+                            logger.warning(f"Skill mcp-servers.json could not be parsed: {e}")
+                            entries = []
+                        existing = {s["name"] for s in mgr.list_servers()}
+                        for entry in entries:
+                            name = entry.get("name")
+                            if name in existing:
+                                mcp_results.append({"name": name, "status": "skipped_duplicate"})
+                                continue
+                            try:
+                                res = await mgr.start(entry, persist=True)
+                                mcp_results.append(res)
+                            except Exception as e:  # noqa: BLE001
+                                logger.error(f"Failed to auto-register MCP '{name}' from skill: {e}")
+                                mcp_results.append({"name": name, "status": "error", "error": str(e)})
+                except Exception as e:
+                    logger.warning(f"mcp-servers.json auto-registration skipped: {e}")
+
             logger.info(f"Successfully imported Anthropic skill: {skill_name}")
-            
+
             return {
                 'success': True,
                 'message': f"Successfully imported Anthropic skill '{skill_name}'",
@@ -588,6 +623,7 @@ def register_skills_api(
                 'tools_created': len(created_tool_uuids),
                 'snippets_created': len(created_snippet_uuids),
                 'ignored_files': ignored_files,
+                'mcp_servers': mcp_results,
             }
             
         except HTTPException:
@@ -598,91 +634,141 @@ def register_skills_api(
                 status_code=500, detail=f"Error importing Anthropic skill: {str(e)}"
             )
 
+    def _get_skill_export_data(name: str):
+        """Gather skill dict, tools, snippets, and tool modules for export."""
+        return get_skill_export_data(name)
+
+    @app.post("/skills/{name}/bulk-add-tools-from-mcps", tags=[tags])
+    def bulk_add_tools_from_mcps(
+        name: str,
+        body: Dict[str, Any] = Body(
+            ...,
+            example={"mcps": ["context7"], "mode": "bundled_related"},
+        ),
+    ) -> Dict[str, Any]:
+        """Add tools to a skill in bulk based on which external MCP(s) they
+        touch.
+
+        Body fields:
+          - `mcps`: list of external MCP server names (required, non-empty)
+          - `mode`: one of
+              * `"primitives"`       — MCP primitives whose `mcp_server` is in `mcps`
+              * `"related"`          — primitives + every composite whose
+                `mcp_dependencies` intersects `mcps` (the transitive closure).
+                Ignores the `bundled_with_mcps` flag entirely.
+              * `"bundled_related"`  — same as `related`, but skips any tool
+                whose `bundled_with_mcps` is explicitly `False`. (If you want
+                those included, use `related` instead.)
+
+        Tools already in the skill are skipped. Broken tools are skipped and
+        reported in the response.
+
+        Returns: `{ skill, mode, requested_mcps, added, skipped_duplicate,
+        skipped_broken, skipped_unbundled }`.
+        """
+        mcps_in = body.get("mcps")
+        mode = (body.get("mode") or "").strip()
+        if not isinstance(mcps_in, list) or not mcps_in:
+            raise HTTPException(400, "`mcps` must be a non-empty list of server names.")
+        if mode not in ("primitives", "related", "bundled_related"):
+            raise HTTPException(
+                400,
+                "`mode` must be one of: primitives, related, bundled_related",
+            )
+        mcp_set = set(mcps_in)
+
+        skill_filename = f"{name}.json"
+        try:
+            skill_raw = skill_handler.read_file(skill_filename, raw_content=True)
+        except Exception:
+            raise HTTPException(404, f"Skill '{name}' not found.")
+        if not isinstance(skill_raw, str):
+            raise HTTPException(500, f"Invalid content for skill '{name}'")
+        skill_dict = json.loads(skill_raw)
+        existing_uuids = set(skill_dict.get("tool_uuids") or [])
+
+        added: List[Dict[str, str]] = []
+        skipped_duplicate: List[str] = []
+        skipped_broken: List[Dict[str, str]] = []
+        skipped_unbundled: List[str] = []
+
+        for fname in tools_handler.list_files():
+            if not fname.endswith(".json"):
+                continue
+            try:
+                d = json.loads(tools_handler.read_file(fname, raw_content=True))
+            except Exception:
+                continue
+
+            tool_mcp = d.get("mcp_server")
+            tool_deps = set(d.get("mcp_dependencies") or [])
+            touches_requested = (tool_mcp in mcp_set) or bool(tool_deps & mcp_set)
+            if not touches_requested:
+                continue
+
+            if mode == "primitives" and tool_mcp not in mcp_set:
+                continue  # composites excluded
+            if mode == "bundled_related" and d.get("bundled_with_mcps") is False:
+                skipped_unbundled.append(d.get("name") or fname[:-5])
+                continue
+            if d.get("state") == "broken":
+                skipped_broken.append({
+                    "name": d.get("name"),
+                    "reason": d.get("broken_reason") or "broken",
+                })
+                continue
+            if d.get("uuid") in existing_uuids:
+                skipped_duplicate.append(d.get("name") or fname[:-5])
+                continue
+
+            existing_uuids.add(d["uuid"])
+            added.append({"name": d["name"], "uuid": d["uuid"]})
+
+        if added:
+            skill_dict["tool_uuids"] = sorted(existing_uuids)
+            skill_dict["modified_at"] = datetime.now(timezone.utc).isoformat()
+            skill_handler.write_file_content(skill_filename, json.dumps(skill_dict, indent=4))
+
+        return {
+            "skill": name,
+            "mode": mode,
+            "requested_mcps": sorted(mcp_set),
+            "added": added,
+            "skipped_duplicate": skipped_duplicate,
+            "skipped_broken": skipped_broken,
+            "skipped_unbundled": skipped_unbundled,
+        }
+
     @app.get("/skills/{name}/export-anthropic", tags=[tags])
     async def export_anthropic_skill(name: str):
         """Export a skill to Anthropic format as a ZIP file.
-        
+
         Args:
             name: The name of the skill to export
-            
+
         Returns:
             ZIP file with the skill in Anthropic format
-            
+
         Raises:
             HTTPException: If skill not found or export fails
         """
         logger.info(f"Request to export skill to Anthropic format: {name}")
-        
+
         try:
             from skillberry_store.tools.anthropic.exporter import export_skill_to_anthropic_format
-            
-            # Get skill
-            skill_filename = f"{name}.json"
-            content = skill_handler.read_file(skill_filename, raw_content=True)
-            if not isinstance(content, str):
-                raise HTTPException(
-                    status_code=500, detail=f"Invalid content type for skill '{name}'"
-                )
-            skill_dict = json.loads(content)
-            
-            # Get tools
-            tools = []
-            tool_modules = {}
-            if 'tool_uuids' in skill_dict and skill_dict['tool_uuids']:
-                for tool_uuid in skill_dict['tool_uuids']:
-                    for filename in tools_handler.list_files():
-                        if filename.endswith('.json'):
-                            try:
-                                tool_content = tools_handler.read_file(filename, raw_content=True)
-                                if isinstance(tool_content, str):
-                                    tool_dict = json.loads(tool_content)
-                                    if tool_dict.get('uuid') == tool_uuid:
-                                        tools.append(tool_dict)
-                                        # Get tool module
-                                        tool_name = tool_dict['name']
-                                        lang = tool_dict.get('programming_language', 'python').lower()
-                                        ext = '.py' if lang == 'python' else '.sh'
-                                        module_filename = f"{tool_name}{ext}"
-                                        try:
-                                            from skillberry_store.tools.configure import get_files_directory_path
-                                            from skillberry_store.modules.file_handler import FileHandler
-                                            files_handler = FileHandler(get_files_directory_path())
-                                            module_content = files_handler.read_file(module_filename, raw_content=True)
-                                            if isinstance(module_content, str):
-                                                tool_modules[tool_name] = module_content
-                                        except Exception as e:
-                                            logger.warning(f"Could not read module for tool {tool_name}: {e}")
-                                        break
-                            except Exception as e:
-                                logger.warning(f"Error reading tool file {filename}: {e}")
-            
-            # Get snippets
-            snippets = []
-            if 'snippet_uuids' in skill_dict and skill_dict['snippet_uuids']:
-                for snippet_uuid in skill_dict['snippet_uuids']:
-                    for filename in snippets_handler.list_files():
-                        if filename.endswith('.json'):
-                            try:
-                                snippet_content = snippets_handler.read_file(filename, raw_content=True)
-                                if isinstance(snippet_content, str):
-                                    snippet_dict = json.loads(snippet_content)
-                                    if snippet_dict.get('uuid') == snippet_uuid:
-                                        snippets.append(snippet_dict)
-                                        break
-                            except Exception as e:
-                                logger.warning(f"Error reading snippet file {filename}: {e}")
-            
-            # Export to Anthropic format
+
+            skill_dict, tools, snippets, tool_modules, mcp_servers = _get_skill_export_data(name)
+
             zip_content = export_skill_to_anthropic_format(
                 skill=skill_dict,
                 tools=tools,
                 snippets=snippets,
-                tool_modules=tool_modules
+                tool_modules=tool_modules,
+                mcp_servers=mcp_servers,
             )
-            
+
             logger.info(f"Successfully exported skill '{name}' to Anthropic format")
-            
-            # Return as downloadable ZIP file
+
             return Response(
                 content=zip_content,
                 media_type='application/zip',
@@ -690,7 +776,7 @@ def register_skills_api(
                     'Content-Disposition': f'attachment; filename="{name}.zip"'
                 }
             )
-            
+
         except HTTPException:
             raise
         except Exception as e:
@@ -698,3 +784,4 @@ def register_skills_api(
             raise HTTPException(
                 status_code=500, detail=f"Error exporting skill: {str(e)}"
             )
+

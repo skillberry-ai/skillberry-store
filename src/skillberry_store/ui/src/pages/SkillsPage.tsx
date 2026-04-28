@@ -38,7 +38,8 @@ import {
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
 import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon, UploadIcon } from '@patternfly/react-icons';
-import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
+import { skillsApi, toolsApi, snippetsApi, externalMcpsApi, skillsExtrasApi } from '@/services/api';
+import type { BulkAddMode, BulkAddResult } from '@/services/api';
 import type { Skill } from '@/types';
 import { AnthropicSkillImporter } from '../components/AnthropicSkillImporter';
 
@@ -78,6 +79,11 @@ export function SkillsPage() {
   const [toolSearchTerm, setToolSearchTerm] = useState('');
   const [snippetSearchTerm, setSnippetSearchTerm] = useState('');
 
+  // Create-from-MCPs section state (used inside the Create Skill modal).
+  const [createMcpSelections, setCreateMcpSelections] = useState<string[]>([]);
+  const [createMcpMode, setCreateMcpMode] = useState<BulkAddMode>('bundled_related');
+  const [createBulkResult, setCreateBulkResult] = useState<BulkAddResult | null>(null);
+
   const { data: skills, isLoading, error } = useQuery({
     queryKey: ['skills'],
     queryFn: skillsApi.list,
@@ -100,6 +106,13 @@ export function SkillsPage() {
   const { data: allSnippets } = useQuery({
     queryKey: ['snippets'],
     queryFn: snippetsApi.list,
+  });
+
+  // Fetch registered external MCP servers — only when the create modal is open.
+  const { data: externalMcps } = useQuery({
+    queryKey: ['external-mcps'],
+    queryFn: externalMcpsApi.list,
+    enabled: isCreateModalOpen,
   });
 
   // Create skill mutation
@@ -177,8 +190,29 @@ export function SkillsPage() {
       });
       
       if (response.ok) {
+        // If the user picked MCPs in the "from External MCPs" section, chain
+        // the bulk-add call now that the skill exists.
+        let bulkSummary: BulkAddResult | null = null;
+        if (createMcpSelections.length > 0) {
+          try {
+            bulkSummary = await skillsExtrasApi.bulkAddFromMcps(newSkill.name, {
+              mcps: createMcpSelections,
+              mode: createMcpMode,
+            });
+          } catch (e) {
+            setCreateError(
+              'Skill created, but bulk-add from MCPs failed: ' +
+                (e instanceof Error ? e.message : String(e)),
+            );
+          }
+        }
+        setCreateBulkResult(bulkSummary);
         queryClient.invalidateQueries({ queryKey: ['skills'] });
-        setIsCreateModalOpen(false);
+        // Keep the modal open briefly if we have a bulk summary so the user
+        // can see what was added; close otherwise.
+        if (!bulkSummary) {
+          setIsCreateModalOpen(false);
+        }
         setNewSkill({
           name: '',
           version: '1.0.0',
@@ -187,6 +221,8 @@ export function SkillsPage() {
           toolNames: [],
           snippetNames: [],
         });
+        setCreateMcpSelections([]);
+        setCreateMcpMode('bundled_related');
       } else {
         const errorText = await response.text();
         setCreateError(`Failed to create skill: ${errorText}`);
@@ -638,6 +674,9 @@ export function SkillsPage() {
             toolNames: [],
             snippetNames: [],
           });
+          setCreateMcpSelections([]);
+          setCreateMcpMode('bundled_related');
+          setCreateBulkResult(null);
           setTagInput('');
           setToolSearchTerm('');
           setSnippetSearchTerm('');
@@ -747,6 +786,103 @@ export function SkillsPage() {
               </div>
             )}
           </FormGroup>
+          <FormGroup label="Tools from External MCPs (optional bulk-add)" fieldId="skill-from-mcps">
+            <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
+              Pick one or more imported MCPs and a mode — on create, the matching tools will be added automatically.
+            </Text>
+            {externalMcps === undefined ? (
+              <Text component="small">Loading MCPs…</Text>
+            ) : externalMcps.length === 0 ? (
+              <Text component="small" style={{ color: '#6a6e73' }}>
+                No external MCPs registered yet. You can still create the skill and add tools manually below — or go to{' '}
+                <a href="/external-mcps">External MCPs</a> and import one first.
+              </Text>
+            ) : (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '0.5rem' }}>
+                  {externalMcps.map((s) => {
+                    const checked = createMcpSelections.includes(s.name);
+                    return (
+                      <label key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setCreateMcpSelections((cur) =>
+                              e.target.checked
+                                ? [...cur, s.name]
+                                : cur.filter((n) => n !== s.name),
+                            );
+                          }}
+                        />
+                        <span>
+                          <strong>{s.name}</strong>{' '}
+                          <small style={{ color: '#6a6e73' }}>
+                            ({s.transport}, {s.tool_count} primitives, {s.status})
+                          </small>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {createMcpSelections.length > 0 && (
+                  <>
+                    <Text component="small" style={{ display: 'block', fontWeight: 600, marginTop: '0.5rem' }}>
+                      Which tools to add?
+                    </Text>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {([
+                        {
+                          v: 'primitives' as const,
+                          label: 'Only MCP primitives',
+                          help: 'Just the tools imported directly from the selected server(s).',
+                        },
+                        {
+                          v: 'related' as const,
+                          label: 'All related tools (primitives + composites)',
+                          help: 'Every composite whose mcp_dependencies intersects the selection, plus the primitives themselves. Ignores the bundled_with_mcps flag.',
+                        },
+                        {
+                          v: 'bundled_related' as const,
+                          label: 'Bundled related tools (default)',
+                          help: 'Same as "related", but skips any tool whose bundled_with_mcps is False. If you want those included, pick "All related tools" instead.',
+                        },
+                      ]).map((opt) => (
+                        <label key={opt.v} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                          <input
+                            type="radio"
+                            name="createMcpMode"
+                            value={opt.v}
+                            checked={createMcpMode === opt.v}
+                            onChange={() => setCreateMcpMode(opt.v)}
+                          />
+                          <span>
+                            <strong>{opt.label}</strong>
+                            <div style={{ fontSize: '0.85em', color: '#6a6e73' }}>{opt.help}</div>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {createBulkResult && (
+                  <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#f0f8ff', borderRadius: 4 }}>
+                    <div>✅ Added <strong>{createBulkResult.added.length}</strong> tool(s) from MCPs</div>
+                    {createBulkResult.skipped_unbundled.length > 0 && (
+                      <div>🚫 Skipped (unbundled): {createBulkResult.skipped_unbundled.join(', ')}</div>
+                    )}
+                    {createBulkResult.skipped_broken.length > 0 && (
+                      <div>
+                        ⚠️ Skipped (broken):{' '}
+                        {createBulkResult.skipped_broken.map((t) => `${t.name} (${t.reason})`).join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </FormGroup>
+
           <FormGroup label="Tools" fieldId="skill-tools">
             <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
               Search and select tools to include in this skill

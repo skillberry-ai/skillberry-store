@@ -187,6 +187,22 @@ def get_tools_directory():
     return default_path
 
 
+def get_external_mcps_directory():
+    """
+    Get the directory path for external MCP server configs.
+
+    One JSON file per server describes how the store should connect to a
+    user-imported MCP server (transport + command/url/headers/env).
+    """
+    env_path = os.getenv("SBS_EXTERNAL_MCPS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using external MCPs directory from environment: {env_path}")
+        return env_path
+    default_path = _default_sbs_dir("external_mcps")
+    logger.info(f"Using default external MCPs directory: {default_path}")
+    return default_path
+
+
 def get_snippets_descriptions_directory():
     """
     Get the directory path for snippet descriptions.
@@ -239,6 +255,36 @@ def get_vmcp_descriptions_directory():
     default_path = _default_sbs_dir("vmcp_descriptions")
     logger.info(f"Using default vmcp descriptions directory: {default_path}")
     return default_path
+
+def get_ai_features_directory():
+    """
+    Get the directory path for AI features settings.
+
+    Retained for the runspace-plugin migration shim: on first boot, if the
+    old ai_features/settings.json exists and the new runspace plugin
+    settings file does not, it is copied over.
+    """
+    env_path = os.getenv("SBS_AI_FEATURES_DIRECTORY")
+    if env_path:
+        logger.info(f"Using AI features directory from environment: {env_path}")
+        return env_path
+    default_path = _default_sbs_dir("ai_features")
+    logger.info(f"Using default AI features directory: {default_path}")
+    return default_path
+
+
+def get_plugins_directory():
+    """Root directory for plugin state: $SBS_BASE_DIR/plugins/"""
+    env_path = os.getenv("SBS_PLUGINS_DIRECTORY")
+    if env_path:
+        return env_path
+    return _default_sbs_dir("plugins")
+
+
+def get_plugin_directory(plugin_id: str):
+    """Per-plugin data directory: $SBS_BASE_DIR/plugins/<plugin_id>/"""
+    return os.path.join(get_plugins_directory(), plugin_id)
+
 
 def is_auto_detect_dependencies_enabled():
     """

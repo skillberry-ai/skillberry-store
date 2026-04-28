@@ -1,4 +1,6 @@
 import ast
+import hashlib
+import json
 import textwrap
 from importlib.metadata import packages_distributions
 import logging
@@ -182,6 +184,95 @@ def detect_tool_dependencies(content: str, function_name: str, available_tools: 
         return []
 
 
+def hash_tool_interface(
+    tool_dict: dict, module_source: str = ""
+) -> Tuple[str, str, str]:
+    """
+    Compute hashes of a tool's interface.
+
+    Returns (params_hash, module_hash, combined_hash) where:
+      - params_hash   = sha256 of canonical JSON of tool_dict["params"]
+      - module_hash   = sha256 of module_source (empty string for MCP primitives)
+      - combined_hash = sha256 of (params_hash || module_hash)
+
+    The health pass stores combined_hash on dependents to detect drift, and
+    can use (params_hash, module_hash) to attribute drift to schema vs code.
+    """
+    params = tool_dict.get("params") or {}
+    params_json = json.dumps(params, sort_keys=True, default=str)
+    params_hash = hashlib.sha256(params_json.encode("utf-8")).hexdigest()
+    module_hash = hashlib.sha256((module_source or "").encode("utf-8")).hexdigest()
+    combined_hash = hashlib.sha256(
+        (params_hash + module_hash).encode("utf-8")
+    ).hexdigest()
+    return params_hash, module_hash, combined_hash
+
+
+def compute_mcp_dependencies(
+    tool_dict: dict,
+    all_tools_as_dict: Dict[str, dict],
+    _visited: Optional[set] = None,
+) -> List[str]:
+    """
+    Union of external MCP server names this tool requires at runtime.
+
+    For MCP primitives: their own mcp_server (and any explicit mcp_dependencies).
+    For composites: recursive union across every entry in tool_dict["dependencies"],
+    looking each up in all_tools_as_dict.
+
+    Cycle-safe via a visited set, mirroring load_tool_dependencies at
+    tools_api.py:40-119.
+    """
+    if _visited is None:
+        _visited = set()
+
+    name = tool_dict.get("name")
+    if name is None or name in _visited:
+        return []
+    _visited.add(name)
+
+    result = set(tool_dict.get("mcp_dependencies") or [])
+    source = tool_dict.get("mcp_server")
+    if source:
+        result.add(source)
+
+    for dep_name in (tool_dict.get("dependencies") or []):
+        dep_tool = all_tools_as_dict.get(dep_name)
+        if not dep_tool:
+            continue
+        result.update(
+            compute_mcp_dependencies(dep_tool, all_tools_as_dict, _visited)
+        )
+    return sorted(result)
+
+
+def compute_dependency_hashes(
+    tool_dict: dict,
+    all_tools_as_dict: Dict[str, dict],
+    module_source_by_name: Dict[str, str],
+) -> Dict[str, Dict[str, str]]:
+    """
+    For every direct dep of tool_dict, return dep_name -> {params, module, combined}.
+
+    The three-component hash captures both the dep's params schema and its
+    module source at the time this tool was created/updated. The health pass
+    compares each component against the current hash to attribute drift to
+    schema vs code.
+    """
+    hashes: Dict[str, Dict[str, str]] = {}
+    for dep_name in (tool_dict.get("dependencies") or []):
+        dep = all_tools_as_dict.get(dep_name)
+        if not dep:
+            continue
+        dep_source = module_source_by_name.get(dep_name, "")
+        params_hash, module_hash, combined = hash_tool_interface(dep, dep_source)
+        hashes[dep_name] = {
+            "params": params_hash,
+            "module": module_hash,
+            "combined": combined,
+        }
+    return hashes
+
 
 class FileExecutor:
     def __init__(
@@ -226,7 +317,12 @@ class FileExecutor:
             logger.error(f"Error parsing manifest: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing manifest: {e}")
 
-        if not self.execute_python_locally:
+        # MCP-packaged tools are executed against a remote server; docker is
+        # only needed for local python packaging. Skipping the docker client
+        # init for MCP avoids spurious "docker daemon not running" errors on
+        # hosts that don't run docker but only use external MCPs.
+        is_mcp = (self.manifest or {}).get("packaging_format") == "mcp"
+        if not self.execute_python_locally and not is_mcp:
             try:
                 self.client = docker.from_env()
             except ImportError:
@@ -308,6 +404,52 @@ class FileExecutor:
         Executes a Python file using MCP server
         """
         import asyncio
+
+        # Fast path: tool was imported via the External MCPs feature — route
+        # through the pooled, long-lived session managed by ExternalMCPManager.
+        # Legacy single-tool MCP entries (no `mcp_server` field) fall through
+        # to the original transient-SSE path below, unchanged.
+        mcp_server_name = self.manifest.get("mcp_server")
+        if mcp_server_name:
+            try:
+                from skillberry_store.modules.external_mcp_manager import (
+                    get_current_manager,
+                )
+                manager = get_current_manager()
+            except Exception:
+                manager = None
+            if manager is not None:
+                # Remote tool name is everything after the "<server>__" prefix
+                # we applied at import time. Fall back to the manifest name.
+                full_name = self.manifest.get("name") or ""
+                prefix = f"{mcp_server_name}__"
+                remote_tool_name = (
+                    full_name[len(prefix):] if full_name.startswith(prefix) else full_name
+                )
+                try:
+                    text = await manager.call_tool(
+                        mcp_server_name,
+                        remote_tool_name,
+                        dict(parameters or {}),
+                        timeout=30.0,
+                    )
+                    logger.info(
+                        "[execute_python_file_in_mcp_server] pooled-session call "
+                        "to %s::%s succeeded", mcp_server_name, remote_tool_name
+                    )
+                    return {"return value": f"{text}"}
+                except Exception as e:
+                    logger.error(
+                        "[execute_python_file_in_mcp_server] pooled-session call "
+                        "to %s::%s failed: %s", mcp_server_name, remote_tool_name, e,
+                        exc_info=True,
+                    )
+                    return {
+                        "error": (
+                            f"External MCP '{mcp_server_name}' call failed for "
+                            f"tool '{remote_tool_name}': {e}"
+                        ),
+                    }
 
         # To experiment with the MCP server, see the instructions in the `docs/mcp-backend.md` file.
 

@@ -14,6 +14,7 @@ class ManifestState(str, Enum):
     NEW = "new"
     CHECKED = "checked"
     APPROVED = "approved"
+    BROKEN = "broken"
 
 
 class ManifestSchema(BaseModel):
