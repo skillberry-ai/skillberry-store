@@ -49,8 +49,10 @@ export function ToolsPage() {
   const [similarityThreshold, setSimilarityThreshold] = useState(1);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<'upload' | 'write'>('upload');
   const [toolName, setToolName] = useState('');
   const [moduleFile, setModuleFile] = useState<File | null>(null);
+  const [codeContent, setCodeContent] = useState('');
   const [updateIfExists, setUpdateIfExists] = useState(false);
   const [createError, setCreateError] = useState('');
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
@@ -81,8 +83,10 @@ export function ToolsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tools'] });
       setIsCreateModalOpen(false);
+      setCreateMode('upload');
       setToolName('');
       setModuleFile(null);
+      setCodeContent('');
       setUpdateIfExists(false);
       setCreateError('');
     },
@@ -104,16 +108,34 @@ export function ToolsPage() {
   });
 
   const handleCreateTool = () => {
-    if (!moduleFile) {
-      setCreateError('Please upload a Python file');
-      return;
+    let file: File;
+
+    if (createMode === 'upload') {
+      if (!moduleFile) {
+        setCreateError('Please upload a Python file');
+        return;
+      }
+      if (!moduleFile.name.endsWith('.py')) {
+        setCreateError('Only Python (.py) files are supported');
+        return;
+      }
+      file = moduleFile;
+    } else {
+      const code = codeContent.trim();
+      if (!code) {
+        setCreateError('Please write some Python code');
+        return;
+      }
+      if (!code.includes('def ')) {
+        setCreateError('Code must contain at least one function definition (def ...)');
+        return;
+      }
+      const fileName = toolName.trim() ? `${toolName.trim()}.py` : 'tool.py';
+      file = new File([code], fileName, { type: 'text/x-python' });
     }
-    if (!moduleFile.name.endsWith('.py')) {
-      setCreateError('Only Python (.py) files are supported');
-      return;
-    }
+
     createMutation.mutate({
-      file: moduleFile,
+      file,
       toolName: toolName.trim() || undefined,
       update: updateIfExists
     });
@@ -463,8 +485,10 @@ export function ToolsPage() {
         isOpen={isCreateModalOpen}
         onClose={() => {
           setIsCreateModalOpen(false);
+          setCreateMode('upload');
           setToolName('');
           setModuleFile(null);
+          setCodeContent('');
           setUpdateIfExists(false);
           setCreateError('');
         }}
@@ -482,8 +506,10 @@ export function ToolsPage() {
             variant="link"
             onClick={() => {
               setIsCreateModalOpen(false);
+              setCreateMode('upload');
               setToolName('');
               setModuleFile(null);
+              setCodeContent('');
               setUpdateIfExists(false);
               setCreateError('');
             }}
@@ -498,35 +524,94 @@ export function ToolsPage() {
           </Alert>
         )}
         <Alert variant="info" title="How it works" isInline style={{ marginBottom: '1rem' }}>
-          Upload a Python file with a function that has a properly formatted docstring.
-          The tool will automatically extract the function name, description, and parameters from the docstring.
+          {createMode === 'upload'
+            ? 'Upload a Python file with a function that has a properly formatted docstring. The tool will automatically extract the function name, description, and parameters from the docstring.'
+            : 'Write a Python function with a Google-style docstring. The tool name, description, and parameters will be extracted automatically from the docstring.'}
         </Alert>
         <Form>
-          <FormGroup
-            label="Python File"
-            isRequired
-            fieldId="tool-module"
-          >
-            <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
-              Upload a .py file containing a function with a docstring
-            </Text>
-            <FileUpload
-              id="tool-module"
-              value={moduleFile || undefined}
-              filename={moduleFile?.name}
-              onFileInputChange={(_event: any, file: File) => setModuleFile(file)}
-              onClearClick={() => setModuleFile(null)}
-              hideDefaultPreview
-              browseButtonText="Upload Python File"
-              accept=".py"
-            />
+          <FormGroup label="Input Method" fieldId="create-mode">
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+              <Button
+                variant={createMode === 'upload' ? 'primary' : 'secondary'}
+                onClick={() => setCreateMode('upload')}
+                size="sm"
+              >
+                Upload File
+              </Button>
+              <Button
+                variant={createMode === 'write' ? 'primary' : 'secondary'}
+                onClick={() => {
+                  setCreateMode('write');
+                  if (!codeContent) {
+                    setCodeContent(
+`def add(a: float, b: float) -> float:
+    """Returns the sum of a and b.
+
+    Args:
+        a (float): The first number.
+        b (float): The second number.
+
+    Returns:
+        float: The sum of a and b.
+    """
+    return a + b
+`
+                    );
+                  }
+                }}
+                size="sm"
+              >
+                Write Code
+              </Button>
+            </div>
           </FormGroup>
+
+          {createMode === 'upload' ? (
+            <FormGroup
+              label="Python File"
+              isRequired
+              fieldId="tool-module"
+            >
+              <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
+                Upload a .py file containing a function with a docstring
+              </Text>
+              <FileUpload
+                id="tool-module"
+                value={moduleFile || undefined}
+                filename={moduleFile?.name}
+                onFileInputChange={(_event: any, file: File) => setModuleFile(file)}
+                onClearClick={() => setModuleFile(null)}
+                hideDefaultPreview
+                browseButtonText="Upload Python File"
+                accept=".py"
+              />
+            </FormGroup>
+          ) : (
+            <FormGroup
+              label="Python Code"
+              isRequired
+              fieldId="tool-code"
+            >
+              <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
+                Write a function with type hints and a Google-style docstring (Args, Returns sections)
+              </Text>
+              <TextArea
+                id="tool-code"
+                value={codeContent}
+                onChange={(_event, value) => setCodeContent(value)}
+                rows={18}
+                style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
+                resizeOrientation="vertical"
+              />
+            </FormGroup>
+          )}
+
           <FormGroup
             label="Function Name"
             fieldId="tool-name"
           >
             <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
-              Optional: Specify which function to use if the file contains multiple functions. If not provided, the first function will be used.
+              Optional: Specify which function to use if the code contains multiple functions. If not provided, the first function will be used.
             </Text>
             <TextInput
               type="text"

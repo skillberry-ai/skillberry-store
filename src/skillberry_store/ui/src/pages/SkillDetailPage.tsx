@@ -42,7 +42,9 @@ import {
   TreeViewDataItem,
 } from '@patternfly/react-core';
 import { EditIcon, TrashIcon, FolderIcon, FileIcon, FileCodeIcon, ExportIcon } from '@patternfly/react-icons';
-import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
+import { skillsApi, toolsApi, snippetsApi, externalMcpsApi, skillsExtrasApi } from '@/services/api';
+import type { BulkAddMode, BulkAddResult } from '@/services/api';
+import { PluginSlot } from '@/plugins/SlotRenderer';
 import type { Skill } from '@/types';
 
 export function SkillDetailPage() {
@@ -52,6 +54,13 @@ export function SkillDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  // "Add tools from MCPs" bulk-add modal
+  const [isBulkMcpOpen, setIsBulkMcpOpen] = useState(false);
+  const [bulkSelectedMcps, setBulkSelectedMcps] = useState<string[]>([]);
+  const [bulkMode, setBulkMode] = useState<BulkAddMode>('bundled_related');
+  const [bulkResult, setBulkResult] = useState<BulkAddResult | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState<string | number>(0);
   const [editedSkill, setEditedSkill] = useState({
     name: '',
@@ -93,6 +102,32 @@ export function SkillDetailPage() {
     queryKey: ['snippets'],
     queryFn: snippetsApi.list,
   });
+
+  // External MCP servers — lazy-load only when the bulk-add modal opens.
+  const { data: externalMcps } = useQuery({
+    queryKey: ['external-mcps'],
+    queryFn: externalMcpsApi.list,
+    enabled: isBulkMcpOpen,
+  });
+
+  async function handleBulkAddFromMcps() {
+    if (!name || bulkSelectedMcps.length === 0) return;
+    setBulkSubmitting(true);
+    setBulkError(null);
+    setBulkResult(null);
+    try {
+      const result = await skillsExtrasApi.bulkAddFromMcps(name, {
+        mcps: bulkSelectedMcps,
+        mode: bulkMode,
+      });
+      setBulkResult(result);
+      queryClient.invalidateQueries({ queryKey: ['skill', name] });
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }
 
   // Fetch tool modules for all tools in the skill
   const { data: toolModules } = useQuery({
@@ -510,9 +545,20 @@ export function SkillDetailPage() {
             {skill.name}
           </Title>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <Button variant="primary" icon={<ExportIcon />} onClick={handleExportToAnthropic}>
-              Export to Anthropic
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setBulkResult(null);
+                setBulkError(null);
+                setIsBulkMcpOpen(true);
+              }}
+            >
+              Add tools from MCPs
             </Button>
+            <Button variant="primary" icon={<ExportIcon />} onClick={handleExportToAnthropic}>
+              Export
+            </Button>
+            <PluginSlot name="skill.detail.actions" ctx={{ skill }} />
             <Button variant="secondary" icon={<EditIcon />} onClick={handleEditClick}>
               Edit
             </Button>
@@ -1080,6 +1126,127 @@ export function SkillDetailPage() {
         <Text>
           Are you sure you want to delete the skill "{skill?.name}"? This action cannot be undone.
         </Text>
+      </Modal>
+
+      {/* Bulk-add tools from MCPs modal */}
+      <Modal
+        variant={ModalVariant.medium}
+        title="Add tools to this skill from External MCPs"
+        isOpen={isBulkMcpOpen}
+        onClose={() => setIsBulkMcpOpen(false)}
+        actions={[
+          <Button
+            key="apply"
+            variant="primary"
+            onClick={handleBulkAddFromMcps}
+            isDisabled={bulkSubmitting || bulkSelectedMcps.length === 0}
+          >
+            {bulkSubmitting ? 'Adding…' : 'Add tools'}
+          </Button>,
+          <Button key="close" variant="link" onClick={() => setIsBulkMcpOpen(false)}>
+            Close
+          </Button>,
+        ]}
+      >
+        <Form>
+          <FormGroup
+            label="1. Pick one or more MCP servers"
+            fieldId="bulk-mcp-select"
+            isRequired
+          >
+            {externalMcps === undefined ? (
+              <Text component="small">Loading…</Text>
+            ) : externalMcps.length === 0 ? (
+              <Text component="small" style={{ color: '#c9190b' }}>
+                No external MCPs registered yet. Go to <a href="/external-mcps">External MCPs</a> first.
+              </Text>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                {externalMcps.map((s) => {
+                  const checked = bulkSelectedMcps.includes(s.name);
+                  return (
+                    <label key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          setBulkSelectedMcps((cur) =>
+                            e.target.checked
+                              ? [...cur, s.name]
+                              : cur.filter((n) => n !== s.name),
+                          );
+                        }}
+                      />
+                      <span>
+                        <strong>{s.name}</strong>{' '}
+                        <small style={{ color: '#6a6e73' }}>
+                          ({s.transport}, {s.tool_count} primitives, {s.status})
+                        </small>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </FormGroup>
+
+          <FormGroup label="2. What to add" fieldId="bulk-mode-select" isRequired>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {([
+                {
+                  v: 'primitives' as const,
+                  label: 'Only MCP primitives',
+                  help: 'Just the tools imported directly from the selected server(s).',
+                },
+                {
+                  v: 'related' as const,
+                  label: 'All related tools (primitives + composites)',
+                  help: 'Every composite whose mcp_dependencies intersects the selection, plus the primitives themselves.',
+                },
+                {
+                  v: 'bundled_related' as const,
+                  label: 'Bundled tools only (default)',
+                  help: 'Same as "related", but skips any tool whose bundled_with_mcps is False. If you want those included, pick "All related tools" instead.',
+                },
+              ]).map((opt) => (
+                <label key={opt.v} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <input
+                    type="radio"
+                    name="bulkMode"
+                    value={opt.v}
+                    checked={bulkMode === opt.v}
+                    onChange={() => setBulkMode(opt.v)}
+                  />
+                  <span>
+                    <strong>{opt.label}</strong>
+                    <div style={{ fontSize: '0.85em', color: '#6a6e73' }}>{opt.help}</div>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </FormGroup>
+
+          {bulkError && (
+            <Text component="small" style={{ color: '#c9190b' }}>{bulkError}</Text>
+          )}
+
+          {bulkResult && (
+            <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#f0f8ff', borderRadius: 4 }}>
+              <div>✅ Added <strong>{bulkResult.added.length}</strong> tool(s): {bulkResult.added.map((t) => t.name).join(', ') || '—'}</div>
+              {bulkResult.skipped_duplicate.length > 0 && (
+                <div style={{ marginTop: '0.25rem' }}>⏭️ Skipped (already in skill): {bulkResult.skipped_duplicate.join(', ')}</div>
+              )}
+              {bulkResult.skipped_unbundled.length > 0 && (
+                <div style={{ marginTop: '0.25rem' }}>🚫 Skipped (unbundled): {bulkResult.skipped_unbundled.join(', ')}</div>
+              )}
+              {bulkResult.skipped_broken.length > 0 && (
+                <div style={{ marginTop: '0.25rem' }}>
+                  ⚠️ Skipped (broken): {bulkResult.skipped_broken.map((t) => `${t.name} (${t.reason})`).join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+        </Form>
       </Modal>
     </>
   );

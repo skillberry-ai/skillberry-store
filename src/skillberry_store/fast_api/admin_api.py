@@ -219,6 +219,28 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             "vector_indexes_reset": vector_indexes_reset,
         }
 
+    @app.get("/admin/server-info", tags=[tags])
+    def get_server_info():
+        """Get server connection information for MCP clients.
+
+        Returns:
+            dict: Server host, port, MCP endpoint URLs, and API docs URL.
+        """
+        settings = app.settings
+        host = settings.display_host
+        port = settings.sbs_port
+        agent_mcp_port = settings.agent_mcp_port
+
+        agent_mcp_running = hasattr(app, 'agent_mcp') and app.agent_mcp is not None
+        return {
+            "host": host,
+            "port": port,
+            "agent_mcp_port": agent_mcp_port,
+            "agent_mcp_url": f"http://{host}:{agent_mcp_port}/sse" if agent_mcp_running else None,
+            "control_mcp_url": f"http://{host}:{port}/control_sse",
+            "api_docs": f"http://{host}:{port}/docs",
+        }
+
     @app.get("/health", tags=[tags])
     def health_check():
         """Health check endpoint.
@@ -227,6 +249,95 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             dict: Health status of the service.
         """
         return {"status": "healthy"}
+
+    @app.get("/plugins", tags=[tags])
+    def list_plugins():
+        """List all installed plugins with their current enabled state and UI manifests."""
+        from skillberry_store.plugins import installed_plugins, read_enabled
+
+        enabled_ids = set(read_enabled())
+        items = []
+        for p in installed_plugins():
+            is_enabled = p.id in enabled_ids
+            items.append({
+                "id": p.id,
+                "name": p.name,
+                "description": p.description,
+                "enabled": is_enabled,
+                "requires_restart": getattr(p, "requires_restart", False),
+                "ui_manifest": p.ui_manifest.to_dict() if is_enabled else None,
+            })
+        return {"plugins": items}
+
+    @app.post("/plugins/{plugin_id}/enable", tags=[tags])
+    def enable_plugin(plugin_id: str):
+        """Enable a plugin.
+
+        For plugins with `requires_restart=False`, routes are mounted live.
+        Otherwise `enabled.json` is updated but the response signals that a
+        store restart is required for the change to take effect.
+        """
+        from skillberry_store.plugins import (
+            get_plugin,
+            is_enabled,
+            mount_plugin,
+            set_enabled,
+        )
+
+        plugin = get_plugin(plugin_id)
+        if plugin is None:
+            raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not installed")
+
+        already = is_enabled(plugin_id)
+        set_enabled(plugin_id, True)
+
+        if plugin.requires_restart:
+            return {"plugin_id": plugin_id, "enabled": True, "restart_required": True}
+
+        if not already:
+            try:
+                if hasattr(plugin, "bind_app"):
+                    plugin.bind_app(app)
+                mount_plugin(app, plugin)
+            except Exception as e:
+                logger.error(f"Failed to mount plugin '{plugin_id}': {e}")
+                raise HTTPException(status_code=500, detail=f"Mount failed: {e}")
+
+        return {"plugin_id": plugin_id, "enabled": True, "restart_required": False}
+
+    @app.post("/plugins/{plugin_id}/disable", tags=[tags])
+    def disable_plugin(plugin_id: str):
+        """Disable a plugin.
+
+        For plugins with `requires_restart=False`, routes are removed live.
+        Otherwise `enabled.json` is updated but the response signals that a
+        store restart is required for the change to take effect.
+        """
+        from skillberry_store.plugins import (
+            get_plugin,
+            is_enabled,
+            set_enabled,
+            unmount_plugin,
+        )
+
+        plugin = get_plugin(plugin_id)
+        if plugin is None:
+            raise HTTPException(status_code=404, detail=f"Plugin '{plugin_id}' not installed")
+
+        was_enabled = is_enabled(plugin_id)
+        set_enabled(plugin_id, False)
+
+        if plugin.requires_restart:
+            return {"plugin_id": plugin_id, "enabled": False, "restart_required": True}
+
+        if was_enabled:
+            try:
+                unmount_plugin(app, plugin)
+            except Exception as e:
+                logger.error(f"Failed to unmount plugin '{plugin_id}': {e}")
+                raise HTTPException(status_code=500, detail=f"Unmount failed: {e}")
+
+        return {"plugin_id": plugin_id, "enabled": False, "restart_required": False}
 
     @app.get("/health/ready", tags=[tags])
     def readiness_check():

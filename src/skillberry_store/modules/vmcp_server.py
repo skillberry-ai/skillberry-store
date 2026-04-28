@@ -442,14 +442,22 @@ class VirtualMcpServer:
             if tool_dict is None:
                 raise ValueError(f"No cached manifest for tool '{tool_name}'")
 
-            module_name = tool_dict.get("module_name")
-            if not module_name:
-                raise ValueError(f"Tool '{tool_name}' has no module_name in cached manifest")
+            # MCP-packaged primitives (from the External MCPs feature) have no
+            # module_name — their "code" is the remote MCP tool. Synthesize a
+            # stub so FileExecutor's MCP branch + pooled-session path handles
+            # them the same way /tools/{name}/execute does.
+            if tool_dict.get("packaging_format") == "mcp":
+                from skillberry_store.fast_api.server_utils import mcp_content_from_manifest
+                module_content = mcp_content_from_manifest(tool_dict)
+            else:
+                module_name = tool_dict.get("module_name")
+                if not module_name:
+                    raise ValueError(f"Tool '{tool_name}' has no module_name in cached manifest")
 
-            file_handler = FileHandler(get_files_directory_path())
-            module_content = file_handler.read_file(module_name, raw_content=True)
-            if not isinstance(module_content, str):
-                raise ValueError(f"Could not read module for tool '{tool_name}'")
+                file_handler = FileHandler(get_files_directory_path())
+                module_content = file_handler.read_file(module_name, raw_content=True)
+                if not isinstance(module_content, str):
+                    raise ValueError(f"Could not read module for tool '{tool_name}'")
 
             executor = FileExecutor(
                 name=tool_name,

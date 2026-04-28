@@ -14,9 +14,18 @@ from prometheus_client import Counter, Histogram
 import time
 
 from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.modules.file_executor import FileExecutor, detect_tool_dependencies
+from skillberry_store.modules.file_executor import (
+    FileExecutor,
+    compute_dependency_hashes,
+    compute_mcp_dependencies,
+    detect_tool_dependencies,
+)
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
+from skillberry_store.modules.tool_health import (
+    check_all_tools_health,
+    find_dependents,
+)
 from skillberry_store.schemas.tool_schema import ToolSchema, ToolParamsSchema, ToolReturnsSchema
 from skillberry_store.schemas.manifest_schema import ManifestState
 from skillberry_store.tools.configure import (
@@ -138,6 +147,9 @@ delete_tool_counter = Counter(
 update_tool_counter = Counter(
     f"{prom_prefix}update_tool_counter", "Count number of tool update operations"
 )
+update_tool_module_counter = Counter(
+    f"{prom_prefix}update_tool_module_counter", "Count number of tool module update operations"
+)
 execute_tool_counter = Counter(
     f"{prom_prefix}execute_tool_counter",
     "Count number of tool execute operations",
@@ -177,6 +189,60 @@ def register_tools_api(
     # File handler for storing tool module files
     files_directory = get_files_directory_path()
     file_handler = FileHandler(files_directory)
+
+    # ----- Dependent-safe guard + health-pass helpers ----------------------
+    def _assert_no_dependents(tool_name: str) -> None:
+        """Refuse interface-changing mutations if other tools depend on this one."""
+        dependents = find_dependents(tool_name, tool_handler)
+        if dependents:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "tool_has_dependents",
+                    "tool": tool_name,
+                    "dependents": dependents,
+                    "suggestion": (
+                        f"Tool '{tool_name}' is used by the listed tools. "
+                        "Changing or deleting it would break them. Create a "
+                        "new tool with a different name, or remove/update "
+                        "the dependents first."
+                    ),
+                },
+            )
+
+    def _run_health_pass_safely() -> None:
+        try:
+            check_all_tools_health(tool_handler, file_handler)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Post-mutation health pass failed: %s", e)
+
+    def _load_all_tool_dicts() -> Dict[str, Dict[str, Any]]:
+        out: Dict[str, Dict[str, Any]] = {}
+        for fname in tool_handler.list_files():
+            if not fname.endswith(".json"):
+                continue
+            try:
+                d = json.loads(tool_handler.read_file(fname, raw_content=True))
+            except Exception:
+                continue
+            n = d.get("name")
+            if n:
+                out[n] = d
+        return out
+
+    def _collect_module_sources(tool_dicts: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+        out: Dict[str, str] = {}
+        for n, d in tool_dicts.items():
+            mod = d.get("module_name")
+            if mod:
+                try:
+                    src = file_handler.read_file(mod, raw_content=True)
+                    out[n] = src if isinstance(src, str) else ""
+                except Exception:
+                    out[n] = ""
+            else:
+                out[n] = ""
+        return out
 
     @app.post("/tools/", tags=[tags])
     async def create_tool(
@@ -246,9 +312,33 @@ def register_tools_api(
                 except Exception as e:
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
 
+            # Populate mcp_dependencies (union across deps) + dependency_hashes
+            # so the universal health pass can detect drift against this tool.
+            try:
+                all_tool_dicts = _load_all_tool_dicts()
+                tool_as_dict = tool.to_dict()
+                tool.mcp_dependencies = compute_mcp_dependencies(
+                    tool_as_dict, all_tool_dicts
+                )
+                module_sources = _collect_module_sources(all_tool_dicts)
+                tool.dependency_hashes = compute_dependency_hashes(
+                    tool_as_dict, all_tool_dicts, module_sources
+                )
+                # Default bundled_with_mcps=True for tools that touch MCPs
+                # (either via mcp_server or via transitive mcp_dependencies).
+                if tool.bundled_with_mcps is None and (
+                    tool.mcp_server or tool.mcp_dependencies
+                ):
+                    tool.bundled_with_mcps = True
+            except Exception as e:
+                logger.warning(f"Failed to compute mcp/dependency hashes for '{tool.name}': {e}")
+
             # Convert tool to JSON and save
             tool_json = json.dumps(tool.to_dict(), indent=4)
             tool_handler.write_file_content(tool_filename, tool_json)
+
+            # Run health pass best-effort to catch drift surfaces.
+            _run_health_pass_safely()
 
             # Write description for search capability
             if tools_descriptions and tool.description:
@@ -371,7 +461,17 @@ def register_tools_api(
 
             # Handle MCP packaging format
             if tool_dict.get("packaging_format") == "mcp":
-                # Generate content from MCP tool
+                # New External-MCP primitives (mcp_server set) already carry
+                # the full params in the manifest — build the stub locally,
+                # no SSE round-trip. This also works when the upstream MCP is
+                # down.
+                if tool_dict.get("mcp_server"):
+                    return PlainTextResponse(
+                        content=mcp_content_from_manifest(tool_dict),
+                        media_type="text/plain",
+                    )
+                # Legacy single-tool MCP entries (mcp_url set, no mcp_server)
+                # still fetch live since their params may be stale.
                 tools = await get_mcp_tools(tool_dict)
                 if not tools:
                     raise HTTPException(
@@ -420,6 +520,9 @@ def register_tools_api(
         logger.info(f"Request to delete tool: {name}")
         delete_tool_counter.inc()
 
+        # Dependent-safe guard — refuse if any other tool depends on this one.
+        _assert_no_dependents(name)
+
         try:
             tool_filename = f"{name}.json"
 
@@ -456,6 +559,7 @@ def register_tools_api(
                     )
 
             logger.info(f"Tool '{name}' deleted successfully")
+            _run_health_pass_safely()
             return {"message": f"Tool '{name}' deleted successfully."}
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
@@ -465,6 +569,37 @@ def register_tools_api(
             raise HTTPException(
                 status_code=500, detail=f"Error deleting tool: {str(e)}"
             )
+
+    @app.put("/tools/{name}/bundled-with-mcps", tags=[tags])
+    def set_tool_bundled_with_mcps(name: str, value: bool) -> Dict:
+        """Toggle whether this tool is included by default when skills are
+        built from its MCP server(s). Only meaningful for tools with mcp_server
+        set or mcp_dependencies non-empty; persisted on the manifest.
+        """
+        tool_filename = f"{name}.json"
+        try:
+            content = tool_handler.read_file(tool_filename, raw_content=True)
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"Tool '{name}' not found.")
+        if not isinstance(content, str):
+            raise HTTPException(status_code=500, detail=f"Invalid content for tool '{name}'")
+        tool_dict = json.loads(content)
+        if not (tool_dict.get("mcp_server") or tool_dict.get("mcp_dependencies")):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Tool '{name}' has no MCP association — the bundled_with_mcps "
+                    "flag is only meaningful for MCP primitives and composites that "
+                    "depend on MCPs."
+                ),
+            )
+        tool_dict["bundled_with_mcps"] = bool(value)
+        tool_dict["modified_at"] = datetime.now(timezone.utc).isoformat()
+        tool_handler.write_file_content(tool_filename, json.dumps(tool_dict, indent=4))
+        return {
+            "name": name,
+            "bundled_with_mcps": tool_dict["bundled_with_mcps"],
+        }
 
     @app.put("/tools/{name}", tags=[tags])
     def update_tool(name: str, tool: ToolSchema) -> Dict:
@@ -486,18 +621,68 @@ def register_tools_api(
         try:
             tool_filename = f"{name}.json"
 
-            # Check if tool exists
+            # Check if tool exists and get old description for vector DB sync
             existing_tools = tool_handler.list_files()
             if tool_filename not in existing_tools:
                 raise HTTPException(status_code=404, detail=f"Tool '{name}' not found.")
 
+            old_content = tool_handler.read_file(tool_filename, raw_content=True)
+            old_description = None
+            old_dict: Dict[str, Any] = {}
+            if isinstance(old_content, str):
+                old_dict = json.loads(old_content)
+                old_description = old_dict.get("description")
+
+            # Dependent-safe guard: refuse the update if the interface changed
+            # (params / module_name / dependencies) and other tools rely on it.
+            interface_changed = (
+                (old_dict.get("params") or {}) != tool.params.model_dump()
+                or (old_dict.get("module_name") or None) != tool.module_name
+                or (old_dict.get("dependencies") or []) != (tool.dependencies or [])
+            )
+            if interface_changed:
+                _assert_no_dependents(name)
+
             # Update modified timestamp
             tool.modified_at = datetime.now(timezone.utc).isoformat()
+
+            # Recompute mcp_dependencies + dependency_hashes from current store.
+            try:
+                all_tool_dicts = _load_all_tool_dicts()
+                tool_as_dict = tool.to_dict()
+                tool.mcp_dependencies = compute_mcp_dependencies(
+                    tool_as_dict, all_tool_dicts
+                )
+                module_sources = _collect_module_sources(all_tool_dicts)
+                tool.dependency_hashes = compute_dependency_hashes(
+                    tool_as_dict, all_tool_dicts, module_sources
+                )
+                # Preserve explicit bundled_with_mcps choice across updates.
+                # Only set a default when the tool now touches an MCP for the
+                # first time (field was unset previously).
+                if tool.bundled_with_mcps is None and (
+                    tool.mcp_server or tool.mcp_dependencies
+                ):
+                    tool.bundled_with_mcps = old_dict.get("bundled_with_mcps", True)
+            except Exception as e:
+                logger.warning(f"Failed to refresh mcp/dependency hashes for '{name}': {e}")
 
             # Update the tool
             tool_json = json.dumps(tool.to_dict(), indent=4)
             tool_handler.write_file_content(tool_filename, tool_json)
+
+            # Sync vector DB description if changed
+            if tools_descriptions and tool.description and tool.description != old_description:
+                try:
+                    tools_descriptions.update_description(name, tool.description)
+                except Exception:
+                    try:
+                        tools_descriptions.write_description(name, tool.description)
+                    except Exception as desc_err:
+                        logger.warning(f"Failed to sync description for '{name}': {desc_err}")
+
             logger.info(f"Tool '{name}' updated successfully")
+            _run_health_pass_safely()
             return {"message": f"Tool '{name}' updated successfully."}
         except HTTPException:
             raise
@@ -505,6 +690,91 @@ def register_tools_api(
             logger.error(f"Error updating tool '{name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating tool: {str(e)}"
+            )
+
+    class UpdateModuleRequest(BaseModel):
+        content: str
+
+    @app.put("/tools/{name}/module", tags=[tags])
+    def update_tool_module(name: str, request: UpdateModuleRequest) -> Dict:
+        """Update the source code module for a tool.
+
+        Args:
+            name: The name of the tool.
+            request: JSON body with 'content' field containing the new source code.
+
+        Returns:
+            dict: Success message.
+
+        Raises:
+            HTTPException: If tool not found (404), tool has no module (400),
+                          tool is MCP-packaged (400), or update fails (500).
+        """
+        logger.info(f"Request to update module for tool: {name}")
+        update_tool_module_counter.inc()
+
+        try:
+            tool_filename = f"{name}.json"
+            existing_tools = tool_handler.list_files()
+            if tool_filename not in existing_tools:
+                raise HTTPException(status_code=404, detail=f"Tool '{name}' not found.")
+
+            content = tool_handler.read_file(tool_filename, raw_content=True)
+            if not isinstance(content, str):
+                raise HTTPException(status_code=500, detail=f"Invalid content for tool '{name}'")
+            tool_dict = json.loads(content)
+
+            if tool_dict.get("packaging_format") == "mcp":
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot update module for MCP-packaged tool '{name}'",
+                )
+
+            module_name = tool_dict.get("module_name")
+            if not module_name:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Tool '{name}' does not have a module file",
+                )
+
+            # Module swap ≡ behavior change: refuse if anything depends on this tool.
+            _assert_no_dependents(name)
+
+            file_handler.write_file_content(module_name, request.content)
+
+            # Refresh dependency hashes for THIS tool (its deps may need a fresh
+            # snapshot so future drift detection is relative to this moment).
+            try:
+                all_tool_dicts = _load_all_tool_dicts()
+                module_sources = _collect_module_sources(all_tool_dicts)
+                tool_dict["dependency_hashes"] = compute_dependency_hashes(
+                    tool_dict, all_tool_dicts, module_sources
+                )
+                tool_dict["mcp_dependencies"] = compute_mcp_dependencies(
+                    tool_dict, all_tool_dicts
+                )
+                # Default bundled_with_mcps only if the tool now touches an MCP
+                # and the field has never been set explicitly.
+                if tool_dict.get("bundled_with_mcps") is None and (
+                    tool_dict.get("mcp_server") or tool_dict.get("mcp_dependencies")
+                ):
+                    tool_dict["bundled_with_mcps"] = True
+            except Exception as e:
+                logger.warning(f"Failed to refresh hashes for '{name}': {e}")
+
+            # Update modified_at on the manifest
+            tool_dict["modified_at"] = datetime.now(timezone.utc).isoformat()
+            tool_handler.write_file_content(tool_filename, json.dumps(tool_dict, indent=4))
+
+            logger.info(f"Module for tool '{name}' updated successfully")
+            _run_health_pass_safely()
+            return {"message": f"Module for tool '{name}' updated successfully."}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error updating module for tool '{name}': {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error updating module: {str(e)}"
             )
 
     @app.post("/tools/{name}/execute", tags=[tags])
@@ -862,10 +1132,28 @@ def register_tools_api(
                 modified_at=current_time
             )
 
+            # Populate mcp_dependencies + dependency_hashes so the health pass
+            # can detect drift against this tool's deps.
+            try:
+                all_tool_dicts = _load_all_tool_dicts()
+                tool_as_dict = tool_schema.to_dict()
+                tool_schema.mcp_dependencies = compute_mcp_dependencies(
+                    tool_as_dict, all_tool_dicts
+                )
+                module_sources = _collect_module_sources(all_tool_dicts)
+                tool_schema.dependency_hashes = compute_dependency_hashes(
+                    tool_as_dict, all_tool_dicts, module_sources
+                )
+                if tool_schema.bundled_with_mcps is None and tool_schema.mcp_dependencies:
+                    tool_schema.bundled_with_mcps = True
+            except Exception as e:
+                logger.warning(f"Failed to compute hashes for '{func_name}': {e}")
+
             # Save the manifest
             tool_json = json.dumps(tool_schema.to_dict(), indent=4)
             tool_handler.write_file_content(tool_filename, tool_json)
             logger.info(f"Saved manifest: {tool_filename}")
+            _run_health_pass_safely()
 
             # Write description for search capability
             if tools_descriptions:

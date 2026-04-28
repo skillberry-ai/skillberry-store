@@ -39,6 +39,8 @@ import {
   ExpandableSection,
   CodeBlock,
   CodeBlockCode,
+  ClipboardCopy,
+  ClipboardCopyVariant,
 } from '@patternfly/react-core';
 import { EditIcon, TrashIcon, ConnectedIcon, DisconnectedIcon } from '@patternfly/react-icons';
 import { vmcpApi, skillsApi } from '@/services/api';
@@ -637,6 +639,48 @@ export function VMCPServerDetailPage() {
             )}
           </CardBody>
         </Card>
+
+        {/* Connect to Claude Code */}
+        {server.port && (
+          <Card style={{ marginTop: '1rem' }}>
+            <CardTitle>Connect to Claude Code</CardTitle>
+            <CardBody>
+              <Text style={{ marginBottom: '1rem' }}>
+                Use the following command to add this MCP server to Claude Code. This registers the server using SSE transport so Claude Code can discover and call its tools.
+              </Text>
+              <Text component="h4" style={{ marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                Add to Claude Code:
+              </Text>
+              <ClipboardCopy
+                isReadOnly
+                hoverTip="Copy"
+                clickTip="Copied"
+                variant={ClipboardCopyVariant.expansion}
+                style={{ marginBottom: '1rem' }}
+              >
+                {`claude mcp add ${server.name} -s user -t sse http://localhost:${server.port}/sse`}
+              </ClipboardCopy>
+              <Text style={{ marginBottom: '0.5rem', marginTop: '1rem' }} component="small">
+                <strong>-s user</strong> saves to your user-level settings (available across all projects).
+                Use <strong>-s project</strong> to save to the current project only.
+              </Text>
+              <Text style={{ marginBottom: '1rem' }} component="small">
+                <strong>-t sse</strong> sets the transport to Server-Sent Events, which is the protocol this MCP server uses.
+              </Text>
+              <Text component="h4" style={{ marginBottom: '0.5rem', fontWeight: 'bold', marginTop: '1rem' }}>
+                Remove from Claude Code:
+              </Text>
+              <ClipboardCopy
+                isReadOnly
+                hoverTip="Copy"
+                clickTip="Copied"
+                style={{ marginBottom: '0.5rem' }}
+              >
+                {`claude mcp remove ${server.name} -s user`}
+              </ClipboardCopy>
+            </CardBody>
+          </Card>
+        )}
       </PageSection>
 
       {/* Edit Modal */}

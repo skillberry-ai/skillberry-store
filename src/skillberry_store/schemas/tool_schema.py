@@ -80,7 +80,36 @@ class ToolSchema(ManifestSchema):
         default=None,
         description="List of tool names that this tool depends on"
     )
-    
+    mcp_url: Optional[str] = Field(
+        default=None,
+        description="Legacy single-tool SSE URL for packaging_format='mcp' tools that point at an externally-hosted server (back-compat)."
+    )
+    mcp_server: Optional[str] = Field(
+        default=None,
+        description="Name of the external MCP server this tool was imported from; None for user-authored tools."
+    )
+    mcp_dependencies: List[str] = Field(
+        default_factory=list,
+        description="External MCP server names this tool requires at runtime (union across dependencies for composites)."
+    )
+    dependency_hashes: Dict[str, Dict[str, str]] = Field(
+        default_factory=dict,
+        description="Map of dep_name -> {params, module, combined} sha256 hashes captured at create/update time; used by the health pass to attribute drift to schema vs code."
+    )
+    broken_reason: Optional[str] = Field(
+        default=None,
+        description="Populated when state == broken; prefix-tagged: dep_missing / dep_schema_changed / dep_code_changed / dep_broken / server_unavailable."
+    )
+    bundled_with_mcps: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Only meaningful for tools with mcp_server set or mcp_dependencies non-empty. "
+            "Default True when applicable. When False, the tool is skipped from bulk "
+            "'add all tools of MCP X' skill-builder operations; it can still be added "
+            "manually or via an include-all override."
+        ),
+    )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert the tool schema to a dictionary."""
         return self.model_dump(exclude_none=False)

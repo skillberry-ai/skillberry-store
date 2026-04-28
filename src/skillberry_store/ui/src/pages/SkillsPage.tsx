@@ -38,8 +38,9 @@ import {
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
 import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon, UploadIcon } from '@patternfly/react-icons';
-import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
-import type { Skill } from '@/types';
+import { skillsApi, toolsApi, snippetsApi, externalMcpsApi, isValidStoreName, STORE_NAME_HINT } from '@/services/api';
+import type { BulkAddMode } from '@/services/api';
+import type { Skill, Tool } from '@/types';
 import { AnthropicSkillImporter } from '../components/AnthropicSkillImporter';
 
 type SortableColumn = 'name' | 'description' | 'version';
@@ -78,6 +79,13 @@ export function SkillsPage() {
   const [toolSearchTerm, setToolSearchTerm] = useState('');
   const [snippetSearchTerm, setSnippetSearchTerm] = useState('');
 
+  // Create-from-MCPs section state — drives the inline "Add tools from MCPs…"
+  // shortcut inside the Tools FormGroup. Selected MCP tools get pushed into
+  // newSkill.toolNames; the panel itself stays transient.
+  const [isMcpPickerOpen, setIsMcpPickerOpen] = useState(false);
+  const [createMcpSelections, setCreateMcpSelections] = useState<string[]>([]);
+  const [createMcpMode, setCreateMcpMode] = useState<BulkAddMode>('bundled_related');
+
   const { data: skills, isLoading, error } = useQuery({
     queryKey: ['skills'],
     queryFn: skillsApi.list,
@@ -100,6 +108,41 @@ export function SkillsPage() {
   const { data: allSnippets } = useQuery({
     queryKey: ['snippets'],
     queryFn: snippetsApi.list,
+  });
+
+  // Client-side preview of which tools would be added under the current MCP
+  // selection + mode. Shared by the preview chip list and the "Add matching
+  // tools to selection" button so WYSIWYG is guaranteed.
+  const mcpMatchPreview = useMemo(() => {
+    if (!allTools || createMcpSelections.length === 0) return [] as Tool[];
+    const mcpSet = new Set(createMcpSelections);
+    return allTools.filter((t) => {
+      const toolMcp = (t as any).mcp_server as string | null | undefined;
+      const toolDeps = new Set(((t as any).mcp_dependencies as string[] | undefined) || []);
+      const touches = (toolMcp && mcpSet.has(toolMcp)) || [...toolDeps].some((d) => mcpSet.has(d));
+      if (!touches) return false;
+      if (createMcpMode === 'primitives' && (!toolMcp || !mcpSet.has(toolMcp))) return false;
+      if (createMcpMode === 'bundled_related' && (t as any).bundled_with_mcps === false) return false;
+      if (t.state === 'broken') return false;
+      return true;
+    });
+  }, [allTools, createMcpSelections, createMcpMode]);
+
+  function handleAddMatchingToolsToSelection() {
+    const names = mcpMatchPreview.map((t) => t.name);
+    setNewSkill((cur) => ({
+      ...cur,
+      toolNames: Array.from(new Set([...cur.toolNames, ...names])),
+    }));
+    // Clear the picker's MCP selection; mode stays.
+    setCreateMcpSelections([]);
+  }
+
+  // Fetch registered external MCP servers — only when the create modal is open.
+  const { data: externalMcps } = useQuery({
+    queryKey: ['external-mcps'],
+    queryFn: externalMcpsApi.list,
+    enabled: isCreateModalOpen,
   });
 
   // Create skill mutation
@@ -144,6 +187,10 @@ export function SkillsPage() {
       setCreateError('Please fill in all required fields');
       return;
     }
+    if (!isValidStoreName(newSkill.name)) {
+      setCreateError(`Invalid skill name. ${STORE_NAME_HINT}`);
+      return;
+    }
     
     try {
       // Fetch tool and snippet UUIDs
@@ -177,6 +224,9 @@ export function SkillsPage() {
       });
       
       if (response.ok) {
+        // The "Add tools from MCPs…" shortcut (if used) already populated
+        // newSkill.toolNames, so nothing else to chain here — Create uses the
+        // explicit tool selection path.
         queryClient.invalidateQueries({ queryKey: ['skills'] });
         setIsCreateModalOpen(false);
         setNewSkill({
@@ -187,6 +237,9 @@ export function SkillsPage() {
           toolNames: [],
           snippetNames: [],
         });
+        setCreateMcpSelections([]);
+        setCreateMcpMode('bundled_related');
+        setIsMcpPickerOpen(false);
       } else {
         const errorText = await response.text();
         setCreateError(`Failed to create skill: ${errorText}`);
@@ -638,6 +691,9 @@ export function SkillsPage() {
             toolNames: [],
             snippetNames: [],
           });
+          setCreateMcpSelections([]);
+          setCreateMcpMode('bundled_related');
+          setIsMcpPickerOpen(false);
           setTagInput('');
           setToolSearchTerm('');
           setSnippetSearchTerm('');
@@ -687,8 +743,20 @@ export function SkillsPage() {
               type="text"
               id="skill-name"
               value={newSkill.name}
+              validated={newSkill.name === '' || isValidStoreName(newSkill.name) ? 'default' : 'error'}
               onChange={(_, value) => setNewSkill({ ...newSkill, name: value })}
             />
+            {newSkill.name !== '' && !isValidStoreName(newSkill.name) && (
+              <div
+                style={{
+                  marginTop: '0.25rem',
+                  fontSize: '0.85em',
+                  color: 'var(--pf-v5-global--danger-color--100)',
+                }}
+              >
+                Invalid name for Claude Code MCP. {STORE_NAME_HINT}
+              </div>
+            )}
           </FormGroup>
           <FormGroup label="Version" fieldId="skill-version">
             <TextInput
@@ -751,6 +819,132 @@ export function SkillsPage() {
             <Text component="small" style={{ display: 'block', marginBottom: '0.5rem', color: '#6a6e73' }}>
               Search and select tools to include in this skill
             </Text>
+
+            {/* Shortcut: populate the Tools selection below from an MCP server's
+                tools, using one of the three filter modes. The matches land in
+                the Tools selection chip list; you can then tweak (add/remove)
+                anything before creating. */}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <Button
+                variant="secondary"
+                onClick={() => setIsMcpPickerOpen((v) => !v)}
+              >
+                {isMcpPickerOpen ? 'Cancel — don’t add from MCPs' : 'Add tools from MCPs…'}
+              </Button>
+
+              {isMcpPickerOpen && (
+                <div
+                  style={{
+                    marginTop: '0.5rem',
+                    padding: '0.75rem',
+                    border: '1px solid #d2d2d2',
+                    borderRadius: 4,
+                    background: '#fafafa',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <strong>1. Pick one or more MCP servers</strong>
+                  {externalMcps === undefined ? (
+                    <Text component="small">Loading MCPs…</Text>
+                  ) : externalMcps.length === 0 ? (
+                    <Text component="small" style={{ color: '#6a6e73' }}>
+                      No external MCPs registered yet.{' '}
+                      <a href="/external-mcps">Go register one</a>, then come back.
+                    </Text>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {externalMcps.map((s) => (
+                        <label key={s.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={createMcpSelections.includes(s.name)}
+                            onChange={(e) => {
+                              setCreateMcpSelections((cur) =>
+                                e.target.checked
+                                  ? [...cur, s.name]
+                                  : cur.filter((n) => n !== s.name),
+                              );
+                            }}
+                          />
+                          <span>
+                            <strong>{s.name}</strong>{' '}
+                            <small style={{ color: '#6a6e73' }}>
+                              ({s.transport}, {s.tool_count} primitives, {s.status})
+                            </small>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {externalMcps && externalMcps.length > 0 && createMcpSelections.length > 0 && (
+                    <>
+                      <strong style={{ marginTop: '0.5rem' }}>2. Which tools?</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        {([
+                          {
+                            v: 'primitives' as const,
+                            label: 'Only MCP primitives',
+                            help: 'Just the tools imported directly from the selected server(s).',
+                          },
+                          {
+                            v: 'related' as const,
+                            label: 'All related tools (primitives + composites)',
+                            help: 'Every composite whose mcp_dependencies intersects the selection, plus the primitives themselves. Ignores the bundled_with_mcps flag.',
+                          },
+                          {
+                            v: 'bundled_related' as const,
+                            label: 'Bundled related tools (default)',
+                            help: 'Same as "related", but skips any tool whose bundled_with_mcps is False. For those, pick "All related tools" instead.',
+                          },
+                        ]).map((opt) => (
+                          <label key={opt.v} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+                            <input
+                              type="radio"
+                              name="createMcpMode"
+                              value={opt.v}
+                              checked={createMcpMode === opt.v}
+                              onChange={() => setCreateMcpMode(opt.v)}
+                            />
+                            <span>
+                              <strong>{opt.label}</strong>
+                              <div style={{ fontSize: '0.85em', color: '#6a6e73' }}>{opt.help}</div>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: '0.5rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <span style={{ color: '#6a6e73' }}>
+                          Will add <strong>{mcpMatchPreview.length}</strong>{' '}
+                          tool{mcpMatchPreview.length === 1 ? '' : 's'} to the selection below.
+                        </span>
+                        <Button
+                          variant="primary"
+                          onClick={() => {
+                            handleAddMatchingToolsToSelection();
+                            setIsMcpPickerOpen(false);
+                          }}
+                          isDisabled={mcpMatchPreview.length === 0}
+                        >
+                          Add to selection
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
             <Select
               id="skill-tools-select"
               isOpen={isToolSelectOpen}

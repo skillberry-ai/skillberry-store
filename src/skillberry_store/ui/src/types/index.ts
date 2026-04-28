@@ -1,7 +1,7 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-export type ManifestState = 'unknown' | 'any' | 'new' | 'checked' | 'approved';
+export type ManifestState = 'unknown' | 'any' | 'new' | 'checked' | 'approved' | 'broken';
 
 export interface Tool {
   uuid: string;
@@ -28,6 +28,12 @@ export interface Tool {
   author?: string;
   created_at?: string;
   modified_at?: string;
+  // External MCPs feature
+  mcp_url?: string | null;
+  mcp_server?: string | null;
+  mcp_dependencies?: string[];
+  bundled_with_mcps?: boolean | null;
+  broken_reason?: string | null;
 }
 
 export interface Skill {
