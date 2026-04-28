@@ -33,7 +33,7 @@ class FaissDB(VectorDBInterface):
         self.persist_path = persist_path
 
         # Create persist directory if it doesn't exist
-        os.makedirs(os.path.dirname(persist_path), exist_ok=True)
+        logger.info(f"persist_path: {persist_path}")
         os.makedirs(persist_path, exist_ok=True)
 
         # Initialize index
@@ -205,6 +205,9 @@ class FaissDB(VectorDBInterface):
     
     def save_index(self) -> None:
         """Save FAISS index and metadata to disk"""
+
+        # Ensure  directory for index exists
+        os.makedirs(self.persist_path, exist_ok=True)
 
         # Save FAISS index
         index_path = os.path.join(self.persist_path, "faiss.index")
