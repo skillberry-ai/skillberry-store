@@ -5,7 +5,7 @@
 # 3. Create .mk/local.mk (copy from skillberry-common/default/local.mk.default). Set the mandatory defs.
 # 4. Customize additional content if needed.
 
-SB_COMMON_REPO := git@github.ibm.com:skillberry/skillberry-common.git
+SB_COMMON_REPO := git@github.com:skillberry-ai/skillberry-common.git
 SB_COMMON_BRANCH := main
 SB_COMMON_REMOTE := skillberry-common
 SB_COMMON_PATH := skillberry-common
