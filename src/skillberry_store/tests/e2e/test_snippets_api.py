@@ -20,7 +20,7 @@ async def test_create_snippet(run_sbs):
     """Test creating a new snippet."""
     content = "This is the content of my test snippet.\nIt can have multiple lines."
     snippet_data = {
-        "name": "test_snippet",
+        "name": "test_another_snippet",
         "description": "A test snippet for demonstration",
         "content": content,  # Required field, will be overridden by file if provided
         "content_type": "text/plain"
@@ -36,7 +36,7 @@ async def test_create_snippet(run_sbs):
             print(f"Error response: {response.text}")
         assert response.status_code == 200
         data = response.json()
-        assert data.get("name") == "test_snippet"
+        assert data.get("name") == "test_another_snippet"
         assert "created successfully" in data.get("message", "")
         # Verify UUID was generated
         assert "uuid" in data
@@ -82,17 +82,17 @@ async def test_list_snippets(run_sbs):
         
         # Check that our test snippet is in the list
         snippet_names = [s.get("name") for s in snippets]
-        assert "test_snippet" in snippet_names
+        assert "test_another_snippet" in snippet_names
 
 
 @pytest.mark.asyncio
 async def test_get_snippet(run_sbs):
     """Test getting a specific snippet by name."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/snippets/test_snippet")
+        response = await client.get(f"{BASE_URL}/snippets/test_another_snippet")
         assert response.status_code == 200
         snippet = response.json()
-        assert snippet.get("name") == "test_snippet"
+        assert snippet.get("name") == "test_another_snippet"
         assert snippet.get("description") == "A test snippet for demonstration"
         assert snippet.get("content_type") == "text/plain"
         assert "test snippet" in snippet.get("content", "")
@@ -110,20 +110,20 @@ async def test_get_nonexistent_snippet(run_sbs):
 async def test_update_snippet(run_sbs):
     """Test updating an existing snippet."""
     updated_data = {
-        "name": "test_snippet",
+        "name": "test_another_snippet",
         "description": "Updated test snippet description",
         "content": "This is the UPDATED content of my test snippet.",
         "content_type": "text/markdown"
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.put(f"{BASE_URL}/snippets/test_snippet", json=updated_data)
+        response = await client.put(f"{BASE_URL}/snippets/test_another_snippet", json=updated_data)
         assert response.status_code == 200
         data = response.json()
         assert "updated successfully" in data.get("message", "")
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/snippets/test_snippet")
+        get_response = await client.get(f"{BASE_URL}/snippets/test_another_snippet")
         assert get_response.status_code == 200
         snippet = get_response.json()
         assert snippet.get("description") == "Updated test snippet description"
@@ -150,13 +150,13 @@ async def test_update_nonexistent_snippet(run_sbs):
 async def test_delete_snippet(run_sbs):
     """Test deleting a snippet."""
     async with httpx.AsyncClient() as client:
-        response = await client.delete(f"{BASE_URL}/snippets/test_snippet")
+        response = await client.delete(f"{BASE_URL}/snippets/test_another_snippet")
         assert response.status_code == 200
         data = response.json()
         assert "deleted successfully" in data.get("message", "")
 
         # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/snippets/test_snippet")
+        get_response = await client.get(f"{BASE_URL}/snippets/test_another_snippet")
         assert get_response.status_code == 404
 
 
