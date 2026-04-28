@@ -6,7 +6,7 @@ on:
 
 jobs:
   pull_request:
-    name: pull_request
+    name: pull-request
     runs-on: ubuntu-latest
     steps:
     - name: Set up Python 3.11
@@ -17,6 +17,6 @@ jobs:
       run: sudo apt-get install make
     - name: checkout
       uses: actions/checkout@v4
-    - name: run_make
+    - name: run-make
       run: |
-          make ci_pull_request
+          make ci-pull-request
