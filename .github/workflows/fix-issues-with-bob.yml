@@ -68,8 +68,8 @@ jobs:
       - name: Install Bob Shell
         run: |
           echo "Installing Bob Shell..."
-          curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash --pm npm
-          
+          curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash
+
           # Verify installation
           if command -v bob &> /dev/null; then
             echo "Bob Shell installed successfully"
@@ -78,14 +78,6 @@ jobs:
             echo "Bob Shell installation failed"
             exit 1
           fi
-      
-      - name: Configure Bob Shell
-        env:
-          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
-        run: |
-          # Bob Shell uses environment variables for authentication
-          # The BOBSHELL_API_KEY will be available in subsequent steps
-          echo "Bob Shell configured with API key"
       
       - name: Get Issue Details
         id: issue
@@ -109,7 +101,6 @@ jobs:
       
       - name: Execute Bob to Fix Issue
         env:
-          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
           ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -118,18 +109,16 @@ jobs:
 
           Repository: ${{ github.repository }}
           Issue URL: ${{ github.event.issue.html_url }}
-          
+
           Issue Description:
           ${{ steps.issue.outputs.issue_body }}
-          
+
           Please analyze this issue and make all necessary code changes to fix it.
           Ensure the changes are complete, follow best practices, and resolve the issue."
-          
-          # Execute Bob Shell in non-interactive mode
-          # Using echo to pipe the prompt to Bob
-          echo "${PROMPT}" | bob -p || {
-            echo "Bob execution completed. Checking for changes..."
-          }
+
+          # --accept-license: required on first run in a fresh CI environment
+          # --yolo: required to enable file writing (disabled by default)
+          bob --accept-license --yolo -p "${PROMPT}"
       
       - name: Check for Changes
         id: changes
