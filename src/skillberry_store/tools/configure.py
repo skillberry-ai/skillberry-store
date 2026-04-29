@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import tempfile
 from dotenv import load_dotenv
 
@@ -106,8 +105,7 @@ def get_files_directory_path():
 
     Priority:
     1. Environment variable "DIRECTORY_PATH"
-    2. Command line argument (first argument after the script name)
-    3. Default path: "/tmp/files"
+    2. Default path: "/tmp/skillberry-store/files"
 
     Returns:
         str: The resolved directory path.
@@ -116,9 +114,11 @@ def get_files_directory_path():
     if env_path:
         logger.info(f"Using directory path from environment: {env_path}")
         return env_path
-    if len(sys.argv) > 1:
-        logger.info(f"Using directory path from command line: {sys.argv[1]}")
-        return sys.argv[1]
+    # Commented out: sys.argv[1] is unreliable when running inside pytest
+    # as it picks up pytest's test directory argument instead of server config
+    # if len(sys.argv) > 1:
+    #     logger.info(f"Using directory path from command line: {sys.argv[1]}")
+    #     return sys.argv[1]
     default_path = _default_sbs_dir("files")
     logger.info(f"Using default directory path: {default_path}")
     return default_path
