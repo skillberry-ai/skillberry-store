@@ -4,9 +4,9 @@
 SUPPORTED_ARCHS := linux/amd64 linux/arm64
 
 # Docker registry host
-REGISTRY_HOST ?= skillberry-1.vpc.cloud9.ibm.com:8800
+REGISTRY_HOST ?= ghcr.io
 # change DOCKER_PROJECT to "skillberry" for public images
-DOCKER_PROJECT ?= skillberry-dev
+DOCKER_PROJECT ?= skillberry-ai
 # Docker repo name
 REPOSITORY_NAME = $(REGISTRY_HOST)/$(DOCKER_PROJECT)
 # Docker command
@@ -102,33 +102,58 @@ multiarch-check:
 	@echo "Verifying multi-arch container build is enabled and supports: $(SUPPORTED_ARCHS)"
 	@$(SB_COMMON_PATH)/scripts/check-multiarch.sh $(DOCKER) $(SUPPORTED_ARCHS) || exit 1
 
+# DBT - Docker Build Target: "local" for local build and "registry" for pushing the built image to registry. Default - local
+DBT ?= local
+
+ifeq ($(DBT),local)
+	DB_ARCH := $(DOCKER_ARCH)
+	DB_ACTION := load
+else ifeq ($(DBT),registry)
+	DB_ARCH := $(SUPPORTED_ARCHS)
+	DB_ACTION := push
+else
+	@echo "Invalid DBT value: $(DBT). Supported values: local, registry"
+	@exit 1
+endif
+
 .PHONY: base-image-build 
-base-image-build: multiarch-check .stamps/base-image-build	## Build skillberry base image
+base-image-build: multiarch-check .stamps/base-image-build-$(DBT)	## Build skillberry base image (DBT=registry to build & push multi-arch)
 
 # Build base multi-arch image if it does not exist
-.stamps/base-image-build: 
+.stamps/base-image-build-$(DBT): 
 	@echo "Building Base Image using $(DOCKER) version: $(shell $(DOCKER) --version)"
-	@echo "Supported Architectures: $(SUPPORTED_ARCHS)"
+	@echo "Supported Architectures: $(DB_ARCH)"
 	@echo "Base Image Name: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
 	@echo "Using ROOT IMAGE: $(ROOT_IMAGE)"
 	@if [ "$(DOCKER)" = "docker" ]; then \
 		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
 		--file $(BASE_DOCKER_FILE) \
-		--platform $(call to_csv,$(SUPPORTED_ARCHS)) \
+		--platform $(call to_csv,$(DB_ARCH)) \
 		--build-arg ROOT_IMAGE=$(ROOT_IMAGE) \
 		-t $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
+		--$(DB_ACTION) \
 		. \
 		|| exit 1; \
-		touch .stamps/base-image-build; \
+		touch .stamps/base-image-build-$(DBT); \
 	elif [ "$(DOCKER)" = "podman" ]; then \
-		$(DOCKER) build --no-cache=true \
-		--file $(BASE_DOCKER_FILE) \
-		--platform $(call to_csv,$(SUPPORTED_ARCHS)) \
-		--build-arg ROOT_IMAGE=$(ROOT_IMAGE) \
-		--manifest $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
-		-t $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
-		. || exit 1; \
-		touch .stamps/base-image-build; \
+		if [ "$(DBT)" = "registry" ]; then \
+			$(DOCKER) build --no-cache=true \
+			--file $(BASE_DOCKER_FILE) \
+			--platform $(call to_csv,$(DB_ARCH)) \
+			--build-arg ROOT_IMAGE=$(ROOT_IMAGE) \
+			--manifest $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
+			. && \
+			$(DOCKER) manifest push $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
+			|| exit 1; \
+		else \
+			$(DOCKER) build --no-cache=true \
+			--file $(BASE_DOCKER_FILE) \
+			--platform $(DB_ARCH) \
+			--build-arg ROOT_IMAGE=$(ROOT_IMAGE) \
+			-t $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
+			. || exit 1; \
+		fi; \
+		touch .stamps/base-image-build-$(DBT); \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
@@ -137,23 +162,23 @@ base-image-build: multiarch-check .stamps/base-image-build	## Build skillberry b
 
 # make sure that you are login into the appropriate Docker registry with required credentials
 # before running this command
-.PHONY: base-image-push
-base-image-push: docker-check base-image-build ## Push base image into the registry
-	@echo "Pushing BASE image: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
-	$(DOCKER) push $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)
+# .PHONY: base-image-push
+# base-image-push: docker-check base-image-build ## Push base image into the registry
+# 	@echo "Pushing BASE image: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
+# 	$(DOCKER) push $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)
 
 .PHONY: base-image-rm
 base-image-rm: docker-check ## Remove the local base image
 	@echo "Removing BASE image: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
 	$(DOCKER) rmi -f $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) > /dev/null 2>&1 || true
-	rm -f .stamps/base-image-build
+	rm -f .stamps/base-image-build*
 
 .PHONY: docker-build 
-docker-build: docker-check update-git-version .stamps/docker-build	## Build service in docker image
+docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Build docker image (DBT=registry to build & push multi-arch)
 
 # We actually build a new image only if the code changed by checking code-scan stamp
-.stamps/docker-build: .stamps/ssh-agent.env .stamps/code-scan
-	@echo "Building for $(DOCKER_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
+.stamps/docker-build-$(DBT): .stamps/ssh-agent.env .stamps/code-scan
+	@echo "Building for $(DB_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "Build date: $(BUILD_DATE)"
@@ -162,7 +187,7 @@ docker-build: docker-check update-git-version .stamps/docker-build	## Build serv
 	if [ "$(DOCKER)" = "docker" ]; then \
 		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
 		--file $(DOCKER_FILE) \
-		--platform $(DOCKER_ARCH) \
+		--platform $(call to_csv,$(DB_ARCH)) \
 		--build-arg BASE_IMAGE_FULL_NAME=$(BASE_IMAGE_FULL_NAME) \
 		--build-arg BASE_IMAGE_TAG=$(BASE_IMAGE_TAG) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
@@ -171,69 +196,123 @@ docker-build: docker-check update-git-version .stamps/docker-build	## Build serv
 		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 		--ssh default=$$SSH_AUTH_SOCK \
-		$(VOLUME_FLAGS) \
 		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(FULL_IMAGE_NAME):latest \
+		--$(DB_ACTION) \
 		. || exit 1; \
-		touch .stamps/docker-build; \
+		touch .stamps/docker-build-$(DBT); \
+		touch .stamps/docker-get; \
 	elif [ "$(DOCKER)" = "podman" ]; then \
-		$(DOCKER) build --no-cache=true \
-		--file $(DOCKER_FILE) \
-		--platform $(DOCKER_ARCH) \
-		--build-arg BASE_IMAGE_FULL_NAME=$(BASE_IMAGE_FULL_NAME) \
-		--build-arg BASE_IMAGE_TAG=$(BASE_IMAGE_TAG) \
-		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
-		--build-arg BUILD_DATE="$(BUILD_DATE)" \
-		--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
-		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
-		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
-		--ssh default=$$SSH_AUTH_SOCK \
-		$(VOLUME_FLAGS) \
-		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
-		-t $(FULL_IMAGE_NAME):latest \
-		. || exit 1; \
-		touch .stamps/docker-build; \
+		if [ "$(DBT)" = "registry" ]; then \
+			$(DOCKER) build --no-cache=true \
+			--file $(DOCKER_FILE) \
+			--platform $(call to_csv,$(DB_ARCH)) \
+			--build-arg BASE_IMAGE_FULL_NAME=$(BASE_IMAGE_FULL_NAME) \
+			--build-arg BASE_IMAGE_TAG=$(BASE_IMAGE_TAG) \
+			--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+			--build-arg BUILD_DATE="$(BUILD_DATE)" \
+			--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
+			--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
+			--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+			--ssh default=$$SSH_AUTH_SOCK \
+			--manifest $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
+			. && \
+			$(DOCKER) manifest push $(FULL_IMAGE_NAME):$(IMAGE_TAG) && \
+			$(DOCKER) tag $(FULL_IMAGE_NAME):$(IMAGE_TAG) $(FULL_IMAGE_NAME):latest && \
+			$(DOCKER) manifest push $(FULL_IMAGE_NAME):latest \
+			|| exit 1; \
+		else \
+			$(DOCKER) build --no-cache=true \
+			--file $(DOCKER_FILE) \
+			--platform $(DB_ARCH) \
+			--build-arg BASE_IMAGE_FULL_NAME=$(BASE_IMAGE_FULL_NAME) \
+			--build-arg BASE_IMAGE_TAG=$(BASE_IMAGE_TAG) \
+			--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+			--build-arg BUILD_DATE="$(BUILD_DATE)" \
+			--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
+			--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
+			--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+			--ssh default=$$SSH_AUTH_SOCK \
+			-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
+			-t $(FULL_IMAGE_NAME):latest \
+			. || exit 1; \
+		fi; \
+		touch .stamps/docker-build-$(DBT); \
+		touch .stamps/docker-get; \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
 		exit 1; \
 	fi
 
-# make sure that you are login into the appropriate Docker registry with required credentials
+# make sure that you are logged into the appropriate Docker registry with required credentials
 # before running this command
-.PHONY: docker-push
-docker-push: docker-check docker-build ## Push docker image into the registry
-	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
-	$(DOCKER) push $(FULL_IMAGE_NAME):$(IMAGE_TAG)
-	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):latest"
-	$(DOCKER) push $(FULL_IMAGE_NAME):latest
+# .PHONY: docker-push
+# docker-push: docker-check docker-build ## Push docker image into the registry
+# 	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
+# 	$(DOCKER) push $(FULL_IMAGE_NAME):$(IMAGE_TAG)
+# 	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):latest"
+# 	$(DOCKER) push $(FULL_IMAGE_NAME):latest
 
+
+.PHONY: docker-pull
+docker-pull: docker-check ## Pull the latest docker image from registry
+	@echo "Attempting to pull Docker image: $(FULL_IMAGE_NAME):latest"
+	@if $(DOCKER) pull $(FULL_IMAGE_NAME):latest; then \
+		echo "✓ Successfully pulled image: $(FULL_IMAGE_NAME):latest"; \
+		$(DOCKER) tag $(FULL_IMAGE_NAME):latest $(FULL_IMAGE_NAME):$(IMAGE_TAG); \
+		echo "✓ Tagged as: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"; \
+		touch .stamps/docker-get; \
+	else \
+		echo "✗ Failed to pull image: $(FULL_IMAGE_NAME):latest"; \
+		exit 1; \
+	fi
+
+.PHONY: docker-get
+docker-get: .stamps/docker-get
+	@true
+
+ifdef SBD_DEV
+.stamps/docker-get: docker-build ## Get docker image (SBD_DEV set: build only)
+	@echo "SBD_DEV is set - using locally built image"
+else
+.stamps/docker-get: ## Get docker image (pull latest or build if pull fails)
+	@echo "Attempting to get Docker image: $(FULL_IMAGE_NAME):latest"
+	@if $(MAKE) docker-pull; then \
+		echo "✓ Using pulled image"; \
+	else \
+		echo "⚠ Pull failed - falling back to building image locally"; \
+		$(MAKE) docker-build; \
+	fi
+endif
 
 .PHONY: docker-run
 ifeq ($(USE_LLM_SVCS),1)
-docker-run: docker-check docker-build docker-clean check-rits-watsonx-envs
+docker-run: docker-check docker-get docker-clean check-rits-watsonx-envs ## Run the docker container (pull or build first if needed)
 	@$(SB_COMMON_PATH)/scripts/update_env_vars.sh -r .env $(LLM_SVCS_ENV_VARS)
 	$(DOCKER) run --name $(CNTR_NAME) --env-file .env \
 		-d \
+		$(VOLUME_FLAGS) \
 		--network=host \
 		$(FULL_IMAGE_NAME):$(IMAGE_TAG)
 	@echo "Docker container started: $(CNTR_NAME)"
 else
-docker-run: docker-check docker-build docker-clean
+docker-run: docker-check docker-get docker-clean
 	$(DOCKER) run --name $(CNTR_NAME) --env-file .env \
 		-d \
+		$(VOLUME_FLAGS) \
 		--network=host \
 		$(FULL_IMAGE_NAME):$(IMAGE_TAG)
 	@echo "Docker container started: $(CNTR_NAME)"
 endif
 
-
-.PHONY: docker-rm
-docker-rm: docker-check docker-clean ## Remove the docker container, image, and temporary files
+.PHONY: docker-rmi
+docker-rmi: docker-check docker-clean ## Remove the docker container, image, and temporary files
 	@echo "Removing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
-	$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(IMAGE_TAG) > /dev/null 2>&1 || true
-	$(DOCKER) rmi -f $(FULL_IMAGE_NAME):latest > /dev/null 2>&1 || true
-	rm -f .stamps/docker-build
+	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(IMAGE_TAG) > /dev/null 2>&1 || true
+	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):latest > /dev/null 2>&1 || true
+	@rm -f .stamps/docker-build*
+	@rm -f .stamps/docker-get 
 
 .PHONY: docker-clean
 docker-clean: docker-check docker-stop ## Remove the docker container and temporary files, but keeping the image
