@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 import tempfile
 from dotenv import load_dotenv
 
