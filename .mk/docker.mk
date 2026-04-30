@@ -16,7 +16,7 @@ DOCKER := docker
 # Base image for skillberry services
 
 # Root image - from which the skillberry base image is built
-ROOT_IMAGE := public.ecr.aws/docker/library/python:3.11
+ROOT_IMAGE := python:3.11-slim
 
 # Base image name and tag
 BASE_IMAGE_NAME := skillberry-base
@@ -298,6 +298,7 @@ docker-run: docker-check docker-get docker-clean check-rits-watsonx-envs ## Run 
 	@echo "Docker container started: $(CNTR_NAME)"
 else
 docker-run: docker-check docker-get docker-clean
+	@test -f .env || touch .env
 	$(DOCKER) run --name $(CNTR_NAME) --env-file .env \
 		-d \
 		$(VOLUME_FLAGS) \
