@@ -152,7 +152,9 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
             async with ClientSession(read, write) as session:
                 # Get MCP tool name from packaging_params, fall back to tool name
                 packaging_params = manifest_as_dict.get("packaging_params", {})
-                tool_name = packaging_params.get("mcp_tool_name") or manifest_as_dict.get("name", {})
+                tool_name = packaging_params.get(
+                    "mcp_tool_name"
+                ) or manifest_as_dict.get("name", {})
                 logger.info(
                     f"[get_mcp_tools] ClientSession created, tool_name: {tool_name}"
                 )

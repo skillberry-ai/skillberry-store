@@ -375,7 +375,9 @@ class FileExecutor:
         try:
             # Get MCP tool name from packaging_params, fall back to tool name
             packaging_params = self.manifest.get("packaging_params", {})
-            function_name = packaging_params.get("mcp_tool_name") or self.manifest["name"]
+            function_name = (
+                packaging_params.get("mcp_tool_name") or self.manifest["name"]
+            )
 
             (
                 function_name,
