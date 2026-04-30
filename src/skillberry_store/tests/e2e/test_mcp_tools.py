@@ -127,9 +127,9 @@ async def create_vmcp_server_with_tool(client, tool_name: str, tool_code: bytes,
 @pytest.mark.asyncio
 async def test_execute_tool_with_mcp_packaging(run_sbs):
     """Test executing a tool with MCP packaging format."""
-    # The MCP tool name must match the actual tool name on the VMCP server
     code_tool_name = "concat_for_mcp_test"
-    tool_name = code_tool_name  # MCP tool uses the same name as the underlying tool
+    # The MCP tool will have a different name based on the code tool name
+    tool_name = f"{code_tool_name}_wrapper"
     
     async with httpx.AsyncClient() as client:
         # Create VMCP server with tool using helper function
@@ -160,6 +160,7 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
             "programming_language": "python",
             "packaging_format": "mcp",
             "mcp_url": vmcp_url,
+            "mcp_tool_name": code_tool_name,
             "state": "approved"
         }
         
@@ -250,13 +251,134 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
         await asyncio.sleep(3)
         print("✓ Cleanup complete")
 
+@pytest.mark.asyncio
+async def test_create_mcp_tool_via_post_endpoint(run_sbs):
+    """Test creating an MCP tool via POST /tools/ endpoint with a different name than the underlying tool."""
+    # The underlying code tool name on the VMCP server
+    code_tool_name = "add_for_mcp_test"
+    # The MCP tool will have a different name
+    mcp_tool_name = "mcp_add_wrapper"
+    
+    async with httpx.AsyncClient() as client:
+        # Step 1: Create VMCP server with the underlying tool
+        print("\n" + "="*60)
+        print("Step 1: Creating VMCP server with underlying tool...")
+        print("="*60)
+        tool_code = b"""def add_for_mcp_test(a: int, b: int) -> int:
+    \"\"\"Add two numbers
+    
+    Args:
+        a: first number
+        b: second number
+    
+    Returns:
+        Sum of a and b
+    \"\"\"
+    return a + b
+"""
+        vmcp_url, vmcp_port, tool_uuid, skill_uuid, vmcp_server_name = await create_vmcp_server_with_tool(
+            client,
+            tool_name=code_tool_name,
+            tool_code=tool_code,
+            vmcp_server_name="test_vmcp_for_post_endpoint",
+            skill_name="mcp_post_endpoint_skill"
+        )
+        print(f"✓ VMCP server created on port {vmcp_port}")
+        print(f"✓ VMCP URL: {vmcp_url}")
+        
+        # Step 2: Create an MCP tool via POST /tools/ endpoint
+        print("\n" + "="*60)
+        print("Step 2: Creating MCP tool via POST /tools/ endpoint...")
+        print("="*60)
+        
+        # Create a dummy Python file (required by the endpoint but not used for MCP tools)
+        dummy_module_content = b"""# This is a placeholder module for MCP tool
+def placeholder():
+    pass
+"""
+        
+        # Prepare the tool data with MCP packaging
+        mcp_tool_data = {
+            "name": mcp_tool_name,
+            "description": "MCP wrapper tool for add_for_mcp_test",
+            "programming_language": "python",
+            "packaging_format": "mcp",
+            "mcp_url": vmcp_url,
+            "mcp_tool_name": code_tool_name,
+            "state": "approved"
+        }
+        
+        files = {
+            "module": (f"{mcp_tool_name}.py", dummy_module_content, "text/x-python")
+        }
+        
+        # Create the tool using POST /tools/
+        response = await client.post(
+            f"{BASE_URL}/tools/",
+            params=mcp_tool_data,
+            files=files
+        )
+        print(f"Tool creation response: {response.status_code}")
+        assert response.status_code == 200, f"Tool creation failed: {response.text}"
+        tool_response = response.json()
+        print(f"✓ Created MCP tool: {tool_response.get('name')}")
+        print(f"  - packaging_format: mcp")
+        print(f"  - mcp_url: {vmcp_url}")
+        
+        # Step 3: Retrieve the tool and verify it has MCP packaging
+        print("\n" + "="*60)
+        print("Step 3: Verifying MCP tool properties...")
+        print("="*60)
+        
+        verify_response = await client.get(f"{BASE_URL}/tools/{mcp_tool_name}")
+        assert verify_response.status_code == 200, f"Failed to get tool: {verify_response.text}"
+        retrieved_tool = verify_response.json()
+        
+        print(f"Tool name: {retrieved_tool.get('name')}")
+        print(f"Packaging format: {retrieved_tool.get('packaging_format')}")
+        print(f"MCP URL: {retrieved_tool.get('mcp_url')}")
+        
+        # Assert the tool has MCP packaging
+        assert retrieved_tool.get("packaging_format") == "mcp", \
+            f"Expected packaging_format 'mcp', got '{retrieved_tool.get('packaging_format')}'"
+        assert retrieved_tool.get("mcp_url") == vmcp_url, \
+            f"Expected mcp_url '{vmcp_url}', got '{retrieved_tool.get('mcp_url')}'"
+        
+        print("✓ Tool verified with MCP packaging format")
+        print(f"✓ MCP URL correctly stored: {retrieved_tool.get('mcp_url')}")
+        
+        # Clean up
+        print("\nCleaning up resources...")
+        
+        # Delete the MCP tool
+        delete_response = await client.delete(f"{BASE_URL}/tools/{mcp_tool_name}")
+        assert delete_response.status_code == 200
+        print(f"Deleted MCP tool: {mcp_tool_name}")
+        
+        # Clean up VMCP server
+        await client.delete(f"{BASE_URL}/vmcp_servers/{vmcp_server_name}")
+        print(f"Deleted VMCP server: {vmcp_server_name}")
+        
+        # Clean up skill
+        await client.delete(f"{BASE_URL}/skills/mcp_post_endpoint_skill")
+        print(f"Deleted skill: mcp_post_endpoint_skill")
+        
+        # Clean up the code tool
+        await client.delete(f"{BASE_URL}/tools/{code_tool_name}")
+        print(f"Deleted code tool: {code_tool_name}")
+        
+        # Add delay to allow resources to be fully released
+        await asyncio.sleep(3)
+        print("✓ Cleanup complete")
+
+
 
 @pytest.mark.asyncio
 async def test_get_tool_module_with_mcp_packaging(run_sbs):
     """Test getting module content for a tool with MCP packaging format."""
-    # The MCP tool name must match the actual tool name on the VMCP server
     code_tool_name = "multiply_for_mcp_test"
-    tool_name = code_tool_name  # MCP tool uses the same name as the underlying tool
+    # The MCP tool will have a different name based on the code tool name
+    tool_name = f"{code_tool_name}_wrapper"
     
     async with httpx.AsyncClient() as client:
         # Step 1: Create a code-based tool first
@@ -385,6 +507,7 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
             "programming_language": "python",
             "packaging_format": "mcp",
             "mcp_url": vmcp_url,
+            "mcp_tool_name": code_tool_name,
             "state": "approved"
         }
         
@@ -443,6 +566,7 @@ async def test_mcp_tool_not_found(run_sbs):
             "programming_language": "python",
             "packaging_format": "mcp",
             "mcp_url": "http://localhost:9999/sse",  # Non-existent server
+            "mcp_tool_name": "nonexistent_tool",
             "state": "approved"
         }
         

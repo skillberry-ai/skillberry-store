@@ -68,6 +68,14 @@ class ToolSchema(ManifestSchema):
         default="code",
         description="Packaging format of the tool"
     )
+    mcp_url: Optional[str] = Field(
+        default=None,
+        description="MCP server URL (required when packaging_format is 'mcp')"
+    )
+    mcp_tool_name: Optional[str] = Field(
+        default=None,
+        description="Actual tool name on the MCP server (required when packaging_format is 'mcp')"
+    )
     params: ToolParamsSchema = Field(
         default_factory=ToolParamsSchema,
         description="Parameters schema for the tool"
