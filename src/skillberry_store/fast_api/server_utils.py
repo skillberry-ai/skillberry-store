@@ -69,8 +69,11 @@ def mcp_content_from_manifest(tool_dict: dict) -> str:
         f"{k}: {v.get('type', 'str')}" for k, v in properties.items()
     )
 
+    # Use mcp_tool_name if available (for MCP tools), otherwise use name
+    function_name = tool_dict.get('mcp_tool_name') or tool_dict['name']
+
     content_lines = [
-        f"def {tool_dict['name']}({param_list}):",
+        f"def {function_name}({param_list}):",
         '    """',
         f"    {tool_dict.get('description', '')}",
         (
@@ -144,7 +147,8 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
                 f"[get_mcp_tools] SSE client connected, creating ClientSession..."
             )
             async with ClientSession(read, write) as session:
-                tool_name = manifest_as_dict.get("name", {})
+                # Use mcp_tool_name if available, otherwise fall back to name
+                tool_name = manifest_as_dict.get("mcp_tool_name") or manifest_as_dict.get("name", {})
                 logger.info(
                     f"[get_mcp_tools] ClientSession created, tool_name: {tool_name}"
                 )
@@ -169,7 +173,7 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
                 if tool_name:
                     logger.info(f"[get_mcp_tools] Searching for tool: {tool_name}")
                     for tool in tools.tools:
-                        if tool.name == manifest_as_dict.get("name", {}):
+                        if tool.name == tool_name:
                             logger.info(
                                 f"[get_mcp_tools] Found matching tool: {tool.name}"
                             )

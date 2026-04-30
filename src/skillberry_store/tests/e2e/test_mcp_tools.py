@@ -160,6 +160,7 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
             "programming_language": "python",
             "packaging_format": "mcp",
             "mcp_url": vmcp_url,
+            "mcp_tool_name": code_tool_name,
             "state": "approved"
         }
         
@@ -303,6 +304,7 @@ def placeholder():
             "programming_language": "python",
             "packaging_format": "mcp",
             "mcp_url": vmcp_url,
+            "mcp_tool_name": code_tool_name,
             "state": "approved"
         }
         
@@ -505,6 +507,7 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
             "programming_language": "python",
             "packaging_format": "mcp",
             "mcp_url": vmcp_url,
+            "mcp_tool_name": code_tool_name,
             "state": "approved"
         }
         
@@ -563,6 +566,7 @@ async def test_mcp_tool_not_found(run_sbs):
             "programming_language": "python",
             "packaging_format": "mcp",
             "mcp_url": "http://localhost:9999/sse",  # Non-existent server
+            "mcp_tool_name": "nonexistent_tool",
             "state": "approved"
         }
         
