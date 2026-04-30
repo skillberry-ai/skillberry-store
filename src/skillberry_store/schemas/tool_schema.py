@@ -1,7 +1,7 @@
 """Pydantic schema for tool objects."""
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from enum import Enum
 
 from .manifest_schema import ManifestSchema
@@ -66,15 +66,11 @@ class ToolSchema(ManifestSchema):
     )
     packaging_format: str = Field(
         default="code",
-        description="Packaging format of the tool"
+        description="Packaging format of the tool (e.g., 'code', 'mcp')"
     )
-    mcp_url: Optional[str] = Field(
-        default=None,
-        description="MCP server URL (required when packaging_format is 'mcp')"
-    )
-    mcp_tool_name: Optional[str] = Field(
-        default=None,
-        description="Actual tool name on the MCP server (required when packaging_format is 'mcp')"
+    packaging_params: Optional[Dict[str, Any]] = Field(
+        default=None, 
+        description="Parameters specific to the packaging format.For 'mcp' format, should contain 'mcp_url' and 'mcp_tool_name'."
     )
     params: ToolParamsSchema = Field(
         default_factory=ToolParamsSchema,
@@ -88,6 +84,36 @@ class ToolSchema(ManifestSchema):
         default=None,
         description="List of tool names that this tool depends on"
     )
+    
+    @model_validator(mode='after')
+    def validate_packaging_params(self) -> 'ToolSchema':
+        """Validate packaging_params based on packaging_format.
+        
+        For MCP packaging format, ensures that packaging_params contains
+        the required 'mcp_url' and 'mcp_tool_name' fields.
+        
+        Returns:
+            ToolSchema: The validated schema instance
+            
+        Raises:
+            ValueError: If packaging_params is missing or incomplete for MCP format
+        """
+        if self.packaging_format == "mcp":
+            if not self.packaging_params:
+                raise ValueError(
+                    "packaging_params is required when packaging_format is 'mcp'. "
+                    "It should contain 'mcp_url' and 'mcp_tool_name'."
+                )
+            
+            required_keys = {"mcp_url", "mcp_tool_name"}
+            missing_keys = required_keys - set(self.packaging_params.keys())
+            if missing_keys:
+                raise ValueError(
+                    f"MCP packaging requires these params in packaging_params: {missing_keys}. "
+                    f"Expected: {required_keys}"
+                )
+        
+        return self
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert the tool schema to a dictionary."""

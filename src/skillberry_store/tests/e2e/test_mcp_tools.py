@@ -159,8 +159,10 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
             "description": "MCP-based tool for testing",
             "programming_language": "python",
             "packaging_format": "mcp",
-            "mcp_url": vmcp_url,
-            "mcp_tool_name": code_tool_name,
+            "packaging_params": {
+                "mcp_url": vmcp_url,
+                "mcp_tool_name": code_tool_name
+            },
             "state": "approved"
         }
         
@@ -191,12 +193,13 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
         assert our_tool is not None, f"Tool '{tool_name}' not found in tools list"
         print(f"Tool found in list: {our_tool.get('name')}")
         print(f"  - packaging_format: {our_tool.get('packaging_format')}")
-        print(f"  - mcp_url: {our_tool.get('mcp_url')}")
+        packaging_params = our_tool.get('packaging_params', {})
+        print(f"  - mcp_url: {packaging_params.get('mcp_url')}")
         print(f"  - state: {our_tool.get('state')}")
         
         # Verify the tool properties match what we created
         assert our_tool.get("packaging_format") == "mcp", f"Expected packaging_format 'mcp', got '{our_tool.get('packaging_format')}'"
-        assert our_tool.get("mcp_url") == vmcp_url, f"Expected mcp_url '{vmcp_url}', got '{our_tool.get('mcp_url')}'"
+        assert packaging_params.get("mcp_url") == vmcp_url, f"Expected mcp_url '{vmcp_url}', got '{packaging_params.get('mcp_url')}'"
         print("✓ Tool verified in tools list with correct properties")
         
         # Step 5: Execute the MCP tool
@@ -303,8 +306,10 @@ def placeholder():
             "description": "MCP wrapper tool for add_for_mcp_test",
             "programming_language": "python",
             "packaging_format": "mcp",
-            "mcp_url": vmcp_url,
-            "mcp_tool_name": code_tool_name,
+            "packaging_params": {
+                "mcp_url": vmcp_url,
+                "mcp_tool_name": code_tool_name
+            },
             "state": "approved"
         }
         
@@ -323,7 +328,8 @@ def placeholder():
         tool_response = response.json()
         print(f"✓ Created MCP tool: {tool_response.get('name')}")
         print(f"  - packaging_format: mcp")
-        print(f"  - mcp_url: {vmcp_url}")
+        packaging_params = tool_response.get('packaging_params', {})
+        print(f"  - mcp_url: {packaging_params.get('mcp_url')}")
         
         # Step 3: Retrieve the tool and verify it has MCP packaging
         print("\n" + "="*60)
@@ -336,16 +342,17 @@ def placeholder():
         
         print(f"Tool name: {retrieved_tool.get('name')}")
         print(f"Packaging format: {retrieved_tool.get('packaging_format')}")
-        print(f"MCP URL: {retrieved_tool.get('mcp_url')}")
+        packaging_params = retrieved_tool.get('packaging_params', {})
+        print(f"MCP URL: {packaging_params.get('mcp_url')}")
         
         # Assert the tool has MCP packaging
         assert retrieved_tool.get("packaging_format") == "mcp", \
             f"Expected packaging_format 'mcp', got '{retrieved_tool.get('packaging_format')}'"
-        assert retrieved_tool.get("mcp_url") == vmcp_url, \
-            f"Expected mcp_url '{vmcp_url}', got '{retrieved_tool.get('mcp_url')}'"
+        assert packaging_params.get("mcp_url") == vmcp_url, \
+            f"Expected mcp_url '{vmcp_url}', got '{packaging_params.get('mcp_url')}'"
         
         print("✓ Tool verified with MCP packaging format")
-        print(f"✓ MCP URL correctly stored: {retrieved_tool.get('mcp_url')}")
+        print(f"✓ MCP URL correctly stored: {packaging_params.get('mcp_url')}")
         
         # Clean up
         print("\nCleaning up resources...")
@@ -506,8 +513,10 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
             "description": "MCP-based tool for module testing",
             "programming_language": "python",
             "packaging_format": "mcp",
-            "mcp_url": vmcp_url,
-            "mcp_tool_name": code_tool_name,
+            "packaging_params": {
+                "mcp_url": vmcp_url,
+                "mcp_tool_name": code_tool_name
+            },
             "state": "approved"
         }
         
@@ -525,7 +534,7 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
         print("Step 5: Retrieving module content...")
         print("="*60)
         print(f"Requesting module for tool: {tool_name}")
-        print(f"MCP URL in tool: {vmcp_url}")
+        print(f"MCP URL in tool packaging_params: {vmcp_url}")
         module_response = await client.get(f"{BASE_URL}/tools/{tool_name}/module")
         print(f"Module retrieval response status: {module_response.status_code}")
         print(f"Module retrieval response body: {module_response.text[:500]}")
@@ -565,8 +574,10 @@ async def test_mcp_tool_not_found(run_sbs):
             "description": "Non-existent MCP tool",
             "programming_language": "python",
             "packaging_format": "mcp",
-            "mcp_url": "http://localhost:9999/sse",  # Non-existent server
-            "mcp_tool_name": "nonexistent_tool",
+            "packaging_params": {
+                "mcp_url": "http://localhost:9999/sse",  # Non-existent server
+                "mcp_tool_name": "nonexistent_tool"
+            },
             "state": "approved"
         }
         

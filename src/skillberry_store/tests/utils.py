@@ -63,7 +63,10 @@ async def add_tool_manifest(
         "programming_language": "python",
         "packaging_format": "mcp",
         "version": "0.0.1",
-        "mcp_url": mcp_url,
+        "packaging_params": {
+            "mcp_url": mcp_url,
+            "mcp_tool_name": name
+        },
         "name": name,
         "state": "approved",
     }
