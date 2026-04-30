@@ -70,7 +70,7 @@ def mcp_content_from_manifest(tool_dict: dict) -> str:
     )
 
     # Use mcp_tool_name if available (for MCP tools), otherwise use name
-    function_name = tool_dict.get('mcp_tool_name') or tool_dict['name']
+    function_name = tool_dict.get("mcp_tool_name") or tool_dict["name"]
 
     content_lines = [
         f"def {function_name}({param_list}):",
@@ -148,7 +148,9 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
             )
             async with ClientSession(read, write) as session:
                 # Use mcp_tool_name if available, otherwise fall back to name
-                tool_name = manifest_as_dict.get("mcp_tool_name") or manifest_as_dict.get("name", {})
+                tool_name = manifest_as_dict.get(
+                    "mcp_tool_name"
+                ) or manifest_as_dict.get("name", {})
                 logger.info(
                     f"[get_mcp_tools] ClientSession created, tool_name: {tool_name}"
                 )

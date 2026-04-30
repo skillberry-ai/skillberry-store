@@ -375,7 +375,7 @@ class FileExecutor:
         try:
             # Use mcp_tool_name if available, otherwise fall back to name
             function_name = self.manifest.get("mcp_tool_name") or self.manifest["name"]
-            
+
             (
                 function_name,
                 parameter_definitions,
