@@ -69,8 +69,9 @@ def mcp_content_from_manifest(tool_dict: dict) -> str:
         f"{k}: {v.get('type', 'str')}" for k, v in properties.items()
     )
 
-    # Use mcp_tool_name if available (for MCP tools), otherwise use name
-    function_name = tool_dict.get("mcp_tool_name") or tool_dict["name"]
+    # Get MCP tool name from packaging_params, fall back to tool name
+    packaging_params = tool_dict.get("packaging_params", {})
+    function_name = packaging_params.get("mcp_tool_name") or tool_dict["name"]
 
     content_lines = [
         f"def {function_name}({param_list}):",
@@ -136,7 +137,9 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
     import logging
 
     logger = logging.getLogger(__name__)
-    mcp_url = manifest_as_dict.get("mcp_url", {})
+    # Get MCP URL from packaging_params
+    packaging_params = manifest_as_dict.get("packaging_params", {})
+    mcp_url = packaging_params.get("mcp_url", {})
     logger.info(f"[get_mcp_tools] Starting - Connecting to MCP server at: {mcp_url}")
     logger.debug(f"[get_mcp_tools] Manifest dict: {manifest_as_dict}")
 
@@ -147,8 +150,9 @@ async def get_mcp_tools(manifest_as_dict: dict) -> list:
                 f"[get_mcp_tools] SSE client connected, creating ClientSession..."
             )
             async with ClientSession(read, write) as session:
-                # Use mcp_tool_name if available, otherwise fall back to name
-                tool_name = manifest_as_dict.get(
+                # Get MCP tool name from packaging_params, fall back to tool name
+                packaging_params = manifest_as_dict.get("packaging_params", {})
+                tool_name = packaging_params.get(
                     "mcp_tool_name"
                 ) or manifest_as_dict.get("name", {})
                 logger.info(

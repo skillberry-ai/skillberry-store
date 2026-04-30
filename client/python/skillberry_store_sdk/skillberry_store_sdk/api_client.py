@@ -438,6 +438,18 @@ class ApiClient:
             return None
 
         if isinstance(klass, str):
+            # Handle Optional[] wrapper
+            # NOTE: This is a workaround for OpenAPI Generator limitation.
+            # The generator creates type strings like "Optional[Dict[str, object]]"
+            # but doesn't provide deserialization logic for the Optional[] wrapper.
+            # Without this, deserialization fails with AttributeError when trying
+            # to find a model class named "Optional[Dict[str, object]]".
+            if klass.startswith('Optional['):
+                m = re.match(r'Optional\[(.*)]', klass)
+                assert m is not None, "Malformed Optional type definition"
+                sub_kls = m.group(1)
+                return self.__deserialize(data, sub_kls)
+            
             if klass.startswith('List['):
                 m = re.match(r'List\[(.*)]', klass)
                 assert m is not None, "Malformed List type definition"

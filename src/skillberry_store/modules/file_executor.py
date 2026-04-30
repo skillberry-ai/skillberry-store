@@ -373,8 +373,11 @@ class FileExecutor:
         logger.info(f"Executing python code using a MCP server")
 
         try:
-            # Use mcp_tool_name if available, otherwise fall back to name
-            function_name = self.manifest.get("mcp_tool_name") or self.manifest["name"]
+            # Get MCP tool name from packaging_params, fall back to tool name
+            packaging_params = self.manifest.get("packaging_params", {})
+            function_name = (
+                packaging_params.get("mcp_tool_name") or self.manifest["name"]
+            )
 
             (
                 function_name,
@@ -421,7 +424,9 @@ class FileExecutor:
                         parameter_definition_type,
                     )
                     mcp_args_dict[parameter_definition_name] = converted_arg
-            mcp_server_url = self.manifest.get("mcp_url") or default_mcp_server_url
+            # Get MCP server URL from packaging_params
+            packaging_params = self.manifest.get("packaging_params", {})
+            mcp_server_url = packaging_params.get("mcp_url") or default_mcp_server_url
             logger.info(
                 f"[execute_python_file_in_mcp_server] Connecting to MCP server at: {mcp_server_url}"
             )
