@@ -1,7 +1,8 @@
 """Pydantic schema for tool objects."""
 
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, model_validator
+import json
+from typing import Any, Dict, List, Optional, Union
+from pydantic import BaseModel, Field, model_validator, field_validator
 from enum import Enum
 
 from .manifest_schema import ManifestSchema
@@ -69,9 +70,36 @@ class ToolSchema(ManifestSchema):
         description="Packaging format of the tool (e.g., 'code', 'mcp')"
     )
     packaging_params: Optional[Dict[str, Any]] = Field(
-        default=None, 
-        description="Parameters specific to the packaging format.For 'mcp' format, should contain 'mcp_url' and 'mcp_tool_name'."
+        default=None,
+        description="Parameters specific to the packaging format. For 'mcp' format, should contain 'mcp_url' and 'mcp_tool_name'. Can be provided as a JSON string or dict."
     )
+    
+    @field_validator('packaging_params', mode='before')
+    @classmethod
+    def parse_packaging_params(cls, v) -> Optional[Dict[str, Any]]:
+        """Parse packaging_params if it's a JSON string.
+        
+        This allows the field to accept both dict and JSON string formats,
+        which is necessary for FastAPI Query() parameters that can't handle
+        complex types directly.
+        
+        Args:
+            v: The value to validate (can be None, str, or dict)
+            
+        Returns:
+            Optional[Dict[str, Any]]: Parsed dictionary or None
+            
+        Raises:
+            ValueError: If string value is not valid JSON
+        """
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"packaging_params must be valid JSON string: {e}")
+        return v
     params: ToolParamsSchema = Field(
         default_factory=ToolParamsSchema,
         description="Parameters schema for the tool"

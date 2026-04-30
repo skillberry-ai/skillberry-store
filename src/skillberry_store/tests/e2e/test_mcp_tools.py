@@ -301,15 +301,16 @@ def placeholder():
 """
         
         # Prepare the tool data with MCP packaging
+        # Note: packaging_params must be sent as JSON string for FastAPI Query() compatibility
         mcp_tool_data = {
             "name": mcp_tool_name,
             "description": "MCP wrapper tool for add_for_mcp_test",
             "programming_language": "python",
             "packaging_format": "mcp",
-            "packaging_params": {
+            "packaging_params": json.dumps({
                 "mcp_url": vmcp_url,
                 "mcp_tool_name": code_tool_name
-            },
+            }),
             "state": "approved"
         }
         
