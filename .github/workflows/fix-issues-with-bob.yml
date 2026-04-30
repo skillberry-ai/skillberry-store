@@ -16,16 +16,37 @@
 # 3. Install Bob Shell: Download and install Bob Shell using the official installer
 # 4. Authentication: Configure Bob Shell with BOBSHELL_API_KEY from GitHub secrets
 # 5. Context Gathering: Extract issue details (number, title, description)
-# 6. Branch Creation: Create a new branch named 'fix-issue-{number}'
-# 7. Bob Execution: Run Bob Shell with a prompt containing the issue context
-# 8. Change Detection: Check if Bob made any code modifications
-# 9. PR Creation: If changes exist, commit them and create a pull request
-# 10. Feedback: Comment on the issue with workflow status (success/failure/no changes)
+# 6. Git Configuration: Configure Git user and add 'eranra' remote for fork-based workflow
+# 7. Branch Creation: Create a new branch named 'fix-issue-{number}'
+# 8. Bob Execution: Run Bob Shell with a prompt containing the issue context
+# 9. Change Detection: Check if Bob made any code modifications
+# 10. Push to Fork: Commit and push changes to the 'eranra' remote repository
+# 11. PR Creation: Create a pull request from the fork to the upstream repository
+# 12. Feedback: Comment on the issue with workflow status (success/failure/no changes)
+#
+# FORK-BASED WORKFLOW:
+# This workflow uses a fork-based approach where:
+# - Changes are pushed to the 'eranra' fork (https://github.com/eranra/skillberry-store.git)
+# - Pull requests are created from 'eranra:fix-issue-{number}' to the upstream 'main' branch
+# - This allows the workflow to operate without direct push access to protected branches
+# - Authentication uses a Personal Access Token (PAT) with 'repo' scope
 #
 # REQUIREMENTS:
-# - GitHub Secret: BOBSHELL_API_KEY must be configured in repository settings
+# - GitHub Secrets (must be configured in repository settings):
+#   * BOBSHELL_API_KEY: API key for Bob Shell authentication
+#   * ERANRA_GITHUB_TOKEN: Personal Access Token with 'repo' scope for pushing to eranra fork
 # - Label: 'fix-with-bob' must exist in the repository
 # - Permissions: Workflow needs write access to issues, PRs, and repository contents
+#
+# SETUP INSTRUCTIONS:
+# 1. Create a Personal Access Token (PAT) in the eranra GitHub account:
+#    - Go to Settings > Developer settings > Personal access tokens > Tokens (classic)
+#    - Generate new token with 'repo' scope (full control of private repositories)
+#    - Copy the token value
+# 2. Add the token as a secret in the upstream repository:
+#    - Go to repository Settings > Secrets and variables > Actions
+#    - Create new secret named 'ERANRA_GITHUB_TOKEN' with the PAT value
+# 3. Ensure BOBSHELL_API_KEY is also configured as a secret
 #
 # USAGE:
 # Simply add the 'fix-with-bob' label to any issue you want Bob to attempt to fix.
@@ -79,6 +100,18 @@ jobs:
             exit 1
           fi
       
+      - name: Authenticate Bob Shell
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+        run: |
+          echo "Configuring Bob Shell authentication..."
+          if [ -z "$BOBSHELL_API_KEY" ]; then
+            echo "Error: BOBSHELL_API_KEY secret is not set"
+            exit 1
+          fi
+          # Bob Shell uses BOBSHELL_API_KEY environment variable for authentication
+          echo "Bob Shell authentication configured successfully"
+      
       - name: Get Issue Details
         id: issue
         run: |
@@ -89,9 +122,24 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
       
       - name: Configure Git
+        env:
+          ERANRA_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
+          # Verify ERANRA_GITHUB_TOKEN is configured
+          if [ -z "$ERANRA_TOKEN" ]; then
+            echo "Error: ERANRA_GITHUB_TOKEN secret is not set"
+            echo "Please configure this secret in repository settings with a PAT that has 'repo' scope"
+            exit 1
+          fi
+          echo "ERANRA_GITHUB_TOKEN is configured ✓"
+          
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add eranra remote for pushing branches using HTTPS with token authentication
+          # The token must have 'repo' scope to push to the fork
+          git remote add eranra https://x-access-token:${ERANRA_TOKEN}@github.com/eranra/skillberry-store.git || true
+          git remote -v
       
       - name: Create Branch for Fix
         run: |
@@ -101,6 +149,7 @@ jobs:
       
       - name: Execute Bob to Fix Issue
         env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
           ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -137,14 +186,19 @@ jobs:
         run: |
           git add .
           git commit -m "Fix issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}"
-          git push origin "${BRANCH_NAME}"
+          git push eranra "${BRANCH_NAME}"
+          
+          # Verify the branch was pushed successfully
+          echo "Branch ${BRANCH_NAME} pushed to eranra remote"
       
       - name: Create Pull Request
         if: steps.changes.outputs.has_changes == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Create PR from the eranra fork to the upstream repository
           gh pr create \
+            --repo ${{ github.repository }} \
             --title "Fix: Issue #${{ steps.issue.outputs.issue_number }} - ${{ steps.issue.outputs.issue_title }}" \
             --body "This PR was automatically generated by Bob Shell to fix issue #${{ steps.issue.outputs.issue_number }}.
 
@@ -157,7 +211,7 @@ jobs:
 
           Closes #${{ steps.issue.outputs.issue_number }}" \
             --base main \
-            --head "${BRANCH_NAME}"
+            --head "eranra:${BRANCH_NAME}"
       
       - name: Comment on Issue
         if: steps.changes.outputs.has_changes == 'true'
