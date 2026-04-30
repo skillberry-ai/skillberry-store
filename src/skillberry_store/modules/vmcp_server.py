@@ -463,7 +463,7 @@ class VirtualMcpServer:
             )
             from skillberry_store.modules.file_handler import FileHandler
             from skillberry_store.modules.file_executor import FileExecutor
-            import json
+            from skillberry_store.fast_api.tools_api import load_tool_dependencies
 
             # Use the manifest cached at server creation time so that a later overwrite of the
             # tool JSON file (e.g. by an MCP wrapper with the same name) cannot cause
@@ -483,33 +483,15 @@ class VirtualMcpServer:
             if not isinstance(module_content, str):
                 raise ValueError(f"Could not read module for tool '{tool_name}'")
 
-            # Load tool dependencies
-            dependent_file_contents = []
-            dependent_tools_as_dict = []
+            # Load tool dependencies recursively using the shared function
             dependencies = tool_dict.get("dependencies", [])
-            if dependencies:
-                logging.info(
-                    f"Loading {len(dependencies)} dependencies for tool '{tool_name}': {dependencies}"
-                )
-                tools_handler = FileHandler(get_tools_directory())
-                for dep_name in dependencies:
-                    try:
-                        dep_manifest_content = tools_handler.read_file(
-                            f"{dep_name}.json", raw_content=True
-                        )
-                        if isinstance(dep_manifest_content, str):
-                            dep_manifest = json.loads(dep_manifest_content)
-                            dependent_tools_as_dict.append(dep_manifest)
-                            dep_module_name = dep_manifest.get("module_name")
-                            if dep_module_name:
-                                dep_content = file_handler.read_file(
-                                    dep_module_name, raw_content=True
-                                )
-                                if isinstance(dep_content, str):
-                                    dependent_file_contents.append(dep_content)
-                                    logging.info(f"Loaded dependency '{dep_name}' code")
-                    except Exception as e:
-                        logging.error(f"Error loading dependency '{dep_name}': {e}")
+            tools_handler = FileHandler(get_tools_directory())
+            dependent_file_contents, dependent_tools_as_dict = load_tool_dependencies(
+                dependencies=dependencies,
+                tool_handler=tools_handler,
+                file_handler=file_handler,
+                tool_name=tool_name,
+            )
 
             executor = FileExecutor(
                 name=tool_name,
