@@ -183,6 +183,8 @@ jobs:
       
       - name: Commit and Push Changes
         if: steps.changes.outputs.has_changes == 'true'
+        env:
+          ERANRA_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
           git add .
           git commit -m "Fix issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}"
