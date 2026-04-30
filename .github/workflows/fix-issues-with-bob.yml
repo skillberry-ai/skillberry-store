@@ -40,13 +40,29 @@
 #
 # SETUP INSTRUCTIONS:
 # 1. Create a Personal Access Token (PAT) in the eranra GitHub account:
+#    - Log in to GitHub as the 'eranra' user
 #    - Go to Settings > Developer settings > Personal access tokens > Tokens (classic)
-#    - Generate new token with 'repo' scope (full control of private repositories)
-#    - Copy the token value
-# 2. Add the token as a secret in the upstream repository:
+#    - Click "Generate new token (classic)"
+#    - Give it a descriptive name (e.g., "Bob Shell Workflow - skillberry-store")
+#    - Select the 'repo' scope (this grants full control of private repositories)
+#    - Set an appropriate expiration date (or no expiration for long-term use)
+#    - Click "Generate token" and copy the token value immediately
+# 2. Add the token as a secret in the upstream repository (skillberry-ai/skillberry-store):
 #    - Go to repository Settings > Secrets and variables > Actions
-#    - Create new secret named 'ERANRA_GITHUB_TOKEN' with the PAT value
+#    - Click "New repository secret"
+#    - Name: ERANRA_GITHUB_TOKEN
+#    - Value: Paste the PAT from step 1
+#    - Click "Add secret"
 # 3. Ensure BOBSHELL_API_KEY is also configured as a secret
+# 4. Verify the eranra account has write access to the fork (eranra/skillberry-store)
+#
+# TROUBLESHOOTING TOKEN ISSUES:
+# If you see "permission denied" errors when pushing:
+# - Verify the token was created by the 'eranra' user (not another account)
+# - Ensure the token has the 'repo' scope selected
+# - Check that the token hasn't expired
+# - Confirm the eranra user owns the fork repository
+# - Try regenerating the token if issues persist
 #
 # USAGE:
 # Simply add the 'fix-with-bob' label to any issue you want Bob to attempt to fix.
@@ -138,8 +154,18 @@ jobs:
           
           # Add eranra remote for pushing branches using HTTPS with token authentication
           # The token must have 'repo' scope to push to the fork
-          git remote add eranra https://x-access-token:${ERANRA_TOKEN}@github.com/eranra/skillberry-store.git || true
+          git remote add eranra https://${ERANRA_TOKEN}@github.com/eranra/skillberry-store.git || true
           git remote -v
+          
+          # Test token permissions by fetching from the remote
+          echo "Testing token permissions..."
+          if git ls-remote eranra &> /dev/null; then
+            echo "✓ Token has read access to eranra/skillberry-store"
+          else
+            echo "✗ Token does not have read access to eranra/skillberry-store"
+            echo "Please verify the token has 'repo' scope and access to the fork"
+            exit 1
+          fi
       
       - name: Create Branch for Fix
         run: |
@@ -189,10 +215,25 @@ jobs:
           git add -A
           git reset .bob/ || true
           git commit -m "Fix issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}"
-          git push eranra "${BRANCH_NAME}"
           
-          # Verify the branch was pushed successfully
-          echo "Branch ${BRANCH_NAME} pushed to eranra remote"
+          echo "Pushing to eranra remote..."
+          if git push eranra "${BRANCH_NAME}"; then
+            echo "✓ Branch ${BRANCH_NAME} pushed successfully to eranra remote"
+          else
+            echo "✗ Failed to push to eranra remote"
+            echo ""
+            echo "TROUBLESHOOTING:"
+            echo "1. Verify ERANRA_GITHUB_TOKEN has 'repo' scope (full control of private repositories)"
+            echo "2. Ensure the token belongs to the 'eranra' GitHub account"
+            echo "3. Check that the token hasn't expired"
+            echo "4. Verify the eranra account has write access to eranra/skillberry-store"
+            echo ""
+            echo "To regenerate the token:"
+            echo "1. Go to https://github.com/settings/tokens"
+            echo "2. Generate new token (classic) with 'repo' scope"
+            echo "3. Update the ERANRA_GITHUB_TOKEN secret in repository settings"
+            exit 1
+          fi
       
       - name: Create Pull Request
         if: steps.changes.outputs.has_changes == 'true'
