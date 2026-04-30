@@ -68,7 +68,7 @@ jobs:
       - name: Install Bob Shell
         run: |
           echo "Installing Bob Shell..."
-          curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash
+          curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash -s -- --package-manager npm
 
           # Verify installation
           if command -v bob &> /dev/null; then
