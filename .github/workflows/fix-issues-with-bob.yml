@@ -186,7 +186,8 @@ jobs:
         env:
           ERANRA_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
-          git add .
+          git add -A
+          git reset .bob/ || true
           git commit -m "Fix issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}"
           git push eranra "${BRANCH_NAME}"
           
