@@ -1,5 +1,13 @@
 ##@ Docker container management
 
+# Guidelines::
+# 1. By default, "make docker-run" will try to pull the image from GHCR. If that fails (e.g., no skillberry-store:latest image), it will build the image locally
+# 2. If you want "make docker-run" to skip pulling and just build the image, set env var SBD_DEV=1 (e.g., SBD_DEV=1 make docker-run, or export SBD_DEV=1 and then make docker-run)
+# 3. If you buid the image explicitly (make docker-build) or pull it explicitly (make docker-pull) then make docker-run will use the resulting image
+# 4. If you want to push a new image or new base image to GHCR (multi-platform build & push), do: DBT=registry make docker-build, or DBT=registry make base-image-build. 
+#    Notes: A. This operation requires multi-platform docker support (you will get an error message with detailed instructions if it's not available). 
+#           B. This operation may not create a local image (docker buildx limitation).
+
 # Supported container architectures
 SUPPORTED_ARCHS := linux/amd64 linux/arm64
 
