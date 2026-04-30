@@ -32,8 +32,15 @@ CODE_FILES := $(foreach T,$(CODE_SUBTREES), \
 CODE_FILES := $(CODE_FILES) pyproject.toml Makefile Dockerfile
 
 # This stamp file checks for code changes
-.stamps/code-scan: $(CODE_FILES) 
+.stamps/code-scan: $(CODE_FILES)
 	@echo "Detected code changed in: $(CODE_SUBTREES)"
+	@if [ -f .stamps/code-scan ]; then \
+		for file in $(CODE_FILES); do \
+			if [ "$$file" -nt .stamps/code-scan ]; then \
+				echo "$$file"; \
+			fi; \
+		done; \
+	fi
 	@touch .stamps/code-scan
 
 git-hooks-setup:
@@ -99,6 +106,7 @@ update-git-version:
 	    else \
 	        CURRENT_CONTENT=$$(cat $(VERSION_LOCATION) 2>/dev/null || echo ""); \
 	        if [ "$$CURRENT_CONTENT" != "$$NEW_CONTENT" ]; then \
+				echo "Git version changed. Current content: $$CURRENT_CONTENT <==> New content: $$NEW_CONTENT"; \
 	            echo "Updating git version in $(VERSION_LOCATION)"; \
 	            echo "$$NEW_CONTENT" > $(VERSION_LOCATION); \
 	        else \
