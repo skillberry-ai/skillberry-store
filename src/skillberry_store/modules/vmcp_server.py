@@ -243,9 +243,7 @@ class VirtualMcpServer:
             def make_handler(tool_name, tool_schema):
                 # Extract parameter names from the tool schema
                 properties = tool_schema.get("inputSchema", {}).get("properties", {})
-                logging.info(
-                    f"@@@@@ make_handler: {tool_name} '{properties}' @@@@@"
-                )  # OK..
+                logging.info(f"@@@@@ make_handler: {tool_name} '{properties}' @@@@@")  # OK..
                 required = tool_schema.get("inputSchema", {}).get("required", [])
 
                 # Create function signature dynamically
@@ -259,9 +257,7 @@ class VirtualMcpServer:
 
                         # Skip variadic parameters like *args, **kwargs
                         if param_name.startswith("*"):
-                            logging.warning(
-                                f"Skipping variadic parameter: {param_name}"
-                            )
+                            logging.warning(f"Skipping variadic parameter: {param_name}")
                             continue
 
                         # Validate param_info has required keys
@@ -271,9 +267,7 @@ class VirtualMcpServer:
                             )
                             continue
 
-                        description = param_info.get(
-                            "description", f"Parameter {param_name}"
-                        )
+                        description = param_info.get("description", f"Parameter {param_name}")
                         _type = param_info["type"]
 
                         # annotate the parameter so that is appears inside MCP tool
@@ -329,9 +323,7 @@ class VirtualMcpServer:
 
                     # Pass parameters as a dictionary to match SBS expectations
                     try:
-                        return_value = await self.invoke_tool(
-                            tool_name, parameters, self.env_id
-                        )
+                        return_value = await self.invoke_tool(tool_name, parameters, self.env_id)
                     except Exception as e:
                         logging.info(f"@@@@@ handler: Error '{str(e)}'  @@@@@")
                         # tool invocation logic
@@ -382,9 +374,7 @@ class VirtualMcpServer:
                 handler.__doc__ = tool.description
                 handler.__signature__ = inspect.Signature(params)
                 handler.__annotations__ = annotations
-                logging.info(
-                    f"@@@@@@ handler.__signature__ {handler.__signature__}  @@@@@@"
-                )
+                logging.info(f"@@@@@@ handler.__signature__ {handler.__signature__}  @@@@@@")
 
                 return handler
 
@@ -467,9 +457,13 @@ class VirtualMcpServer:
             raise ValueError(f"Tool {tool_name} not found")
 
         try:
-            from skillberry_store.tools.configure import get_files_directory_path
+            from skillberry_store.tools.configure import (
+                get_files_directory_path,
+                get_tools_directory,
+            )
             from skillberry_store.modules.file_handler import FileHandler
             from skillberry_store.modules.file_executor import FileExecutor
+            import json
 
             # Use the manifest cached at server creation time so that a later overwrite of the
             # tool JSON file (e.g. by an MCP wrapper with the same name) cannot cause
@@ -489,10 +483,40 @@ class VirtualMcpServer:
             if not isinstance(module_content, str):
                 raise ValueError(f"Could not read module for tool '{tool_name}'")
 
+            # Load tool dependencies
+            dependent_file_contents = []
+            dependent_tools_as_dict = []
+            dependencies = tool_dict.get("dependencies", [])
+            if dependencies:
+                logging.info(
+                    f"Loading {len(dependencies)} dependencies for tool '{tool_name}': {dependencies}"
+                )
+                tools_handler = FileHandler(get_tools_directory())
+                for dep_name in dependencies:
+                    try:
+                        dep_manifest_content = tools_handler.read_file(
+                            f"{dep_name}.json", raw_content=True
+                        )
+                        if isinstance(dep_manifest_content, str):
+                            dep_manifest = json.loads(dep_manifest_content)
+                            dependent_tools_as_dict.append(dep_manifest)
+                            dep_module_name = dep_manifest.get("module_name")
+                            if dep_module_name:
+                                dep_content = file_handler.read_file(
+                                    dep_module_name, raw_content=True
+                                )
+                                if isinstance(dep_content, str):
+                                    dependent_file_contents.append(dep_content)
+                                    logging.info(f"Loaded dependency '{dep_name}' code")
+                    except Exception as e:
+                        logging.error(f"Error loading dependency '{dep_name}': {e}")
+
             executor = FileExecutor(
                 name=tool_name,
                 file_content=module_content,
                 file_manifest=tool_dict,
+                dependent_file_contents=dependent_file_contents,
+                dependent_tools_as_dict=dependent_tools_as_dict,
             )
             result = await executor.execute_file(parameters=parameters, env_id=env_id)
 
@@ -568,9 +592,7 @@ class VirtualMcpServer:
                         expose_headers=["*"],
                     )
 
-                    logging.info(
-                        f"CORS middleware added, starting server on port {self.port}"
-                    )
+                    logging.info(f"CORS middleware added, starting server on port {self.port}")
                     # Run the app with uvicorn
                     uvicorn.run(app, host="127.0.0.1", port=self.port, log_level="info")
                 except Exception as e:
