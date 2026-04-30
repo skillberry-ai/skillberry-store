@@ -127,9 +127,9 @@ async def create_vmcp_server_with_tool(client, tool_name: str, tool_code: bytes,
 @pytest.mark.asyncio
 async def test_execute_tool_with_mcp_packaging(run_sbs):
     """Test executing a tool with MCP packaging format."""
-    # The MCP tool name must match the actual tool name on the VMCP server
     code_tool_name = "concat_for_mcp_test"
-    tool_name = code_tool_name  # MCP tool uses the same name as the underlying tool
+    # The MCP tool will have a different name based on the code tool name
+    tool_name = f"{code_tool_name}_wrapper"
     
     async with httpx.AsyncClient() as client:
         # Create VMCP server with tool using helper function
@@ -374,9 +374,9 @@ def placeholder():
 @pytest.mark.asyncio
 async def test_get_tool_module_with_mcp_packaging(run_sbs):
     """Test getting module content for a tool with MCP packaging format."""
-    # The MCP tool name must match the actual tool name on the VMCP server
     code_tool_name = "multiply_for_mcp_test"
-    tool_name = code_tool_name  # MCP tool uses the same name as the underlying tool
+    # The MCP tool will have a different name based on the code tool name
+    tool_name = f"{code_tool_name}_wrapper"
     
     async with httpx.AsyncClient() as client:
         # Step 1: Create a code-based tool first
