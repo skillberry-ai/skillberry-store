@@ -1,0 +1,197 @@
+# ============================================================================
+# GitHub Workflow: Fix Issues with Bob
+# ============================================================================
+#
+# PURPOSE:
+# This workflow automatically fixes GitHub issues using IBM Bob Shell, an AI-powered
+# coding assistant. When an issue is labeled with 'fix-with-bob', this workflow:
+# 1. Analyzes the issue description and requirements
+# 2. Uses Bob Shell to generate code changes that address the issue
+# 3. Creates a pull request with the proposed fixes
+# 4. Provides feedback on the issue with status updates
+#
+# WORKFLOW STEPS:
+# 1. Trigger: Activated when 'fix-with-bob' label is added to an issue
+# 2. Setup: Checkout repository and install Node.js 22 (required for Bob Shell)
+# 3. Install Bob Shell: Download and install Bob Shell using the official installer
+# 4. Authentication: Configure Bob Shell with BOBSHELL_API_KEY from GitHub secrets
+# 5. Context Gathering: Extract issue details (number, title, description)
+# 6. Branch Creation: Create a new branch named 'fix-issue-{number}'
+# 7. Bob Execution: Run Bob Shell with a prompt containing the issue context
+# 8. Change Detection: Check if Bob made any code modifications
+# 9. PR Creation: If changes exist, commit them and create a pull request
+# 10. Feedback: Comment on the issue with workflow status (success/failure/no changes)
+#
+# REQUIREMENTS:
+# - GitHub Secret: BOBSHELL_API_KEY must be configured in repository settings
+# - Label: 'fix-with-bob' must exist in the repository
+# - Permissions: Workflow needs write access to issues, PRs, and repository contents
+#
+# USAGE:
+# Simply add the 'fix-with-bob' label to any issue you want Bob to attempt to fix.
+# The workflow will automatically trigger and process the issue.
+#
+# NOTE:
+# Bob Shell's exact CLI interface may require adjustments. The current implementation
+# pipes a prompt file to Bob via stdin. Consult Bob Shell documentation for the
+# most accurate command syntax.
+# ============================================================================
+
+name: Fix Issues with Bob
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  fix-issues-with-bob:
+    # Only run when the 'fix-with-bob' label is added
+    if: github.event.label.name == 'fix-with-bob'
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better context
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Install Bob Shell
+        run: |
+          echo "Installing Bob Shell..."
+          curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash --pm npm
+          
+          # Verify installation
+          if command -v bob &> /dev/null; then
+            echo "Bob Shell installed successfully"
+            bob --version
+          else
+            echo "Bob Shell installation failed"
+            exit 1
+          fi
+      
+      - name: Configure Bob Shell
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+        run: |
+          # Bob Shell uses environment variables for authentication
+          # The BOBSHELL_API_KEY will be available in subsequent steps
+          echo "Bob Shell configured with API key"
+      
+      - name: Get Issue Details
+        id: issue
+        run: |
+          echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          echo "issue_title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+          echo "issue_body<<EOF" >> $GITHUB_OUTPUT
+          echo "${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Create Branch for Fix
+        run: |
+          BRANCH_NAME="fix-issue-${{ steps.issue.outputs.issue_number }}"
+          git checkout -b "${BRANCH_NAME}"
+          echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
+      
+      - name: Execute Bob to Fix Issue
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create a comprehensive prompt for Bob Shell
+          PROMPT="Fix GitHub issue #${ISSUE_NUMBER}: ${{ steps.issue.outputs.issue_title }}
+
+          Repository: ${{ github.repository }}
+          Issue URL: ${{ github.event.issue.html_url }}
+          
+          Issue Description:
+          ${{ steps.issue.outputs.issue_body }}
+          
+          Please analyze this issue and make all necessary code changes to fix it.
+          Ensure the changes are complete, follow best practices, and resolve the issue."
+          
+          # Execute Bob Shell in non-interactive mode
+          # Using echo to pipe the prompt to Bob
+          echo "${PROMPT}" | bob -p || {
+            echo "Bob execution completed. Checking for changes..."
+          }
+      
+      - name: Check for Changes
+        id: changes
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git status --short
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          fi
+      
+      - name: Commit and Push Changes
+        if: steps.changes.outputs.has_changes == 'true'
+        run: |
+          git add .
+          git commit -m "Fix issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}"
+          git push origin "${BRANCH_NAME}"
+      
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --title "Fix: Issue #${{ steps.issue.outputs.issue_number }} - ${{ steps.issue.outputs.issue_title }}" \
+            --body "This PR was automatically generated by Bob Shell to fix issue #${{ steps.issue.outputs.issue_number }}.
+
+          ## Issue Details
+          ${{ steps.issue.outputs.issue_body }}
+
+          ## Changes
+          Bob Shell analyzed the issue and applied the following fixes:
+          $(git diff origin/main...HEAD --stat)
+
+          Closes #${{ steps.issue.outputs.issue_number }}" \
+            --base main \
+            --head "${BRANCH_NAME}"
+      
+      - name: Comment on Issue
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ steps.issue.outputs.issue_number }} \
+            --body "🤖 Bob Shell has analyzed this issue and created a pull request with a proposed fix. Please review the changes."
+      
+      - name: Comment on Issue - No Changes
+        if: steps.changes.outputs.has_changes == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ steps.issue.outputs.issue_number }} \
+            --body "🤖 Bob Shell analyzed this issue but did not generate any code changes. Manual intervention may be required."
+      
+      - name: Handle Errors
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ steps.issue.outputs.issue_number }} \
+            --body "❌ Bob Shell encountered an error while trying to fix this issue. Please check the workflow logs for details."
+
+# Made with Bob

@@ -2,7 +2,7 @@
 
 test-e2e: ## Test end-to-end the tools service (installs sdk)
 	@$(MAKE) install-requirements ODEPS=dev
-	pytest -s src/skillberry_store/tests/e2e
+	pytest src/skillberry_store/tests/e2e
 
 lint: ## List the tools-service
 	@$(MAKE) install-requirements ODEPS=dev
