@@ -162,14 +162,15 @@ jobs:
           ERANRA_GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
           echo "Adding eranra remote..."
-          git remote add eranra https://eranra:${ERANRA_GITHUB_TOKEN}@github.com/eranra/skillberry-store.git
+          git remote add eranra https://x-access-token:${ERANRA_GITHUB_TOKEN}@github.com/eranra/skillberry-store.git
+          git remote -v
           echo "✓ eranra remote added successfully"
           git add -A
           git reset .bob/ || true
           git commit -m "Fix issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}"
           
           echo "Pushing to eranra remote..."
-          if git push eranra "${BRANCH_NAME}"; then
+          if git push -u eranra "${BRANCH_NAME}"; then
             echo "✓ Branch ${BRANCH_NAME} pushed successfully to eranra remote"
           else
             echo "✗ Failed to push to eranra remote"
