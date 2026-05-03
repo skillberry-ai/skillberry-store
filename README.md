@@ -88,9 +88,9 @@ if you already have a default Podman machine with this name, then you need to fi
 podman machine stop
 podman machine rm podman-machine-default
 ```
-Then rerun Podman machine initialization and 
+Then rerun Podman machine initialization and
 ```bash
-make docker_run
+make docker-run
 ```
 
 
