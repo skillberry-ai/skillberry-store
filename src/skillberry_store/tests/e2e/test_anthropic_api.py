@@ -3,12 +3,9 @@ E2E tests for Anthropic skill import/export API endpoints.
 Tests the full lifecycle of importing and exporting Anthropic skills.
 """
 
-import asyncio
-import os
 import io
 import zipfile
 import pytest
-import pytest_asyncio
 import httpx
 
 from skillberry_store.tests.utils import clean_test_tmp_dir

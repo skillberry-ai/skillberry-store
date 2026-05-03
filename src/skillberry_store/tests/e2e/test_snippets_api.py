@@ -3,10 +3,7 @@ E2E tests for snippet API endpoints.
 Tests the full lifecycle of snippet operations: create, list, get, update, and delete.
 """
 
-import asyncio
-import os
 import pytest
-import pytest_asyncio
 import httpx
 
 from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready

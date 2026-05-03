@@ -1,7 +1,6 @@
 """Tests for AUTO_DETECT_TOOL_DEPENDENCIES environment flag."""
 
 import os
-import pytest
 from unittest import mock
 from skillberry_store.tools.configure import is_auto_detect_dependencies_enabled
 

@@ -3,8 +3,6 @@ E2E tests for tool API endpoints.
 Tests the full lifecycle of tool operations: create, list, get, update, and delete.
 """
 
-import asyncio
-import json
 import pytest
 import httpx
 

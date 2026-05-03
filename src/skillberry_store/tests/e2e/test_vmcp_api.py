@@ -4,9 +4,7 @@ Tests the full lifecycle of VMCP server operations: create, list, get, update, a
 """
 
 import asyncio
-import os
 import pytest
-import pytest_asyncio
 import httpx
 
 from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready
