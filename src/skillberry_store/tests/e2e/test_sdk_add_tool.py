@@ -87,12 +87,13 @@ async def test_sdk_add_tool(run_sbs, sdk_client):
         assert result is not None
         assert isinstance(result, dict)
         assert result.get("name") == "calculate_sum"
+        assert result.get("message") == "Tool 'calculate_sum' created successfully."
         assert "uuid" in result
         uuid_value = result.get("uuid")
         assert uuid_value is not None and len(uuid_value) == 36  # UUID4 format
         assert "module_name" in result
         module_name = result.get("module_name")
-        assert module_name is not None and module_name.endswith(".py")
+        assert module_name is not None and module_name == os.path.basename(temp_path)
         
         # Verify the tool was actually created by retrieving it
         tool = sdk_client.get_tool_tools_name_get(name="calculate_sum")

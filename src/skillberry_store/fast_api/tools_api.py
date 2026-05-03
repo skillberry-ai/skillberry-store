@@ -2,6 +2,7 @@
 
 import json
 import logging
+from io import BytesIO
 from starlette.responses import PlainTextResponse
 import uuid
 from datetime import datetime, timezone
@@ -795,12 +796,9 @@ def register_tools_api(
             )
 
         try:
-            # Read the uploaded file content
             tool_bytes = await tool.read()
 
-            # Extract function name and docstring from the Python code
             try:
-                # extract_docstring returns (func_name, docstring_obj) tuple
                 func_name, docstring_obj = extract_docstring(tool_bytes, tool_name=tool_name)  # type: ignore
                 logger.info(f"Extracted function '{func_name}' from uploaded file")
             except Exception as e:
@@ -811,8 +809,6 @@ def register_tools_api(
                     "Ensure the function has a properly formatted docstring with parameters.",
                 )
 
-            # Build the tool schema from the docstring
-            # Extract description
             description = docstring_obj.short_description  # type: ignore
             if not description:
                 raise HTTPException(
@@ -820,7 +816,6 @@ def register_tools_api(
                     detail="Function docstring must include a description.",
                 )
 
-            # Extract parameters from docstring
             params_properties = {}
             required_params = []
 
@@ -831,7 +826,6 @@ def register_tools_api(
                 }
                 required_params.append(param.arg_name)
 
-            # Extract return information
             returns_schema = None
             if docstring_obj.returns:  # type: ignore
                 returns_schema = ToolReturnsSchema(
@@ -839,103 +833,44 @@ def register_tools_api(
                     description=docstring_obj.returns.description if docstring_obj.returns.description else None,  # type: ignore
                 )
 
-            # Check if tool already exists
-            existing_tools = tool_handler.list_files()
-            tool_filename = f"{func_name}.json"
-
-            if tool_filename in existing_tools:
-                if not update:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Tool '{func_name}' already exists. Set update=true to overwrite.",
-                    )
-                logger.info(f"Updating existing tool: {func_name}")
-
-                # Delete old description if updating
-                if tools_descriptions:
-                    try:
-                        tools_descriptions.delete_description(func_name)
-                    except Exception as e:
-                        logger.warning(f"Failed to delete old description: {e}")
-
-            # Generate UUID
-            tool_uuid = str(uuid.uuid4())
-            logger.info(f"Generated UUID for tool '{func_name}': {tool_uuid}")
-
-            # Save the module file
-            module_filename = tool.filename if tool.filename else f"{func_name}.py"
-            file_handler.write_file(tool_bytes, filename=module_filename)
-            logger.info(f"Saved module file: {module_filename}")
-
-            # Auto-detect dependencies if enabled
-            dependencies = None
-            if is_auto_detect_dependencies_enabled():
-                try:
-                    # Get list of available tools
-                    available_tools = [
-                        f.replace(".json", "") for f in tool_handler.list_files()
-                    ]
-                    # Detect dependencies from code
-                    detected_deps = detect_tool_dependencies(
-                        (
-                            tool_bytes.decode("utf-8")
-                            if isinstance(tool_bytes, bytes)
-                            else tool_bytes
-                        ),
-                        func_name,
-                        available_tools,
-                    )
-                    if detected_deps:
-                        dependencies = detected_deps
-                        logger.info(
-                            f"Auto-detected dependencies for '{func_name}': {detected_deps}"
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to auto-detect dependencies: {e}")
-
-            # Create the tool schema
-            params_schema = ToolParamsSchema(
-                type="object",
-                properties=params_properties,
-                required=required_params,
-                optional=[],
-            )
-
-            # Set timestamps
-            current_time = datetime.now(timezone.utc).isoformat()
-
             tool_schema = ToolSchema(
                 name=func_name,
+                uuid=None,
+                module_name=None,
                 description=description,
-                uuid=tool_uuid,
-                module_name=module_filename,
                 programming_language="python",
                 packaging_format="code",
                 version="0.0.1",
                 state=ManifestState.APPROVED,
-                params=params_schema,
+                params=ToolParamsSchema(
+                    type="object",
+                    properties=params_properties,
+                    required=required_params,
+                    optional=[],
+                ),
                 returns=returns_schema,
-                dependencies=dependencies,
-                created_at=current_time,
-                modified_at=current_time,
             )
 
-            # Save the manifest
-            tool_json = json.dumps(tool_schema.to_dict(), indent=4)
-            tool_handler.write_file_content(tool_filename, tool_json)
-            logger.info(f"Saved manifest: {tool_filename}")
+            if update:
+                tool_filename = f"{tool_schema.name}.json"
+                existing_tools = tool_handler.list_files()
+                if tool_filename in existing_tools:
+                    logger.info(f"Updating existing tool: {tool_schema.name}")
+                    if tools_descriptions and tool_schema.name:
+                        try:
+                            tools_descriptions.delete_description(tool_schema.name)
+                        except Exception as e:
+                            logger.warning(f"Failed to delete old description: {e}")
+                    tool_handler.delete_file(tool_filename)
 
-            # Write description for search capability
-            if tools_descriptions:
-                tools_descriptions.write_description(func_name, description)
-                logger.info(f"Tool description saved for: {func_name}")
+            create_response = await create_tool(
+                tool=tool_schema,
+                module=UploadFile(filename=tool.filename, file=BytesIO(tool_bytes)),
+            )
 
-            logger.info(f"Tool '{func_name}' added successfully")
+            logger.info(f"Tool '{tool_schema.name}' added successfully")
             return {
-                "message": f"Tool '{func_name}' added successfully.",
-                "name": func_name,
-                "uuid": tool_uuid,
-                "module_name": module_filename,
+                **create_response,
                 "parameters": params_properties,
                 "description": description,
             }
@@ -945,6 +880,3 @@ def register_tools_api(
         except Exception as e:
             logger.error(f"Error adding tool: {e}")
             raise HTTPException(status_code=500, detail=f"Error adding tool: {str(e)}")
-            raise HTTPException(
-                status_code=500, detail=f"Error searching tools: {str(e)}"
-            )

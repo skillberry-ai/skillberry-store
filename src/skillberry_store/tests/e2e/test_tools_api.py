@@ -205,6 +205,131 @@ async def test_create_duplicate_tool(run_sbs):
 
 
 @pytest.mark.asyncio
+async def test_add_tool_from_python_endpoint(run_sbs):
+    """Test creating a tool via POST /tools/add from a Python file."""
+    file_content = b'''def add_via_tools_add(x: int, y: int) -> int:
+    """Add two integers.
+    
+    Args:
+        x: First number
+        y: Second number
+        
+    Returns:
+        Sum of x and y
+    """
+    return x + y
+'''
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{BASE_URL}/tools/add",
+            params={"tool_name": "add_via_tools_add"},
+            files={"tool": ("add_via_tools_add.py", file_content, "text/x-python")},
+        )
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}: {response.text}"
+        )
+        result = response.json()
+        assert result.get("name") == "add_via_tools_add"
+        assert result.get("message") == "Tool 'add_via_tools_add' created successfully."
+        assert result.get("module_name") == "add_via_tools_add.py"
+        assert result.get("uuid") is not None
+        assert result.get("description") == "Add two integers."
+        assert result.get("parameters") == {
+            "x": {"type": "string", "description": "First number"},
+            "y": {"type": "string", "description": "Second number"},
+        }
+
+        get_response = await client.get(f"{BASE_URL}/tools/add_via_tools_add")
+        assert get_response.status_code == 200
+        tool = get_response.json()
+        assert tool.get("module_name") == "add_via_tools_add.py"
+
+        delete_response = await client.delete(f"{BASE_URL}/tools/add_via_tools_add")
+        assert delete_response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_add_tool_from_python_endpoint_update(run_sbs):
+    """Test updating an existing tool via POST /tools/add with update=true."""
+    file_content = b'''def add_via_tools_add_update(x: int, y: int) -> int:
+    """Add two integers.
+    
+    Args:
+        x: First number
+        y: Second number
+        
+    Returns:
+        Sum of x and y
+    """
+    return x + y
+'''
+
+    updated_file_content = b'''def add_via_tools_add_update(x: int, y: int) -> int:
+    """Add two integers with updated description.
+    
+    Args:
+        x: First number
+        y: Second number
+        
+    Returns:
+        Sum of x and y
+    """
+    return x + y
+'''
+
+    async with httpx.AsyncClient() as client:
+        create_response = await client.post(
+            f"{BASE_URL}/tools/add",
+            params={"tool_name": "add_via_tools_add_update"},
+            files={
+                "tool": (
+                    "add_via_tools_add_update.py",
+                    file_content,
+                    "text/x-python",
+                )
+            },
+        )
+        assert create_response.status_code == 200, (
+            f"Expected 200, got {create_response.status_code}: {create_response.text}"
+        )
+        created = create_response.json()
+        first_uuid = created.get("uuid")
+        assert first_uuid is not None
+
+        update_response = await client.post(
+            f"{BASE_URL}/tools/add",
+            params={"tool_name": "add_via_tools_add_update", "update": "true"},
+            files={
+                "tool": (
+                    "add_via_tools_add_update.py",
+                    updated_file_content,
+                    "text/x-python",
+                )
+            },
+        )
+        assert update_response.status_code == 200, (
+            f"Expected 200, got {update_response.status_code}: {update_response.text}"
+        )
+        updated = update_response.json()
+        assert updated.get("name") == "add_via_tools_add_update"
+        assert updated.get("message") == "Tool 'add_via_tools_add_update' created successfully."
+        assert updated.get("module_name") == "add_via_tools_add_update.py"
+        assert updated.get("uuid") is not None
+        assert updated.get("uuid") != first_uuid
+        assert updated.get("description") == "Add two integers with updated description."
+
+        get_response = await client.get(f"{BASE_URL}/tools/add_via_tools_add_update")
+        assert get_response.status_code == 200
+        tool = get_response.json()
+        assert tool.get("description") == "Add two integers with updated description."
+        assert tool.get("module_name") == "add_via_tools_add_update.py"
+
+        delete_response = await client.delete(f"{BASE_URL}/tools/add_via_tools_add_update")
+        assert delete_response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_list_tools(run_sbs):
     """Test listing all tools."""
     async with httpx.AsyncClient() as client:
