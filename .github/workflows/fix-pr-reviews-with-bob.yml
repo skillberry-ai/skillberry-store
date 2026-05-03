@@ -63,10 +63,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
           token: ${{ secrets.ERANRA_GITHUB_TOKEN }}
       
       - name: Fetch and checkout PR branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
           # Add the fork as a remote if it's from a fork
           FORK_REPO="${{ github.event.pull_request.head.repo.full_name }}"
@@ -75,7 +78,7 @@ jobs:
           
           if [ "${FORK_REPO}" != "${BASE_REPO}" ]; then
             echo "PR is from fork: ${FORK_REPO}"
-            git remote add fork "https://github.com/${FORK_REPO}.git"
+            git remote add fork "https://x-access-token:${GITHUB_TOKEN}@github.com/${FORK_REPO}.git"
             git fetch fork "${PR_BRANCH}"
             git checkout -b "${PR_BRANCH}" "fork/${PR_BRANCH}"
           else
