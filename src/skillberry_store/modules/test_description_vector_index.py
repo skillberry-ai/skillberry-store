@@ -1,6 +1,4 @@
-import os
 import pytest
-import numpy as np
 import faiss
 from fastembed import TextEmbedding
 from skillberry_store.modules.description_vector_index import (

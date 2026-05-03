@@ -1,6 +1,4 @@
 import pytest
-import os
-from unittest.mock import patch
 
 from skillberry_store.modules.file_executor import FileExecutor
 

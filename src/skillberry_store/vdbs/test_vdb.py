@@ -1,7 +1,7 @@
 import pytest
 
 from skillberry_store.modules.description import Description
-from skillberry_store.vdbs.identify_vdb import VectorDBType, identify_vector_db
+from skillberry_store.vdbs.identify_vdb import identify_vector_db
 
 test_descriptions_directory = "/tmp/test_vdb"
 
