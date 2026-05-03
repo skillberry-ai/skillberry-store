@@ -44,6 +44,7 @@ jobs:
   fix-pr-reviews-with-bob:
     # Only run for reviews with comments on PRs labeled with 'fix-with-bob'
     # This label is automatically added by the fix-issues-with-bob workflow
+    # Using label-based filtering is more robust than checking PR author and title pattern
     if: |
       (github.event.review.state == 'commented' || github.event.review.state == 'changes_requested') &&
       contains(github.event.pull_request.labels.*.name, 'fix-with-bob')
