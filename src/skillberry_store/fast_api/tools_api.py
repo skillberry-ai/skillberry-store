@@ -2,6 +2,7 @@
 
 import json
 import logging
+from io import BytesIO
 from starlette.responses import PlainTextResponse
 import uuid
 from datetime import datetime, timezone
@@ -864,7 +865,7 @@ def register_tools_api(
 
             create_response = await create_tool(
                 tool=tool_schema,
-                module=UploadFile(filename=tool.filename, file=tool.file),
+                module=UploadFile(filename=tool.filename, file=BytesIO(tool_bytes)),
             )
 
             logger.info(f"Tool '{tool_schema.name}' added successfully")

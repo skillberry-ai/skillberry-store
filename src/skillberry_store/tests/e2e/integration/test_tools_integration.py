@@ -32,6 +32,9 @@ class TestToolsAPI:
         
         assert response is not None
         assert "message" in response or "name" in response
+        assert response.get("name") == "add_numbers"
+        assert response.get("module_name") == "test_add_numbers.py"
+        assert response.get("uuid") is not None
         
         # Store for later tests
         if "name" in response:
@@ -110,6 +113,9 @@ class TestToolsAPI:
         
         assert response is not None
         assert "message" in response or "name" in response
+        assert response.get("name") == "add_numbers"
+        assert response.get("module_name") == "test_add_numbers.py"
+        assert response.get("uuid") is not None
 
     def test_07_search_tools(self, tools_api):
         """Test searching tools."""
