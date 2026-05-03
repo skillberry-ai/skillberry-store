@@ -60,13 +60,32 @@ jobs:
       checks: read    
 
     steps:
-      - name: Checkout PR branch
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
           fetch-depth: 0
           token: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+      
+      - name: Fetch and checkout PR branch
+        run: |
+          # Add the fork as a remote if it's from a fork
+          FORK_REPO="${{ github.event.pull_request.head.repo.full_name }}"
+          BASE_REPO="${{ github.repository }}"
+          PR_BRANCH="${{ github.event.pull_request.head.ref }}"
+          
+          if [ "${FORK_REPO}" != "${BASE_REPO}" ]; then
+            echo "PR is from fork: ${FORK_REPO}"
+            git remote add fork "https://github.com/${FORK_REPO}.git"
+            git fetch fork "${PR_BRANCH}"
+            git checkout -b "${PR_BRANCH}" "fork/${PR_BRANCH}"
+          else
+            echo "PR is from same repository"
+            git fetch origin "${PR_BRANCH}"
+            git checkout "${PR_BRANCH}"
+          fi
+          
+          echo "✓ Checked out PR branch: ${PR_BRANCH}"
+          git log -1 --oneline
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
