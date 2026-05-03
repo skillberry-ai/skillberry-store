@@ -92,9 +92,12 @@ class ToolSchema(ManifestSchema):
         default_factory=list,
         description="External MCP server names this tool requires at runtime (union across dependencies for composites)."
     )
+    # Baseline for the health pass. Mainly for MCP: external servers can
+    # overwrite a primitive's params with no local commit, so we need a
+    # recorded snapshot to notice drift.
     dependency_hashes: Dict[str, Dict[str, str]] = Field(
         default_factory=dict,
-        description="Map of dep_name -> {params, module, combined} sha256 hashes captured at create/update time; used by the health pass to attribute drift to schema vs code."
+        description="Per-dep {params, module, combined} sha256 baseline captured at create/update; health pass diffs it to attribute drift to schema vs code (catches silent MCP schema changes)."
     )
     broken_reason: Optional[str] = Field(
         default=None,
