@@ -6,7 +6,6 @@ Run with: pytest -m integration
 """
 
 import pytest
-import io
 
 
 # Shared state for tests that depend on each other

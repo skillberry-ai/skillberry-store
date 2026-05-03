@@ -4,9 +4,7 @@ Tests the full lifecycle of skill operations: create, list, get, update, and del
 """
 
 import asyncio
-import os
 import pytest
-import pytest_asyncio
 import httpx
 
 from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready
@@ -16,7 +14,6 @@ BASE_URL = "http://localhost:8000"
 
 async def create_tool_helper(client, name, description="A test tool"):
     """Helper function to create a tool and return its UUID."""
-    import json
     
     tool_data = {
         "name": name,
