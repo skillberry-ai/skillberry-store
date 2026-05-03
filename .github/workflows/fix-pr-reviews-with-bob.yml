@@ -42,12 +42,12 @@ on:
 
 jobs:
   fix-pr-reviews-with-bob:
-    # Only run for reviews with comments AND only on PRs created by Bob (github-actions bot)
-    # Check if PR title starts with "Fix: Issue #" which is the pattern used by fix-issues-with-bob workflow
+    # Only run for reviews with comments on PRs labeled with 'fix-with-bob'
+    # This label is automatically added by the fix-issues-with-bob workflow
+    # Using label-based filtering is more robust than checking PR author and title pattern
     if: |
       (github.event.review.state == 'commented' || github.event.review.state == 'changes_requested') &&
-      github.event.pull_request.user.login == 'github-actions[bot]' &&
-      startsWith(github.event.pull_request.title, 'Fix: Issue #')
+      contains(github.event.pull_request.labels.*.name, 'fix-with-bob')
     runs-on: ubuntu-latest
     
     permissions:
