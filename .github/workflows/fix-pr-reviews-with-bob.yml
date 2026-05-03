@@ -1,0 +1,317 @@
+# ============================================================================
+# GitHub Workflow: Fix PR Reviews with Bob
+# ============================================================================
+#
+# PURPOSE:
+# This workflow automatically addresses PR review comments using IBM Bob Shell.
+# When a pull request review is submitted with comments, this workflow:
+# 1. Analyzes all review comments on the PR
+# 2. Uses Bob Shell to make code changes addressing the feedback
+# 3. Commits the changes to the PR branch
+# 4. Responds to each review comment with Bob's actions
+#
+# WORKFLOW STEPS:
+# 1. Trigger: Activated when a PR review is submitted
+# 2. Setup: Checkout PR branch and install Node.js 22 (required for Bob Shell)
+# 3. Install Bob Shell: Download and install Bob Shell using the official installer
+# 4. Authentication: Configure Bob Shell with BOBSHELL_API_KEY from GitHub secrets
+# 5. Context Gathering: Extract PR details and all review comments
+# 6. Git Configuration: Configure Git user for commits
+# 7. Bob Execution: Run Bob Shell with a prompt containing all review feedback
+# 8. Change Detection: Check if Bob made any code modifications
+# 9. Push Changes: Commit and push changes to the PR branch
+# 10. Respond to Comments: Reply to each review comment with Bob's actions
+#
+# REQUIREMENTS:
+# - GitHub Secrets (must be configured in repository settings):
+#   * BOBSHELL_API_KEY: API key for Bob Shell authentication
+#   * ERANRA_GITHUB_TOKEN: Personal access token with repo permissions
+# - Permissions: Workflow needs write access to PRs and repository contents
+#
+# USAGE:
+# This workflow automatically triggers when a PR review is submitted.
+# Bob will attempt to address all review comments in the submitted review.
+#
+# ============================================================================
+
+name: Fix PR Reviews with Bob
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  fix-pr-reviews-with-bob:
+    # Only run for reviews with comments AND only on PRs created by Bob (github-actions bot)
+    # Check if PR title starts with "Fix: Issue #" which is the pattern used by fix-issues-with-bob workflow
+    if: |
+      (github.event.review.state == 'commented' || github.event.review.state == 'changes_requested') &&
+      github.event.pull_request.user.login == 'github-actions[bot]' &&
+      startsWith(github.event.pull_request.title, 'Fix: Issue #')
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: write
+      deployments: write
+      statuses: write
+      actions: write
+      checks: read    
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+          token: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Install Bob Shell
+        run: |
+          echo "Installing Bob Shell..."
+          curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash -s -- --package-manager npm
+
+          # Verify installation
+          if command -v bob &> /dev/null; then
+            echo "Bob Shell installed successfully"
+            bob --version
+          else
+            echo "Bob Shell installation failed"
+            exit 1
+          fi
+      
+      - name: Authenticate Bob Shell
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+        run: |
+          echo "Configuring Bob Shell authentication..."
+          if [ -z "$BOBSHELL_API_KEY" ]; then
+            echo "Error: BOBSHELL_API_KEY secret is not set"
+            exit 1
+          fi
+          echo "Bob Shell authentication configured successfully"
+      
+      - name: Get PR and Review Details
+        id: pr_details
+        env:
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+          echo "pr_title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+          echo "review_id=${{ github.event.review.id }}" >> $GITHUB_OUTPUT
+          echo "reviewer=${{ github.event.review.user.login }}" >> $GITHUB_OUTPUT
+          
+          # Get all review comments from this review
+          echo "Fetching review comments..."
+          COMMENTS=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews/${{ github.event.review.id }}/comments" \
+            --jq '.[] | "File: \(.path)\nLine: \(.line // .original_line)\nComment: \(.body)\n---"')
+          
+          # Save comments to file for use in prompt
+          echo "${COMMENTS}" > /tmp/review_comments.txt
+          
+          # Also get the review body if it exists
+          REVIEW_BODY="${{ github.event.review.body }}"
+          if [ -n "${REVIEW_BODY}" ]; then
+            echo "Review Summary: ${REVIEW_BODY}" >> /tmp/review_comments.txt
+          fi
+          
+          echo "Review comments saved to /tmp/review_comments.txt"
+          cat /tmp/review_comments.txt
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Execute Bob to Address Review Comments
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+          PR_NUMBER: ${{ steps.pr_details.outputs.pr_number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Read review comments
+          REVIEW_COMMENTS=$(cat /tmp/review_comments.txt)
+          
+          # Create a comprehensive prompt for Bob Shell
+          PROMPT="Address PR review comments for PR #${PR_NUMBER}: ${{ steps.pr_details.outputs.pr_title }}
+
+          Repository: ${{ github.repository }}
+          PR URL: ${{ github.event.pull_request.html_url }}
+          Reviewer: ${{ steps.pr_details.outputs.reviewer }}
+
+          Review Comments:
+          ${REVIEW_COMMENTS}
+
+          Please analyze all the review comments above and make the necessary code changes to address each point of feedback.
+          For each comment:
+          1. Understand the concern or suggestion
+          2. Make the appropriate code changes
+          3. Ensure the changes follow best practices
+          4. Make sure all related code is updated consistently
+
+          Be thorough and address every comment. If a comment is unclear or requires clarification, make your best judgment based on the context."
+
+          # --accept-license: required on first run in a fresh CI environment
+          # --yolo: required to enable file writing (disabled by default)
+          bob --accept-license --yolo -p "${PROMPT}"
+      
+      - name: Check for Changes
+        id: changes
+        run: |
+          if [[ -n $(git status --porcelain) ]]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected:"
+            git status --short
+            
+            # Get list of changed files for summary
+            CHANGED_FILES=$(git diff --name-only | tr '\n' ', ' | sed 's/,$//')
+            echo "changed_files=${CHANGED_FILES}" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          fi
+      
+      - name: Commit and Push Changes
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+        run: |
+          echo "Adding eranra remote..."
+          git remote add eranra https://x-access-token:${GITHUB_TOKEN}@github.com/eranra/skillberry-store.git
+          git remote -v
+          echo "✓ eranra remote added successfully"
+          
+          git add -A
+          git reset .bob/ || true
+          git commit -m "Address review comments from @${{ steps.pr_details.outputs.reviewer }}
+
+          Automatically generated by Bob Shell to address review feedback.
+          Review ID: ${{ steps.pr_details.outputs.review_id }}"
+          
+          # Get the current branch name
+          BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+          
+          echo "Pushing to eranra remote..."
+          if git push -f -u eranra "${BRANCH_NAME}"; then
+            echo "✓ Branch ${BRANCH_NAME} pushed successfully to eranra remote"
+          else
+            echo "✗ Failed to push to eranra remote"
+            exit 1
+          fi
+      
+      - name: Generate Responses for Review Comments
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.pr_details.outputs.pr_number }}"
+          REVIEW_ID="${{ steps.pr_details.outputs.review_id }}"
+          
+          # Get all comments from this review with their details
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments" \
+            --jq '.[] | {id: .id, path: .path, line: (.line // .original_line), body: .body}' > /tmp/comments.json
+          
+          # Process each comment and generate a response
+          jq -c '.' /tmp/comments.json | while read -r comment; do
+            COMMENT_ID=$(echo "$comment" | jq -r '.id')
+            COMMENT_PATH=$(echo "$comment" | jq -r '.path')
+            COMMENT_LINE=$(echo "$comment" | jq -r '.line')
+            COMMENT_BODY=$(echo "$comment" | jq -r '.body')
+            
+            echo "Processing comment ${COMMENT_ID} on ${COMMENT_PATH}:${COMMENT_LINE}"
+            
+            # Get the diff for the file to show what changed
+            FILE_DIFF=$(git diff HEAD~1 HEAD -- "${COMMENT_PATH}" 2>/dev/null || echo "File changes not available")
+            
+            # Create a prompt for Bob to generate a specific response
+            RESPONSE_PROMPT="Generate a brief, polite, and professional response to this code review comment.
+
+          Review Comment:
+          File: ${COMMENT_PATH}
+          Line: ${COMMENT_LINE}
+          Comment: ${COMMENT_BODY}
+
+          Changes Made to This File:
+          ${FILE_DIFF}
+
+          Write a response that:
+          1. Acknowledges the reviewer's feedback
+          2. Briefly explains what changes were made to address it (1-2 sentences)
+          3. Is polite and professional
+          4. Does not include greetings or sign-offs
+          5. Is concise (2-3 sentences maximum)
+
+          Response:"
+            
+            # Use Bob to generate the response
+            RESPONSE=$(bob -p "${RESPONSE_PROMPT}" 2>/dev/null | head -n 10)
+            
+            # If Bob's response is empty or too long, use a default
+            if [ -z "${RESPONSE}" ] || [ ${#RESPONSE} -gt 500 ]; then
+              RESPONSE="Thank you for the feedback. I've updated the code in ${COMMENT_PATH} to address your concern. Please review the changes."
+            fi
+            
+            # Save the response for this comment
+            echo "${COMMENT_ID}|${RESPONSE}" >> /tmp/responses.txt
+          done
+      
+      - name: Post Responses to Review Comments
+        if: steps.changes.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.pr_details.outputs.pr_number }}"
+          
+          # Post each response
+          if [ -f /tmp/responses.txt ]; then
+            while IFS='|' read -r COMMENT_ID RESPONSE; do
+              echo "Posting response to comment ${COMMENT_ID}"
+              gh api \
+                --method POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "/repos/${{ github.repository }}/pulls/${PR_NUMBER}/comments/${COMMENT_ID}/replies" \
+                -f body="✅ ${RESPONSE}" || echo "Failed to reply to comment ${COMMENT_ID}"
+            done < /tmp/responses.txt
+          fi
+          
+          # Also add a general comment on the PR
+          gh pr comment ${PR_NUMBER} \
+            --body "Thank you @${{ steps.pr_details.outputs.reviewer }} for the review! I've addressed all the comments and updated the following files:
+
+          **Changed files:** ${{ steps.changes.outputs.changed_files }}
+
+          Please let me know if any further changes are needed."
+      
+      - name: Comment on PR - No Changes
+        if: steps.changes.outputs.has_changes == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ steps.pr_details.outputs.pr_number }} \
+            --body "🤖 Bob Shell analyzed the review comments from @${{ steps.pr_details.outputs.reviewer }} but did not generate any code changes. The comments may require manual intervention or clarification."
+      
+      - name: Handle Errors
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ steps.pr_details.outputs.pr_number }} \
+            --body "❌ Bob Shell encountered an error while trying to address the review comments. Please check the workflow logs for details."
+
+# Made with Bob
