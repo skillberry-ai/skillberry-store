@@ -163,10 +163,10 @@ jobs:
       - name: Commit and Push Changes
         if: steps.changes.outputs.has_changes == 'true'
         env:
-          ERANRA_GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
           echo "Adding eranra remote..."
-          git remote add eranra https://x-access-token:${ERANRA_GITHUB_TOKEN}@github.com/eranra/skillberry-store.git
+          git remote add eranra https://x-access-token:${GITHUB_TOKEN}@github.com/eranra/skillberry-store.git
           git remote -v
           echo "✓ eranra remote added successfully"
           git add -A
@@ -174,7 +174,7 @@ jobs:
           git commit -m "Fix issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}"
           
           echo "Pushing to eranra remote..."
-          if git push -u eranra "${BRANCH_NAME}"; then
+          if git push -f -u eranra "${BRANCH_NAME}"; then
             echo "✓ Branch ${BRANCH_NAME} pushed successfully to eranra remote"
           else
             echo "✗ Failed to push to eranra remote"
@@ -184,7 +184,7 @@ jobs:
       - name: Create Pull Request
         if: steps.changes.outputs.has_changes == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
           # Create PR from the eranra fork to the upstream repository
           gh pr create \
@@ -206,7 +206,7 @@ jobs:
       - name: Comment on Issue
         if: steps.changes.outputs.has_changes == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
           gh issue comment ${{ steps.issue.outputs.issue_number }} \
             --body "🤖 Bob Shell has analyzed this issue and created a pull request with a proposed fix. Please review the changes."
@@ -214,7 +214,7 @@ jobs:
       - name: Comment on Issue - No Changes
         if: steps.changes.outputs.has_changes == 'false'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
           gh issue comment ${{ steps.issue.outputs.issue_number }} \
             --body "🤖 Bob Shell analyzed this issue but did not generate any code changes. Manual intervention may be required."
@@ -222,7 +222,7 @@ jobs:
       - name: Handle Errors
         if: failure()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
         run: |
           gh issue comment ${{ steps.issue.outputs.issue_number }} \
             --body "❌ Bob Shell encountered an error while trying to fix this issue. Please check the workflow logs for details."
