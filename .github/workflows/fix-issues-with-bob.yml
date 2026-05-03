@@ -63,13 +63,17 @@ jobs:
       issues: write
       pull-requests: write
       contents: write
-    
+      deployments: write
+      statuses: write
+      actions: write
+      checks: read    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Full history for better context
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.ERANRA_GITHUB_TOKEN }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
