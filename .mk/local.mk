@@ -18,7 +18,21 @@ SERVICE_HOST := 0.0.0.0
 SERVICE_HAS_SDK := 1
 # ----------------------------------------------------
 
-include .mk/dev.mk
-include .mk/process.mk
-#include .mk/docker.mk
-#include .mk/ci.mk
+##@ Development
+
+test-e2e: ## Test end-to-end the tools service (installs sdk)
+	@$(MAKE) install-requirements ODEPS=dev
+	pytest src/skillberry_store/tests/e2e
+
+lint: ## List the tools-service
+	@$(MAKE) install-requirements ODEPS=dev
+	black --check --diff --color src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils || \
+		(echo "Lint Failed. Please run 'black src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils' to fix the issues" && exit 1)
+
+##@ Setup & teardown as a process
+
+clean-service-data: stop
+	@echo "Clean $(SERVICE_NAME) /tmp directory"
+	+rm -rf /tmp/manifest
+	+rm -rf /tmp/descriptions
+	+rm -rf /tmp/files
