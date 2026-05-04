@@ -243,7 +243,9 @@ class VirtualMcpServer:
             def make_handler(tool_name, tool_schema):
                 # Extract parameter names from the tool schema
                 properties = tool_schema.get("inputSchema", {}).get("properties", {})
-                logging.info(f"@@@@@ make_handler: {tool_name} '{properties}' @@@@@")  # OK..
+                logging.info(
+                    f"@@@@@ make_handler: {tool_name} '{properties}' @@@@@"
+                )  # OK..
                 required = tool_schema.get("inputSchema", {}).get("required", [])
 
                 # Create function signature dynamically
@@ -257,7 +259,9 @@ class VirtualMcpServer:
 
                         # Skip variadic parameters like *args, **kwargs
                         if param_name.startswith("*"):
-                            logging.warning(f"Skipping variadic parameter: {param_name}")
+                            logging.warning(
+                                f"Skipping variadic parameter: {param_name}"
+                            )
                             continue
 
                         # Validate param_info has required keys
@@ -267,7 +271,9 @@ class VirtualMcpServer:
                             )
                             continue
 
-                        description = param_info.get("description", f"Parameter {param_name}")
+                        description = param_info.get(
+                            "description", f"Parameter {param_name}"
+                        )
                         _type = param_info["type"]
 
                         # annotate the parameter so that is appears inside MCP tool
@@ -323,7 +329,9 @@ class VirtualMcpServer:
 
                     # Pass parameters as a dictionary to match SBS expectations
                     try:
-                        return_value = await self.invoke_tool(tool_name, parameters, self.env_id)
+                        return_value = await self.invoke_tool(
+                            tool_name, parameters, self.env_id
+                        )
                     except Exception as e:
                         logging.info(f"@@@@@ handler: Error '{str(e)}'  @@@@@")
                         # tool invocation logic
@@ -374,7 +382,9 @@ class VirtualMcpServer:
                 handler.__doc__ = tool.description
                 handler.__signature__ = inspect.Signature(params)
                 handler.__annotations__ = annotations
-                logging.info(f"@@@@@@ handler.__signature__ {handler.__signature__}  @@@@@@")
+                logging.info(
+                    f"@@@@@@ handler.__signature__ {handler.__signature__}  @@@@@@"
+                )
 
                 return handler
 
@@ -574,7 +584,9 @@ class VirtualMcpServer:
                         expose_headers=["*"],
                     )
 
-                    logging.info(f"CORS middleware added, starting server on port {self.port}")
+                    logging.info(
+                        f"CORS middleware added, starting server on port {self.port}"
+                    )
                     # Run the app with uvicorn
                     uvicorn.run(app, host="127.0.0.1", port=self.port, log_level="info")
                 except Exception as e:
