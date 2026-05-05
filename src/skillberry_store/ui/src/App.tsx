@@ -14,6 +14,7 @@ import { VMCPServersPage } from './pages/VMCPServersPage';
 import { VMCPServerDetailPage } from './pages/VMCPServerDetailPage';
 import { AdminPage } from './pages/AdminPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
+import { AgentConnectPage } from './pages/AgentConnectPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 function App() {
@@ -43,7 +44,10 @@ function App() {
         
         {/* Observability route */}
         <Route path="/observability" element={<ObservabilityPage />} />
-        
+
+        {/* Connect Your Agent route */}
+        <Route path="/agent-connect" element={<AgentConnectPage />} />
+
         {/* 404 */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

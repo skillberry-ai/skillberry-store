@@ -124,6 +124,16 @@ export function AppLayout({ children }: AppLayoutProps) {
               Observability
             </NavItem>
 
+            {/* Connect Your Agent */}
+            <NavItem
+              key="agent-connect"
+              itemId="agent-connect"
+              isActive={location.pathname === '/agent-connect'}
+              onClick={() => navigate('/agent-connect')}
+            >
+              Connect Your Agent
+            </NavItem>
+
             {/* Admin */}
             <NavItem
               key="admin"
