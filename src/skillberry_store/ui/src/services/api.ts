@@ -325,4 +325,22 @@ export const vmcpApi = {
   },
 };
 
+// Admin API
+
+export interface ServerInfo {
+  host: string;
+  port: number;
+  agent_mcp_port: number | null;
+  agent_mcp_url: string | null;
+  control_mcp_url: string;
+  api_docs: string;
+}
+
+export const adminApi = {
+  getServerInfo: async (): Promise<ServerInfo> => {
+    const response = await fetch(`${API_BASE}/admin/server-info`);
+    return handleResponse<ServerInfo>(response);
+  },
+};
+
 export { ApiError };
