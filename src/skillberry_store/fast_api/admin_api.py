@@ -40,6 +40,30 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         app: The FastAPI application instance.
         tags: FastAPI tags for grouping the endpoints in documentation.
     """
+    @app.get("/admin/server-info", tags=[tags])
+    async def get_server_info():
+        """Return connection info for the backend and its MCP endpoints.
+
+        Used by the Connect Your Agent UI to render copy-ready
+        `claude mcp add` commands and to know which SSE URL to test.
+        `agent_mcp_url` is None when the curated agent MCP failed to start.
+        """
+        settings = app.settings
+        host = settings.display_host
+        port = settings.sbs_port
+        agent_mcp_port = getattr(settings, "agent_mcp_port", None)
+        agent_mcp_url = None
+        if agent_mcp_port is not None and getattr(app, "agent_mcp", None) is not None:
+            agent_mcp_url = f"http://{host}:{agent_mcp_port}/sse"
+        return {
+            "host": host,
+            "port": port,
+            "agent_mcp_port": agent_mcp_port,
+            "agent_mcp_url": agent_mcp_url,
+            "control_mcp_url": f"http://{host}:{port}/control_sse",
+            "api_docs": f"http://{host}:{port}/docs",
+        }
+
     @app.get("/admin/metrics", tags=[tags], response_class=PlainTextResponse)
     async def get_metrics():
         """Proxy endpoint to fetch Prometheus metrics.
