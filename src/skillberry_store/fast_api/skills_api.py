@@ -21,6 +21,7 @@ from skillberry_store.tools.configure import (
     is_auto_detect_dependencies_enabled,
 )
 from skillberry_store.fast_api.search_filters import apply_search_filters
+from skillberry_store.schemas.name_validation import validate_store_name
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,10 @@ def register_skills_api(
         """
         logger.info(f"Request to create skill: {skill.name}")
         create_skill_counter.inc()
+
+        # Skill names must be Anthropic-slug compatible — they become
+        # `claude mcp add <name>` args and URL segments.
+        validate_store_name(skill.name, kind="skill")
 
         # Generate UUID if not provided
         if not skill.uuid:
