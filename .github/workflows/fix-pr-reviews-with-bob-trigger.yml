@@ -22,10 +22,11 @@ on:
 
 jobs:
   trigger-bob-workflow:
-    # Only run for reviews with comments on PRs labeled with 'fix-with-bob'
+    # Only run for reviews with comments that mention @skillberry-bot on PRs labeled with 'fix-with-bob'
     if: |
       (github.event.review.state == 'commented' || github.event.review.state == 'changes_requested') &&
-      contains(github.event.pull_request.labels.*.name, 'fix-with-bob')
+      contains(github.event.pull_request.labels.*.name, 'fix-with-bob') &&
+      contains(github.event.review.body, '@skillberry-bot')
     runs-on: ubuntu-latest
     
     steps:
