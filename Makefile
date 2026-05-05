@@ -54,5 +54,5 @@ $(SB_COMMON_PATH)/Makefile:
 	@echo "============================================================"
 	@echo "Adding $(SB_COMMON_REMOTE) under relative path $(SB_COMMON_PATH)"
 	@git subtree add --prefix $(SB_COMMON_PATH) $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH)
-	@echo "✓ Skillberry-common installed successfully"
+	@echo "Skillberry-common installed successfully"
 	@echo ""

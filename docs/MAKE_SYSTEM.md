@@ -264,7 +264,7 @@ make release RELEASE_VERSION=1.0.0
 
 ### Virtual Environment Issues
 
-**Problem:** `❌ Not in virtual environment`
+**Problem:** `ERROR: Not in virtual environment`
 
 **Solution:**
 ```bash

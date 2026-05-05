@@ -4,7 +4,7 @@ This service implements a smart skills repository for agentic workflows. Manage,
 
 ![Skillberry screenshot](docs/images/skillberry-store-screenshot.jpg)
 
-## Features ✨
+## Features
 
 - **Manage tools for agentic workloads**: Add (Persist), Remove, Update, and Delete tools.
 - **Tools Execution**: Invoke tools (with parameters) using Docker (sand-boxing).
@@ -20,9 +20,9 @@ This service implements a smart skills repository for agentic workflows. Manage,
 - **MCP control API**: Exposes an MCP server API for each of the available REST operations ( e.g., add tools, semantic search etc.)
 
 
-## Quickstart 🚀
+## Quickstart
 
-### Run the Service with Docker or Podman 🐳
+### Run the Service with Docker or Podman
 
 ```bash
 make docker-run
@@ -32,7 +32,7 @@ make docker-run
 
 You can control where SBS stores its data by setting `SBS_BASE_DIR` (defaults to the system temp directory).
 
-### Interacting with the UI 👨‍💻
+### Interacting with the UI
 
 The Skillberry Store now includes a modern web UI that starts automatically with the backend:
 
@@ -51,7 +51,7 @@ To disable the UI and run only the backend:
 ENABLE_UI=false make run
 ```
 
-## Prerequisites 🛠️
+## Prerequisites
 
 - Docker or Podman is installed on your machine.
 
@@ -75,7 +75,7 @@ Additional requisites for local deployment:
 > ```
 > If the response is not `json-file` or `journald`, configure your Docker logging as documented [here](https://docs.docker.com/engine/logging/configure/#configure-the-default-logging-driver).
 
-## Running with podman on MacOS ⚒️
+## Running with podman on MacOS
 
 - Alias `docker` to `podman`, as explained in [Prerequisites](#prerequisites-️)
 - Create and start a Podman machine:
@@ -97,7 +97,7 @@ make docker-run
 
 See [DESIGN_REQUIREMENTS.md](DESIGN_REQUIREMENTS.md)
 
-## Local installation 📦
+## Local installation
 
 We support Linux, macOS, and Windows.
 
@@ -116,7 +116,7 @@ On Windows (no WSL needed):
 pip install -e .
 ```
 
-## Start the Service locally (alternative to docker) 🚀
+## Start the Service locally (alternative to docker)
 
 On Linux, macOS, or WSL:
 ```bash
@@ -135,7 +135,7 @@ sbs-srv
   * The Web UI starts automatically on port `3000`. To disable it, set `ENABLE_UI=false`
   * On first run, the UI will automatically install its dependencies (requires Node.js 18+)
 
-## Web UI Features 🎨
+## Web UI Features
 
 The Skillberry Store includes a modern React-based web interface with:
 
@@ -171,15 +171,15 @@ The UI source code is located in `src/skillberry_store/ui/` and includes:
 - `src/services/` - API client layer
 - `src/types/` - TypeScript type definitions
 
-## Engage with the Service via OpenAPI 📜
+## Engage with the Service via OpenAPI
 
 Open a browser against `http://127.0.0.1:8000/docs` .
 
-## Engage with the Service through a Python Client 🐍
+## Engage with the Service through a Python Client
 
 The service can be consumed via skillberry store service sdk. Refer to [skillberry-store-sdk](client/python/skillberry_store_sdk/README.md) for installation and usage.
 
-## Engage with the Service via CLI 💻
+## Engage with the Service via CLI
 
 A CLI (auto-generated) that provides command-line access to all API operations.
 Example usage:
@@ -197,7 +197,7 @@ sbs get-tool-tools-name-get convert        # Get a specific tool
 
 For detailed CLI documentation, see [docs/cli.md](docs/cli.md).
 
-## Engage with the Service via MCP 📜
+## Engage with the Service via MCP
 
 Each control API function is available as an MCP tool to be used by agentic AI workflows.  
 To access use an MCP client against `http://127.0.0.1:8000/control_sse` .  
@@ -211,7 +211,7 @@ Follow the steps outlined in [Connecting MCP as a backend](docs/mcp-backend.md).
 Follow the steps outlined in [Github backend](docs/github_using_hooks.md).
 
 
-## Monitoring the Service 📈
+## Monitoring the Service
 
 ### To start a local Prometheus server execute:
 ```bash

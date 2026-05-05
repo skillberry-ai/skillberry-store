@@ -33,7 +33,7 @@ clean-service-data: stop ## Clean Skillberry Store temporary data directories
 	@rm -rf /tmp/manifest || true
 	@rm -rf /tmp/descriptions || true
 	@rm -rf /tmp/files || true
-	@echo "✓ Service data cleaned"
+	@echo "Service data cleaned"
 
 # ----------------------------------------------------------------------------
 # Additional Lifecycle Targets

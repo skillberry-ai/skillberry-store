@@ -30,7 +30,7 @@ test-e2e: ## Run end-to-end integration tests
 	@$(MAKE) install-requirements ODEPS=dev
 	@echo "Running end-to-end tests..."
 	pytest src/skillberry_store/tests/e2e
-	@echo "✓ End-to-end tests completed"
+	@echo "End-to-end tests completed"
 
 # ----------------------------------------------------------------------------
 # Code Formatting and Linting
@@ -59,13 +59,13 @@ lint: ## Check code formatting with Black
 		src/skillberry_store/fast_api \
 		src/skillberry_store/utils || \
 		(echo "" && \
-		 echo "❌ Lint check failed!" && \
+		 echo "ERROR: Lint check failed!" && \
 		 echo "" && \
 		 echo "To fix formatting issues, run:" && \
 		 echo "  black src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils" && \
 		 echo "" && \
 		 exit 1)
-	@echo "✓ Code formatting is correct"
+	@echo "Code formatting is correct"
 
 # ----------------------------------------------------------------------------
 # Additional Development Targets
