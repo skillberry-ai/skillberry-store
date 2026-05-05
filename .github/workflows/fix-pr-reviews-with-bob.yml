@@ -63,6 +63,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0  # Full history for better context
           token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
       
