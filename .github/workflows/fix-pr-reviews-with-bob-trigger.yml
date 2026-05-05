@@ -1,0 +1,42 @@
+# ============================================================================
+# GitHub Workflow: Fix PR Reviews with Bob - Trigger
+# ============================================================================
+#
+# PURPOSE:
+# This is a dummy workflow that triggers the actual fix-pr-reviews-with-bob workflow.
+# It's necessary because pull_request_review events from forked repositories don't
+# have access to repository secrets. By using workflow_run, we can work around this
+# limitation and access secrets in the triggered workflow.
+#
+# WORKFLOW CHAIN:
+# 1. This workflow (pull_request_review trigger) - runs on PR review submission
+# 2. fix-pr-reviews-with-bob.yml (workflow_run trigger) - has access to secrets
+#
+# ============================================================================
+
+name: Fix PR Reviews with Bob - Trigger
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  trigger-bob-workflow:
+    # Only run for reviews with comments on PRs labeled with 'fix-with-bob'
+    if: |
+      (github.event.review.state == 'commented' || github.event.review.state == 'changes_requested') &&
+      contains(github.event.pull_request.labels.*.name, 'fix-with-bob')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger workflow_run
+        run: |
+          echo "This is a dummy workflow that triggers the actual fix-pr-reviews-with-bob workflow."
+          echo "It's necessary because pull_request_review events from forked repositories"
+          echo "don't have access to repository secrets."
+          echo ""
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "Review ID: ${{ github.event.review.id }}"
+          echo "Reviewer: ${{ github.event.review.user.login }}"
+
+# Made with Bob

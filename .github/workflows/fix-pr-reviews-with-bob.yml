@@ -37,17 +37,15 @@
 name: Fix PR Reviews with Bob
 
 on:
-  pull_request_review:
-    types: [submitted]
+  workflow_run:
+    workflows: ["Fix PR Reviews with Bob - Trigger"]
+    types:
+      - completed
 
 jobs:
   fix-pr-reviews-with-bob:
-    # Only run for reviews with comments on PRs labeled with 'fix-with-bob'
-    # This label is automatically added by the fix-issues-with-bob workflow
-    # Using label-based filtering is more robust than checking PR author and title pattern
-    if: |
-      (github.event.review.state == 'commented' || github.event.review.state == 'changes_requested') &&
-      contains(github.event.pull_request.labels.*.name, 'fix-with-bob')
+    # Only run if the trigger workflow completed successfully
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     
     permissions:
@@ -60,20 +58,82 @@ jobs:
       checks: read    
 
     steps:
+      - name: Get PR details from workflow run
+        id: get_pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
+          script: |
+            // Get the workflow run that triggered this
+            const workflowRun = context.payload.workflow_run;
+            
+            // Get pull requests associated with the head commit
+            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: workflowRun.head_sha
+            });
+            
+            if (pulls.data.length === 0) {
+              core.setFailed('No pull request found for this workflow run');
+              return;
+            }
+            
+            const pr = pulls.data[0];
+            
+            // Check if PR has 'fix-with-bob' label
+            const hasLabel = pr.labels.some(label => label.name === 'fix-with-bob');
+            if (!hasLabel) {
+              core.info('PR does not have fix-with-bob label, skipping');
+              core.setOutput('should_run', 'false');
+              return;
+            }
+            
+            // Get the review that triggered this workflow
+            const reviews = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+            
+            // Get the most recent review (the one that triggered this)
+            const latestReview = reviews.data[reviews.data.length - 1];
+            
+            // Only proceed if review has comments or requested changes
+            if (latestReview.state !== 'commented' && latestReview.state !== 'changes_requested') {
+              core.info('Review is not a comment or change request, skipping');
+              core.setOutput('should_run', 'false');
+              return;
+            }
+            
+            core.setOutput('should_run', 'true');
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_title', pr.title);
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('head_repo', pr.head.repo.full_name);
+            core.setOutput('review_id', latestReview.id);
+            core.setOutput('reviewer', latestReview.user.login);
+            
+            core.info(`PR #${pr.number}: ${pr.title}`);
+            core.info(`Review ID: ${latestReview.id} by ${latestReview.user.login}`);
+      
       - name: Checkout repository
+        if: steps.get_pr.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ steps.get_pr.outputs.head_repo }}
+          ref: ${{ steps.get_pr.outputs.head_ref }}
           fetch-depth: 0  # Full history for better context
-          token: ${{ secrets.SKILLBERRY_BOT_TOKEN || github.token }}
+          token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
       
       - name: Setup Node.js
+        if: steps.get_pr.outputs.should_run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
       
       - name: Install Bob Shell
+        if: steps.get_pr.outputs.should_run == 'true'
         run: |
           echo "Installing Bob Shell..."
           curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash -s -- --package-manager npm
@@ -88,6 +148,7 @@ jobs:
           fi
       
       - name: Authenticate Bob Shell
+        if: steps.get_pr.outputs.should_run == 'true'
         env:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
         run: |
@@ -100,29 +161,37 @@ jobs:
           echo "Bob Shell authentication configured successfully"
       
       - name: Get PR and Review Details
+        if: steps.get_pr.outputs.should_run == 'true'
         id: pr_details
         env:
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
-          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_NUMBER="${{ steps.get_pr.outputs.pr_number }}"
+          REVIEW_ID="${{ steps.get_pr.outputs.review_id }}"
+          
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
-          echo "pr_title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
-          echo "review_id=${{ github.event.review.id }}" >> $GITHUB_OUTPUT
-          echo "reviewer=${{ github.event.review.user.login }}" >> $GITHUB_OUTPUT
+          echo "pr_title=${{ steps.get_pr.outputs.pr_title }}" >> $GITHUB_OUTPUT
+          echo "review_id=${REVIEW_ID}" >> $GITHUB_OUTPUT
+          echo "reviewer=${{ steps.get_pr.outputs.reviewer }}" >> $GITHUB_OUTPUT
           
           # Get all review comments from this review
           echo "Fetching review comments..."
           COMMENTS=$(gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews/${{ github.event.review.id }}/comments" \
+            "/repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments" \
             --jq '.[] | "File: \(.path)\nLine: \(.line // .original_line)\nComment: \(.body)\n---"')
           
           # Save comments to file for use in prompt
           echo "${COMMENTS}" > /tmp/review_comments.txt
           
           # Also get the review body if it exists
-          REVIEW_BODY="${{ github.event.review.body }}"
+          REVIEW_BODY=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}" \
+            --jq '.body // ""')
+          
           if [ -n "${REVIEW_BODY}" ]; then
             echo "Review Summary: ${REVIEW_BODY}" >> /tmp/review_comments.txt
           fi
@@ -131,25 +200,26 @@ jobs:
           cat /tmp/review_comments.txt
       
       - name: Configure Git
+        if: steps.get_pr.outputs.should_run == 'true'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
       
       - name: Execute Bob to Address Review Comments
+        if: steps.get_pr.outputs.should_run == 'true'
         env:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
           PR_NUMBER: ${{ steps.pr_details.outputs.pr_number }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
           # Read review comments
           REVIEW_COMMENTS=$(cat /tmp/review_comments.txt)
           
           # Create a comprehensive prompt for Bob Shell
-          PROMPT="Address PR review comments for PR #${PR_NUMBER}: ${{ steps.pr_details.outputs.pr_title }}
+          PROMPT="Address PR review comments for PR #${PR_NUMBER}: ${{ steps.get_pr.outputs.pr_title }}
 
           Repository: ${{ github.repository }}
-          PR URL: ${{ github.event.pull_request.html_url }}
-          Reviewer: ${{ steps.pr_details.outputs.reviewer }}
+          Reviewer: ${{ steps.get_pr.outputs.reviewer }}
 
           Review Comments:
           ${REVIEW_COMMENTS}
@@ -168,6 +238,7 @@ jobs:
           bob --accept-license --yolo -p "${PROMPT}"
       
       - name: Check for Changes
+        if: steps.get_pr.outputs.should_run == 'true'
         id: changes
         run: |
           if [[ -n $(git status --porcelain) ]]; then
@@ -184,7 +255,7 @@ jobs:
           fi
       
       - name: Commit and Push Changes
-        if: steps.changes.outputs.has_changes == 'true'
+        if: steps.get_pr.outputs.should_run == 'true' && steps.changes.outputs.has_changes == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
@@ -199,7 +270,7 @@ jobs:
           git push
       
       - name: Generate Responses for Review Comments
-        if: steps.changes.outputs.has_changes == 'true'
+        if: steps.get_pr.outputs.should_run == 'true' && steps.changes.outputs.has_changes == 'true'
         env:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
@@ -259,7 +330,7 @@ jobs:
           done
       
       - name: Post Responses to Review Comments
-        if: steps.changes.outputs.has_changes == 'true'
+        if: steps.get_pr.outputs.should_run == 'true' && steps.changes.outputs.has_changes == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
@@ -287,7 +358,7 @@ jobs:
           Please let me know if any further changes are needed."
       
       - name: Comment on PR - No Changes
-        if: steps.changes.outputs.has_changes == 'false'
+        if: steps.get_pr.outputs.should_run == 'true' && steps.changes.outputs.has_changes == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
@@ -295,7 +366,7 @@ jobs:
             --body "🤖 Bob Shell analyzed the review comments from @${{ steps.pr_details.outputs.reviewer }} but did not generate any code changes. The comments may require manual intervention or clarification."
       
       - name: Handle Errors
-        if: failure()
+        if: steps.get_pr.outputs.should_run == 'true' && failure()
         env:
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
