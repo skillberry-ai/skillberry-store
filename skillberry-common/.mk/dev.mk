@@ -1,37 +1,69 @@
+# =============================================================================
+# Development Targets
+# =============================================================================
+# This file contains common development targets used across all Skillberry projects.
+# These targets handle dependency installation, testing, SDK generation, and releases.
+#
+# Key targets:
+#   - install-requirements: Install Python dependencies with optional groups
+#   - test: Run unit tests
+#   - release: Create a new versioned release
+#   - update-sdk: Generate Python SDK from OpenAPI specification
+#   - lint: Check code formatting (project-specific)
+# =============================================================================
+
 ##@ Development
 
-# List here all supported Python version specs (one or more separated by space). 
-# Spec options: v1 v1.v2 v1.v2.v3
-# Can add "+" to specify minimal version
-# Example: 3.13+ 3.12.9 3.11.5+
+# -----------------------------------------------------------------------------
+# Python Version Support
+# -----------------------------------------------------------------------------
+# List of supported Python versions for this project
+# Format: "major.minor" or "major.minor.patch" with optional "+" for minimum
+# Examples: "3.11" "3.12.10" "3.11+" "3.12.5+"
 SUPPORTED_PYTHON_VERSIONS := 3.11 3.12.10
 
-# Service name in lowercase
+# -----------------------------------------------------------------------------
+# Service Name Transformations
+# -----------------------------------------------------------------------------
+# Generate different formats of the service name for various uses:
+# - SERVICE_NAME_LC: lowercase (e.g., "skillberry-store")
+# - SERVICE_NAME_CN: code notation - lowercase with underscores (e.g., "skillberry_store")
+# - ACRONYM_LC: lowercase acronym (e.g., "sbs")
 SERVICE_NAME_LC = $(shell printf "%s" "$(SERVICE_NAME)" | tr '[:upper:]' '[:lower:]')
-# Service name in code notation - lowercase + replace hyphen->underscore
 SERVICE_NAME_CN ?= $(shell printf "%s" "$(SERVICE_NAME_LC)" | tr '-' '_')
-
 ACRONYM_LC ?= $(shell echo $(ACRONYM) | tr '[:upper:]' '[:lower:]')
 
+# -----------------------------------------------------------------------------
+# API Configuration
+# -----------------------------------------------------------------------------
+# Configuration for API clients and SDK generation
 RESTISH_CONFIG_APIS ?= $(HOME)/.config/restish/apis.json
-
 OPEN_API_SPEC_URL ?= http://$(SERVICE_HOST):$(MAIN_SERVICE_PORT)
 
+# Whether this service generates a Python SDK (0 or 1)
 export SERVICE_HAS_SDK ?= 0
 
-# List your subtree roots
+# -----------------------------------------------------------------------------
+# Code Change Detection
+# -----------------------------------------------------------------------------
+# Define which directories contain code that should trigger rebuilds
+# These are the "roots" of the code tree to monitor
 CODE_SUBTREES := src .mk $(SB_COMMON_PATH)/.mk $(SB_COMMON_PATH)/scripts
 
-# One common filter for all
+# File patterns to consider as "code" for change detection
+# Matches Python files, Makefiles, .mk files, and shell scripts
 CODE_FILTER := \( -name '*.py' -o -name 'Makefile' -o -name '*.mk' -o -name '*.sh' \)
 
-# Expand to the union of files across all subtrees
+# Find all code files across all subtrees
+# This creates a list of all files that should trigger a rebuild when changed
 CODE_FILES := $(foreach T,$(CODE_SUBTREES), \
   $(shell find $(T) -type f $(CODE_FILTER) -print))
 
+# Add additional important files that should trigger rebuilds
 CODE_FILES := $(CODE_FILES) pyproject.toml Makefile Dockerfile
 
-# This stamp file checks for code changes
+# Stamp file that tracks when code last changed
+# This is used to determine if Docker images need rebuilding
 .stamps/code-scan: $(CODE_FILES)
 	@echo "Detected code changed in: $(CODE_SUBTREES)"
 	@if [ -f .stamps/code-scan ]; then \
@@ -43,6 +75,11 @@ CODE_FILES := $(CODE_FILES) pyproject.toml Makefile Dockerfile
 	fi
 	@touch .stamps/code-scan
 
+# -----------------------------------------------------------------------------
+# Git Hooks Setup
+# -----------------------------------------------------------------------------
+# Configure git to use custom hooks from .githooks directory
+# This allows project-specific pre-commit, pre-push, etc. hooks
 git-hooks-setup:
 	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
 	    echo "Setting up Git hooks..."; \
@@ -52,13 +89,24 @@ git-hooks-setup:
 	    echo "Skipping git-hooks-setup: not inside a Git repository."; \
 	fi
 
+# -----------------------------------------------------------------------------
+# Service Environment Display
+# -----------------------------------------------------------------------------
 .PHONY: show-srv-env
 show-srv-env: .stamps/srv.env	## Show service env (ports, host)
 	@cat .stamps/srv.env
 
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
 test: install-requirements ## Test the tools-service
 	pytest
 
+# -----------------------------------------------------------------------------
+# Release Validation
+# -----------------------------------------------------------------------------
+# Ensure there are no uncommitted changes before releasing
+# This prevents accidentally releasing with local modifications
 check-git-clean:
 	@changes="$$(git status --porcelain)"; \
 	if [ -n "$$changes" ]; then \
@@ -68,22 +116,34 @@ check-git-clean:
 	  exit 1; \
 	fi
 
+# Ensure we're on the main branch before releasing
+# Releases should only be created from the main branch
 check-git-main:
 	@if [ "$(shell git rev-parse --abbrev-ref HEAD)" != "main" ]; then \
 		echo "! You must be on the main branch to run this command"; \
 		exit 1; \
 	fi
 
+# -----------------------------------------------------------------------------
+# Dependency Installation
+# -----------------------------------------------------------------------------
+# Install Python dependencies with optional dependency groups
+# Usage:
+#   make install-requirements              # Install base dependencies
+#   make install-requirements ODEPS=dev    # Install with dev dependencies
+#   make install-requirements ODEPS=dev,vllm  # Install multiple groups
 .PHONY: install-requirements verify-venv
 install-requirements: update-git-version git-hooks-setup verify-venv .stamps/install-requirements-$(ODEPS) ## Install dependencies. For opt. deps: make install-requirements ODEPS=dev,vllm
 	@true
 
+# Verify we're in a virtual environment and have correct Python version
 verify-venv:
 	@$(SB_COMMON_PATH)/scripts/check_venv.sh $(SUPPORTED_PYTHON_VERSIONS) || exit 1
 	@python $(SB_COMMON_PATH)/scripts/ensure_pip.py || exit 1
 	@python -m pip install uv
 
-# Need to actually install only when pyproject.toml changes
+# Only actually install when pyproject.toml changes
+# This stamp file tracks which optional dependencies were last installed
 .stamps/install-requirements-$(ODEPS): pyproject.toml .venv
 	@ODEPS="$(ODEPS)"; \
 	if [ -z "$$ODEPS" ]; then \
@@ -93,9 +153,12 @@ verify-venv:
 	fi
 	@touch .stamps/install-requirements-$(ODEPS)
 
-
-# Will actually modify the file in $(VERSIOIN_LOCATION) only if it does not exist or has different content
-
+# -----------------------------------------------------------------------------
+# Git Version Management
+# -----------------------------------------------------------------------------
+# Update the git version file if it doesn't exist or has changed
+# This embeds the current BUILD_VERSION into the Python package
+# The version is calculated in globals.mk based on git history
 .PHONY: update-git-version
 update-git-version:
 	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
@@ -117,6 +180,18 @@ update-git-version:
 	    echo "Skipping update-git-version: not inside a Git repository."; \
 	fi
 
+# -----------------------------------------------------------------------------
+# Release Process
+# -----------------------------------------------------------------------------
+# Create a new release with the specified version
+# This is a comprehensive process that:
+# 1. Validates the environment (main branch, no uncommitted changes)
+# 2. Creates a release branch (branch-X.Y.Z)
+# 3. Creates and pushes a git tag
+# 4. Creates a GitHub release with auto-generated notes
+# 5. Builds and pushes Docker images
+#
+# Usage: RELEASE_VERSION=1.2.3 make release
 release: check-git-main check-git-clean install-requirements  ## Release a new version
 	@if [ -z "$(RELEASE_VERSION)" ]; then \
 		echo "++++++++++++++++++++++++++++++++++++++++++++"; \
@@ -136,19 +211,12 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)" 
 	@git push origin $(RELEASE_VERSION)
 
-	#
-	# Important: change to main so that later invocation of "update-git-version" properly works,
-	# Note: update-git-version is called on different contexts later in this flow
-	#
+	# Switch back to main so update-git-version works correctly
 	@git checkout main
 
-	#
-	# The following block calls either to "basic" gh release command or an "explicit" one:
-	# 
-	# If no previous release exists then "basic" is called
-	# If a previous release exists then "explicit" using commit range is called
-	#
-
+	# Create GitHub release with auto-generated or explicit notes
+	# If no previous release exists, use GitHub's auto-generated notes
+	# If a previous release exists, generate notes from commit range
 	@REL_PREV_RELEASE=$$(git branch -r | grep 'branch-' | sed 's|.*/branch-||' | sort -V | tail -n 2 | head -n 1); \
 	if [ -z "$$REL_PREV_RELEASE" ] || [ "$$REL_PREV_RELEASE" = "$(RELEASE_VERSION)" ]; then \
 		echo "No previous release found. Creating release with generated notes..."; \
@@ -161,10 +229,7 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 		gh release create $(RELEASE_VERSION) --title "$(RELEASE_VERSION)" --notes "$$(git log --pretty=format:'- %s by %an' $$REL_PREV_COMMIT..$$REL_CURRENT_COMMIT)"; \
 	fi
 
-	#
-	# Important: change back to release branch so that docker image is built with customized
-	# toml/requirement files
-	#
+	# Switch to release branch for Docker build with customized dependencies
 	@git checkout branch-$(RELEASE_VERSION)
 
 	@echo "===> Building and pushing new docker image"
@@ -173,7 +238,16 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@echo "=> Release $(RELEASE_VERSION) created successfully"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 
-
+# -----------------------------------------------------------------------------
+# SDK Generation and Update
+# -----------------------------------------------------------------------------
+# Update the Python SDK if the service has one
+# This target:
+# 1. Starts the service in Docker
+# 2. Waits for it to be ready
+# 3. Generates SDK from the OpenAPI spec
+# 4. Commits changes if any
+# 5. Stops the service
 update-sdk: ## Update the SDK, if needed
 	@if [ "$$SERVICE_HAS_SDK" = "1" ]; then \
 		rm -rf /tmp/skillberry-sdk || true; \
@@ -197,8 +271,12 @@ update-sdk: ## Update the SDK, if needed
 		echo "Service has no SDK, skipping"; \
 	fi
 
+# Directory where the Python SDK is generated
 PYTHON_SDK_DIR = client/python/$(SERVICE_NAME_CN)_sdk
 
+# Generate Python SDK from OpenAPI specification
+# This uses openapi-generator-cli to create a complete Python client
+# Then adds a CLI module for command-line access
 generate-sdk: install-requirements # Generate SDK
 	@mkdir -p $(PYTHON_SDK_DIR)
 	@rm -fr $(PYTHON_SDK_DIR)/*
@@ -224,4 +302,3 @@ generate-sdk: install-requirements # Generate SDK
 	@echo "==> Removing [project.scripts] section if it exists..."
 	@sed -i '/^\[project\.scripts\]/,/^$$/d' $(PYTHON_SDK_DIR)/pyproject.toml
 	@echo "==> SDK generation complete with CLI support"
-

@@ -1,29 +1,56 @@
+# =============================================================================
+# Docker Container Management
+# =============================================================================
+# This file contains targets for building, running, and managing Docker containers.
+# It supports both Docker and Podman, with automatic detection and multi-architecture builds.
+#
+# Key targets:
+#   - docker-run: Run the service in a container (auto-pull or build)
+#   - docker-build: Build the Docker image
+#   - docker-stop: Stop the running container
+#   - docker-clean: Remove the container (keeps image)
+#   - docker-rmi: Remove container and image
+#
+# Build modes (DBT variable):
+#   - DBT=local (default): Build for current architecture only
+#   - DBT=registry: Build for all architectures and push to registry
+#
+# Development mode:
+#   - SBD_DEV=1: Skip pull, always build locally
+# =============================================================================
+
 ##@ Docker container management
 
-# Guidelines::
-# 1. By default, "make docker-run" will try to pull the image from GHCR. If that fails (e.g., no skillberry-store:latest image), it will build the image locally
-# 2. If you want "make docker-run" to skip pulling and just build the image, set env var SBD_DEV=1 (e.g., SBD_DEV=1 make docker-run, or export SBD_DEV=1 and then make docker-run)
-# 3. If you buid the image explicitly (make docker-build) or pull it explicitly (make docker-pull) then make docker-run will use the resulting image
-# 4. If you want to push a new image or new base image to GHCR (multi-platform build & push), do: DBT=registry make docker-build, or DBT=registry make base-image-build. 
-#    Notes: A. This operation requires multi-platform docker support (you will get an error message with detailed instructions if it's not available). 
-#           B. This operation may not create a local image (docker buildx limitation).
-
-# Supported container architectures
+# -----------------------------------------------------------------------------
+# Architecture Support
+# -----------------------------------------------------------------------------
+# List of architectures to build for when pushing to registry
+# Multi-arch builds require Docker buildx or Podman manifest support
 SUPPORTED_ARCHS := linux/amd64 linux/arm64
 
-# Docker registry host
+# -----------------------------------------------------------------------------
+# Registry Configuration
+# -----------------------------------------------------------------------------
+# Docker registry host (GitHub Container Registry)
 REGISTRY_HOST ?= ghcr.io
-# change DOCKER_PROJECT to "skillberry" for public images
+
+# Docker project/organization name
+# Use "skillberry" for public images, "skillberry-ai" for private
 DOCKER_PROJECT ?= skillberry-ai
-# Docker repo name
+
+# Full repository name (host + project)
 REPOSITORY_NAME = $(REGISTRY_HOST)/$(DOCKER_PROJECT)
-# Docker command
+
+# Container runtime command (docker or podman)
 DOCKER := docker
 
+# -----------------------------------------------------------------------------
+# Base Image Configuration
+# -----------------------------------------------------------------------------
+# The base image contains common dependencies shared across Skillberry services
+# This reduces build times and ensures consistency
 
-# Base image for skillberry services
-
-# Root image - from which the skillberry base image is built
+# Root image that the base image is built from
 ROOT_IMAGE := python:3.11-slim
 
 # Base image name and tag
@@ -31,55 +58,72 @@ BASE_IMAGE_NAME := skillberry-base
 BASE_IMAGE_FULL_NAME = $(REPOSITORY_NAME)/$(BASE_IMAGE_NAME)
 BASE_IMAGE_TAG := latest
 
-# Base image dockerfile
+# Dockerfile for building the base image
 BASE_DOCKER_FILE := $(SB_COMMON_PATH)/Dockerfile.base
 
+# -----------------------------------------------------------------------------
+# Service Image Configuration
+# -----------------------------------------------------------------------------
+# Configuration for the current service's Docker image
 
-# Image for the current service 
-
+# Image name (same as service name)
 IMAGE_NAME = $(SERVICE_NAME)
+
+# Container name when running
 CNTR_NAME = $(SERVICE_NAME)
 
+# Image tag (uses calculated BUILD_VERSION)
 IMAGE_TAG = $(BUILD_VERSION)
+
+# Full image name with registry
 FULL_IMAGE_NAME = $(REPOSITORY_NAME)/$(IMAGE_NAME)
 
+# Dockerfile for building the service image
 DOCKER_FILE ?= Dockerfile
 
-# Container volume mounts as docker run args
+# Volume mounts for the container (defined in project's .mk/local.mk)
+# Format: -v /host/path:/container/path
 VOLUME_FLAGS = $(foreach vol,$(CNTR_MOUNTS),-v $(vol))
 
+# -----------------------------------------------------------------------------
+# Container Runtime Detection
+# -----------------------------------------------------------------------------
+# Auto-detect if Docker is aliased to Podman in shell configuration files
+# This allows seamless switching between Docker and Podman
 
-# Search the shell configuration file to check for aliases
-# This assumes you are using zsh or bash
-# If you are using a different shell, you may need to adjust this accordingly
-
-# Check for Docker alias in shell configuration files
+# Check ~/.zshrc for Docker->Podman alias
 ifneq (,$(wildcard "~/.zshrc"))
 ifeq ($(shell grep -q "alias docker='podman'" ~/.zshrc && echo found),found)
 DOCKER := podman
 endif
 endif
 
+# Check ~/.bashrc for Docker->Podman alias
 ifneq (,$(wildcard "~/.bashrc"))
 ifeq ($(shell grep -q "alias docker='podman'" ~/.bashrc && echo found),found)
 DOCKER := podman
 endif
 endif
 
+# Check ~/.bash_profile for Docker->Podman alias
 ifneq (,$(wildcard "~/.bash_profile"))
 ifeq ($(shell grep -q "alias docker='podman'" ~/.bash_profile && echo found),found)
 DOCKER := podman
 endif
 endif
 
+# Check ~/.profile for Docker->Podman alias
 ifneq (,$(wildcard "~/.profile"))
 ifeq ($(shell grep -q "alias docker='podman'" ~/.profile && echo found),found)
 DOCKER := podman
 endif
 endif
 
-# Compute DOCKER_ARCH based on the container runtime. Value is docker-specific, e.g., linux/amd64, linux/arm64, etc.
-# If the container runtime is not recognized, the value is set to "unknown"
+# -----------------------------------------------------------------------------
+# Architecture Detection
+# -----------------------------------------------------------------------------
+# Detect the current platform's architecture
+# Format: linux/amd64, linux/arm64, etc.
 ifeq ($(DOCKER),docker)
 DOCKER_ARCH := $(shell docker version --format '{{.Server.Os}}/{{.Server.Arch}}' 2>/dev/null || echo "unknown")
 else ifeq ($(DOCKER),podman)
@@ -88,15 +132,13 @@ else
 DOCKER_ARCH := unknown
 endif
 
-# Print the value of DOCKER
+# Print detected container runtime
 @echo "Using Docker: $(DOCKER)"
 
-# Check whether docker is aliased to podman
-# It is assumed that the user is using zsh or bash and alias is defined in ~/.zshrc or ~/.bashrc
-# Check that either Docker or Podman is installed
-# Check if the user has aliased Docker to Podman in their shell configuration file
-# If the user has aliased Docker to Podman, set the DOCKER variable to podman 
-# If the user has not aliased Docker to Podman, set the DOCKER variable to docker
+# -----------------------------------------------------------------------------
+# Runtime Verification
+# -----------------------------------------------------------------------------
+# Verify that either Docker or Podman is installed
 .PHONY: docker-check 
 docker-check:
 	@echo "Checking whether Docker or Podman is installed..."
@@ -105,18 +147,28 @@ docker-check:
         exit 1; \
     fi
 
+# Verify multi-architecture build support
+# Required for building images that work on both Intel and ARM processors
 .PHONY: multiarch-check
 multiarch-check:
 	@echo "Verifying multi-arch container build is enabled and supports: $(SUPPORTED_ARCHS)"
 	@$(SB_COMMON_PATH)/scripts/check-multiarch.sh $(DOCKER) $(SUPPORTED_ARCHS) || exit 1
 
-# DBT - Docker Build Target: "local" for local build and "registry" for pushing the built image to registry. Default - local
+# -----------------------------------------------------------------------------
+# Build Target Configuration
+# -----------------------------------------------------------------------------
+# DBT (Docker Build Target) controls where images are built and pushed
+# - local: Build for current architecture only, load into local Docker
+# - registry: Build for all architectures, push to container registry
+
 DBT ?= local
 
 ifeq ($(DBT),local)
+	# Local build: single architecture, load into Docker
 	DB_ARCH := $(DOCKER_ARCH)
 	DB_ACTION := load
 else ifeq ($(DBT),registry)
+	# Registry build: all architectures, push to registry
 	DB_ARCH := $(SUPPORTED_ARCHS)
 	DB_ACTION := push
 else
@@ -124,10 +176,15 @@ else
 	@exit 1
 endif
 
+# -----------------------------------------------------------------------------
+# Base Image Management
+# -----------------------------------------------------------------------------
+# Build the Skillberry base image
+# This image contains common dependencies and is used by all services
 .PHONY: base-image-build 
 base-image-build: multiarch-check .stamps/base-image-build-$(DBT)	## Build skillberry base image (DBT=registry to build & push multi-arch)
 
-# Build base multi-arch image if it does not exist
+# Build base image only if it doesn't exist or code changed
 .stamps/base-image-build-$(DBT): 
 	@echo "Building Base Image using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Supported Architectures: $(DB_ARCH)"
@@ -168,23 +225,22 @@ base-image-build: multiarch-check .stamps/base-image-build-$(DBT)	## Build skill
 		exit 1; \
 	fi
 
-# make sure that you are login into the appropriate Docker registry with required credentials
-# before running this command
-# .PHONY: base-image-push
-# base-image-push: docker-check base-image-build ## Push base image into the registry
-# 	@echo "Pushing BASE image: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
-# 	$(DOCKER) push $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)
-
+# Remove the local base image
 .PHONY: base-image-rm
 base-image-rm: docker-check ## Remove the local base image
 	@echo "Removing BASE image: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
 	$(DOCKER) rmi -f $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) > /dev/null 2>&1 || true
 	rm -f .stamps/base-image-build*
 
+# -----------------------------------------------------------------------------
+# Service Image Management
+# -----------------------------------------------------------------------------
+# Build the service's Docker image
+# This includes the service code and dependencies
 .PHONY: docker-build 
 docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Build docker image (DBT=registry to build & push multi-arch)
 
-# We actually build a new image only if the code changed by checking code-scan stamp
+# Build service image only if code changed (tracked by code-scan stamp)
 .stamps/docker-build-$(DBT): .stamps/ssh-agent.env .stamps/code-scan
 	@echo "Building for $(DB_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
@@ -253,16 +309,10 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Bui
 		exit 1; \
 	fi
 
-# make sure that you are logged into the appropriate Docker registry with required credentials
-# before running this command
-# .PHONY: docker-push
-# docker-push: docker-check docker-build ## Push docker image into the registry
-# 	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
-# 	$(DOCKER) push $(FULL_IMAGE_NAME):$(IMAGE_TAG)
-# 	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):latest"
-# 	$(DOCKER) push $(FULL_IMAGE_NAME):latest
-
-
+# -----------------------------------------------------------------------------
+# Image Distribution
+# -----------------------------------------------------------------------------
+# Pull the latest image from the container registry
 .PHONY: docker-pull
 docker-pull: docker-check ## Pull the latest docker image from registry
 	@echo "Attempting to pull Docker image: $(FULL_IMAGE_NAME):latest"
@@ -276,14 +326,17 @@ docker-pull: docker-check ## Pull the latest docker image from registry
 		exit 1; \
 	fi
 
+# Get the Docker image (pull or build based on SBD_DEV setting)
 .PHONY: docker-get
 docker-get: .stamps/docker-get
 	@true
 
+# If SBD_DEV is set, always build locally (skip pull)
 ifdef SBD_DEV
 .stamps/docker-get: docker-build ## Get docker image (SBD_DEV set: build only)
 	@echo "SBD_DEV is set - using locally built image"
 else
+# Otherwise, try to pull first, fall back to building if pull fails
 .stamps/docker-get: ## Get docker image (pull latest or build if pull fails)
 	@echo "Attempting to get Docker image: $(FULL_IMAGE_NAME):latest"
 	@if $(MAKE) docker-pull; then \
@@ -294,8 +347,14 @@ else
 	fi
 endif
 
+# -----------------------------------------------------------------------------
+# Container Lifecycle
+# -----------------------------------------------------------------------------
+# Run the service in a Docker container
+# Automatically handles environment variables and port mapping
 .PHONY: docker-run
 ifeq ($(USE_LLM_SVCS),1)
+# If using LLM services, check credentials and pass them to container
 docker-run: docker-check docker-get docker-clean check-rits-watsonx-envs ## Run the docker container (pull or build first if needed)
 	@$(SB_COMMON_PATH)/scripts/update_env_vars.sh -r .env $(LLM_SVCS_ENV_VARS)
 	$(DOCKER) run --name $(CNTR_NAME) --env-file .env \
@@ -305,6 +364,7 @@ docker-run: docker-check docker-get docker-clean check-rits-watsonx-envs ## Run 
 		$(FULL_IMAGE_NAME):$(IMAGE_TAG)
 	@echo "Docker container started: $(CNTR_NAME)"
 else
+# Standard run without LLM service credentials
 docker-run: docker-check docker-get docker-clean
 	@test -f .env || touch .env
 	$(DOCKER) run --name $(CNTR_NAME) --env-file .env \
@@ -315,6 +375,7 @@ docker-run: docker-check docker-get docker-clean
 	@echo "Docker container started: $(CNTR_NAME)"
 endif
 
+# Remove the Docker image and container
 .PHONY: docker-rmi
 docker-rmi: docker-check docker-clean ## Remove the docker container, image, and temporary files
 	@echo "Removing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
@@ -323,13 +384,14 @@ docker-rmi: docker-check docker-clean ## Remove the docker container, image, and
 	@rm -f .stamps/docker-build*
 	@rm -f .stamps/docker-get 
 
+# Remove the container but keep the image
 .PHONY: docker-clean
 docker-clean: docker-check docker-stop ## Remove the docker container and temporary files, but keeping the image
 	@echo "Removing Docker container: $(CNTR_NAME)"
 	$(DOCKER) rm -f $(CNTR_NAME) > /dev/null 2>&1 || true
 
+# Stop the running container
 .PHONY: docker-stop
 docker-stop: docker-check ## Stop the docker container
 	@echo "Stopping Docker container: $(CNTR_NAME)"
 	$(DOCKER) stop $(CNTR_NAME) > /dev/null 2>&1 || true
-	

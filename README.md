@@ -233,5 +233,6 @@ Traces are available in Jaeger at http://localhost:16686.
 
 ## 📚 Additional documentation can be found at [docs](docs).
 
+* **Make System Documentation**: Complete guide to the build system - [docs/MAKE_SYSTEM.md](docs/MAKE_SYSTEM.md)
 * Customizing configurations details can be found [here](docs/config-env-vars.md)
-* Guthub support details can be found [here](docs/github_using_hooks.md)
+* Github support details can be found [here](docs/github_using_hooks.md)
