@@ -58,56 +58,79 @@ jobs:
       checks: read    
 
     steps:
-      - name: Download PR Information
-        uses: actions/download-artifact@v4
+      - name: Get PR details from workflow run
+        id: get_pr
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
-          pattern: pr-info-*
-          path: /tmp/pr-info
-      
-      - name: Get PR details from artifact
-        id: get_pr
-        run: |
-          # Find the pr-data.json file
-          PR_DATA_FILE=$(find /tmp/pr-info -name "pr-data.json" -type f | head -n 1)
-          
-          if [ -z "$PR_DATA_FILE" ]; then
-            echo "Error: Could not find PR data file"
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          echo "Found PR data file: $PR_DATA_FILE"
-          cat "$PR_DATA_FILE"
-          
-          # Extract values from JSON
-          PR_NUMBER=$(jq -r '.pr_number' "$PR_DATA_FILE")
-          PR_TITLE=$(jq -r '.pr_title' "$PR_DATA_FILE")
-          HEAD_REF=$(jq -r '.head_ref' "$PR_DATA_FILE")
-          HEAD_REPO=$(jq -r '.head_repo' "$PR_DATA_FILE")
-          REVIEW_ID=$(jq -r '.review_id' "$PR_DATA_FILE")
-          REVIEWER=$(jq -r '.reviewer' "$PR_DATA_FILE")
-          REVIEW_STATE=$(jq -r '.review_state' "$PR_DATA_FILE")
-          
-          # Validate review state
-          if [ "$REVIEW_STATE" != "commented" ] && [ "$REVIEW_STATE" != "changes_requested" ]; then
-            echo "Review state is '$REVIEW_STATE', not 'commented' or 'changes_requested', skipping"
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          # Set outputs
-          echo "should_run=true" >> $GITHUB_OUTPUT
-          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
-          echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
-          echo "head_repo=$HEAD_REPO" >> $GITHUB_OUTPUT
-          echo "review_id=$REVIEW_ID" >> $GITHUB_OUTPUT
-          echo "reviewer=$REVIEWER" >> $GITHUB_OUTPUT
-          
-          echo "PR #$PR_NUMBER: $PR_TITLE"
-          echo "Review ID: $REVIEW_ID by $REVIEWER"
+          script: |
+            const workflowRun = context.payload.workflow_run;
+            
+            // List artifacts from the trigger workflow
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: workflowRun.id
+            });
+            
+            // Find the pr-info artifact
+            const prInfoArtifact = artifacts.data.artifacts.find(artifact =>
+              artifact.name.startsWith('pr-info-')
+            );
+            
+            if (!prInfoArtifact) {
+              core.setFailed('No PR info artifact found from trigger workflow');
+              return;
+            }
+            
+            core.info(`Found artifact: ${prInfoArtifact.name}`);
+            
+            // Download the artifact
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: prInfoArtifact.id,
+              archive_format: 'zip'
+            });
+            
+            // The download is a zip file buffer, we need to extract it
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip(Buffer.from(download.data));
+            const zipEntries = zip.getEntries();
+            
+            let prData = null;
+            for (const entry of zipEntries) {
+              if (entry.entryName === 'pr-data.json') {
+                prData = JSON.parse(entry.getData().toString('utf8'));
+                break;
+              }
+            }
+            
+            if (!prData) {
+              core.setFailed('Could not find pr-data.json in artifact');
+              return;
+            }
+            
+            core.info(`PR Data: ${JSON.stringify(prData, null, 2)}`);
+            
+            // Validate review state
+            if (prData.review_state !== 'commented' && prData.review_state !== 'changes_requested') {
+              core.info(`Review state is '${prData.review_state}', not 'commented' or 'changes_requested', skipping`);
+              core.setOutput('should_run', 'false');
+              return;
+            }
+            
+            // Set outputs
+            core.setOutput('should_run', 'true');
+            core.setOutput('pr_number', prData.pr_number);
+            core.setOutput('pr_title', prData.pr_title);
+            core.setOutput('head_ref', prData.head_ref);
+            core.setOutput('head_repo', prData.head_repo);
+            core.setOutput('review_id', prData.review_id);
+            core.setOutput('reviewer', prData.reviewer);
+            
+            core.info(`PR #${prData.pr_number}: ${prData.pr_title}`);
+            core.info(`Review ID: ${prData.review_id} by ${prData.reviewer}`);
       
       - name: Checkout repository
         if: steps.get_pr.outputs.should_run == 'true'
