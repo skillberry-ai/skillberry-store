@@ -2,14 +2,14 @@
 # Names: No spaces, letter start, letters, digits, hyphen, underscore
 # Python path names: also no hyphen
 # Make sure NO TRAILING WHITE SPACES after values! No quotes or double-quotes!
-ASSET_NAME := your asset name here, e.g., skillberry-store
-ACRONYM := acronym of the aset name, e.g., SBS
-DESC_NAME := descriptive name of the asset, e.g., Skillberry Store service
-VERSION_LOCATION := relative path to location of git version module e.g., src/skillberry_store/fast_api/git_version.py
+ASSET_NAME := your asset name here, e.g., example-service
+ACRONYM := acronym of the asset name, e.g., ES
+DESC_NAME := descriptive name of the asset, e.g., Example Service
+VERSION_LOCATION := relative path to location of git version module e.g., src/example_service/version.py
 # Set to 1 if this asset is using LLM services - watsonx or RITS
 USE_LLM_SVCS := 0/1
 # Set these two below even if your asset is not a service - it allows execution control 
-SERVICE_ENTRY_MODULE := your service entry module name, e.g., skillberry_store.main
+SERVICE_ENTRY_MODULE := your service entry module name, e.g., example_service.main
 SERVICE_NAME := $(ASSET_NAME)
 # If this asset is an actual network service, define these service settings as well
 SERVICE_PORTS := space-separated port numbers (first is always main port), e.g., 8000 8002
