@@ -66,71 +66,74 @@ jobs:
           script: |
             const workflowRun = context.payload.workflow_run;
             
-            // List artifacts from the trigger workflow
-            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+            core.info(`Workflow run ID: ${workflowRun.id}`);
+            core.info(`Workflow run head SHA: ${workflowRun.head_sha}`);
+            core.info(`Workflow run head branch: ${workflowRun.head_branch}`);
+            
+            // Get pull requests associated with the head commit of the trigger workflow
+            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              run_id: workflowRun.id
+              commit_sha: workflowRun.head_sha
             });
             
-            // Find the pr-info artifact
-            const prInfoArtifact = artifacts.data.artifacts.find(artifact =>
-              artifact.name.startsWith('pr-info-')
-            );
+            core.info(`Found ${pulls.data.length} PRs associated with commit`);
             
-            if (!prInfoArtifact) {
-              core.setFailed('No PR info artifact found from trigger workflow');
+            if (pulls.data.length === 0) {
+              core.setFailed('No pull request found for this workflow run');
               return;
             }
             
-            core.info(`Found artifact: ${prInfoArtifact.name}`);
+            const pr = pulls.data[0];
+            core.info(`PR #${pr.number}: ${pr.title}`);
             
-            // Download the artifact
-            const download = await github.rest.actions.downloadArtifact({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              artifact_id: prInfoArtifact.id,
-              archive_format: 'zip'
-            });
-            
-            // The download is a zip file buffer, we need to extract it
-            const AdmZip = require('adm-zip');
-            const zip = new AdmZip(Buffer.from(download.data));
-            const zipEntries = zip.getEntries();
-            
-            let prData = null;
-            for (const entry of zipEntries) {
-              if (entry.entryName === 'pr-data.json') {
-                prData = JSON.parse(entry.getData().toString('utf8'));
-                break;
-              }
-            }
-            
-            if (!prData) {
-              core.setFailed('Could not find pr-data.json in artifact');
-              return;
-            }
-            
-            core.info(`PR Data: ${JSON.stringify(prData, null, 2)}`);
-            
-            // Validate review state
-            if (prData.review_state !== 'commented' && prData.review_state !== 'changes_requested') {
-              core.info(`Review state is '${prData.review_state}', not 'commented' or 'changes_requested', skipping`);
+            // Check if PR has 'fix-with-bob' label
+            const hasLabel = pr.labels.some(label => label.name === 'fix-with-bob');
+            if (!hasLabel) {
+              core.info('PR does not have fix-with-bob label, skipping');
               core.setOutput('should_run', 'false');
               return;
             }
             
+            // Get all reviews for this PR
+            const reviews = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+            
+            core.info(`Found ${reviews.data.length} reviews`);
+            
+            // Find the most recent review that is a comment or change request
+            let latestReview = null;
+            for (let i = reviews.data.length - 1; i >= 0; i--) {
+              const review = reviews.data[i];
+              if (review.state === 'COMMENTED' || review.state === 'CHANGES_REQUESTED') {
+                latestReview = review;
+                break;
+              }
+            }
+            
+            if (!latestReview) {
+              core.info('No recent review with comments or change requests found, skipping');
+              core.setOutput('should_run', 'false');
+              return;
+            }
+            
+            core.info(`Latest review ID: ${latestReview.id} by ${latestReview.user.login}`);
+            core.info(`Review state: ${latestReview.state}`);
+            
             // Set outputs
             core.setOutput('should_run', 'true');
-            core.setOutput('pr_number', prData.pr_number);
-            core.setOutput('pr_title', prData.pr_title);
-            core.setOutput('head_ref', prData.head_ref);
-            core.setOutput('head_repo', prData.head_repo);
-            core.setOutput('review_id', prData.review_id);
-            core.setOutput('reviewer', prData.reviewer);
+            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_title', pr.title);
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('head_repo', pr.head.repo.full_name);
+            core.setOutput('review_id', latestReview.id);
+            core.setOutput('reviewer', latestReview.user.login);
             
-            core.info(`PR #${prData.pr_number}: ${prData.pr_title}`);
-            core.info(`Review ID: ${prData.review_id} by ${prData.reviewer}`);
+            core.info(`Will process PR #${pr.number}: ${pr.title}`);
+            core.info(`Review ID: ${latestReview.id} by ${latestReview.user.login}`);
       
       - name: Checkout repository
         if: steps.get_pr.outputs.should_run == 'true'
