@@ -1,27 +1,22 @@
-# Root Makefile for all Skillberry projects. 
-# 0. Make sure you have git subtree and gh CLI installed
-# 1. Copy this file from skillberry-common/default/Makefile.default to your project root as Makefile
-# 2. Create folder .mk in your project root
-# 3. Create .mk/local.mk (copy from skillberry-common/default/local.mk.default). Set the mandatory defs.
-# 4. Customize additional content if needed.
+# Root Makefile for Skillberry Store.
+#
+# Project-specific settings live in .mk/local.mk.
+# Shared targets and defaults are provided by the vendored
+# skillberry-common subtree under $(SB_COMMON_PATH).
 
-SB_COMMON_REPO := git@github.com:skillberry-ai/skillberry-common.git
-SB_COMMON_BRANCH := main
-SB_COMMON_REMOTE := skillberry-common
-SB_COMMON_PATH := skillberry-common
-
-_ensure_git_remote := $(shell \
-    git remote | grep -Fxq "$(SB_COMMON_REMOTE)" || { \
-        echo "$(SB_COMMON_REMOTE) remote does not exist - adding it"; \
-        git remote add "$(SB_COMMON_REMOTE)" "$(SB_COMMON_REPO)"; \
-    })
-
+SB_COMMON_REPO ?= git@github.com:skillberry-ai/skillberry-common.git
+SB_COMMON_BRANCH ?= main
+SB_COMMON_REMOTE ?= skillberry-common
+SB_COMMON_PATH ?= skillberry-common
 
 include .mk/local.mk
 include $(SB_COMMON_PATH)/Makefile
 
-# If the Makefile of skillberry-common is not available, install skillberry-common folder with the contents of skillberry-common repo from branch main (defaults)
-$(SB_COMMON_PATH)/Makefile: 
+# Bootstrap the vendored shared makefiles if the subtree is missing.
+$(SB_COMMON_PATH)/Makefile:
 	@echo "Adding $(SB_COMMON_REMOTE) under relative path $(SB_COMMON_PATH)"
-	@git subtree add --prefix $(SB_COMMON_PATH) $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH) 
-
+	@if ! git remote | grep -Fxq "$(SB_COMMON_REMOTE)"; then \
+		echo "$(SB_COMMON_REMOTE) remote does not exist - adding it"; \
+		git remote add "$(SB_COMMON_REMOTE)" "$(SB_COMMON_REPO)"; \
+	fi
+	@git subtree add --prefix $(SB_COMMON_PATH) $(SB_COMMON_REMOTE) $(SB_COMMON_BRANCH)
