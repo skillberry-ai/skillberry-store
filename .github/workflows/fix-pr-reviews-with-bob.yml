@@ -63,10 +63,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-          token: ${{ secrets.SKILLBERRY_BOT_TOKEN || secrets.GITHUB_TOKEN }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0  # Full history for better context
+          token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -96,6 +94,7 @@ jobs:
             echo "Error: BOBSHELL_API_KEY secret is not set"
             exit 1
           fi
+          # Bob Shell uses BOBSHELL_API_KEY environment variable for authentication
           echo "Bob Shell authentication configured successfully"
       
       - name: Get PR and Review Details
