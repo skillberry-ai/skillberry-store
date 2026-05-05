@@ -70,22 +70,25 @@ jobs:
             core.info(`Workflow run head SHA: ${workflowRun.head_sha}`);
             core.info(`Workflow run head branch: ${workflowRun.head_branch}`);
             
-            // Get pull requests associated with the head commit of the trigger workflow
-            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+            // List all open PRs and find the one with matching head branch
+            const { data: pulls } = await github.rest.pulls.list({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              commit_sha: workflowRun.head_sha
+              state: 'open',
+              per_page: 100
             });
             
-            core.info(`Found ${pulls.data.length} PRs associated with commit`);
+            core.info(`Found ${pulls.length} open PRs`);
             
-            if (pulls.data.length === 0) {
-              core.setFailed('No pull request found for this workflow run');
+            // Find PR with matching head branch
+            const pr = pulls.find(p => p.head.ref === workflowRun.head_branch);
+            
+            if (!pr) {
+              core.setFailed(`No open PR found for branch: ${workflowRun.head_branch}`);
               return;
             }
             
-            const pr = pulls.data[0];
-            core.info(`PR #${pr.number}: ${pr.title}`);
+            core.info(`Found PR #${pr.number}: ${pr.title}`);
             
             // Check if PR has 'fix-with-bob' label
             const hasLabel = pr.labels.some(label => label.name === 'fix-with-bob');
@@ -96,18 +99,18 @@ jobs:
             }
             
             // Get all reviews for this PR
-            const reviews = await github.rest.pulls.listReviews({
+            const { data: reviews } = await github.rest.pulls.listReviews({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: pr.number
             });
             
-            core.info(`Found ${reviews.data.length} reviews`);
+            core.info(`Found ${reviews.length} reviews`);
             
             // Find the most recent review that is a comment or change request
             let latestReview = null;
-            for (let i = reviews.data.length - 1; i >= 0; i--) {
-              const review = reviews.data[i];
+            for (let i = reviews.length - 1; i >= 0; i--) {
+              const review = reviews[i];
               if (review.state === 'COMMENTED' || review.state === 'CHANGES_REQUESTED') {
                 latestReview = review;
                 break;
