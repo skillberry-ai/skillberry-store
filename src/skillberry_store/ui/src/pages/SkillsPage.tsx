@@ -38,7 +38,7 @@ import {
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
 import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon, UploadIcon } from '@patternfly/react-icons';
-import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
+import { skillsApi, toolsApi, snippetsApi, isValidStoreName, STORE_NAME_HINT } from '@/services/api';
 import type { Skill } from '@/types';
 import { AnthropicSkillImporter } from '../components/AnthropicSkillImporter';
 
@@ -144,7 +144,11 @@ export function SkillsPage() {
       setCreateError('Please fill in all required fields');
       return;
     }
-    
+    if (!isValidStoreName(newSkill.name)) {
+      setCreateError(`Invalid skill name. ${STORE_NAME_HINT}`);
+      return;
+    }
+
     try {
       // Fetch tool and snippet UUIDs
       const toolPromises = newSkill.toolNames.map(name =>
@@ -687,8 +691,20 @@ export function SkillsPage() {
               type="text"
               id="skill-name"
               value={newSkill.name}
+              validated={newSkill.name === '' || isValidStoreName(newSkill.name) ? 'default' : 'error'}
               onChange={(_, value) => setNewSkill({ ...newSkill, name: value })}
             />
+            {newSkill.name !== '' && !isValidStoreName(newSkill.name) && (
+              <div
+                style={{
+                  marginTop: '0.25rem',
+                  fontSize: '0.85em',
+                  color: 'var(--pf-v5-global--danger-color--100)',
+                }}
+              >
+                Invalid name for Claude Code MCP. {STORE_NAME_HINT}
+              </div>
+            )}
           </FormGroup>
           <FormGroup label="Version" fieldId="skill-version">
             <TextInput
