@@ -58,6 +58,7 @@ class SBSettings(BaseSettings):
     )
     observability: bool = Field(True, validation_alias="OBSERVABILITY")
     sbs_vdb: str = Field("faiss", env="SBS_VDB")
+    agent_mcp_port: int = Field(9999, validation_alias="SBS_AGENT_MCP_PORT")
 
     @property
     def display_host(self) -> str:
@@ -96,9 +97,27 @@ class SBS(FastAPI):
         register_tools_api(self, tags="tools", tools_descriptions=self.state.tools_descriptions)
         register_admin_api(self, tags="admin")
 
-        # Mount MCP server
-        mcp_server = FastApiMCP(self)
-        mcp_server.mount_sse(mount_path="/control_sse")
+        # Full MCP — auto-generated from every FastAPI route, mirrors the
+        # complete HTTP surface. Broad but token-heavy; intended for
+        # control-plane/admin access.
+        self.full_mcp = FastApiMCP(self)
+        self.full_mcp.mount_sse(mount_path="/control_sse")
+
+        # Curated Agent MCP — hand-picked ~15-tool set on its own port, the
+        # default endpoint for AI agents (smaller context footprint, LLM-
+        # friendly names). Defined in agent_mcp_server.py; runs in a thread.
+        from skillberry_store.fast_api.agent_mcp_server import create_agent_mcp_server
+        try:
+            self.agent_mcp = create_agent_mcp_server(
+                self, port=self.settings.agent_mcp_port
+            )
+            logger.info(
+                f"Curated Agent MCP server started on port "
+                f"{self.settings.agent_mcp_port}"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to start curated Agent MCP server: {e}")
+            self.agent_mcp = None
 
     def configure_fastapi(self):
         """Configures CORS middleware and OpenAPI documentation settings."""
