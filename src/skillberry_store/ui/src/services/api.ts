@@ -330,8 +330,8 @@ export const vmcpApi = {
 export interface ServerInfo {
   host: string;
   port: number;
-  agent_mcp_port: number | null;
-  agent_mcp_url: string | null;
+  curated_mcp_port: number | null;
+  curated_mcp_url: string | null;
   control_mcp_url: string;
   api_docs: string;
 }

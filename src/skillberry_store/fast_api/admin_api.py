@@ -46,20 +46,20 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
 
         Used by the Connect Your Agent UI to render copy-ready
         `claude mcp add` commands and to know which SSE URL to test.
-        `agent_mcp_url` is None when the curated agent MCP failed to start.
+        `curated_mcp_url` is None when the curated agent MCP failed to start.
         """
         settings = app.settings
         host = settings.display_host
         port = settings.sbs_port
-        agent_mcp_port = getattr(settings, "agent_mcp_port", None)
-        agent_mcp_url = None
-        if agent_mcp_port is not None and getattr(app, "agent_mcp", None) is not None:
-            agent_mcp_url = f"http://{host}:{agent_mcp_port}/sse"
+        curated_mcp_port = getattr(settings, "curated_mcp_port", None)
+        curated_mcp_url = None
+        if curated_mcp_port is not None and getattr(app, "curated_mcp", None) is not None:
+            curated_mcp_url = f"http://{host}:{curated_mcp_port}/sse"
         return {
             "host": host,
             "port": port,
-            "agent_mcp_port": agent_mcp_port,
-            "agent_mcp_url": agent_mcp_url,
+            "curated_mcp_port": curated_mcp_port,
+            "curated_mcp_url": curated_mcp_url,
             "control_mcp_url": f"http://{host}:{port}/control_sse",
             "api_docs": f"http://{host}:{port}/docs",
         }

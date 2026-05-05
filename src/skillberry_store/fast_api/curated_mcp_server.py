@@ -1,4 +1,4 @@
-"""Curated Agent MCP Server for Skillberry Store.
+"""Curated MCP Server for Skillberry Store.
 
 Exposes a hand-picked set of LLM-friendly tools over SSE on its own port.
 Every tool here is a thin proxy to the local FastAPI backend (same process,
@@ -20,8 +20,8 @@ from starlette.middleware.cors import CORSMiddleware
 logger = logging.getLogger(__name__)
 
 
-def create_agent_mcp_server(app, port: int = 9999):
-    """Build and start the curated Agent MCP server in a background thread.
+def create_curated_mcp_server(app, port: int = 9999):
+    """Build and start the curated MCP server in a background thread.
 
     Args:
         app: The SBS FastAPI application. Used to read the backend port so
@@ -32,7 +32,7 @@ def create_agent_mcp_server(app, port: int = 9999):
     Returns:
         The FastMCP instance (already serving).
     """
-    mcp = FastMCP(name="skillberry-agent", port=port)
+    mcp = FastMCP(name="skillberry-curated", port=port)
 
     backend_port = app.settings.sbs_port
     base_url = f"http://127.0.0.1:{backend_port}"
@@ -245,7 +245,7 @@ def create_agent_mcp_server(app, port: int = 9999):
     # ---- Start the server ----
 
     def _start():
-        logger.info(f"Starting Agent MCP server on port {port}")
+        logger.info(f"Starting Curated MCP server on port {port}")
         sse_app = mcp.sse_app()
         sse_app.add_middleware(
             CORSMiddleware,
@@ -258,5 +258,5 @@ def create_agent_mcp_server(app, port: int = 9999):
         uvicorn.run(sse_app, host="127.0.0.1", port=port, log_level="info")
 
     threading.Thread(target=_start, daemon=True).start()
-    logger.info(f"Agent MCP server started on port {port}")
+    logger.info(f"Curated MCP server started on port {port}")
     return mcp

@@ -58,7 +58,7 @@ class SBSettings(BaseSettings):
     )
     observability: bool = Field(True, validation_alias="OBSERVABILITY")
     sbs_vdb: str = Field("faiss", env="SBS_VDB")
-    agent_mcp_port: int = Field(9999, validation_alias="SBS_AGENT_MCP_PORT")
+    curated_mcp_port: int = Field(9999, validation_alias="SBS_CURATED_MCP_PORT")
 
     @property
     def display_host(self) -> str:
@@ -103,21 +103,21 @@ class SBS(FastAPI):
         self.full_mcp = FastApiMCP(self)
         self.full_mcp.mount_sse(mount_path="/control_sse")
 
-        # Curated Agent MCP — hand-picked ~15-tool set on its own port, the
+        # Curated MCP — hand-picked ~15-tool set on its own port, the
         # default endpoint for AI agents (smaller context footprint, LLM-
-        # friendly names). Defined in agent_mcp_server.py; runs in a thread.
-        from skillberry_store.fast_api.agent_mcp_server import create_agent_mcp_server
+        # friendly names). Defined in curated_mcp_server.py; runs in a thread.
+        from skillberry_store.fast_api.curated_mcp_server import create_curated_mcp_server
         try:
-            self.agent_mcp = create_agent_mcp_server(
-                self, port=self.settings.agent_mcp_port
+            self.curated_mcp = create_curated_mcp_server(
+                self, port=self.settings.curated_mcp_port
             )
             logger.info(
-                f"Curated Agent MCP server started on port "
-                f"{self.settings.agent_mcp_port}"
+                f"Curated MCP server started on port "
+                f"{self.settings.curated_mcp_port}"
             )
         except Exception as e:
-            logger.warning(f"Failed to start curated Agent MCP server: {e}")
-            self.agent_mcp = None
+            logger.warning(f"Failed to start curated MCP server: {e}")
+            self.curated_mcp = None
 
     def configure_fastapi(self):
         """Configures CORS middleware and OpenAPI documentation settings."""

@@ -49,7 +49,7 @@ export function AgentConnectPage() {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const curatedMcpUrl = serverInfo?.agent_mcp_url || `http://localhost:${serverInfo?.agent_mcp_port || 9999}/sse`;
+  const curatedMcpUrl = serverInfo?.curated_mcp_url || `http://localhost:${serverInfo?.curated_mcp_port || 9999}/sse`;
   const fullMcpUrl = serverInfo?.control_mcp_url || `http://localhost:${serverInfo?.port || 8000}/control_sse`;
 
   const isCurated = mcpMode === 'curated';
@@ -175,8 +175,8 @@ export function AgentConnectPage() {
                       <DescriptionListTerm>Status</DescriptionListTerm>
                       <DescriptionListDescription>
                         {isCurated ? (
-                          <Label color={serverInfo.agent_mcp_url ? 'green' : 'orange'}>
-                            {serverInfo.agent_mcp_url ? 'Running' : 'Not yet started'}
+                          <Label color={serverInfo.curated_mcp_url ? 'green' : 'orange'}>
+                            {serverInfo.curated_mcp_url ? 'Running' : 'Not yet started'}
                           </Label>
                         ) : (
                           <Label color="green">Running</Label>

@@ -70,18 +70,18 @@ def main():
 
     host = server.settings.display_host
     port = server.settings.sbs_port
-    agent_mcp_port = server.settings.agent_mcp_port
-    agent_mcp_url = f"http://{host}:{agent_mcp_port}/sse"
+    curated_mcp_port = server.settings.curated_mcp_port
+    curated_mcp_url = f"http://{host}:{curated_mcp_port}/sse"
 
     print(f"\n{'='*60}")
     if ui_started:
         print(f"  Skillberry Store UI: http://{host}:{ui_manager.ui_port}")
     print(f"  Backend API: http://{host}:{port}/docs")
-    if getattr(server, "agent_mcp", None) is not None:
-        print(f"  Store MCP:   {agent_mcp_url}")
+    if getattr(server, "curated_mcp", None) is not None:
+        print(f"  Store MCP:   {curated_mcp_url}")
         print()
         print(f"  Connect Claude Code to the Store MCP:")
-        print(f"    claude mcp add skillberry-store -s user -t sse {agent_mcp_url}")
+        print(f"    claude mcp add skillberry-store -s user -t sse {curated_mcp_url}")
         print(f"  Remove:")
         print(f"    claude mcp remove skillberry-store -s user")
     print(f"{'='*60}\n")
