@@ -19,7 +19,7 @@ def create_order(
     Create an order.
 
     Parameters:
-        customer_id (str): The customer identifier.
+        customer_id (str): 888
     Returns:
         Dict[str, Any]: Created order details.
     """
