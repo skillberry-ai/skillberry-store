@@ -70,27 +70,52 @@ jobs:
             core.info(`Workflow run head SHA: ${workflowRun.head_sha}`);
             core.info(`Workflow run head branch: ${workflowRun.head_branch}`);
             
-            // List all open PRs and find the one with matching head branch
-            const { data: pulls } = await github.rest.pulls.list({
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              state: 'open',
+              run_id: workflowRun.id,
               per_page: 100
             });
             
-            core.info(`Found ${pulls.length} open PRs`);
-            
-            // Find PR with matching head branch
-            const pr = pulls.find(p => p.head.ref === workflowRun.head_branch);
-            
-            if (!pr) {
-              core.setFailed(`No open PR found for branch: ${workflowRun.head_branch}`);
+            const payloadArtifact = artifacts.artifacts?.find(artifact => artifact.name === 'pr-review-context');
+            if (!payloadArtifact) {
+              core.setFailed('Could not find pr-review-context artifact on trigger workflow run');
               return;
             }
             
-            core.info(`Found PR #${pr.number}: ${pr.title}`);
+            core.info(`Found artifact ${payloadArtifact.name} (${payloadArtifact.id})`);
             
-            // Check if PR has 'fix-with-bob' label
+            const zipResponse = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: payloadArtifact.id,
+              archive_format: 'zip'
+            });
+            
+            const fs = require('fs');
+            const os = require('os');
+            const path = require('path');
+            const { execFileSync } = require('child_process');
+            
+            const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-pr-review-'));
+            const zipPath = path.join(tempDir, 'artifact.zip');
+            const zipBuffer = Buffer.isBuffer(zipResponse.data)
+              ? zipResponse.data
+              : Buffer.from(zipResponse.data);
+            fs.writeFileSync(zipPath, zipBuffer);
+            execFileSync('unzip', ['-o', zipPath, '-d', tempDir], { stdio: 'inherit' });
+            
+            const payloadPath = path.join(tempDir, 'pr-review-context.json');
+            const payload = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
+            
+            core.info(`Loaded PR #${payload.pr_number} review ${payload.review_id} from trigger artifact`);
+            
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: payload.pr_number
+            });
+            
             const hasLabel = pr.labels.some(label => label.name === 'fix-with-bob');
             if (!hasLabel) {
               core.info('PR does not have fix-with-bob label, skipping');
@@ -98,45 +123,29 @@ jobs:
               return;
             }
             
-            // Get all reviews for this PR
-            const { data: reviews } = await github.rest.pulls.listReviews({
+            const { data: review } = await github.rest.pulls.getReview({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: pr.number
+              pull_number: payload.pr_number,
+              review_id: payload.review_id
             });
             
-            core.info(`Found ${reviews.length} reviews`);
-            
-            // Find the most recent review that is a comment or change request
-            let latestReview = null;
-            for (let i = reviews.length - 1; i >= 0; i--) {
-              const review = reviews[i];
-              if (review.state === 'COMMENTED' || review.state === 'CHANGES_REQUESTED') {
-                latestReview = review;
-                break;
-              }
-            }
-            
-            if (!latestReview) {
-              core.info('No recent review with comments or change requests found, skipping');
+            if (review.state !== 'COMMENTED' && review.state !== 'CHANGES_REQUESTED') {
+              core.info(`Review state ${review.state} is not actionable, skipping`);
               core.setOutput('should_run', 'false');
               return;
             }
             
-            core.info(`Latest review ID: ${latestReview.id} by ${latestReview.user.login}`);
-            core.info(`Review state: ${latestReview.state}`);
-            
-            // Set outputs
             core.setOutput('should_run', 'true');
-            core.setOutput('pr_number', pr.number);
+            core.setOutput('pr_number', String(pr.number));
             core.setOutput('pr_title', pr.title);
             core.setOutput('head_ref', pr.head.ref);
             core.setOutput('head_repo', pr.head.repo.full_name);
-            core.setOutput('review_id', latestReview.id);
-            core.setOutput('reviewer', latestReview.user.login);
+            core.setOutput('review_id', String(review.id));
+            core.setOutput('reviewer', review.user.login);
             
             core.info(`Will process PR #${pr.number}: ${pr.title}`);
-            core.info(`Review ID: ${latestReview.id} by ${latestReview.user.login}`);
+            core.info(`Review ID: ${review.id} by ${review.user.login}`);
       
       - name: Checkout repository
         if: steps.get_pr.outputs.should_run == 'true'
@@ -377,11 +386,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            -f body="Thank you @${{ steps.pr_details.outputs.reviewer }} for the review! I've addressed all the comments and updated the following files:
-
-**Changed files:** ${{ steps.changes.outputs.changed_files }}
-
-Please let me know if any further changes are needed." || echo "Failed to post general comment"
+            -f body=$'Thank you @${{ steps.pr_details.outputs.reviewer }} for the review! I'\''ve addressed all the comments and updated the following files:\n\n**Changed files:** ${{ steps.changes.outputs.changed_files }}\n\nPlease let me know if any further changes are needed.' || echo "Failed to post general comment"
       
       - name: Comment on PR - No Changes
         if: steps.get_pr.outputs.should_run == 'true' && steps.changes.outputs.has_changes == 'false'

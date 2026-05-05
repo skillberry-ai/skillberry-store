@@ -48,6 +48,27 @@ jobs:
           echo "head_ref=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
           echo "head_repo=${{ github.event.pull_request.head.repo.full_name }}" >> $GITHUB_OUTPUT
           echo "review_state=${{ github.event.review.state }}" >> $GITHUB_OUTPUT
+          
+          cat > pr-review-context.json <<'JSON'
+          {
+            "pr_number": ${{ github.event.pull_request.number }},
+            "review_id": ${{ github.event.review.id }},
+            "reviewer": "${{ github.event.review.user.login }}",
+            "pr_title": "${{ github.event.pull_request.title }}",
+            "head_ref": "${{ github.event.pull_request.head.ref }}",
+            "head_repo": "${{ github.event.pull_request.head.repo.full_name }}",
+            "review_state": "${{ github.event.review.state }}"
+          }
+          JSON
+          
+          cat pr-review-context.json
+      
+      - name: Upload PR review context
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-review-context
+          path: pr-review-context.json
+          retention-days: 1
       
       - name: Create Summary
         run: |
