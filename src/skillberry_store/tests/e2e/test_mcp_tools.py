@@ -149,8 +149,8 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
             client,
             tool_name=code_tool_name,
             tool_code=tool_code,
-            vmcp_server_name="test_vmcp_for_tool_exec",
-            skill_name="mcp_test_skill"
+            vmcp_server_name="test-vmcp-for-tool-exec",
+            skill_name="mcp-test-skill"
         )
         
         # Step 4: Create a tool with MCP packaging format
@@ -243,7 +243,7 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
         print(f"Deleted VMCP server")
         
         # Clean up skill
-        await client.delete(f"{BASE_URL}/skills/mcp_test_skill")
+        await client.delete(f"{BASE_URL}/skills/mcp-test-skill")
         print(f"Deleted skill")
         
         # Clean up code tool
@@ -283,8 +283,8 @@ async def test_create_mcp_tool_via_post_endpoint(run_sbs):
             client,
             tool_name=code_tool_name,
             tool_code=tool_code,
-            vmcp_server_name="test_vmcp_for_post_endpoint",
-            skill_name="mcp_post_endpoint_skill"
+            vmcp_server_name="test-vmcp-for-post-endpoint",
+            skill_name="mcp-post-endpoint-skill"
         )
         print(f"✓ VMCP server created on port {vmcp_port}")
         print(f"✓ VMCP URL: {vmcp_url}")
@@ -368,8 +368,8 @@ def placeholder():
         print(f"Deleted VMCP server: {vmcp_server_name}")
         
         # Clean up skill
-        await client.delete(f"{BASE_URL}/skills/mcp_post_endpoint_skill")
-        print(f"Deleted skill: mcp_post_endpoint_skill")
+        await client.delete(f"{BASE_URL}/skills/mcp-post-endpoint-skill")
+        print(f"Deleted skill: mcp-post-endpoint-skill")
         
         # Clean up the code tool
         await client.delete(f"{BASE_URL}/tools/{code_tool_name}")
@@ -416,7 +416,7 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
         
         # Step 2: Create a skill with the tool
         print("Step 2: Creating skill with tool...")
-        skill_name = "mcp_module_test_skill"
+        skill_name = "mcp-module-test-skill"
         skill_data = {
             "name": skill_name,
             "description": "Test skill for MCP module retrieval",
@@ -433,7 +433,7 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
         print("\n" + "="*60)
         print("Step 3: Creating VMCP server...")
         print("="*60)
-        vmcp_server_name = "test_vmcp_for_module"
+        vmcp_server_name = "test-vmcp-for-module"
         vmcp_data = {
             "name": vmcp_server_name,
             "description": "Test VMCP server for module retrieval",

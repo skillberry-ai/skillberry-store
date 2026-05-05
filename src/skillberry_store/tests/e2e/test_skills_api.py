@@ -83,7 +83,7 @@ async def test_create_skill(run_sbs):
         
         # Now create the skill with the UUIDs
         skill_data = {
-            "name": "test_skill",
+            "name": "test-skill",
             "description": "A test skill for demonstration",
             "tool_uuids": [tool_uuid],
             "snippet_uuids": [snippet_uuid]
@@ -92,7 +92,7 @@ async def test_create_skill(run_sbs):
         response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
         assert response.status_code == 200
         data = response.json()
-        assert data.get("name") == "test_skill"
+        assert data.get("name") == "test-skill"
         assert "created successfully" in data.get("message", "")
         # Verify UUID was generated
         assert "uuid" in data
@@ -104,7 +104,7 @@ async def test_create_skill(run_sbs):
 async def test_create_duplicate_skill(run_sbs):
     """Test that creating a duplicate skill fails."""
     skill_data = {
-        "name": "test_skill",
+        "name": "test-skill",
         "description": "A test skill for demonstration",
         "tool_uuids": [],
         "snippet_uuids": []
@@ -129,17 +129,17 @@ async def test_list_skills(run_sbs):
         
         # Check that our test skill is in the list
         skill_names = [s.get("name") for s in skills]
-        assert "test_skill" in skill_names
+        assert "test-skill" in skill_names
 
 
 @pytest.mark.asyncio
 async def test_get_skill(run_sbs):
     """Test getting a specific skill by name."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/skills/test_skill")
+        response = await client.get(f"{BASE_URL}/skills/test-skill")
         assert response.status_code == 200
         skill = response.json()
-        assert skill.get("name") == "test_skill"
+        assert skill.get("name") == "test-skill"
         assert skill.get("description") == "A test skill for demonstration"
         assert "tools" in skill
         assert "snippets" in skill
@@ -167,7 +167,7 @@ async def test_update_skill(run_sbs):
         assert initial_snippet_uuid is not None
         
         create_data = {
-            "name": "skill_for_update_test",
+            "name": "skill-for-update-test",
             "description": "A test skill for update",
             "tool_uuids": [initial_tool_uuid],
             "snippet_uuids": [initial_snippet_uuid]
@@ -183,19 +183,19 @@ async def test_update_skill(run_sbs):
         assert updated_snippet_uuid is not None
         
         updated_data = {
-            "name": "skill_for_update_test",
+            "name": "skill-for-update-test",
             "description": "Updated test skill description",
             "tool_uuids": [updated_tool_uuid],
             "snippet_uuids": [updated_snippet_uuid]
         }
 
-        response = await client.put(f"{BASE_URL}/skills/skill_for_update_test", json=updated_data)
+        response = await client.put(f"{BASE_URL}/skills/skill-for-update-test", json=updated_data)
         assert response.status_code == 200
         data = response.json()
         assert "updated successfully" in data.get("message", "")
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/skills/skill_for_update_test")
+        get_response = await client.get(f"{BASE_URL}/skills/skill-for-update-test")
         assert get_response.status_code == 200
         skill = get_response.json()
         assert skill.get("description") == "Updated test skill description"
@@ -224,13 +224,13 @@ async def test_update_nonexistent_skill(run_sbs):
 async def test_delete_skill(run_sbs):
     """Test deleting a skill."""
     async with httpx.AsyncClient() as client:
-        response = await client.delete(f"{BASE_URL}/skills/test_skill")
+        response = await client.delete(f"{BASE_URL}/skills/test-skill")
         assert response.status_code == 200
         data = response.json()
         assert "deleted successfully" in data.get("message", "")
 
         # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/skills/test_skill")
+        get_response = await client.get(f"{BASE_URL}/skills/test-skill")
         assert get_response.status_code == 404
 
 
@@ -245,7 +245,7 @@ async def test_delete_nonexistent_skill(run_sbs):
 @pytest.mark.asyncio
 async def test_skill_lifecycle(run_sbs):
     """Test the complete lifecycle of a skill: create, read, update, delete."""
-    skill_name = "lifecycle_test_skill"
+    skill_name = "lifecycle-test-skill"
     
     async with httpx.AsyncClient() as client:
         # Create initial tool and snippet
@@ -294,10 +294,10 @@ async def test_skill_lifecycle(run_sbs):
         # 4. Verify update
         get_updated_response = await client.get(f"{BASE_URL}/skills/{skill_name}")
         assert get_updated_response.status_code == 200
-        updated_skill = get_updated_response.json()
-        assert updated_skill.get("description") == "Updated lifecycle test skill"
-        assert updated_skill.get("tools")[0].get("name") == "updated_lifecycle_tool"
-        assert updated_skill.get("snippets")[0].get("name") == "updated_lifecycle_snippet"
+        updated_skill_data = get_updated_response.json()
+        assert updated_skill_data.get("description") == "Updated lifecycle test skill"
+        assert updated_skill_data.get("tools")[0].get("name") == "updated_lifecycle_tool"
+        assert updated_skill_data.get("snippets")[0].get("name") == "updated_lifecycle_snippet"
 
         # 5. Delete
         delete_response = await client.delete(f"{BASE_URL}/skills/{skill_name}")
@@ -327,19 +327,19 @@ async def test_search_skills(run_sbs):
         # Create test skills with different descriptions
         test_skills = [
             {
-                "name": "data_analysis_skill",
+                "name": "data-analysis-skill",
                 "description": "A comprehensive skill for data analysis including statistical methods and visualization techniques",
                 "tool_uuids": [pandas_tool_uuid],
                 "snippet_uuids": [data_cleaning_snippet_uuid]
             },
             {
-                "name": "web_development_skill",
+                "name": "web-development-skill",
                 "description": "Full-stack web development skill covering frontend frameworks and backend APIs",
                 "tool_uuids": [react_tool_uuid],
                 "snippet_uuids": [api_endpoint_snippet_uuid]
             },
             {
-                "name": "machine_learning_skill",
+                "name": "machine-learning-skill",
                 "description": "Machine learning and AI skill with deep learning models and neural networks",
                 "tool_uuids": [tensorflow_tool_uuid],
                 "snippet_uuids": [model_training_snippet_uuid]
@@ -367,9 +367,9 @@ async def test_search_skills(run_sbs):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching skill"
         
-        # Verify data_analysis_skill is in results
+        # Verify data-analysis-skill is in results
         filenames = [r.get("filename") for r in results]
-        assert "data_analysis_skill" in filenames, f"data_analysis_skill should be in search results, got: {filenames}"
+        assert "data-analysis-skill" in filenames, f"data-analysis-skill should be in search results, got: {filenames}"
         
         # Test search for "web development"
         search_response = await client.get(
