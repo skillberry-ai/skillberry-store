@@ -42,13 +42,13 @@ These resources are used by:
 
 The tests cover:
 
-- ✅ Importing from ZIP files
-- ✅ Importing with different snippet modes (file/paragraph)
-- ✅ Exporting to Anthropic ZIP format
-- ✅ Roundtrip consistency
-- ✅ File tag preservation
-- ✅ Python function parsing
-- ✅ Bash function parsing
-- ✅ Text file parsing
-- ✅ SKILL.md frontmatter handling
-- ✅ Error handling for invalid inputs
+- Importing from ZIP files
+- Importing with different snippet modes (file/paragraph)
+- Exporting to Anthropic ZIP format
+- Roundtrip consistency
+- File tag preservation
+- Python function parsing
+- Bash function parsing
+- Text file parsing
+- SKILL.md frontmatter handling
+- Error handling for invalid inputs

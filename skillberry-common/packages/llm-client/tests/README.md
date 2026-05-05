@@ -2,7 +2,7 @@
 
 This directory contains comprehensive test suites for various LLM providers supported by the agent-lifecycle-toolkit.
 
-## ⚠️ Important: These tests are EXPENSIVE and require opt-in
+## Important: These tests are EXPENSIVE and require opt-in
 
 LLM tests in this directory are marked with `@pytest.mark.llm` and are **excluded by default** when running `pytest` or `pytest tests/`. They only run when explicitly requested due to:
 

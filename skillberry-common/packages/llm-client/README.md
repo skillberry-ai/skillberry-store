@@ -752,7 +752,7 @@ Choose the appropriate log level for your needs:
 #### Generation Calls (INFO level)
 
 ```
-🚀 Starting generation
+Starting generation
    Mode: chat
    Prompt: "Explain quantum computing"
    Model: gpt-4o
@@ -762,7 +762,7 @@ Choose the appropriate log level for your needs:
 #### API Payloads (DEBUG level)
 
 ```
-📤 API Request Payload
+API Request Payload
    {
      "model": "gpt-4o",
      "messages": [{"role": "user", "content": "Explain quantum computing"}],
@@ -774,7 +774,7 @@ Choose the appropriate log level for your needs:
 #### Raw LLM Responses (DEBUG level)
 
 ```
-📥 Raw LLM Response (duration: 1.23s)
+Raw LLM Response (duration: 1.23s)
    {
      "id": "chatcmpl-...",
      "object": "chat.completion",
@@ -798,14 +798,14 @@ Choose the appropriate log level for your needs:
 #### Parsed Responses (DEBUG level)
 
 ```
-📝 Parsed Response
+Parsed Response
    "Quantum computing is a revolutionary approach..."
 ```
 
 #### Completion (INFO level)
 
 ```
-✅ Generation completed
+Generation completed
    Duration: 1.23s
    Tokens: 60 (10 prompt + 50 completion)
 ```
@@ -813,7 +813,7 @@ Choose the appropriate log level for your needs:
 #### Errors (ERROR level)
 
 ```
-❌ Generation failed
+Generation failed
    Error: OpenAI API error: Rate limit exceeded
    Duration: 0.45s
    Traceback: ...
@@ -900,18 +900,18 @@ configure_logging()
 With Rich formatting enabled (default), you'll see beautifully formatted logs:
 
 ```
-[2026-03-16 20:30:45] INFO     🚀 Starting generation
+[2026-03-16 20:30:45] INFO     Starting generation
                                Mode: chat
                                Prompt: "Explain quantum computing"
                                Model: gpt-4o
 
-[2026-03-16 20:30:45] DEBUG    📤 API Request Payload
+[2026-03-16 20:30:45] DEBUG    API Request Payload
                                {
                                  "model": "gpt-4o",
                                  "messages": [...]
                                }
 
-[2026-03-16 20:30:46] DEBUG    📥 Raw LLM Response (duration: 1.23s)
+[2026-03-16 20:30:46] DEBUG    Raw LLM Response (duration: 1.23s)
                                {
                                  "choices": [{
                                    "message": {
@@ -920,7 +920,7 @@ With Rich formatting enabled (default), you'll see beautifully formatted logs:
                                  }]
                                }
 
-[2026-03-16 20:30:46] INFO     ✅ Generation completed
+[2026-03-16 20:30:46] INFO     Generation completed
                                Duration: 1.23s
                                Tokens: 60
 ```
@@ -973,9 +973,9 @@ configure_logging(LogConfig(enable_rich=False))
 
 | Feature | OpenAI | Azure OpenAI | LiteLLM | LiteLLM RITS | LiteLLM WatsonX | IBM WatsonX AI |
 |---------|---------|--------------|---------|--------------|-----------------|----------------|
-| Basic Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Async Generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Tool Calling | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Structured Output | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Observability Hooks | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Retry Logic | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Basic Generation | Yes | Yes | Yes | Yes | Yes | Yes |
+| Async Generation | Yes | Yes | Yes | Yes | Yes | Yes |
+| Tool Calling | Yes | Yes | Yes | Yes | Yes | Yes |
+| Structured Output | Yes | Yes | Yes | Yes | Yes | Yes |
+| Observability Hooks | Yes | Yes | Yes | Yes | Yes | Yes |
+| Retry Logic | Yes | Yes | Yes | Yes | Yes | Yes |
