@@ -370,28 +370,41 @@ jobs:
             done < /tmp/responses.txt
           fi
           
-          # Also add a general comment on the PR
-          gh pr comment ${PR_NUMBER} \
-            --body "Thank you @${{ steps.pr_details.outputs.reviewer }} for the review! I've addressed all the comments and updated the following files:
+          # Also add a general comment on the PR using REST API
+          echo "Posting general comment to PR #${PR_NUMBER}"
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            -f body="Thank you @${{ steps.pr_details.outputs.reviewer }} for the review! I've addressed all the comments and updated the following files:
 
-          **Changed files:** ${{ steps.changes.outputs.changed_files }}
+**Changed files:** ${{ steps.changes.outputs.changed_files }}
 
-          Please let me know if any further changes are needed."
+Please let me know if any further changes are needed." || echo "Failed to post general comment"
       
       - name: Comment on PR - No Changes
         if: steps.get_pr.outputs.should_run == 'true' && steps.changes.outputs.has_changes == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
-          gh pr comment ${{ steps.pr_details.outputs.pr_number }} \
-            --body "🤖 Bob Shell analyzed the review comments from @${{ steps.pr_details.outputs.reviewer }} but did not generate any code changes. The comments may require manual intervention or clarification."
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${{ github.repository }}/issues/${{ steps.pr_details.outputs.pr_number }}/comments" \
+            -f body="🤖 Bob Shell analyzed the review comments from @${{ steps.pr_details.outputs.reviewer }} but did not generate any code changes. The comments may require manual intervention or clarification."
       
       - name: Handle Errors
         if: steps.get_pr.outputs.should_run == 'true' && failure()
         env:
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
-          gh pr comment ${{ steps.pr_details.outputs.pr_number }} \
-            --body "❌ Bob Shell encountered an error while trying to address the review comments. Please check the workflow logs for details."
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${{ github.repository }}/issues/${{ steps.pr_details.outputs.pr_number }}/comments" \
+            -f body="❌ Bob Shell encountered an error while trying to address the review comments. Please check the workflow logs for details."
 
 # Made with Bob
