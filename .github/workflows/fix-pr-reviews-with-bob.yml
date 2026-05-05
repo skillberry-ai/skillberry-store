@@ -25,7 +25,7 @@
 # REQUIREMENTS:
 # - GitHub Secrets (must be configured in repository settings):
 #   * BOBSHELL_API_KEY: API key for Bob Shell authentication
-#   * ERANRA_GITHUB_TOKEN: Personal access token with repo permissions
+#   * SKILLBERRY_BOT_TOKEN: Personal access token with repo permissions
 # - Permissions: Workflow needs write access to PRs and repository contents
 #
 # USAGE:
@@ -65,7 +65,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
-          token: ${{ secrets.ERANRA_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.SKILLBERRY_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
       
       - name: Setup Node.js
@@ -101,7 +101,7 @@ jobs:
       - name: Get PR and Review Details
         id: pr_details
         env:
-          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
           PR_NUMBER="${{ github.event.pull_request.number }}"
           echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
@@ -185,7 +185,7 @@ jobs:
       - name: Commit and Push Changes
         if: steps.changes.outputs.has_changes == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
           git add -A
           git reset .bob/ || true
@@ -201,7 +201,7 @@ jobs:
         if: steps.changes.outputs.has_changes == 'true'
         env:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
           PR_NUMBER="${{ steps.pr_details.outputs.pr_number }}"
           REVIEW_ID="${{ steps.pr_details.outputs.review_id }}"
@@ -260,7 +260,7 @@ jobs:
       - name: Post Responses to Review Comments
         if: steps.changes.outputs.has_changes == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
           PR_NUMBER="${{ steps.pr_details.outputs.pr_number }}"
           
@@ -288,7 +288,7 @@ jobs:
       - name: Comment on PR - No Changes
         if: steps.changes.outputs.has_changes == 'false'
         env:
-          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
           gh pr comment ${{ steps.pr_details.outputs.pr_number }} \
             --body "🤖 Bob Shell analyzed the review comments from @${{ steps.pr_details.outputs.reviewer }} but did not generate any code changes. The comments may require manual intervention or clarification."
@@ -296,7 +296,7 @@ jobs:
       - name: Handle Errors
         if: failure()
         env:
-          GITHUB_TOKEN: ${{ secrets.ERANRA_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
         run: |
           gh pr comment ${{ steps.pr_details.outputs.pr_number }} \
             --body "❌ Bob Shell encountered an error while trying to address the review comments. Please check the workflow logs for details."
