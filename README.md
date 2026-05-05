@@ -24,12 +24,11 @@ This service implements a smart skills repository for agentic workflows. Manage,
 
 ### Run the Service with Docker or Podman 🐳
 
-
 ```bash
 make docker-run
 ```
 
-> Note: use `make help` for a complete list of options
+> **Note**: Use `make help` for a complete list of commands. For detailed Make system documentation, see [docs/MAKE_SYSTEM.md](docs/MAKE_SYSTEM.md).
 
 You can control where SBS stores its data by setting `SBS_BASE_DIR` (defaults to the system temp directory).
 
