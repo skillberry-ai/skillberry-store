@@ -58,64 +58,56 @@ jobs:
       checks: read    
 
     steps:
-      - name: Get PR details from workflow run
-        id: get_pr
-        uses: actions/github-script@v7
+      - name: Download PR Information
+        uses: actions/download-artifact@v4
         with:
           github-token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
-          script: |
-            // Get the workflow run that triggered this
-            const workflowRun = context.payload.workflow_run;
-            
-            // Get pull requests associated with the head commit
-            const pulls = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: workflowRun.head_sha
-            });
-            
-            if (pulls.data.length === 0) {
-              core.setFailed('No pull request found for this workflow run');
-              return;
-            }
-            
-            const pr = pulls.data[0];
-            
-            // Check if PR has 'fix-with-bob' label
-            const hasLabel = pr.labels.some(label => label.name === 'fix-with-bob');
-            if (!hasLabel) {
-              core.info('PR does not have fix-with-bob label, skipping');
-              core.setOutput('should_run', 'false');
-              return;
-            }
-            
-            // Get the review that triggered this workflow
-            const reviews = await github.rest.pulls.listReviews({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: pr.number
-            });
-            
-            // Get the most recent review (the one that triggered this)
-            const latestReview = reviews.data[reviews.data.length - 1];
-            
-            // Only proceed if review has comments or requested changes
-            if (latestReview.state !== 'commented' && latestReview.state !== 'changes_requested') {
-              core.info('Review is not a comment or change request, skipping');
-              core.setOutput('should_run', 'false');
-              return;
-            }
-            
-            core.setOutput('should_run', 'true');
-            core.setOutput('pr_number', pr.number);
-            core.setOutput('pr_title', pr.title);
-            core.setOutput('head_ref', pr.head.ref);
-            core.setOutput('head_repo', pr.head.repo.full_name);
-            core.setOutput('review_id', latestReview.id);
-            core.setOutput('reviewer', latestReview.user.login);
-            
-            core.info(`PR #${pr.number}: ${pr.title}`);
-            core.info(`Review ID: ${latestReview.id} by ${latestReview.user.login}`);
+          run-id: ${{ github.event.workflow_run.id }}
+          pattern: pr-info-*
+          path: /tmp/pr-info
+      
+      - name: Get PR details from artifact
+        id: get_pr
+        run: |
+          # Find the pr-data.json file
+          PR_DATA_FILE=$(find /tmp/pr-info -name "pr-data.json" -type f | head -n 1)
+          
+          if [ -z "$PR_DATA_FILE" ]; then
+            echo "Error: Could not find PR data file"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Found PR data file: $PR_DATA_FILE"
+          cat "$PR_DATA_FILE"
+          
+          # Extract values from JSON
+          PR_NUMBER=$(jq -r '.pr_number' "$PR_DATA_FILE")
+          PR_TITLE=$(jq -r '.pr_title' "$PR_DATA_FILE")
+          HEAD_REF=$(jq -r '.head_ref' "$PR_DATA_FILE")
+          HEAD_REPO=$(jq -r '.head_repo' "$PR_DATA_FILE")
+          REVIEW_ID=$(jq -r '.review_id' "$PR_DATA_FILE")
+          REVIEWER=$(jq -r '.reviewer' "$PR_DATA_FILE")
+          REVIEW_STATE=$(jq -r '.review_state' "$PR_DATA_FILE")
+          
+          # Validate review state
+          if [ "$REVIEW_STATE" != "commented" ] && [ "$REVIEW_STATE" != "changes_requested" ]; then
+            echo "Review state is '$REVIEW_STATE', not 'commented' or 'changes_requested', skipping"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Set outputs
+          echo "should_run=true" >> $GITHUB_OUTPUT
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
+          echo "head_ref=$HEAD_REF" >> $GITHUB_OUTPUT
+          echo "head_repo=$HEAD_REPO" >> $GITHUB_OUTPUT
+          echo "review_id=$REVIEW_ID" >> $GITHUB_OUTPUT
+          echo "reviewer=$REVIEWER" >> $GITHUB_OUTPUT
+          
+          echo "PR #$PR_NUMBER: $PR_TITLE"
+          echo "Review ID: $REVIEW_ID by $REVIEWER"
       
       - name: Checkout repository
         if: steps.get_pr.outputs.should_run == 'true'
