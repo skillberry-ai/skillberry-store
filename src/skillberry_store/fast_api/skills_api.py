@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from prometheus_client import Counter
 
-from skillberry_store.modules.file_handler import FileHandler
+from skillberry_store.modules.resource_handler import ResourceHandler
 from skillberry_store.modules.file_executor import detect_tool_dependencies
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
@@ -59,54 +59,22 @@ def register_skills_api(
         skills_descriptions: Description instance for managing skill descriptions.
     """
     skills_directory = get_skills_directory()
-    skill_handler = FileHandler(skills_directory)
-    tools_handler = FileHandler(get_tools_directory())
-    snippets_handler = FileHandler(get_snippets_directory())
-
+    skill_handler = ResourceHandler(skills_directory, "skill")
+    tools_handler = ResourceHandler(get_tools_directory(), "tool")
+    snippets_handler = ResourceHandler(get_snippets_directory(), "snippet")
+    
     def populate_skill_objects(skill_dict):
         """Populate full tool and snippet objects from UUIDs."""
-        # Populate tools
+        # Populate tools using get_resources_by_ids
         if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
-            tools = []
-            for tool_uuid in skill_dict["tool_uuids"]:
-                # Find tool by UUID
-                for filename in tools_handler.list_files():
-                    if filename.endswith(".json"):
-                        try:
-                            content = tools_handler.read_file(
-                                filename, raw_content=True
-                            )
-                            if isinstance(content, str):
-                                tool_dict = json.loads(content)
-                                if tool_dict.get("uuid") == tool_uuid:
-                                    tools.append(tool_dict)
-                                    break
-                        except Exception as e:
-                            logger.warning(f"Error reading tool file {filename}: {e}")
+            tools = tools_handler.get_resources_by_ids(skill_dict["tool_uuids"])
             skill_dict["tools"] = tools
         else:
             skill_dict["tools"] = []
-
-        # Populate snippets
+            
+        # Populate snippets using get_resources_by_ids
         if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
-            snippets = []
-            for snippet_uuid in skill_dict["snippet_uuids"]:
-                # Find snippet by UUID
-                for filename in snippets_handler.list_files():
-                    if filename.endswith(".json"):
-                        try:
-                            content = snippets_handler.read_file(
-                                filename, raw_content=True
-                            )
-                            if isinstance(content, str):
-                                snippet_dict = json.loads(content)
-                                if snippet_dict.get("uuid") == snippet_uuid:
-                                    snippets.append(snippet_dict)
-                                    break
-                        except Exception as e:
-                            logger.warning(
-                                f"Error reading snippet file {filename}: {e}"
-                            )
+            snippets = snippets_handler.get_resources_by_ids(skill_dict["snippet_uuids"])
             skill_dict["snippets"] = snippets
         else:
             skill_dict["snippets"] = []
@@ -143,26 +111,28 @@ def register_skills_api(
         skill.created_at = current_time
         skill.modified_at = current_time
 
-        # Check if skill already exists
-        existing_skills = skill_handler.list_files()
-        skill_filename = f"{skill.name}.json"
-
-        if skill_filename in existing_skills:
+        # Generate UUID if not provided
+        if not skill.uuid:
+            skill.uuid = str(uuid.uuid4())
+            logger.info(f"Generated UUID for skill '{skill.name}': {skill.uuid}")
+        
+        # Check if skill with this UUID already exists
+        skill_uuid_lower = skill.uuid.lower()
+        if skill_handler.resource_exists(skill_uuid_lower):
             raise HTTPException(
-                status_code=409, detail=f"Skill '{skill.name}' already exists."
+                status_code=409, detail=f"Skill with UUID '{skill.uuid}' already exists."
             )
 
         try:
-            # Convert skill to JSON and save
-            skill_json = json.dumps(skill.to_dict(), indent=4)
-            skill_handler.write_file_content(skill_filename, skill_json)
+            # Save skill manifest to UUID subfolder
+            skill_handler.write_manifest(skill_uuid_lower, skill.to_dict())
 
-            # Write description for search capability
+            # Write description for search capability (indexed by UUID)
             if skills_descriptions and skill.description:
-                skills_descriptions.write_description(skill.name, skill.description)
-                logger.info(f"Skill description saved for: {skill.name}")
+                skills_descriptions.write_description(skill.uuid, skill.description)
+                logger.info(f"Skill description saved for UUID: {skill.uuid}")
 
-            logger.info(f"Skill '{skill.name}' created successfully")
+            logger.info(f"Skill '{skill.name}' (UUID: {skill.uuid}) created successfully")
             return {
                 "message": f"Skill '{skill.name}' created successfully.",
                 "name": skill.name,
@@ -188,19 +158,12 @@ def register_skills_api(
         list_skills_counter.inc()
 
         try:
-            skill_files = skill_handler.list_files()
-            skills = []
-
-            for filename in skill_files:
-                if filename.endswith(".json"):
-                    content = skill_handler.read_file(filename, raw_content=True)
-                    if isinstance(content, str):
-                        skill_dict = json.loads(content)
-                        # Populate full tool and snippet objects
-                        skill_dict = populate_skill_objects(skill_dict)
-                    else:
-                        continue
-                    skills.append(skill_dict)
+            # Get all skills using list_all_resources
+            skills = skill_handler.list_all_resources()
+            
+            # Populate full tool and snippet objects for each skill
+            for skill_dict in skills:
+                populate_skill_objects(skill_dict)
 
             # Sort by modified_at in descending order (most recent first)
             skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
@@ -213,12 +176,12 @@ def register_skills_api(
                 status_code=500, detail=f"Error listing skills: {str(e)}"
             )
 
-    @app.get("/skills/{name}", tags=[tags])
-    def get_skill(name: str):
-        """Get a specific skill by name with populated tool and snippet objects.
+    @app.get("/skills/{id}", tags=[tags])
+    def get_skill(id: str):
+        """Get a specific skill by ID (name or UUID) with populated tool and snippet objects.
 
         Args:
-            name: The name of the skill.
+            id: The ID of the skill (can be either name or UUID).
 
         Returns:
             dict: The skill object with full tool and snippet details.
@@ -226,35 +189,30 @@ def register_skills_api(
         Raises:
             HTTPException: If skill not found (404) or retrieval fails (500).
         """
-        logger.info(f"Request to get skill: {name}")
+        logger.info(f"Request to get skill: {id}")
         get_skill_counter.inc()
 
         try:
-            skill_filename = f"{name}.json"
-            content = skill_handler.read_file(skill_filename, raw_content=True)
-            if not isinstance(content, str):
-                raise HTTPException(
-                    status_code=500, detail=f"Invalid content type for skill '{name}'"
-                )
-            skill_dict = json.loads(content)
+            # Get skill by ID (name or UUID)
+            skill_dict = skill_handler.get_resource_by_id(id)
             # Populate full tool and snippet objects
-            skill_dict = populate_skill_objects(skill_dict)
-            logger.info(f"Retrieved skill: {name}")
+            populate_skill_objects(skill_dict)
+            logger.info(f"Retrieved skill: {id}")
             return skill_dict
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving skill '{name}': {e}")
+            logger.error(f"Error retrieving skill '{id}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving skill: {str(e)}"
             )
 
-    @app.delete("/skills/{name}", tags=[tags])
-    def delete_skill(name: str):
-        """Delete a skill by name.
+    @app.delete("/skills/{id}", tags=[tags])
+    def delete_skill(id: str):
+        """Delete a skill by ID (name or UUID).
 
         Args:
-            name: The name of the skill to delete.
+            id: The ID of the skill to delete (can be either name or UUID).
 
         Returns:
             dict: Success message.
@@ -262,40 +220,48 @@ def register_skills_api(
         Raises:
             HTTPException: If skill not found (404) or deletion fails (500).
         """
-        logger.info(f"Request to delete skill: {name}")
+        logger.info(f"Request to delete skill: {id}")
         delete_skill_counter.inc()
 
         try:
-            skill_filename = f"{name}.json"
-            result = skill_handler.delete_file(skill_filename)
+            # Resolve ID to UUID first to delete description
+            skill_uuid = skill_handler.resolve_id(id)
+            if not skill_uuid:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Skill with ID '{id}' not found"
+                )
+            
+            # Delete the skill resource folder
+            result = skill_handler.delete_resource_by_id(id)
 
-            # Delete the description for the skill
+            # Delete the description for the skill (indexed by UUID)
             if skills_descriptions:
                 try:
-                    skills_descriptions.delete_description(name)
-                    logger.info(f"Skill description deleted for: {name}")
+                    skills_descriptions.delete_description(skill_uuid)
+                    logger.info(f"Skill description deleted for UUID: {skill_uuid}")
                 except Exception as e:
                     logger.warning(
-                        f"Could not delete skill description for '{name}': {e}"
+                        f"Could not delete skill description for UUID '{skill_uuid}': {e}"
                     )
 
-            logger.info(f"Skill '{name}' deleted successfully")
-            return {"message": f"Skill '{name}' deleted successfully."}
+            logger.info(f"Skill with ID '{id}' deleted successfully")
+            return {"message": f"Skill with ID '{id}' deleted successfully."}
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
             raise
         except Exception as e:
-            logger.error(f"Error deleting skill '{name}': {e}")
+            logger.error(f"Error deleting skill '{id}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting skill: {str(e)}"
             )
 
-    @app.put("/skills/{name}", tags=[tags])
-    def update_skill(name: str, skill: SkillSchema):
-        """Update an existing skill.
+    @app.put("/skills/{id}", tags=[tags])
+    def update_skill(id: str, skill: SkillSchema):
+        """Update an existing skill by ID (name or UUID).
 
         Args:
-            name: The name of the skill to update.
+            id: The ID of the skill to update (can be either name or UUID).
             skill: The updated skill schema.
 
         Returns:
@@ -304,31 +270,32 @@ def register_skills_api(
         Raises:
             HTTPException: If skill not found (404) or update fails (500).
         """
-        logger.info(f"Request to update skill: {name}")
+        logger.info(f"Request to update skill: {id}")
         update_skill_counter.inc()
 
         try:
-            skill_filename = f"{name}.json"
-
-            # Check if skill exists
-            existing_skills = skill_handler.list_files()
-            if skill_filename not in existing_skills:
+            # Resolve ID to UUID
+            skill_uuid = skill_handler.resolve_id(id)
+            if not skill_uuid:
                 raise HTTPException(
-                    status_code=404, detail=f"Skill '{name}' not found."
+                    status_code=404, detail=f"Skill with ID '{id}' not found."
                 )
 
             # Update modified timestamp
             skill.modified_at = datetime.now(timezone.utc).isoformat()
 
-            # Update the skill
-            skill_json = json.dumps(skill.to_dict(), indent=4)
-            skill_handler.write_file_content(skill_filename, skill_json)
-            logger.info(f"Skill '{name}' updated successfully")
-            return {"message": f"Skill '{name}' updated successfully."}
+            # Ensure UUID is preserved
+            if not skill.uuid:
+                skill.uuid = skill_uuid
+
+            # Update the skill manifest
+            skill_handler.write_manifest(skill_uuid.lower(), skill.to_dict())
+            logger.info(f"Skill with ID '{id}' (UUID: {skill_uuid}) updated successfully")
+            return {"message": f"Skill with ID '{id}' updated successfully."}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error updating skill '{name}': {e}")
+            logger.error(f"Error updating skill '{id}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating skill: {str(e)}"
             )
@@ -376,29 +343,20 @@ def register_skills_api(
             ]
 
             # Get full skill objects for filtering
+            # Descriptions are indexed by UUID, so matched_entity["filename"] contains UUID
             skills_to_filter = []
             for matched_entity in filtered_matched_entities:
-                skill_name = matched_entity.get("filename") or matched_entity.get(
-                    "name"
-                )
-                if not skill_name:
-                    logger.warning(
-                        f"Matched entity missing 'filename' or 'name' field: {matched_entity}"
-                    )
+                skill_uuid = matched_entity.get("filename")
+                if not skill_uuid:
+                    logger.warning(f"Matched entity missing 'filename' field: {matched_entity}")
                     continue
                 try:
-                    skill_filename = f"{skill_name}.json"
-                    content = skill_handler.read_file(skill_filename, raw_content=True)
-                    if isinstance(content, str):
-                        skill_dict = json.loads(content)
-                        skill_dict["similarity_score"] = matched_entity.get(
-                            "similarity_score", 0.0
-                        )
-                        skills_to_filter.append(skill_dict)
+                    # Get skill by UUID
+                    skill_dict = skill_handler.get_resource_by_id(skill_uuid)
+                    skill_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                    skills_to_filter.append(skill_dict)
                 except Exception as e:
-                    logger.warning(
-                        f"Could not load skill {skill_name} for filtering: {e}"
-                    )
+                    logger.warning(f"Could not load skill with UUID {skill_uuid} for filtering: {e}")
 
             # Apply manifest and lifecycle filters
             filtered_skills = apply_search_filters(
@@ -536,10 +494,7 @@ def register_skills_api(
                     ):
                         try:
                             # Get list of available tools (existing + being imported)
-                            existing_tools = [
-                                f.replace(".json", "")
-                                for f in tools_handler.list_files()
-                            ]
+                            existing_tools = tools_handler.get_available_resource_names()
                             available_tools = list(set(existing_tools + all_tool_names))
                             # Detect dependencies from code
                             detected_deps = detect_tool_dependencies(
@@ -553,26 +508,14 @@ def register_skills_api(
                                     f"Auto-detected dependencies for '{tool_dict['name']}': {detected_deps}"
                                 )
                         except Exception as e:
-                            logger.warning(
-                                f"Failed to auto-detect dependencies for {tool_dict['name']}: {e}"
-                            )
-
-                    # Save tool JSON
-                    tool_filename = f"{tool_dict['name']}.json"
-                    tool_json = json.dumps(tool_data, indent=4)
-                    tools_handler.write_file_content(tool_filename, tool_json)
-
-                    # Save tool module
-                    from skillberry_store.tools.configure import (
-                        get_files_directory_path,
-                    )
-                    from skillberry_store.modules.file_handler import FileHandler
-
-                    files_handler = FileHandler(get_files_directory_path())
-                    files_handler.write_file_content(
-                        module_filename, tool_dict["moduleContent"]
-                    )
-
+                            logger.warning(f"Failed to auto-detect dependencies for {tool_dict['name']}: {e}")
+                    
+                    # Save tool manifest to UUID subfolder
+                    tools_handler.write_manifest(tool_uuid.lower(), tool_data)
+                    
+                    # Save tool module to UUID subfolder
+                    tools_handler.write_resource_file(tool_uuid.lower(), module_filename, tool_dict['moduleContent'])
+                    
                     created_tool_uuids.append(tool_uuid)
                     logger.info(f"Created tool: {tool_dict['name']}")
                 except Exception as e:
@@ -596,12 +539,10 @@ def register_skills_api(
                         "content_type": "text/plain",
                         "state": "approved",
                     }
-
-                    # Save snippet JSON
-                    snippet_filename = f"{snippet_dict['name']}.json"
-                    snippet_json = json.dumps(snippet_data, indent=4)
-                    snippets_handler.write_file_content(snippet_filename, snippet_json)
-
+                    
+                    # Save snippet manifest to UUID subfolder
+                    snippets_handler.write_manifest(snippet_uuid.lower(), snippet_data)
+                    
                     created_snippet_uuids.append(snippet_uuid)
                     logger.info(f"Created snippet: {snippet_dict['name']}")
                 except Exception as e:
@@ -619,15 +560,14 @@ def register_skills_api(
                 "snippet_uuids": created_snippet_uuids,
                 "state": "approved",
             }
-
-            skill_filename = f"{skill_name}.json"
-            skill_json = json.dumps(skill_data, indent=4)
-            skill_handler.write_file_content(skill_filename, skill_json)
-
-            # Write description for search capability
+            
+            # Save skill manifest to UUID subfolder
+            skill_handler.write_manifest(skill_uuid.lower(), skill_data)
+            
+            # Write description for search capability (indexed by UUID)
             if skills_descriptions and skill_description:
-                skills_descriptions.write_description(skill_name, skill_description)
-
+                skills_descriptions.write_description(skill_uuid, skill_description)
+            
             logger.info(f"Successfully imported Anthropic skill: {skill_name}")
 
             return {
@@ -648,103 +588,50 @@ def register_skills_api(
                 status_code=500, detail=f"Error importing Anthropic skill: {str(e)}"
             )
 
-    @app.get("/skills/{name}/export-anthropic", tags=[tags])
-    async def export_anthropic_skill(name: str):
+    @app.get("/skills/{id}/export-anthropic", tags=[tags])
+    async def export_anthropic_skill(id: str):
         """Export a skill to Anthropic format as a ZIP file.
 
         Args:
-            name: The name of the skill to export
-
+            id: The ID of the skill to export (can be either name or UUID)
+            
         Returns:
             ZIP file with the skill in Anthropic format
 
         Raises:
             HTTPException: If skill not found or export fails
         """
-        logger.info(f"Request to export skill to Anthropic format: {name}")
-
+        logger.info(f"Request to export skill to Anthropic format: {id}")
+        
         try:
-            from skillberry_store.tools.anthropic.exporter import (
-                export_skill_to_anthropic_format,
-            )
-
-            # Get skill
-            skill_filename = f"{name}.json"
-            content = skill_handler.read_file(skill_filename, raw_content=True)
-            if not isinstance(content, str):
-                raise HTTPException(
-                    status_code=500, detail=f"Invalid content type for skill '{name}'"
-                )
-            skill_dict = json.loads(content)
-
-            # Get tools
+            from skillberry_store.tools.anthropic.exporter import export_skill_to_anthropic_format
+            
+            # Get skill by ID (name or UUID)
+            skill_dict = skill_handler.get_resource_by_id(id)
+            
+            # Get tools using get_resources_by_ids
             tools = []
             tool_modules = {}
-            if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
-                for tool_uuid in skill_dict["tool_uuids"]:
-                    for filename in tools_handler.list_files():
-                        if filename.endswith(".json"):
-                            try:
-                                tool_content = tools_handler.read_file(
-                                    filename, raw_content=True
-                                )
-                                if isinstance(tool_content, str):
-                                    tool_dict = json.loads(tool_content)
-                                    if tool_dict.get("uuid") == tool_uuid:
-                                        tools.append(tool_dict)
-                                        # Get tool module
-                                        tool_name = tool_dict["name"]
-                                        lang = tool_dict.get(
-                                            "programming_language", "python"
-                                        ).lower()
-                                        ext = ".py" if lang == "python" else ".sh"
-                                        module_filename = f"{tool_name}{ext}"
-                                        try:
-                                            from skillberry_store.tools.configure import (
-                                                get_files_directory_path,
-                                            )
-                                            from skillberry_store.modules.file_handler import (
-                                                FileHandler,
-                                            )
-
-                                            files_handler = FileHandler(
-                                                get_files_directory_path()
-                                            )
-                                            module_content = files_handler.read_file(
-                                                module_filename, raw_content=True
-                                            )
-                                            if isinstance(module_content, str):
-                                                tool_modules[tool_name] = module_content
-                                        except Exception as e:
-                                            logger.warning(
-                                                f"Could not read module for tool {tool_name}: {e}"
-                                            )
-                                        break
-                            except Exception as e:
-                                logger.warning(
-                                    f"Error reading tool file {filename}: {e}"
-                                )
-
-            # Get snippets
+            if 'tool_uuids' in skill_dict and skill_dict['tool_uuids']:
+                tools = tools_handler.get_resources_by_ids(skill_dict['tool_uuids'])
+                # Get tool modules
+                for tool_dict in tools:
+                    tool_uuid = tool_dict.get('uuid')
+                    tool_name = tool_dict['name']
+                    module_name = tool_dict.get('module_name')
+                    if tool_uuid and module_name:
+                        try:
+                            module_content = tools_handler.read_resource_file(tool_uuid, module_name, raw_content=True)
+                            if isinstance(module_content, str):
+                                tool_modules[tool_name] = module_content
+                        except Exception as e:
+                            logger.warning(f"Could not read module for tool {tool_name}: {e}")
+            
+            # Get snippets using get_resources_by_ids
             snippets = []
-            if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
-                for snippet_uuid in skill_dict["snippet_uuids"]:
-                    for filename in snippets_handler.list_files():
-                        if filename.endswith(".json"):
-                            try:
-                                snippet_content = snippets_handler.read_file(
-                                    filename, raw_content=True
-                                )
-                                if isinstance(snippet_content, str):
-                                    snippet_dict = json.loads(snippet_content)
-                                    if snippet_dict.get("uuid") == snippet_uuid:
-                                        snippets.append(snippet_dict)
-                                        break
-                            except Exception as e:
-                                logger.warning(
-                                    f"Error reading snippet file {filename}: {e}"
-                                )
-
+            if 'snippet_uuids' in skill_dict and skill_dict['snippet_uuids']:
+                snippets = snippets_handler.get_resources_by_ids(skill_dict['snippet_uuids'])
+            
             # Export to Anthropic format
             zip_content = export_skill_to_anthropic_format(
                 skill=skill_dict,
@@ -752,20 +639,22 @@ def register_skills_api(
                 snippets=snippets,
                 tool_modules=tool_modules,
             )
-
-            logger.info(f"Successfully exported skill '{name}' to Anthropic format")
-
+            
+            logger.info(f"Successfully exported skill '{id}' to Anthropic format")
+            
             # Return as downloadable ZIP file
             return Response(
                 content=zip_content,
-                media_type="application/zip",
-                headers={"Content-Disposition": f'attachment; filename="{name}.zip"'},
+                media_type='application/zip',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{id}.zip"'
+                }
             )
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error exporting skill '{name}' to Anthropic format: {e}")
+            logger.error(f"Error exporting skill '{id}' to Anthropic format: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error exporting skill: {str(e)}"
             )

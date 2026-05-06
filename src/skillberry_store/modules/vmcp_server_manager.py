@@ -6,8 +6,8 @@ import threading
 from typing import Any, Dict, Optional
 
 from skillberry_store.modules.vmcp_server import VirtualMcpServer
-from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.tools.configure import get_vmcp_directory
+from skillberry_store.modules.resource_handler import ResourceHandler
+from skillberry_store.tools.configure import get_vmcp_directory, get_skills_directory, get_tools_directory, get_snippets_directory
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +37,36 @@ class VirtualMcpServerManager:
 
         # Use the same directory as vmcp_api for consistency
         self.vmcp_directory = get_vmcp_directory()
-        self.vmcp_handler = FileHandler(self.vmcp_directory)
+        self.vmcp_handler = ResourceHandler(self.vmcp_directory, "vmcp")
+        
+        # Initialize handlers for skills, tools, and snippets
+        self.skills_handler = ResourceHandler(get_skills_directory(), "skill")
+        self.tools_handler = ResourceHandler(get_tools_directory(), "tool")
+        self.snippets_handler = ResourceHandler(get_snippets_directory(), "snippet")
 
         logger.info(f"Loading vmcp_servers from {self.vmcp_directory}")
         self.load_servers()
+    
+    @staticmethod
+    def get_runtime_server_name(vmcp_name: str, vmcp_uuid: str) -> str:
+        """Generate unique runtime server name from VMCP name and UUID.
+        
+        This ensures each VMCP object gets a unique runtime server, even if
+        multiple VMCP objects share the same name.
+        
+        Args:
+            vmcp_name: The human-readable VMCP name
+            vmcp_uuid: The unique VMCP UUID
+            
+        Returns:
+            Composite name: "{name}_{uuid}"
+        """
+        return f"{vmcp_name}_{vmcp_uuid}"
 
     def add_server(
         self,
         name: str,
+        uuid: str,
         description: str,
         port: Optional[int],
         tools: list,
@@ -54,11 +76,12 @@ class VirtualMcpServerManager:
         """Add a new virtual MCP server.
 
         Args:
-            name: The name of the virtual MCP server.
+            name: The human-readable name of the virtual MCP server.
+            uuid: The unique UUID of the VMCP object.
             description: A description of the virtual MCP server.
             port: The port number for the server (optional, auto-assigned if None).
-            tools: List of tool names to include in the server.
-            snippets: List of snippet names to include as prompts in the server (optional).
+            tools: List of tool UUIDs to include in the server.
+            snippets: List of snippet UUIDs to include as prompts in the server (optional).
             env_id: A string representing the environment id to be used for this server (Optional).
 
         Returns:
@@ -67,10 +90,13 @@ class VirtualMcpServerManager:
         Raises:
             Exception: If error occurred
         """
-        logger.info(f"Adding vmcp_server: {name}")
+        # Generate unique runtime server name
+        runtime_server_name = self.get_runtime_server_name(name, uuid)
+        logger.info(f"Adding vmcp_server: {runtime_server_name}")
+        
         with self._lock:
             server = VirtualMcpServer(
-                name=name,
+                name=runtime_server_name,
                 description=description,
                 port=port,
                 tools=tools,
@@ -82,30 +108,33 @@ class VirtualMcpServerManager:
             self.servers[server.name] = server
 
             logger.info(
-                f"Added and started new vmcp_server: {name} on port {server.port} with {len(tools)} tools and {len(snippets or [])} prompts"
+                f"Added and started new vmcp_server: {runtime_server_name} on port {server.port} with {len(tools)} tool UUIDs and {len(snippets or [])} snippet UUIDs"
             )
             return server
 
-    def remove_server(self, name: str):
+    def remove_server(self, name: str, uuid: str):
         """Remove a virtual MCP server.
 
         Args:
-            name: The name of the virtual MCP server to remove.
+            name: The human-readable name of the virtual MCP server.
+            uuid: The UUID of the VMCP object.
         """
+        runtime_server_name = self.get_runtime_server_name(name, uuid)
+            
         with self._lock:
-            if name in self.servers:
-                logger.info(f"Removing vmcp_server: {name}")
-                server = self.servers[name]
+            if runtime_server_name in self.servers:
+                logger.info(f"Removing vmcp_server: {runtime_server_name}")
+                server = self.servers[runtime_server_name]
                 # Stop the server before removing it
                 try:
                     server.stop()
-                    logger.info(f"Stopped vmcp_server: {name}")
+                    logger.info(f"Stopped vmcp_server: {runtime_server_name}")
                 except Exception as e:
-                    logger.warning(f"Failed to stop vmcp_server {name}: {str(e)}")
+                    logger.warning(f"Failed to stop vmcp_server {runtime_server_name}: {str(e)}")
 
-                del self.servers[name]
+                del self.servers[runtime_server_name]
             else:
-                logger.debug(f"vmcp_server {name} not found")
+                logger.debug(f"vmcp_server {runtime_server_name} not found")
 
     def list_servers(self):
         """List all virtual MCP server names.
@@ -117,24 +146,28 @@ class VirtualMcpServerManager:
         with self._lock:
             return list(self.servers.keys())
 
-    def get_server(self, name: str) -> Optional[VirtualMcpServer]:
-        """Get a virtual MCP server by name.
+    def get_server(self, name: str, uuid: str) -> Optional[VirtualMcpServer]:
+        """Get a virtual MCP server by name and UUID.
 
         Args:
-            name: The name of the virtual MCP server.
+            name: The human-readable name of the virtual MCP server.
+            uuid: The UUID of the VMCP object.
 
         Returns:
             VirtualMcpServer: The virtual MCP server instance, or None if not found.
         """
-        logger.debug(f"Getting vmcp_server: {name}")
+        runtime_server_name = self.get_runtime_server_name(name, uuid)
+        logger.debug(f"Getting vmcp_server with composite name: {runtime_server_name}")
+        
         with self._lock:
-            return self.servers.get(name)
+            return self.servers.get(runtime_server_name)
 
-    def get_server_details(self, name: str) -> Dict[str, Any]:
+    def get_server_details(self, name: str, uuid: str) -> Dict[str, Any]:
         """Get detailed information about a virtual MCP server.
 
         Args:
-            name: The name of the virtual MCP server.
+            name: The human-readable name of the virtual MCP server.
+            uuid: The UUID of the VMCP object.
 
         Returns:
             Dict[str, Any]: A dictionary containing server details.
@@ -142,16 +175,17 @@ class VirtualMcpServerManager:
         Raises:
             ValueError: If the virtual MCP server is not found.
         """
-        logger.debug(f"Getting details of vmcp_server: {name}")
+        runtime_server_name = self.get_runtime_server_name(name, uuid)
+        logger.debug(f"Getting details of vmcp_server: {runtime_server_name}")
         with self._lock:
-            server = self.get_server(name)
+            server = self.get_server(name, uuid)
             if server:
                 return {
                     "name": server.name,
                     "description": server.description,
                     "port": server.port,
-                    "tools": server.tools,
-                    "snippets": server.snippets,
+                    "tools": server.tool_uuids,
+                    "snippets": server.snippet_uuids,
                 }
             else:
                 raise ValueError(f"vmcp_server '{name}' not found")
@@ -163,180 +197,52 @@ class VirtualMcpServerManager:
         This ensures that servers persist across restarts.
         """
         try:
-            vmcp_files = self.vmcp_handler.list_files()
-            for filename in vmcp_files:
-                if filename.endswith(".json"):
-                    try:
-                        content = self.vmcp_handler.read_file(
-                            filename, raw_content=True
+            # Get all VMCP server resources
+            vmcp_resources = self.vmcp_handler.list_all_resources()
+            
+            for vmcp_data in vmcp_resources:
+                name = vmcp_data.get("name", "unknown")
+                uuid = vmcp_data.get("uuid", "")
+                try:
+                    # Extract the necessary fields to start the server
+                    description = vmcp_data.get("description", "")
+                    port = vmcp_data.get("port")
+                    skill_uuid = vmcp_data.get("skill_uuid")
+                    
+                    # Get tool and snippet UUIDs from skill_uuid
+                    tool_uuids = []
+                    snippet_uuids = []
+                    if skill_uuid:
+                        logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load")
+                        try:
+                            # Get skill by UUID
+                            skill_dict = self.skills_handler.get_resource_by_id(skill_uuid)
+                            tool_uuids = skill_dict.get("tool_uuids", [])
+                            snippet_uuids = skill_dict.get("snippet_uuids", [])
+                            logger.info(f"Found skill '{skill_dict.get('name')}' with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
+                        except Exception as e:
+                            logger.error(f"Error resolving tools and snippets for skill_uuid {skill_uuid}: {e}")
+                    
+                    # Start the runtime server with UUIDs (not names)
+                    # Use composite name for uniqueness
+                    if name and uuid:
+                        runtime_server_name = self.get_runtime_server_name(name, uuid)
+                        server = VirtualMcpServer(
+                            name=runtime_server_name,
+                            description=description,
+                            port=port,
+                            tools=tool_uuids,  # Pass UUIDs, not names
+                            snippets=snippet_uuids,  # Pass UUIDs, not names
+                            sts_url=self.sts_url,
+                            app=self.app,
+                            env_id="",
                         )
-                        if isinstance(content, str):
-                            vmcp_data = json.loads(content)
-
-                            # Extract the necessary fields to start the server
-                            name = vmcp_data.get("name")
-                            description = vmcp_data.get("description", "")
-                            port = vmcp_data.get("port")
-                            skill_uuid = vmcp_data.get("skill_uuid")
-
-                            # Resolve tool names and snippet names from skill_uuid
-                            tool_names = []
-                            snippet_names = []
-                            if skill_uuid:
-                                logger.info(
-                                    f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load"
-                                )
-                                try:
-                                    from skillberry_store.tools.configure import (
-                                        get_skills_directory,
-                                        get_tools_directory,
-                                        get_snippets_directory,
-                                    )
-
-                                    skills_handler = FileHandler(get_skills_directory())
-                                    tools_handler = FileHandler(get_tools_directory())
-                                    snippets_handler = FileHandler(
-                                        get_snippets_directory()
-                                    )
-
-                                    # Find skill by UUID
-                                    skill_tool_uuids = []
-                                    skill_snippet_uuids = []
-                                    for skill_filename in skills_handler.list_files():
-                                        if skill_filename.endswith(".json"):
-                                            try:
-                                                skill_content = (
-                                                    skills_handler.read_file(
-                                                        skill_filename, raw_content=True
-                                                    )
-                                                )
-                                                if isinstance(skill_content, str):
-                                                    skill_dict = json.loads(
-                                                        skill_content
-                                                    )
-                                                    if (
-                                                        skill_dict.get("uuid")
-                                                        == skill_uuid
-                                                    ):
-                                                        skill_tool_uuids = (
-                                                            skill_dict.get(
-                                                                "tool_uuids", []
-                                                            )
-                                                        )
-                                                        skill_snippet_uuids = (
-                                                            skill_dict.get(
-                                                                "snippet_uuids", []
-                                                            )
-                                                        )
-                                                        logger.info(
-                                                            f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs"
-                                                        )
-                                                        break
-                                            except Exception as e:
-                                                logger.warning(
-                                                    f"Error reading skill file {skill_filename}: {e}"
-                                                )
-
-                                    # Resolve tool UUIDs to tool names
-                                    for tool_uuid in skill_tool_uuids:
-                                        for tool_filename in tools_handler.list_files():
-                                            if tool_filename.endswith(".json"):
-                                                try:
-                                                    tool_content = (
-                                                        tools_handler.read_file(
-                                                            tool_filename,
-                                                            raw_content=True,
-                                                        )
-                                                    )
-                                                    if isinstance(tool_content, str):
-                                                        tool_dict = json.loads(
-                                                            tool_content
-                                                        )
-                                                        if (
-                                                            tool_dict.get("uuid")
-                                                            == tool_uuid
-                                                        ):
-                                                            tool_name = tool_dict.get(
-                                                                "name"
-                                                            )
-                                                            tool_names.append(tool_name)
-                                                            logger.info(
-                                                                f"Resolved tool UUID {tool_uuid} to name '{tool_name}'"
-                                                            )
-                                                            break
-                                                except Exception as e:
-                                                    logger.warning(
-                                                        f"Error reading tool file {tool_filename}: {e}"
-                                                    )
-
-                                    # Resolve snippet UUIDs to snippet names
-                                    for snippet_uuid in skill_snippet_uuids:
-                                        for (
-                                            snippet_filename
-                                        ) in snippets_handler.list_files():
-                                            if snippet_filename.endswith(".json"):
-                                                try:
-                                                    snippet_content = (
-                                                        snippets_handler.read_file(
-                                                            snippet_filename,
-                                                            raw_content=True,
-                                                        )
-                                                    )
-                                                    if isinstance(snippet_content, str):
-                                                        snippet_dict = json.loads(
-                                                            snippet_content
-                                                        )
-                                                        if (
-                                                            snippet_dict.get("uuid")
-                                                            == snippet_uuid
-                                                        ):
-                                                            snippet_name = (
-                                                                snippet_dict.get("name")
-                                                            )
-                                                            snippet_names.append(
-                                                                snippet_name
-                                                            )
-                                                            logger.info(
-                                                                f"Resolved snippet UUID {snippet_uuid} to name '{snippet_name}'"
-                                                            )
-                                                            break
-                                                except Exception as e:
-                                                    logger.warning(
-                                                        f"Error reading snippet file {snippet_filename}: {e}"
-                                                    )
-
-                                    logger.info(
-                                        f"Resolved {len(tool_names)} tool names and {len(snippet_names)} snippet names for server '{name}'"
-                                    )
-                                except Exception as e:
-                                    logger.error(
-                                        f"Error resolving tools and snippets for skill_uuid {skill_uuid}: {e}"
-                                    )
-
-                            # Start the runtime server
-                            if name:
-                                server = VirtualMcpServer(
-                                    name=name,
-                                    description=description,
-                                    port=port,
-                                    tools=tool_names,
-                                    snippets=snippet_names,
-                                    sts_url=self.sts_url,
-                                    app=self.app,
-                                    env_id="",
-                                )
-                                self.servers[server.name] = server
-                                logger.info(
-                                    f"Loaded and started vmcp_server: {server.name} on port {server.port} with {len(tool_names)} tools and {len(snippet_names)} prompts"
-                                )
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to load vmcp_server from {filename}: {str(e)}"
-                        )
-
-            logger.info(
-                f"Loaded {len(self.servers)} vmcp servers from {self.vmcp_directory}"
-            )
+                        self.servers[server.name] = server
+                        logger.info(f"Loaded and started vmcp_server: {server.name} on port {server.port} with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
+                except Exception as e:
+                    logger.error(f"Failed to load vmcp_server '{name}': {str(e)}")
+            
+            logger.info(f"Loaded {len(self.servers)} vmcp servers from {self.vmcp_directory}")
         except Exception as e:
             logger.error(f"Failed to load vmcp_servers from directory. Error: {str(e)}")
 

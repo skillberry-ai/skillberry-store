@@ -3,11 +3,15 @@ E2E tests for tool API endpoints.
 Tests the full lifecycle of tool operations: create, list, get, update, and delete.
 """
 
+import asyncio
+import json
+import logging
 import pytest
 import httpx
 
 
 BASE_URL = "http://localhost:8000"
+logger = logging.getLogger(__name__)
 
 
 
@@ -750,5 +754,130 @@ async def test_search_tools(run_sbs):
         # Clean up - delete test tools
         for tool_params in test_tools:
             delete_response = await client.delete(f"{BASE_URL}/tools/{tool_params['name']}")
+
+
+@pytest.mark.asyncio
+async def test_two_tools_same_name_different_uuid(run_sbs):
+    """Test creating two tools with the same name but different UUIDs, then executing each by UUID.
+    
+    This test verifies that:
+    1. Two tools with the same name but different UUIDs can be created successfully
+    2. Each tool can be executed independently by its UUID
+    3. Each tool executes its own distinct logic correctly
+    """
+    tool_name = "calculate"  # Same name for both tools
+    
+    # Tool A: Adds two numbers
+    tool_a_content = b"""def calculate(x: int, y: int) -> int:
+    \"\"\"Add two numbers together.
+    
+    Args:
+        x: First number
+        y: Second number
+        
+    Returns:
+        Sum of x and y
+    \"\"\"
+    return x + y
+"""
+    
+    # Tool B: Multiplies two numbers
+    tool_b_content = b"""def calculate(x: int, y: int) -> int:
+    \"\"\"Multiply two numbers together.
+    
+    Args:
+        x: First number
+        y: Second number
+        
+    Returns:
+        Product of x and y
+    \"\"\"
+    return x * y
+"""
+    
+    async with httpx.AsyncClient() as client:
+        # Create Tool A (addition)
+        tool_a_params = {
+            "name": tool_name,
+            "description": "A tool that adds two numbers",
+            "programming_language": "python",
+            "packaging_format": "code",
+            "state": "approved"
+        }
+        files_a = {
+            "module": ("calculate_add.py", tool_a_content, "text/x-python")
+        }
+        create_a_response = await client.post(f"{BASE_URL}/tools/", params=tool_a_params, files=files_a)
+        assert create_a_response.status_code == 200, f"Expected 200 for Tool A, got {create_a_response.status_code}: {create_a_response.text}"
+        tool_a_data = create_a_response.json()
+        tool_a_uuid = tool_a_data.get("uuid")
+        assert tool_a_uuid is not None, "Tool A should have a UUID"
+        assert tool_a_data.get("name") == tool_name
+        logger.info(f"Created Tool A with UUID: {tool_a_uuid}")
+        
+        # Create Tool B (multiplication) - same name, different UUID
+        tool_b_params = {
+            "name": tool_name,
+            "description": "A tool that multiplies two numbers",
+            "programming_language": "python",
+            "packaging_format": "code",
+            "state": "approved"
+        }
+        files_b = {
+            "module": ("calculate_multiply.py", tool_b_content, "text/x-python")
+        }
+        create_b_response = await client.post(f"{BASE_URL}/tools/", params=tool_b_params, files=files_b)
+        assert create_b_response.status_code == 200, f"Expected 200 for Tool B, got {create_b_response.status_code}: {create_b_response.text}"
+        tool_b_data = create_b_response.json()
+        tool_b_uuid = tool_b_data.get("uuid")
+        assert tool_b_uuid is not None, "Tool B should have a UUID"
+        assert tool_b_data.get("name") == tool_name
+        logger.info(f"Created Tool B with UUID: {tool_b_uuid}")
+        
+        # Verify that the UUIDs are different
+        assert tool_a_uuid != tool_b_uuid, "Tool A and Tool B should have different UUIDs"
+        
+        # Execute Tool A by UUID (should add: 5 + 3 = 8)
+        execute_params_a = {"x": 5, "y": 3}
+        execute_a_response = await client.post(
+            f"{BASE_URL}/tools/{tool_a_uuid}/execute",
+            json=execute_params_a
+        )
+        assert execute_a_response.status_code == 200, f"Expected 200 for Tool A execution, got {execute_a_response.status_code}: {execute_a_response.text}"
+        result_a = execute_a_response.json()
+        assert result_a is not None
+        assert isinstance(result_a, dict), f"Expected dict for Tool A result, got {type(result_a)}"
+        assert result_a.get("return value") == "8", f"Tool A should return 8 (5+3), got {result_a.get('return value')}"
+        logger.info(f"Tool A executed correctly: 5 + 3 = {result_a.get('return value')}")
+        
+        # Execute Tool B by UUID (should multiply: 5 * 3 = 15)
+        execute_params_b = {"x": 5, "y": 3}
+        execute_b_response = await client.post(
+            f"{BASE_URL}/tools/{tool_b_uuid}/execute",
+            json=execute_params_b
+        )
+        assert execute_b_response.status_code == 200, f"Expected 200 for Tool B execution, got {execute_b_response.status_code}: {execute_b_response.text}"
+        result_b = execute_b_response.json()
+        assert result_b is not None
+        assert isinstance(result_b, dict), f"Expected dict for Tool B result, got {type(result_b)}"
+        assert result_b.get("return value") == "15", f"Tool B should return 15 (5*3), got {result_b.get('return value')}"
+        logger.info(f"Tool B executed correctly: 5 * 3 = {result_b.get('return value')}")
+        
+        # Verify both tools are listed
+        list_response = await client.get(f"{BASE_URL}/tools/")
+        assert list_response.status_code == 200
+        tools_list = list_response.json()
+        tool_uuids = [t.get("uuid") for t in tools_list]
+        assert tool_a_uuid in tool_uuids, "Tool A should be in the tools list"
+        assert tool_b_uuid in tool_uuids, "Tool B should be in the tools list"
+        
+        # Clean up - delete both tools by UUID
+        delete_a_response = await client.delete(f"{BASE_URL}/tools/{tool_a_uuid}")
+        assert delete_a_response.status_code == 200, f"Expected 200 for Tool A deletion, got {delete_a_response.status_code}"
+        logger.info(f"Deleted Tool A (UUID: {tool_a_uuid})")
+        
+        delete_b_response = await client.delete(f"{BASE_URL}/tools/{tool_b_uuid}")
+        assert delete_b_response.status_code == 200, f"Expected 200 for Tool B deletion, got {delete_b_response.status_code}"
+        logger.info(f"Deleted Tool B (UUID: {tool_b_uuid})")
 
 

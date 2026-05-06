@@ -1,7 +1,8 @@
 import inspect
 import logging
 import os
-from typing import List, Dict
+import shutil
+from typing import List, Dict, Optional
 
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
@@ -22,6 +23,24 @@ class FileHandler:
         os.makedirs(self.directory_path, exist_ok=True)
         logger.info(f"Initialized FileHandler with directory: {self.directory_path}")
         ShellHook().execute("init_filehandler", directory_path=self.directory_path)
+
+    def _get_full_path(self, filename: str, subdirectory: Optional[str] = None) -> str:
+        """
+        Get the full file path, optionally within a subdirectory.
+
+        Args:
+            filename (str): The name of the file.
+            subdirectory (Optional[str]): Optional subdirectory path relative to directory_path.
+
+        Returns:
+            str: The full file path.
+        """
+        if subdirectory:
+            # Ensure subdirectory exists
+            subdir_path = os.path.join(self.directory_path, subdirectory)
+            os.makedirs(subdir_path, exist_ok=True)
+            return os.path.join(subdir_path, filename)
+        return os.path.join(self.directory_path, filename)
 
     def list_files(self) -> List[str]:
         """
@@ -56,9 +75,17 @@ class FileHandler:
                 directory_path=self.directory_path,
             )
 
-    def read_file(self, filename: str, raw_content: bool = False):
+    def read_file(self, filename: str, raw_content: bool = False, subdirectory: Optional[str] = None):
         """
         Read and return the contents of a file.
+
+        Args:
+            filename (str): The name of the file to read.
+            raw_content (bool): If True, return raw content as string. If False, return FileResponse.
+            subdirectory (Optional[str]): Optional subdirectory path relative to directory_path.
+
+        Returns:
+            str or FileResponse: File content as string if raw_content=True, FileResponse otherwise.
 
         Raises:
             HTTPException: If there is an error reading the file.
@@ -69,9 +96,9 @@ class FileHandler:
             directory_path=self.directory_path,
             filename=filename,
         )
-        # Ensure directory exists before reading
-        os.makedirs(self.directory_path, exist_ok=True)
-        file_path = os.path.join(self.directory_path, filename)
+        # Get full path (creates subdirectory if needed)
+        file_path = self._get_full_path(filename, subdirectory)
+        
         if not os.path.exists(file_path):
             ShellHook().execute(
                 "post_fail_" + inspect.stack()[0].function,
@@ -110,14 +137,14 @@ class FileHandler:
             )
             return FileResponse(file_path)
 
-    def write_file(self, file_bytes: bytes, filename: str) -> Dict:
+    def write_file(self, file_bytes: bytes, filename: str, subdirectory: Optional[str] = None) -> Dict:
         """
         Write a file to the directory.
 
         Args:
-            file (bytes): The file to save.
-            filename (str): The name of the file. If not provided
-                            file.filename being used
+            file_bytes (bytes): The file content to save.
+            filename (str): The name of the file.
+            subdirectory (Optional[str]): Optional subdirectory path relative to directory_path.
 
         Returns:
             dict: A message confirming the file was saved successfully.
@@ -125,15 +152,14 @@ class FileHandler:
         Raises:
             HTTPException: If there is an error saving the file.
         """
-        # Ensure directory exists before writing
-        os.makedirs(self.directory_path, exist_ok=True)
-        file_path = os.path.join(self.directory_path, filename)
-
         ShellHook().execute(
             "pre_" + inspect.stack()[0].function,
             directory_path=self.directory_path,
             filename=filename,
         )
+        # Get full path (creates subdirectory if needed)
+        file_path = self._get_full_path(filename, subdirectory)
+        
         try:
             with open(file_path, "wb") as f:
                 f.write(file_bytes)
@@ -153,13 +179,14 @@ class FileHandler:
             logger.error(f"Error saving file '{filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-    def write_file_content(self, filename: str, file_content: str) -> dict:
+    def write_file_content(self, filename: str, file_content: str, subdirectory: Optional[str] = None) -> dict:
         """
         Write a file to the directory by content.
 
         Args:
-            filename: The file name.
-            file_content: The file content to save.
+            filename (str): The file name.
+            file_content (str): The file content to save.
+            subdirectory (Optional[str]): Optional subdirectory path relative to directory_path.
 
         Returns:
             dict: A message confirming the file was saved successfully.
@@ -167,15 +194,14 @@ class FileHandler:
         Raises:
             HTTPException: If there is an error saving the file.
         """
-
         ShellHook().execute(
             "pre_" + inspect.stack()[0].function,
             directory_path=self.directory_path,
             filename=filename,
         )
-        # Ensure directory exists before writing
-        os.makedirs(self.directory_path, exist_ok=True)
-        file_path = os.path.join(self.directory_path, filename)
+        # Get full path (creates subdirectory if needed)
+        file_path = self._get_full_path(filename, subdirectory)
+        
         try:
             with open(file_path, "wb") as f:
                 binary_file_content = file_content.encode("utf-8")
@@ -196,18 +222,28 @@ class FileHandler:
             logger.error(f"Error saving file '{filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-    def delete_file(self, filename: str) -> dict:
+    def delete_file(self, filename: str, subdirectory: Optional[str] = None) -> dict:
         """
         Delete a file from the directory.
+
+        Args:
+            filename (str): The name of the file to delete.
+            subdirectory (Optional[str]): Optional subdirectory path relative to directory_path.
+
+        Returns:
+            dict: A message confirming the file was deleted successfully.
+
+        Raises:
+            HTTPException: If file not found (404) or deletion fails (500).
         """
         ShellHook().execute(
             "pre_" + inspect.stack()[0].function,
             directory_path=self.directory_path,
             filename=filename,
         )
-        # Ensure directory exists before deleting
-        os.makedirs(self.directory_path, exist_ok=True)
-        file_path = os.path.join(self.directory_path, filename)
+        # Get full path
+        file_path = self._get_full_path(filename, subdirectory)
+        
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -234,4 +270,53 @@ class FileHandler:
             logger.error(f"Error deleting file '{filename}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting file: {str(e)}"
+            )
+
+    def delete_subdirectory(self, subdirectory: str) -> dict:
+        """
+        Delete a subdirectory and all its contents.
+
+        Args:
+            subdirectory (str): The subdirectory path relative to directory_path.
+
+        Returns:
+            dict: A message confirming the subdirectory was deleted successfully.
+
+        Raises:
+            HTTPException: If subdirectory not found (404) or deletion fails (500).
+        """
+        ShellHook().execute(
+            "pre_" + inspect.stack()[0].function,
+            directory_path=self.directory_path,
+            subdirectory=subdirectory,
+        )
+        
+        subdir_path = os.path.join(self.directory_path, subdirectory)
+        
+        try:
+            if os.path.exists(subdir_path):
+                shutil.rmtree(subdir_path)
+                logger.info(f"Subdirectory deleted: {subdir_path}")
+                ShellHook().execute(
+                    "post_" + inspect.stack()[0].function,
+                    directory_path=self.directory_path,
+                    subdirectory=subdirectory,
+                )
+                return {"message": f"Subdirectory '{subdirectory}' deleted successfully."}
+            else:
+                raise HTTPException(
+                    status_code=404, detail=f"Subdirectory '{subdirectory}' not found."
+                )
+        except HTTPException:
+            # Re-raise HTTPException without modification
+            raise
+        except Exception as e:
+            ShellHook().execute(
+                "post_fail_" + inspect.stack()[0].function,
+                directory_path=self.directory_path,
+                subdirectory=subdirectory,
+            )
+            logger.error(f"Error deleting subdirectory '{subdirectory}': {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error deleting subdirectory: {str(e)}"
             )
