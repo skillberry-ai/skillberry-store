@@ -8,7 +8,12 @@ from typing import Any, Dict, Optional
 from skillberry_store.modules.vmcp_server import VirtualMcpServer
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.lookup_index import build_lookup_context
-from skillberry_store.tools.configure import get_vmcp_directory
+from skillberry_store.tools.configure import (
+    get_skills_directory,
+    get_snippets_directory,
+    get_tools_directory,
+    get_vmcp_directory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -188,12 +193,6 @@ class VirtualMcpServerManager:
                                     f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load"
                                 )
                                 try:
-                                    from skillberry_store.tools.configure import (
-                                        get_skills_directory,
-                                        get_tools_directory,
-                                        get_snippets_directory,
-                                    )
-
                                     skills_handler = FileHandler(get_skills_directory())
                                     tools_handler = FileHandler(get_tools_directory())
                                     snippets_handler = FileHandler(

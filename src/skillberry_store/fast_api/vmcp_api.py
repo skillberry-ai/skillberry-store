@@ -14,7 +14,12 @@ from skillberry_store.modules.lookup_index import build_lookup_context
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
 from skillberry_store.schemas.vmcp_schema import VmcpSchema
-from skillberry_store.tools.configure import get_vmcp_directory
+from skillberry_store.tools.configure import (
+    get_skills_directory,
+    get_snippets_directory,
+    get_tools_directory,
+    get_vmcp_directory,
+)
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
 from skillberry_store.fast_api.search_filters import apply_search_filters
 
@@ -144,13 +149,6 @@ def register_vmcp_api(
                     f"Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}"
                 )
                 # Load the skill to get tool UUIDs and snippet UUIDs
-                from skillberry_store.tools.configure import (
-                    get_skills_directory,
-                    get_tools_directory,
-                    get_snippets_directory,
-                )
-                from skillberry_store.modules.file_handler import FileHandler
-
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
                 snippets_handler = FileHandler(get_snippets_directory())
@@ -473,12 +471,6 @@ def register_vmcp_api(
             tool_names = []
             if vmcp.skill_uuid:
                 # Load the skill to get tool UUIDs
-                from skillberry_store.tools.configure import (
-                    get_skills_directory,
-                    get_tools_directory,
-                )
-                from skillberry_store.modules.file_handler import FileHandler
-
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
                 lookup_context = build_lookup_context(
@@ -587,12 +579,6 @@ def register_vmcp_api(
                 logger.info(
                     f"Resolving tools and snippets for skill_uuid: {skill_uuid}"
                 )
-                from skillberry_store.tools.configure import (
-                    get_skills_directory,
-                    get_tools_directory,
-                    get_snippets_directory,
-                )
-
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
                 snippets_handler = FileHandler(get_snippets_directory())

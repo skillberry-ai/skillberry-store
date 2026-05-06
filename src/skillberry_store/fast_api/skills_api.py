@@ -15,7 +15,9 @@ from skillberry_store.modules.lookup_index import build_lookup_context
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
+from skillberry_store.tools.anthropic.exporter import export_skill_to_anthropic_format
 from skillberry_store.tools.configure import (
+    get_files_directory_path,
     get_skills_directory,
     get_tools_directory,
     get_snippets_directory,
@@ -647,10 +649,6 @@ def register_skills_api(
         logger.info(f"Request to export skill to Anthropic format: {name}")
 
         try:
-            from skillberry_store.tools.anthropic.exporter import (
-                export_skill_to_anthropic_format,
-            )
-
             # Get skill
             skill_filename = f"{name}.json"
             content = skill_handler.read_file(skill_filename, raw_content=True)
@@ -680,13 +678,6 @@ def register_skills_api(
                     ext = ".py" if lang == "python" else ".sh"
                     module_filename = f"{tool_name}{ext}"
                     try:
-                        from skillberry_store.tools.configure import (
-                            get_files_directory_path,
-                        )
-                        from skillberry_store.modules.file_handler import (
-                            FileHandler,
-                        )
-
                         files_handler = FileHandler(get_files_directory_path())
                         module_content = files_handler.read_file(
                             module_filename, raw_content=True
