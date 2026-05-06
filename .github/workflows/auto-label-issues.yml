@@ -1,0 +1,254 @@
+# ============================================================================
+# GitHub Workflow: Automatic Issue Labeling
+# ============================================================================
+#
+# PURPOSE:
+# This workflow automatically labels new GitHub issues using IBM Bob Shell, an AI-powered
+# coding assistant. When a new issue is created, this workflow:
+# 1. Fetches the current repository labels and their descriptions
+# 2. Analyzes the issue content using Bob Shell
+# 3. Selects appropriate labels based on the issue description
+# 4. Applies the selected labels to the issue
+# 5. Adds 'fix-with-bob' label only if the issue is simple enough for Bob to fix
+#
+# WORKFLOW STEPS:
+# 1. Trigger: Activated when a new issue is opened
+# 2. Setup: Checkout repository and install Node.js 22 (required for Bob Shell)
+# 3. Install Bob Shell: Download and install Bob Shell using the official installer
+# 4. Authentication: Configure Bob Shell with BOBSHELL_API_KEY from GitHub secrets
+# 5. Fetch Labels: Retrieve current repository labels dynamically via GitHub API
+# 6. Context Gathering: Extract issue details (number, title, description)
+# 7. Bob Execution: Run Bob Shell with a prompt to analyze and select labels
+# 8. Apply Labels: Add the selected labels to the issue
+#
+# LABEL SELECTION CRITERIA:
+# - Bob Shell analyzes the issue content against available label descriptions
+# - Multiple labels can be applied if relevant
+# - 'fix-with-bob' is only added if:
+#   * The issue describes a coding task
+#   * The implementation is straightforward and not complex
+#   * Bob Shell can likely fix it with simple code changes
+#
+# REQUIREMENTS:
+# - GitHub Secrets (must be configured in repository settings):
+#   * BOBSHELL_API_KEY: API key for Bob Shell authentication
+# - Permissions: Workflow needs write access to issues
+#
+# USAGE:
+# This workflow runs automatically when any new issue is created.
+# No manual intervention required.
+#
+# ============================================================================
+
+name: Auto-Label Issues
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  auto-label-issues:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1  # Shallow clone is sufficient
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Install Bob Shell
+        run: |
+          echo "Installing Bob Shell..."
+          curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash -s -- --package-manager npm
+
+          # Verify installation
+          if command -v bob &> /dev/null; then
+            echo "Bob Shell installed successfully"
+            bob --version
+          else
+            echo "Bob Shell installation failed"
+            exit 1
+          fi
+      
+      - name: Authenticate Bob Shell
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+        run: |
+          echo "Configuring Bob Shell authentication..."
+          if [ -z "$BOBSHELL_API_KEY" ]; then
+            echo "Error: BOBSHELL_API_KEY secret is not set"
+            exit 1
+          fi
+          # Bob Shell uses BOBSHELL_API_KEY environment variable for authentication
+          echo "Bob Shell authentication configured successfully"
+      
+      - name: Fetch Repository Labels
+        id: labels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching repository labels..."
+          LABELS_JSON=$(gh api repos/${{ github.repository }}/labels --paginate)
+          
+          # Save labels to file for Bob Shell to read
+          echo "${LABELS_JSON}" > /tmp/repo_labels.json
+          
+          # Create a formatted list for the prompt
+          LABELS_LIST=$(echo "${LABELS_JSON}" | jq -r '.[] | "- \(.name): \(.description // "No description")"')
+          
+          # Save to output using heredoc to handle multiline
+          echo "labels_list<<EOF" >> $GITHUB_OUTPUT
+          echo "${LABELS_LIST}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "✓ Fetched $(echo "${LABELS_JSON}" | jq '. | length') labels"
+      
+      - name: Get Issue Details
+        id: issue
+        run: |
+          echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          echo "issue_title<<EOF" >> $GITHUB_OUTPUT
+          echo "${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "issue_body<<EOF" >> $GITHUB_OUTPUT
+          echo "${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Analyze Issue and Select Labels
+        id: analyze
+        uses: nick-invision/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 2
+          retry_wait_seconds: 10
+          command: |
+            # Create a comprehensive prompt for Bob Shell
+            cat > /tmp/labeling_prompt.txt << 'PROMPT_EOF'
+            You are analyzing a GitHub issue to select appropriate labels.
+
+            ISSUE #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}
+
+            ISSUE DESCRIPTION:
+            ${{ steps.issue.outputs.issue_body }}
+
+            AVAILABLE LABELS:
+            ${{ steps.labels.outputs.labels_list }}
+
+            TASK:
+            Analyze the issue and select the most appropriate labels from the available labels list.
+            
+            LABEL SELECTION RULES:
+            1. Select ALL relevant labels that apply to this issue
+            2. Use label descriptions to guide your selection
+            3. For the 'fix-with-bob' label specifically:
+               - ONLY add it if the issue describes a coding task
+               - ONLY add it if the implementation is straightforward and not complex
+               - ONLY add it if you believe Bob Shell can fix it with simple code changes
+               - DO NOT add it for complex features, architectural changes, or unclear requirements
+            4. Common label mappings:
+               - 'bug': Issue reports something broken or not working correctly
+               - 'enhancement': Issue requests a new feature or improvement
+               - 'documentation': Issue relates to docs, README, or comments
+               - 'question': Issue asks for clarification or information
+               - 'security': Issue relates to security vulnerabilities or concerns
+               - 'automation': Issue relates to CI/CD, workflows, or automated processes
+               - 'good first issue': Issue is simple and suitable for newcomers
+               - 'help wanted': Issue needs community assistance
+
+            OUTPUT FORMAT:
+            Respond with ONLY a JSON array of label names to apply. Nothing else.
+            Example: ["bug", "documentation"]
+            Example: ["enhancement", "fix-with-bob"]
+            Example: ["question"]
+
+            If no labels are appropriate, respond with an empty array: []
+            PROMPT_EOF
+
+            # Run Bob Shell with the prompt
+            RESPONSE=$(bob --accept-license -p "$(cat /tmp/labeling_prompt.txt)")
+            
+            echo "Bob Shell Response:"
+            echo "${RESPONSE}"
+            
+            # Extract JSON array from response (Bob might add explanation text)
+            LABELS_JSON=$(echo "${RESPONSE}" | grep -oP '\[.*\]' | head -1)
+            
+            if [ -z "${LABELS_JSON}" ]; then
+              echo "Warning: Could not extract labels JSON from response"
+              LABELS_JSON="[]"
+            fi
+            
+            echo "Extracted labels: ${LABELS_JSON}"
+            
+            # Save to output
+            echo "selected_labels=${LABELS_JSON}" >> $GITHUB_OUTPUT
+            
+            # Also save to file for next step
+            echo "${LABELS_JSON}" > /tmp/selected_labels.json
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+      
+      - name: Apply Labels to Issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LABELS_JSON=$(cat /tmp/selected_labels.json)
+          
+          # Check if we have any labels to apply
+          LABEL_COUNT=$(echo "${LABELS_JSON}" | jq '. | length')
+          
+          if [ "${LABEL_COUNT}" -eq 0 ]; then
+            echo "No labels selected by Bob Shell"
+            exit 0
+          fi
+          
+          echo "Applying ${LABEL_COUNT} label(s) to issue #${{ steps.issue.outputs.issue_number }}"
+          
+          # Convert JSON array to space-separated list for gh cli
+          LABELS_LIST=$(echo "${LABELS_JSON}" | jq -r '.[]' | tr '\n' ',' | sed 's/,$//')
+          
+          # Apply labels using gh cli
+          gh issue edit ${{ steps.issue.outputs.issue_number }} \
+            --add-label "${LABELS_LIST}"
+          
+          echo "✓ Successfully applied labels: ${LABELS_LIST}"
+      
+      - name: Comment on Issue
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LABELS_JSON=$(cat /tmp/selected_labels.json)
+          LABEL_COUNT=$(echo "${LABELS_JSON}" | jq '. | length')
+          
+          if [ "${LABEL_COUNT}" -gt 0 ]; then
+            LABELS_LIST=$(echo "${LABELS_JSON}" | jq -r '.[]' | sed 's/^/`/' | sed 's/$/`/' | tr '\n' ',' | sed 's/,/, /g' | sed 's/, $//')
+            
+            gh issue comment ${{ steps.issue.outputs.issue_number }} \
+              --body "🤖 **Automatic Labeling**
+
+            Bob Shell has analyzed this issue and applied the following label(s): ${LABELS_LIST}
+
+            These labels were selected based on the issue content and available label descriptions. If you believe the labels are incorrect, feel free to modify them manually."
+          fi
+      
+      - name: Handle Errors
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ steps.issue.outputs.issue_number }} \
+            --body "⚠️ **Automatic Labeling Failed**
+
+            Bob Shell encountered an error while trying to label this issue. Please add labels manually.
+            
+            Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
