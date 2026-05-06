@@ -237,35 +237,40 @@ jobs:
       
       - name: Execute Bob to Address Review Comments
         if: steps.get_pr.outputs.should_run == 'true'
+        uses: nick-invision/retry@v3
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 10
+          command: |
+            # Read review comments
+            REVIEW_COMMENTS=$(cat /tmp/review_comments.txt)
+            
+            # Create a comprehensive prompt for Bob Shell
+            PROMPT="Address PR review comments for PR #${{ steps.pr_details.outputs.pr_number }}: ${{ steps.get_pr.outputs.pr_title }}
+
+            Repository: ${{ github.repository }}
+            Reviewer: ${{ steps.get_pr.outputs.reviewer }}
+
+            Review Comments:
+            ${REVIEW_COMMENTS}
+
+            Please analyze all the review comments above and make the necessary code changes to address each point of feedback.
+            For each comment:
+            1. Understand the concern or suggestion
+            2. Make the appropriate code changes
+            3. Ensure the changes follow best practices
+            4. Make sure all related code is updated consistently
+
+            Be thorough and address every comment. If a comment is unclear or requires clarification, make your best judgment based on the context."
+
+            # --accept-license: required on first run in a fresh CI environment
+            # --yolo: required to enable file writing (disabled by default)
+            bob --accept-license --yolo -p "${PROMPT}"
         env:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
           PR_NUMBER: ${{ steps.pr_details.outputs.pr_number }}
           GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
-        run: |
-          # Read review comments
-          REVIEW_COMMENTS=$(cat /tmp/review_comments.txt)
-          
-          # Create a comprehensive prompt for Bob Shell
-          PROMPT="Address PR review comments for PR #${PR_NUMBER}: ${{ steps.get_pr.outputs.pr_title }}
-
-          Repository: ${{ github.repository }}
-          Reviewer: ${{ steps.get_pr.outputs.reviewer }}
-
-          Review Comments:
-          ${REVIEW_COMMENTS}
-
-          Please analyze all the review comments above and make the necessary code changes to address each point of feedback.
-          For each comment:
-          1. Understand the concern or suggestion
-          2. Make the appropriate code changes
-          3. Ensure the changes follow best practices
-          4. Make sure all related code is updated consistently
-
-          Be thorough and address every comment. If a comment is unclear or requires clarification, make your best judgment based on the context."
-
-          # --accept-license: required on first run in a fresh CI environment
-          # --yolo: required to enable file writing (disabled by default)
-          bob --accept-license --yolo -p "${PROMPT}"
       
       - name: Check for Changes
         if: steps.get_pr.outputs.should_run == 'true'
