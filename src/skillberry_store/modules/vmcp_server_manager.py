@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 from skillberry_store.modules.vmcp_server import VirtualMcpServer
 from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.modules.lookup_index import build_lookup_context
+from skillberry_store.modules.lookup_cache import build_lookup_cache
 from skillberry_store.tools.configure import (
     get_skills_directory,
     get_snippets_directory,
@@ -198,13 +198,13 @@ class VirtualMcpServerManager:
                                     snippets_handler = FileHandler(
                                         get_snippets_directory()
                                     )
-                                    lookup_context = build_lookup_context(
+                                    lookup_cache = build_lookup_cache(
                                         skills_handler=skills_handler,
                                         tools_handler=tools_handler,
                                         snippets_handler=snippets_handler,
                                     )
 
-                                    skill_dict = lookup_context.skills_by_uuid.get(
+                                    skill_dict = lookup_cache.skills_by_uuid.get(
                                         skill_uuid
                                     )
                                     skill_tool_uuids = (
@@ -224,7 +224,7 @@ class VirtualMcpServerManager:
                                         )
 
                                     for tool_uuid in skill_tool_uuids:
-                                        tool_dict = lookup_context.tools_by_uuid.get(
+                                        tool_dict = lookup_cache.tools_by_uuid.get(
                                             tool_uuid
                                         )
                                         tool_name = (
@@ -238,7 +238,7 @@ class VirtualMcpServerManager:
 
                                     for snippet_uuid in skill_snippet_uuids:
                                         snippet_dict = (
-                                            lookup_context.snippets_by_uuid.get(
+                                            lookup_cache.snippets_by_uuid.get(
                                                 snippet_uuid
                                             )
                                         )

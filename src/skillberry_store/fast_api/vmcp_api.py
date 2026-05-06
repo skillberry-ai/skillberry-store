@@ -10,7 +10,7 @@ from prometheus_client import Counter, Histogram
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.description import Description
-from skillberry_store.modules.lookup_index import build_lookup_context
+from skillberry_store.modules.lookup_cache import build_lookup_cache
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
 from skillberry_store.schemas.vmcp_schema import VmcpSchema
@@ -152,13 +152,13 @@ def register_vmcp_api(
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
                 snippets_handler = FileHandler(get_snippets_directory())
-                lookup_context = build_lookup_context(
+                lookup_cache = build_lookup_cache(
                     skills_handler=skills_handler,
                     tools_handler=tools_handler,
                     snippets_handler=snippets_handler,
                 )
 
-                skill_dict = lookup_context.skills_by_uuid.get(vmcp.skill_uuid)
+                skill_dict = lookup_cache.skills_by_uuid.get(vmcp.skill_uuid)
                 if not skill_dict:
                     logger.warning(f"No skill found for skill_uuid: {vmcp.skill_uuid}")
                 else:
@@ -169,7 +169,7 @@ def register_vmcp_api(
                     )
 
                     for tool_uuid in skill_tool_uuids:
-                        tool_dict = lookup_context.tools_by_uuid.get(tool_uuid)
+                        tool_dict = lookup_cache.tools_by_uuid.get(tool_uuid)
                         tool_name = tool_dict.get("name") if tool_dict else None
                         if tool_name:
                             tool_names.append(tool_name)
@@ -178,7 +178,7 @@ def register_vmcp_api(
                             )
 
                     for snippet_uuid in skill_snippet_uuids:
-                        snippet_dict = lookup_context.snippets_by_uuid.get(snippet_uuid)
+                        snippet_dict = lookup_cache.snippets_by_uuid.get(snippet_uuid)
                         snippet_name = (
                             snippet_dict.get("name") if snippet_dict else None
                         )
@@ -473,18 +473,18 @@ def register_vmcp_api(
                 # Load the skill to get tool UUIDs
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
-                lookup_context = build_lookup_context(
+                lookup_cache = build_lookup_cache(
                     skills_handler=skills_handler,
                     tools_handler=tools_handler,
                 )
 
-                skill_dict = lookup_context.skills_by_uuid.get(vmcp.skill_uuid)
+                skill_dict = lookup_cache.skills_by_uuid.get(vmcp.skill_uuid)
                 skill_tool_uuids = (
                     skill_dict.get("tool_uuids", []) if skill_dict else []
                 )
 
                 for tool_uuid in skill_tool_uuids:
-                    tool_dict = lookup_context.tools_by_uuid.get(tool_uuid)
+                    tool_dict = lookup_cache.tools_by_uuid.get(tool_uuid)
                     tool_name = tool_dict.get("name") if tool_dict else None
                     if tool_name:
                         tool_names.append(tool_name)
@@ -584,13 +584,13 @@ def register_vmcp_api(
                 skills_handler = FileHandler(get_skills_directory())
                 tools_handler = FileHandler(get_tools_directory())
                 snippets_handler = FileHandler(get_snippets_directory())
-                lookup_context = build_lookup_context(
+                lookup_cache = build_lookup_cache(
                     skills_handler=skills_handler,
                     tools_handler=tools_handler,
                     snippets_handler=snippets_handler,
                 )
 
-                skill_dict = lookup_context.skills_by_uuid.get(skill_uuid)
+                skill_dict = lookup_cache.skills_by_uuid.get(skill_uuid)
                 skill_tool_uuids = (
                     skill_dict.get("tool_uuids", []) if skill_dict else []
                 )
@@ -604,13 +604,13 @@ def register_vmcp_api(
                     )
 
                 for tool_uuid in skill_tool_uuids:
-                    tool_dict = lookup_context.tools_by_uuid.get(tool_uuid)
+                    tool_dict = lookup_cache.tools_by_uuid.get(tool_uuid)
                     tool_name = tool_dict.get("name") if tool_dict else None
                     if tool_name:
                         tool_names.append(tool_name)
 
                 for snippet_uuid in skill_snippet_uuids:
-                    snippet_dict = lookup_context.snippets_by_uuid.get(snippet_uuid)
+                    snippet_dict = lookup_cache.snippets_by_uuid.get(snippet_uuid)
                     snippet_name = snippet_dict.get("name") if snippet_dict else None
                     if snippet_name:
                         snippet_names.append(snippet_name)

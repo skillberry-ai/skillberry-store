@@ -11,7 +11,7 @@ from prometheus_client import Counter
 
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.file_executor import detect_tool_dependencies
-from skillberry_store.modules.lookup_index import build_lookup_context
+from skillberry_store.modules.lookup_cache import build_lookup_cache
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
@@ -159,7 +159,7 @@ def register_skills_api(
         list_skills_counter.inc()
 
         try:
-            lookup_context = build_lookup_context(
+            lookup_cache = build_lookup_cache(
                 tools_handler=tools_handler,
                 snippets_handler=snippets_handler,
             )
@@ -174,8 +174,8 @@ def register_skills_api(
                         # Populate full tool and snippet objects
                         skill_dict = populate_skill_objects(
                             skill_dict,
-                            lookup_context.tools_by_uuid,
-                            lookup_context.snippets_by_uuid,
+                            lookup_cache.tools_by_uuid,
+                            lookup_cache.snippets_by_uuid,
                         )
                     else:
                         continue
@@ -209,7 +209,7 @@ def register_skills_api(
         get_skill_counter.inc()
 
         try:
-            lookup_context = build_lookup_context(
+            lookup_cache = build_lookup_cache(
                 tools_handler=tools_handler,
                 snippets_handler=snippets_handler,
             )
@@ -223,8 +223,8 @@ def register_skills_api(
             # Populate full tool and snippet objects
             skill_dict = populate_skill_objects(
                 skill_dict,
-                lookup_context.tools_by_uuid,
-                lookup_context.snippets_by_uuid,
+                lookup_cache.tools_by_uuid,
+                lookup_cache.snippets_by_uuid,
             )
             logger.info(f"Retrieved skill: {name}")
             return skill_dict
@@ -658,7 +658,7 @@ def register_skills_api(
                 )
             skill_dict = json.loads(content)
 
-            lookup_context = build_lookup_context(
+            lookup_cache = build_lookup_cache(
                 tools_handler=tools_handler,
                 snippets_handler=snippets_handler,
             )
@@ -668,7 +668,7 @@ def register_skills_api(
             tool_modules = {}
             if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
                 for tool_uuid in skill_dict["tool_uuids"]:
-                    tool_dict = lookup_context.tools_by_uuid.get(tool_uuid)
+                    tool_dict = lookup_cache.tools_by_uuid.get(tool_uuid)
                     if not tool_dict:
                         continue
 
@@ -693,7 +693,7 @@ def register_skills_api(
             snippets = []
             if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
                 for snippet_uuid in skill_dict["snippet_uuids"]:
-                    snippet_dict = lookup_context.snippets_by_uuid.get(snippet_uuid)
+                    snippet_dict = lookup_cache.snippets_by_uuid.get(snippet_uuid)
                     if snippet_dict:
                         snippets.append(snippet_dict)
 

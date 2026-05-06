@@ -3,10 +3,10 @@ import json
 import pytest
 
 from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.modules.lookup_index import (
-    LookupContext,
-    build_lookup_context,
-    build_uuid_index,
+from skillberry_store.modules.lookup_cache import (
+    LookupCache,
+    build_lookup_cache,
+    build_uuid_cache,
     load_json_objects,
 )
 
@@ -45,14 +45,14 @@ def test_load_json_objects_only_loads_valid_json_dicts(root_handler):
     assert objects == [{"uuid": "u1", "name": "tool1"}]
 
 
-def test_build_uuid_index_skips_objects_without_uuid():
+def test_build_uuid_cache_skips_objects_without_uuid():
     objects = [
         {"uuid": "s1", "name": "skill-one"},
         {"name": "missing-uuid"},
         {"uuid": "s2", "name": "skill-two"},
     ]
 
-    result = build_uuid_index(objects, "skill")
+    result = build_uuid_cache(objects, "skill")
 
     assert result == {
         "s1": {"uuid": "s1", "name": "skill-one"},
@@ -60,7 +60,7 @@ def test_build_uuid_index_skips_objects_without_uuid():
     }
 
 
-def test_build_lookup_context_with_partial_handlers(tools_handler, snippets_handler):
+def test_build_lookup_cache_with_partial_handlers(tools_handler, snippets_handler):
     tools_handler.write_file_content(
         "tool1.json",
         json.dumps({"uuid": "tool-1", "name": "tool-one"}),
@@ -70,20 +70,20 @@ def test_build_lookup_context_with_partial_handlers(tools_handler, snippets_hand
         json.dumps({"uuid": "snippet-1", "name": "snippet-one"}),
     )
 
-    context = build_lookup_context(
+    cache = build_lookup_cache(
         tools_handler=tools_handler,
         snippets_handler=snippets_handler,
     )
 
-    assert isinstance(context, LookupContext)
-    assert context.skills_by_uuid == {}
-    assert context.tools_by_uuid == {"tool-1": {"uuid": "tool-1", "name": "tool-one"}}
-    assert context.snippets_by_uuid == {
+    assert isinstance(cache, LookupCache)
+    assert cache.skills_by_uuid == {}
+    assert cache.tools_by_uuid == {"tool-1": {"uuid": "tool-1", "name": "tool-one"}}
+    assert cache.snippets_by_uuid == {
         "snippet-1": {"uuid": "snippet-1", "name": "snippet-one"}
     }
 
 
-def test_build_lookup_context_indexes_all_requested_stores(
+def test_build_lookup_cache_indexes_all_requested_stores(
     skills_handler, tools_handler, snippets_handler
 ):
     skills_handler.write_file_content(
@@ -99,15 +99,15 @@ def test_build_lookup_context_indexes_all_requested_stores(
         json.dumps({"uuid": "snippet-1", "name": "snippet-one"}),
     )
 
-    context = build_lookup_context(
+    cache = build_lookup_cache(
         skills_handler=skills_handler,
         tools_handler=tools_handler,
         snippets_handler=snippets_handler,
     )
 
-    assert context.skills_by_uuid["skill-1"]["name"] == "skill-one"
-    assert context.tools_by_uuid["tool-1"]["name"] == "tool-one"
-    assert context.snippets_by_uuid["snippet-1"]["name"] == "snippet-one"
+    assert cache.skills_by_uuid["skill-1"]["name"] == "skill-one"
+    assert cache.tools_by_uuid["tool-1"]["name"] == "tool-one"
+    assert cache.snippets_by_uuid["snippet-1"]["name"] == "snippet-one"
 
 
 # Made with Bob

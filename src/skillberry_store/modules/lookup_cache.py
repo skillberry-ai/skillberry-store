@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class LookupContext:
+class LookupCache:
     skills_by_uuid: Dict[str, dict] = field(default_factory=dict)
     tools_by_uuid: Dict[str, dict] = field(default_factory=dict)
     snippets_by_uuid: Dict[str, dict] = field(default_factory=dict)
@@ -49,9 +49,9 @@ def load_json_objects(handler: FileHandler, object_label: str) -> List[dict]:
     return objects
 
 
-def build_uuid_index(objects: List[dict], object_label: str) -> Dict[str, dict]:
-    """Build a UUID-to-object map from a list of parsed JSON objects."""
-    uuid_index: Dict[str, dict] = {}
+def build_uuid_cache(objects: List[dict], object_label: str) -> Dict[str, dict]:
+    """Build a UUID-to-object cache from a list of parsed JSON objects."""
+    uuid_cache: Dict[str, dict] = {}
 
     for obj in objects:
         object_uuid = obj.get("uuid")
@@ -60,38 +60,38 @@ def build_uuid_index(objects: List[dict], object_label: str) -> Dict[str, dict]:
                 f"Skipping {object_label} object without uuid: {obj.get('name', '<unknown>')}"
             )
             continue
-        uuid_index[object_uuid] = obj
+        uuid_cache[object_uuid] = obj
 
-    return uuid_index
+    return uuid_cache
 
 
-def build_lookup_context(
+def build_lookup_cache(
     skills_handler: Optional[FileHandler] = None,
     tools_handler: Optional[FileHandler] = None,
     snippets_handler: Optional[FileHandler] = None,
-) -> LookupContext:
-    """Build UUID indexes for the provided stores."""
-    context = LookupContext()
+) -> LookupCache:
+    """Build UUID caches for the provided stores."""
+    cache = LookupCache()
 
     if skills_handler is not None:
-        context.skills_by_uuid = build_uuid_index(
+        cache.skills_by_uuid = build_uuid_cache(
             load_json_objects(skills_handler, "skill"),
             "skill",
         )
 
     if tools_handler is not None:
-        context.tools_by_uuid = build_uuid_index(
+        cache.tools_by_uuid = build_uuid_cache(
             load_json_objects(tools_handler, "tool"),
             "tool",
         )
 
     if snippets_handler is not None:
-        context.snippets_by_uuid = build_uuid_index(
+        cache.snippets_by_uuid = build_uuid_cache(
             load_json_objects(snippets_handler, "snippet"),
             "snippet",
         )
 
-    return context
+    return cache
 
 
 # Made with Bob
