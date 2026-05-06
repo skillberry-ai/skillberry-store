@@ -40,7 +40,7 @@
 #
 # ============================================================================
 
-name: Auto-Label Issues
+name: Label New Issues
 
 on:
   issues:
