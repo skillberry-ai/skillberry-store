@@ -239,7 +239,10 @@ def read_from_folder(folder_path: str) -> List[Dict[str, str]]:
 
 
 def import_anthropic_skill(
-    source_type: str, source_data: Any, snippet_mode: str = "file", treat_all_as_documents: bool = False
+    source_type: str,
+    source_data: Any,
+    snippet_mode: str = "file",
+    treat_all_as_documents: bool = False,
 ) -> Tuple[str, str, List[Any], List[Any], List[str]]:
     """Import Anthropic skill from various sources.
 
@@ -317,10 +320,12 @@ def import_anthropic_skill(
         # When treating all as documents, import all files as snippets (no code parsing)
         tools = []
         ignored_files = []
-        
+
         # Import all files as snippets based on snippet_mode
         split_by_paragraph = snippet_mode == "paragraph"
-        snippets = parse_text_files(files, skill_name, split_by_paragraph, include_code_files=True)
+        snippets = parse_text_files(
+            files, skill_name, split_by_paragraph, include_code_files=True
+        )
     elif snippet_mode == "file":
         # In file mode, import all non-code files as snippets
         code_parse_result = parse_code_files(files, skill_name)

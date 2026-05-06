@@ -229,7 +229,10 @@ def is_text_file(file_name: str) -> bool:
 
 
 def parse_text_files(
-    files: List[Dict[str, str]], skill_name: str, split_by_paragraph: bool = True, include_code_files: bool = False
+    files: List[Dict[str, str]],
+    skill_name: str,
+    split_by_paragraph: bool = True,
+    include_code_files: bool = False,
 ) -> List[ParsedSnippet]:
     """Parse multiple text files from a skill.
 
