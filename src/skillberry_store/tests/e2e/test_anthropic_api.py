@@ -357,3 +357,148 @@ async def test_import_preserves_file_tags(run_sbs):
                 tags = snippet.get('tags', [])
                 file_tags = [t for t in tags if t.startswith('file:')]
                 assert len(file_tags) > 0, f"Snippet {snippet['name']} missing file: tag"
+
+
+@pytest.mark.asyncio
+async def test_import_treat_all_as_documents(run_sbs):
+    """Test importing with treat_all_as_documents flag - all files become snippets."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Create test ZIP
+        zip_content = create_test_zip()
+        
+        # Prepare form data with treat_all_as_documents=true
+        files = {
+            'zip_file': ('test_all_docs.zip', zip_content, 'application/zip')
+        }
+        data = {
+            'source_type': 'zip',
+            'snippet_mode': 'file',
+            'treat_all_as_documents': 'true'
+        }
+        
+        # Import the skill
+        response = await client.post(
+            f"{BASE_URL}/skills/import-anthropic",
+            files=files,
+            data=data
+        )
+        
+        assert response.status_code == 200, f"Import failed: {response.text}"
+        result = response.json()
+        
+        assert result['success'] is True
+        # When treating all as documents, no tools should be created
+        assert result['tools_created'] == 0, "Expected 0 tools when treating all as documents"
+        # All files should be imported as snippets (including code files)
+        assert result['snippets_created'] >= 4, "Expected at least 4 snippets (SKILL.md, README.md, utils.py, scripts.sh)"
+        
+        # Verify the skill was created
+        skill_response = await client.get(f"{BASE_URL}/skills/{result['skill_name']}")
+        assert skill_response.status_code == 200
+        skill = skill_response.json()
+        
+        # Verify no tools exist
+        assert len(skill.get('tools', [])) == 0, "No tools should exist when treating all as documents"
+        
+        # Verify snippets include code files
+        snippets = skill.get('snippets', [])
+        assert len(snippets) >= 4, "Expected at least 4 snippets"
+        
+        # Check that code files are present as snippets
+        snippet_names = [s['name'] for s in snippets]
+        # At least one Python file should be a snippet
+        py_snippets = [name for name in snippet_names if 'utils' in name.lower() or name.endswith('.py')]
+        assert len(py_snippets) > 0, "Expected Python file to be imported as snippet"
+
+
+@pytest.mark.asyncio
+async def test_import_treat_all_as_documents_paragraph_mode(run_sbs):
+    """Test importing with treat_all_as_documents and paragraph mode."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Create test ZIP
+        zip_content = create_test_zip()
+        
+        # Prepare form data with treat_all_as_documents=true and paragraph mode
+        files = {
+            'zip_file': ('test_all_docs_para.zip', zip_content, 'application/zip')
+        }
+        data = {
+            'source_type': 'zip',
+            'snippet_mode': 'paragraph',
+            'treat_all_as_documents': 'true'
+        }
+        
+        # Import the skill
+        response = await client.post(
+            f"{BASE_URL}/skills/import-anthropic",
+            files=files,
+            data=data
+        )
+        
+        assert response.status_code == 200, f"Import failed: {response.text}"
+        result = response.json()
+        
+        assert result['success'] is True
+        # When treating all as documents, no tools should be created
+        assert result['tools_created'] == 0, "Expected 0 tools when treating all as documents"
+        # In paragraph mode, files should be split into multiple snippets
+        assert result['snippets_created'] > 4, "Expected more snippets in paragraph mode"
+
+
+@pytest.mark.asyncio
+async def test_import_export_roundtrip_with_treat_all_as_documents(run_sbs):
+    """Test that import -> export -> import with treat_all_as_documents produces consistent results."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Step 1: Import original skill with treat_all_as_documents
+        zip_content = create_test_zip()
+        files = {
+            'zip_file': ('roundtrip_docs.zip', zip_content, 'application/zip')
+        }
+        data = {
+            'source_type': 'zip',
+            'snippet_mode': 'file',
+            'treat_all_as_documents': 'true'
+        }
+        
+        import1_response = await client.post(
+            f"{BASE_URL}/skills/import-anthropic",
+            files=files,
+            data=data
+        )
+        assert import1_response.status_code == 200
+        import1_result = import1_response.json()
+        skill_name_1 = import1_result['skill_name']
+        tools_count_1 = import1_result['tools_created']
+        snippets_count_1 = import1_result['snippets_created']
+        
+        # Verify no tools were created
+        assert tools_count_1 == 0, "Expected 0 tools in first import"
+        
+        # Step 2: Export the skill
+        export_response = await client.get(
+            f"{BASE_URL}/skills/{skill_name_1}/export-anthropic"
+        )
+        assert export_response.status_code == 200
+        exported_zip = export_response.content
+        
+        # Step 3: Delete the original skill
+        delete_response = await client.delete(f"{BASE_URL}/skills/{skill_name_1}")
+        assert delete_response.status_code == 200
+        
+        # Step 4: Re-import from exported ZIP with treat_all_as_documents
+        files2 = {
+            'zip_file': ('roundtrip_docs_reimport.zip', exported_zip, 'application/zip')
+        }
+        
+        import2_response = await client.post(
+            f"{BASE_URL}/skills/import-anthropic",
+            files=files2,
+            data=data
+        )
+        assert import2_response.status_code == 200
+        import2_result = import2_response.json()
+        
+        # Verify counts match
+        assert import2_result['tools_created'] == tools_count_1, "Tool count should match (0)"
+        # Snippets should be similar (may differ slightly due to SKILL.md handling)
+        assert import2_result['snippets_created'] >= snippets_count_1 - 1, "Snippet count should be similar"
