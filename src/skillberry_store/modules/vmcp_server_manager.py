@@ -228,9 +228,7 @@ class VirtualMcpServerManager:
                                             tool_uuid
                                         )
                                         tool_name = (
-                                            tool_dict.get("name")
-                                            if tool_dict
-                                            else None
+                                            tool_dict.get("name") if tool_dict else None
                                         )
                                         if tool_name:
                                             tool_names.append(tool_name)

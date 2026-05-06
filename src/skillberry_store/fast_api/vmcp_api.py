@@ -479,7 +479,9 @@ def register_vmcp_api(
                 )
 
                 skill_dict = lookup_context.skills_by_uuid.get(vmcp.skill_uuid)
-                skill_tool_uuids = skill_dict.get("tool_uuids", []) if skill_dict else []
+                skill_tool_uuids = (
+                    skill_dict.get("tool_uuids", []) if skill_dict else []
+                )
 
                 for tool_uuid in skill_tool_uuids:
                     tool_dict = lookup_context.tools_by_uuid.get(tool_uuid)
@@ -589,7 +591,9 @@ def register_vmcp_api(
                 )
 
                 skill_dict = lookup_context.skills_by_uuid.get(skill_uuid)
-                skill_tool_uuids = skill_dict.get("tool_uuids", []) if skill_dict else []
+                skill_tool_uuids = (
+                    skill_dict.get("tool_uuids", []) if skill_dict else []
+                )
                 skill_snippet_uuids = (
                     skill_dict.get("snippet_uuids", []) if skill_dict else []
                 )

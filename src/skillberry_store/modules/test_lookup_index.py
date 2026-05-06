@@ -33,7 +33,9 @@ def snippets_handler(tmp_path):
 
 def test_load_json_objects_only_loads_valid_json_dicts(root_handler):
     handler = root_handler
-    handler.write_file_content("tool1.json", json.dumps({"uuid": "u1", "name": "tool1"}))
+    handler.write_file_content(
+        "tool1.json", json.dumps({"uuid": "u1", "name": "tool1"})
+    )
     handler.write_file_content("notes.txt", "not json and should be ignored")
     handler.write_file_content("list.json", json.dumps([1, 2, 3]))
     handler.write_file_content("broken.json", "{not-valid-json")
@@ -75,9 +77,7 @@ def test_build_lookup_context_with_partial_handlers(tools_handler, snippets_hand
 
     assert isinstance(context, LookupContext)
     assert context.skills_by_uuid == {}
-    assert context.tools_by_uuid == {
-        "tool-1": {"uuid": "tool-1", "name": "tool-one"}
-    }
+    assert context.tools_by_uuid == {"tool-1": {"uuid": "tool-1", "name": "tool-one"}}
     assert context.snippets_by_uuid == {
         "snippet-1": {"uuid": "snippet-1", "name": "snippet-one"}
     }
@@ -108,5 +108,6 @@ def test_build_lookup_context_indexes_all_requested_stores(
     assert context.skills_by_uuid["skill-1"]["name"] == "skill-one"
     assert context.tools_by_uuid["tool-1"]["name"] == "tool-one"
     assert context.snippets_by_uuid["snippet-1"]["name"] == "snippet-one"
+
 
 # Made with Bob
