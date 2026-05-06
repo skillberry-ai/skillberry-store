@@ -225,8 +225,35 @@ jobs:
           
           echo "Applying ${LABEL_COUNT} label(s) to issue #${{ steps.issue.outputs.issue_number }}"
           
-          # Convert JSON array to space-separated list for gh cli
-          LABELS_LIST=$(echo "${LABELS_JSON}" | jq -r '.[]' | tr '\n' ',' | sed 's/,$//')
+          # Get list of valid repository labels
+          REPO_LABELS=$(cat /tmp/repo_labels.json | jq -r '.[].name')
+          
+          # Validate and filter selected labels
+          VALID_LABELS=()
+          INVALID_LABELS=()
+          
+          while IFS= read -r label; do
+            if echo "${REPO_LABELS}" | grep -qx "${label}"; then
+              VALID_LABELS+=("${label}")
+            else
+              INVALID_LABELS+=("${label}")
+            fi
+          done < <(echo "${LABELS_JSON}" | jq -r '.[]')
+          
+          # Report invalid labels
+          if [ ${#INVALID_LABELS[@]} -gt 0 ]; then
+            echo "⚠️ Warning: The following labels don't exist in the repository and will be skipped:"
+            printf '%s\n' "${INVALID_LABELS[@]}"
+          fi
+          
+          # Apply valid labels
+          if [ ${#VALID_LABELS[@]} -eq 0 ]; then
+            echo "No valid labels to apply"
+            exit 0
+          fi
+          
+          # Convert array to comma-separated list for gh cli
+          LABELS_LIST=$(IFS=,; echo "${VALID_LABELS[*]}")
           
           # Apply labels using gh cli
           gh issue edit ${{ steps.issue.outputs.issue_number }} \
