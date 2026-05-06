@@ -229,7 +229,7 @@ def is_text_file(file_name: str) -> bool:
 
 
 def parse_text_files(
-    files: List[Dict[str, str]], skill_name: str, split_by_paragraph: bool = True
+    files: List[Dict[str, str]], skill_name: str, split_by_paragraph: bool = True, include_code_files: bool = False
 ) -> List[ParsedSnippet]:
     """Parse multiple text files from a skill.
 
@@ -237,6 +237,7 @@ def parse_text_files(
         files: List of file dictionaries with 'name', 'path', and 'content' keys
         skill_name: The skill name
         split_by_paragraph: Whether to split by paragraph or keep as single snippets
+        include_code_files: If True, also process code files (.py, .sh, etc.) as text
 
     Returns:
         List of ParsedSnippet objects
@@ -244,9 +245,16 @@ def parse_text_files(
     all_snippets = []
 
     for file in files:
-        # In paragraph mode, only process text files
-        # In file mode (split_by_paragraph=False), process all files
-        should_process = not split_by_paragraph or is_text_file(file["name"])
+        # Determine if file should be processed
+        if include_code_files:
+            # Process all files when include_code_files is True
+            should_process = True
+        elif split_by_paragraph:
+            # In paragraph mode, only process text files (not code files)
+            should_process = is_text_file(file["name"])
+        else:
+            # In file mode, process all files
+            should_process = True
 
         if should_process:
             try:

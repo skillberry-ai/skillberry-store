@@ -239,7 +239,7 @@ def read_from_folder(folder_path: str) -> List[Dict[str, str]]:
 
 
 def import_anthropic_skill(
-    source_type: str, source_data: Any, snippet_mode: str = "file"
+    source_type: str, source_data: Any, snippet_mode: str = "file", treat_all_as_documents: bool = False
 ) -> Tuple[str, str, List[Any], List[Any], List[str]]:
     """Import Anthropic skill from various sources.
 
@@ -247,6 +247,7 @@ def import_anthropic_skill(
         source_type: 'url', 'zip', or 'folder'
         source_data: URL string, ZIP bytes, or list of file dicts
         snippet_mode: 'file' or 'paragraph'
+        treat_all_as_documents: If True, treat all files (including code) as document snippets
 
     Returns:
         Tuple of (skill_name, skill_description, tools, snippets, ignored_files)
@@ -307,12 +308,20 @@ def import_anthropic_skill(
         else f"Anthropic skill imported from {source_type}"
     )
 
-    # Step 3: Parse files based on snippet mode
+    # Step 3: Parse files based on snippet mode and treat_all_as_documents flag
     snippets: List[Any]
     tools: List[Any]
     ignored_files: List[str]
 
-    if snippet_mode == "file":
+    if treat_all_as_documents:
+        # When treating all as documents, import all files as snippets (no code parsing)
+        tools = []
+        ignored_files = []
+        
+        # Import all files as snippets based on snippet_mode
+        split_by_paragraph = snippet_mode == "paragraph"
+        snippets = parse_text_files(files, skill_name, split_by_paragraph, include_code_files=True)
+    elif snippet_mode == "file":
         # In file mode, import all non-code files as snippets
         code_parse_result = parse_code_files(files, skill_name)
         tools = code_parse_result["tools"]
