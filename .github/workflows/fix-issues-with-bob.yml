@@ -110,10 +110,24 @@ jobs:
         id: issue
         run: |
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-          echo "issue_title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
-          echo "issue_body<<EOF" >> $GITHUB_OUTPUT
-          echo "${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Properly escape issue title for GitHub Actions output
+          ISSUE_TITLE=$(cat <<'TITLE_EOF'
+          ${{ github.event.issue.title }}
+          TITLE_EOF
+          )
+          echo "issue_title<<TITLE_EOF" >> $GITHUB_OUTPUT
+          echo "$ISSUE_TITLE" >> $GITHUB_OUTPUT
+          echo "TITLE_EOF" >> $GITHUB_OUTPUT
+          
+          # Properly escape issue body for GitHub Actions output
+          ISSUE_BODY=$(cat <<'BODY_EOF'
+          ${{ github.event.issue.body }}
+          BODY_EOF
+          )
+          echo "issue_body<<BODY_EOF" >> $GITHUB_OUTPUT
+          echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
+          echo "BODY_EOF" >> $GITHUB_OUTPUT
       
       - name: Configure Git
         run: |
