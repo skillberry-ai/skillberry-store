@@ -427,24 +427,25 @@ class SkillsImporter:
                 # Generate UUID
                 skill_uuid = str(uuid.uuid4())
                 
-                # Extract description from content
+                # Extract description from SKILL.md content
                 content = skill['content']
-                description = self._extract_description(content, skill['file_type'])
+                description = self._extract_description(content, 'md')  # All skills are SKILL.md files
                 
-                # Create skill schema
+                # Create skill schema matching ManifestSchema/SkillSchema
                 skill_schema = {
                     'uuid': skill_uuid,
                     'name': f"{skill['repo_name']}__{skill['skill_name']}",
                     'description': description,
                     'tool_uuids': [],  # Will be populated if we extract tools
                     'snippet_uuids': [],  # Will be populated if we extract snippets
-                    'lifecycle_state': 'active',
+                    'state': 'approved',  # Use 'state' not 'lifecycle_state'
                     'created_at': datetime.now(timezone.utc).isoformat(),
-                    'updated_at': datetime.now(timezone.utc).isoformat(),
-                    'metadata': {
+                    'modified_at': datetime.now(timezone.utc).isoformat(),  # Use 'modified_at' not 'updated_at'
+                    'extra': {  # Use 'extra' not 'metadata'
                         'source': skill['repo_source'],
                         'original_path': skill['skill_path'],
-                        'file_type': skill['file_type']
+                        'skill_folder': skill['skill_folder'],
+                        'file_type': 'md'  # All skills are SKILL.md files
                     }
                 }
                 
@@ -493,67 +494,89 @@ class SkillsImporter:
         # Default: first 200 chars
         return content[:200].strip()
     
-    # ========== PHASE 5: Import via API ==========
+    # ========== PHASE 5: Import via Anthropic API ==========
     
-    def import_skills_via_api(self, transformed_skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def import_skills_via_api(self, discovered_skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Phase 5: Import skills via skillberry-store API
+        Phase 5: Import skills via skillberry-store Anthropic import API
+        
+        Uses the /skills/import-anthropic endpoint with folder source type.
+        Each skill folder is imported separately.
         
         Args:
-            transformed_skills: List of transformed skills
+            discovered_skills: List of discovered skills from Phase 3
             
         Returns:
             List of import results
         """
         logger.info("\n" + "=" * 60)
-        logger.info("PHASE 5: Importing skills via API")
+        logger.info("PHASE 5: Importing skills via Anthropic API")
         logger.info("=" * 60)
+        logger.info("Using /skills/import-anthropic endpoint with folder source")
         
         results = []
         successful = 0
         failed = 0
         
-        for i, skill in enumerate(transformed_skills, 1):
-            logger.info(f"\n[{i}/{len(transformed_skills)}] Importing {skill['name']}...")
+        for i, skill in enumerate(discovered_skills, 1):
+            skill_name = skill['skill_name']
+            skill_folder_path = skill['full_path']  # Full path to skill folder
+            
+            logger.info(f"\n[{i}/{len(discovered_skills)}] Importing {skill_name}...")
+            logger.info(f"  Folder: {skill_folder_path}")
             
             try:
-                # Import skill
-                url = f"{self.args.api_url}/skills/"
+                # Use the Anthropic import API endpoint
+                url = f"{self.args.api_url}/skills/import-anthropic"
+                
+                # Prepare form data
+                data = {
+                    'source_type': 'folder',
+                    'folder_path': skill_folder_path,
+                    'snippet_mode': 'file'  # Import text files as snippets
+                }
+                
                 response = requests.post(
                     url,
-                    json=skill,
+                    data=data,
                     timeout=self.args.timeout
                 )
                 
-                if response.status_code in [200, 201]:
+                if response.status_code == 200:
+                    result = response.json()
                     logger.info(f"  ✓ Successfully imported")
+                    logger.info(f"    Skill: {result.get('skill_name', 'N/A')}")
+                    logger.info(f"    Tools: {result.get('tools_created', 0)}")
+                    logger.info(f"    Snippets: {result.get('snippets_created', 0)}")
                     successful += 1
                     results.append({
-                        'skill': skill['name'],
+                        'skill': skill_name,
                         'status': 'success',
-                        'response': response.json()
+                        'response': result
                     })
                 else:
                     logger.error(f"  ✗ Failed: {response.status_code} - {response.text}")
                     failed += 1
                     results.append({
-                        'skill': skill['name'],
+                        'skill': skill_name,
                         'status': 'failed',
-                        'error': f"{response.status_code}: {response.text}"
+                        'error': f"{response.status_code}: {response.text}",
+                        'folder_path': skill_folder_path
                     })
                     
             except Exception as e:
                 logger.error(f"  ✗ Error: {e}")
                 failed += 1
                 results.append({
-                    'skill': skill['name'],
+                    'skill': skill_name,
                     'status': 'error',
-                    'error': str(e)
+                    'error': str(e),
+                    'folder_path': skill_folder_path
                 })
         
         logger.info(f"\n{'='*60}")
         logger.info(f"Import Summary:")
-        logger.info(f"  Total: {len(transformed_skills)}")
+        logger.info(f"  Total: {len(discovered_skills)}")
         logger.info(f"  Successful: {successful}")
         logger.info(f"  Failed: {failed}")
         logger.info(f"{'='*60}")
@@ -564,7 +587,7 @@ class SkillsImporter:
             json.dump({
                 'results': results,
                 'summary': {
-                    'total': len(transformed_skills),
+                    'total': len(discovered_skills),
                     'successful': successful,
                     'failed': failed
                 }
@@ -718,16 +741,16 @@ class SkillsImporter:
             # Phase 3: Discover skills
             discovered = self.discover_skills(cloned)
             if not discovered:
-                logger.warning("No skills discovered. Continuing anyway...")
-            
-            # Phase 4: Transform skills
-            transformed = self.transform_skills(discovered)
-            if not transformed:
-                logger.error("No skills transformed. Aborting.")
+                logger.error("No skills discovered. Aborting.")
                 return
             
-            # Phase 5: Import via API
-            results = self.import_skills_via_api(transformed)
+            # Phase 4: Skip transformation - use Anthropic import API directly
+            logger.info("\n" + "=" * 60)
+            logger.info("PHASE 4: Skipped (using Anthropic import API)")
+            logger.info("=" * 60)
+            
+            # Phase 5: Import via Anthropic API
+            results = self.import_skills_via_api(discovered)
             
             # Phase 6: Validate
             validation = self.validate_imports(results)
