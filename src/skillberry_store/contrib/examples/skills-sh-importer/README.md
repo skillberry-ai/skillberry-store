@@ -354,15 +354,6 @@ Total execution time: 123.45 seconds
 
 ## Advanced Configuration
 
-### Environment Variables
-```bash
-# Override SBS URL
-export SKILLBERRY_SBS_URL=http://localhost:9000
-
-# Run script
-python3 download_and_import_skills.py
-```
-
 ### Custom Skill Discovery
 Edit the `discover_skills()` method to add custom search patterns:
 ```python
