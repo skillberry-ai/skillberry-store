@@ -161,7 +161,8 @@ jobs:
             LABEL SELECTION RULES:
             1. Select ALL relevant labels that apply to this issue
             2. Use label descriptions to guide your selection
-            3. For the 'fix-with-bob' label specifically:
+            3. CRITICAL: You MUST ONLY use labels from the AVAILABLE LABELS list above. DO NOT invent or create new labels.
+            4. For the 'fix-with-bob' label specifically:
                - ONLY add it if the issue describes a coding task
                - ONLY add it if the implementation is straightforward and not complex
                - ONLY add it if you believe Bob Shell can fix it with simple code changes
@@ -192,18 +193,37 @@ jobs:
             echo "${RESPONSE}"
             
             # Extract JSON array from response (Bob might add explanation text)
-            # Look for a valid JSON array with quoted strings
-            LABELS_JSON=$(echo "${RESPONSE}" | grep -oP '\["[^"]*"(?:,\s*"[^"]*")*\]' | head -1)
-            
-            # If that fails, try to find any array-like structure and validate it
-            if [ -z "${LABELS_JSON}" ]; then
-              echo "Warning: Could not extract labels JSON with strict pattern, trying fallback..."
-              LABELS_JSON=$(echo "${RESPONSE}" | grep -oP '\[(?:[^\[\]]*)\]' | grep -v 'using tool' | grep -v 'Cost:' | head -1)
+            # First, try to extract from ---output--- section if it exists
+            if echo "${RESPONSE}" | grep -q '---output---'; then
+              LABELS_JSON=$(echo "${RESPONSE}" | sed -n '/---output---/,/---output---/p' | grep -oP '\["[^"]*"(?:,\s*"[^"]*")*\]' | head -1)
+              echo "Extracted from output section: ${LABELS_JSON}"
             fi
             
-            # Final fallback - empty array
-            if [ -z "${LABELS_JSON}" ] || ! echo "${LABELS_JSON}" | jq empty 2>/dev/null; then
-              echo "Warning: Could not extract valid labels JSON from response"
+            # If that didn't work, try to find a valid JSON array with quoted strings
+            if [ -z "${LABELS_JSON}" ]; then
+              echo "Trying to extract JSON array from full response..."
+              # Look for ["..."] pattern and take the last occurrence (most likely to be the final answer)
+              LABELS_JSON=$(echo "${RESPONSE}" | grep -oP '\["[^"]*"(?:,\s*"[^"]*")*\]' | tail -1)
+            fi
+            
+            # Validate the extracted JSON
+            if [ -n "${LABELS_JSON}" ]; then
+              # Remove any trailing text after the closing bracket
+              LABELS_JSON=$(echo "${LABELS_JSON}" | grep -oP '^\[.*?\]')
+              
+              # Validate with jq
+              if ! echo "${LABELS_JSON}" | jq empty 2>/dev/null; then
+                echo "Warning: Extracted JSON is invalid, trying to clean it..."
+                # Try to extract just the array part before any extra text
+                LABELS_JSON=$(echo "${LABELS_JSON}" | sed 's/\]\[.*/]/')
+                
+                if ! echo "${LABELS_JSON}" | jq empty 2>/dev/null; then
+                  echo "Warning: Could not extract valid labels JSON from response"
+                  LABELS_JSON="[]"
+                fi
+              fi
+            else
+              echo "Warning: Could not extract labels JSON from response"
               LABELS_JSON="[]"
             fi
             
