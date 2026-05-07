@@ -5,6 +5,7 @@ import logging
 from io import BytesIO
 import os
 from starlette.responses import PlainTextResponse
+import traceback
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, Type, TypeVar, Annotated, Dict, Any, List, Set, Tuple
@@ -221,10 +222,10 @@ def register_tools_api(
             # Convert tool to JSON and save as tool.json in UUID folder
             tool_handler.write_manifest(tool.uuid.lower(), tool.to_dict())
 
-            # Write description for search capability
-            if tools_descriptions and tool.description and tool.name:
-                tools_descriptions.write_description(tool.name, tool.description)
-                logger.info(f"Tool description saved for: {tool.name}")
+            # Write description for search capability (indexed by UUID)
+            if tools_descriptions and tool.description and tool.uuid:
+                tools_descriptions.write_description(tool.uuid, tool.description)
+                logger.info(f"Tool description saved for: {tool.name} (UUID: {tool.uuid})")
 
             logger.info(f"Tool '{tool.name}' created successfully with UUID {tool.uuid}")
             return {
@@ -255,6 +256,16 @@ def register_tools_api(
         try:
             # Use ResourceHandler to list all tools
             tools = tool_handler.list_all_resources()
+            # Log all tools with their details
+            logger.info(f"Listing {len(tools)} unordered tools")
+            for tool in tools:
+                logger.info(
+                    f"Tool: name={tool.get('name')}, "
+                    f"uuid={tool.get('uuid')}, "
+                    f"created_at={tool.get('created_at')}, "
+                    f"modified_at={tool.get('modified_at')}"
+                )
+            
             
             # Sort by modified_at in descending order (most recent first)
             tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
@@ -262,9 +273,10 @@ def register_tools_api(
             logger.info(f"Listed {len(tools)} tools")
             return tools
         except Exception as e:
-            logger.error(f"Error listing tools: {e}")
+            error_traceback = traceback.format_exc()
+            logger.error(f"Error listing tools: {e}\n{error_traceback}")
             raise HTTPException(
-                status_code=500, detail=f"Error listing tools: {str(e)}"
+                status_code=500, detail=f"Error listing tools: {str(e)}\n{error_traceback}"
             )
 
     @app.get("/tools/{id}", tags=[tags])
@@ -380,25 +392,28 @@ def register_tools_api(
         delete_tool_counter.inc()
 
         try:
-            # Read tool to get name before deletion
+            # Resolve ID to UUID and read tool before deletion
+            tool_uuid = None
             tool_name = None
             try:
-                tool_dict = tool_handler.get_resource_by_id(id)
-                tool_name = tool_dict.get("name")
+                tool_uuid = tool_handler.resolve_id(id)
+                if tool_uuid:
+                    tool_dict = tool_handler.read_manifest(tool_uuid)
+                    tool_name = tool_dict.get("name")
             except Exception as e:
                 logger.warning(f"Could not read tool before deletion: {e}")
 
             # Delete the tool using ResourceHandler (deletes entire UUID subfolder)
             result = tool_handler.delete_resource_by_id(id)
 
-            # Delete the description for the tool
-            if tools_descriptions and tool_name:
+            # Delete the description for the tool (indexed by UUID)
+            if tools_descriptions and tool_uuid:
                 try:
-                    tools_descriptions.delete_description(tool_name)
-                    logger.info(f"Tool description deleted for: {tool_name}")
+                    tools_descriptions.delete_description(tool_uuid)
+                    logger.info(f"Tool description deleted for: {tool_name} (UUID: {tool_uuid})")
                 except Exception as e:
                     logger.warning(
-                        f"Could not delete tool description for '{tool_name}': {e}"
+                        f"Could not delete tool description for UUID '{tool_uuid}': {e}"
                     )
 
             logger.info(f"Tool with ID '{id}' deleted successfully")
@@ -438,11 +453,35 @@ def register_tools_api(
                     detail=f"Tool with ID '{id}' not found"
                 )
 
-            # Update modified timestamp
-            tool.modified_at = datetime.now(timezone.utc).isoformat()
+            # Read existing manifest to preserve uuid and created_at
+            existing_manifest = tool_handler.read_manifest(tool_uuid)
+            
+            # Convert update data to dict
+            update_data = tool.to_dict()
+            
+            # Merge: preserve uuid and created_at from existing, update modified_at
+            merged_manifest = {**existing_manifest, **update_data}
+            merged_manifest["uuid"] = existing_manifest.get("uuid", tool_uuid)
+            merged_manifest["created_at"] = existing_manifest.get("created_at")
+            merged_manifest["modified_at"] = datetime.now(timezone.utc).isoformat()
 
-            # Update the tool manifest using ResourceHandler
-            tool_handler.write_manifest(tool_uuid, tool.to_dict())
+            # Write the merged manifest using ResourceHandler
+            tool_handler.write_manifest(tool_uuid, merged_manifest)
+            
+            # Update description for search capability if description changed (indexed by UUID)
+            if tools_descriptions and tool.description:
+                old_description = existing_manifest.get("description")
+                if old_description != tool.description:
+                    try:
+                        # Delete old description
+                        tools_descriptions.delete_description(tool_uuid)
+                    except Exception as e:
+                        logger.warning(f"Failed to delete old description: {e}")
+                    
+                    # Write new description
+                    tools_descriptions.write_description(tool_uuid, tool.description)
+                    logger.info(f"Tool description updated for: {tool.name} (UUID: {tool_uuid})")
+            
             logger.info(f"Tool with ID '{id}' (UUID: {tool_uuid}) updated successfully")
             return {"message": f"Tool with ID '{id}' updated successfully."}
         except HTTPException:
@@ -750,6 +789,21 @@ def register_tools_api(
             # Check if tool with this name already exists
             existing_tool = tool_handler.lookup_by_name(func_name)
             
+            # Auto-detect dependencies if enabled
+            dependencies = None
+            if is_auto_detect_dependencies_enabled():
+                try:
+                    detected_deps = detect_tool_dependencies(
+                        tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
+                        func_name,
+                        tool_handler
+                    )
+                    if detected_deps:
+                        dependencies = detected_deps
+                        logger.info(f"Auto-detected dependencies for '{func_name}': {detected_deps}")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-detect dependencies: {e}")
+            
             if existing_tool:
                 if not update:
                     raise HTTPException(
@@ -761,82 +815,80 @@ def register_tools_api(
                 # Use existing UUID for update
                 tool_uuid = existing_tool.get("uuid", str(uuid.uuid4()))
                 
-                # Delete old description if updating
-                if tools_descriptions:
-                    try:
-                        tools_descriptions.delete_description(func_name)
-                    except Exception as e:
-                        logger.warning(f"Failed to delete old description: {e}")
+                # Update the module file in UUID sub-folder (update_tool doesn't handle files)
+                module_filename = tool.filename if tool.filename else f"{func_name}.py"
+                tool_handler.write_resource_file(tool_uuid.lower(), module_filename, tool_bytes)
+                logger.info(f"Updated module file in UUID sub-folder: {module_filename}")
+                
+                # Create the tool schema for update
+                tool_schema = ToolSchema(
+                    name=func_name,
+                    uuid=tool_uuid,
+                    description=description,
+                    programming_language="python",
+                    packaging_format="code",
+                    module_name=module_filename,
+                    version="0.0.1",
+                    state=ManifestState.APPROVED,
+                    params=ToolParamsSchema(
+                        type="object",
+                        properties=params_properties,
+                        required=required_params,
+                        optional=[],
+                    ),
+                    returns=returns_schema,
+                    dependencies=dependencies,
+                )
+                
+                # Delegate to update_tool to handle manifest merge and description update
+                update_result = update_tool(tool_uuid, tool_schema)
+                logger.info(f"Tool '{func_name}' updated successfully")
+                
+                return {
+                    "message": f"Tool '{func_name}' created successfully.",
+                    "name": func_name,
+                    "uuid": tool_uuid,
+                    "module_name": module_filename,
+                    "parameters": params_properties,
+                    "description": description,
+                }
             else:
                 # Generate new UUID for new tool
                 tool_uuid = str(uuid.uuid4())
                 logger.info(f"Generated UUID for tool '{func_name}': {tool_uuid}")
 
-            # Save the module file to UUID sub-folder
-            module_filename = tool.filename if tool.filename else f"{func_name}.py"
-            tool_handler.write_resource_file(tool_uuid.lower(), module_filename, tool_bytes)
-            logger.info(f"Saved module file to UUID sub-folder: {module_filename}")
+                # Create the tool schema for new tool
+                tool_schema = ToolSchema(
+                    name=func_name,
+                    uuid=tool_uuid,
+                    module_name=tool.filename if tool.filename else f"{func_name}.py",
+                    description=description,
+                    programming_language="python",
+                    packaging_format="code",
+                    version="0.0.1",
+                    state=ManifestState.APPROVED,
+                    params=ToolParamsSchema(
+                        type="object",
+                        properties=params_properties,
+                        required=required_params,
+                        optional=[],
+                    ),
+                    returns=returns_schema,
+                    dependencies=dependencies,
+                )
 
-            # Auto-detect dependencies if enabled
-            dependencies = None
-            if is_auto_detect_dependencies_enabled():
-                try:
-                    # Detect dependencies from code (returns UUIDs)
-                    detected_deps = detect_tool_dependencies(
-                        tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
-                        func_name,
-                        tool_handler
-                    )
-                    if detected_deps:
-                        dependencies = detected_deps
-                        logger.info(f"Auto-detected dependencies for '{func_name}': {detected_deps}")
-                except Exception as e:
-                    logger.warning(f"Failed to auto-detect dependencies: {e}")
+                # Delegate to create_tool to handle everything (file, manifest, description)
+                create_response = await create_tool(
+                    tool=tool_schema,
+                    module=UploadFile(filename=tool.filename, file=BytesIO(tool_bytes)),
+                )
 
-            # Create the tool schema
-            params_schema = ToolParamsSchema(
-                type="object",
-                properties=params_properties,
-                required=required_params,
-                optional=[]
-            )
-            
-            # Set timestamps
-            current_time = datetime.now(timezone.utc).isoformat()
-            
-            tool_schema = ToolSchema(
-                name=func_name,
-                uuid=None,
-                module_name=None,
-                description=description,
-                programming_language="python",
-                packaging_format="code",
-                version="0.0.1",
-                state=ManifestState.APPROVED,
-                params=ToolParamsSchema(
-                    type="object",
-                    properties=params_properties,
-                    required=required_params,
-                    optional=[],
-                ),
-                returns=returns_schema,
-            )
-
-            # Save the manifest to UUID folder as tool.json
-            tool_handler.write_manifest(tool_uuid.lower(), tool_schema.to_dict())
-            logger.info(f"Saved manifest to UUID folder: {tool_uuid}")
-
-            create_response = await create_tool(
-                tool=tool_schema,
-                module=UploadFile(filename=tool.filename, file=BytesIO(tool_bytes)),
-            )
-
-            logger.info(f"Tool '{func_name}' added successfully with UUID {tool_uuid}")
-            return {
-                **create_response,
-                "parameters": params_properties,
-                "description": description,
-            }
+                logger.info(f"Tool '{func_name}' added successfully with UUID {tool_uuid}")
+                return {
+                    **create_response,
+                    "parameters": params_properties,
+                    "description": description,
+                }
 
         except HTTPException:
             raise
