@@ -422,6 +422,7 @@ def register_skills_api(
         zip_file: Optional[UploadFile] = File(None),
         folder_path: Optional[str] = Form(None),
         snippet_mode: str = Form("file"),
+        treat_all_as_documents: bool = Form(False),
     ):
         """Import an Anthropic skill from GitHub URL, ZIP file, or local folder.
 
@@ -478,6 +479,7 @@ def register_skills_api(
                     source_type=source_type,
                     source_data=source_data,
                     snippet_mode=snippet_mode,
+                    treat_all_as_documents=treat_all_as_documents,
                 )
             )
 

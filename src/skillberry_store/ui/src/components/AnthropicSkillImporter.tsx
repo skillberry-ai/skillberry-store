@@ -44,6 +44,7 @@ export function AnthropicSkillImporter({
   const [zipFileName, setZipFileName] = useState('');
   const [folderPath, setFolderPath] = useState('');
   const [snippetMode, setSnippetMode] = useState<'file' | 'paragraph'>('file');
+  const [treatAllAsDocuments, setTreatAllAsDocuments] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -74,6 +75,7 @@ export function AnthropicSkillImporter({
       const formData = new FormData();
       formData.append('source_type', importSource);
       formData.append('snippet_mode', snippetMode);
+      formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
 
       if (importSource === 'url') {
         if (!githubUrl) {
@@ -198,6 +200,31 @@ export function AnthropicSkillImporter({
             {snippetMode === 'paragraph'
               ? 'Text files will be split into multiple snippets, one per paragraph'
               : 'Each text file will be imported as a single snippet'}
+          </div>
+        </FormGroup>
+
+        <FormGroup label="Code File Handling">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <input
+              type="checkbox"
+              id="treat-all-as-documents"
+              checked={treatAllAsDocuments}
+              onChange={(e) => setTreatAllAsDocuments(e.target.checked)}
+              disabled={isImporting}
+              style={{ cursor: isImporting ? 'not-allowed' : 'pointer' }}
+            />
+            <label 
+              htmlFor="treat-all-as-documents" 
+              style={{ 
+                cursor: isImporting ? 'not-allowed' : 'pointer',
+                userSelect: 'none'
+              }}
+            >
+              Treat all files as documents (including code files)
+            </label>
+          </div>
+          <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
+            When enabled, code files (e.g., .py, .sh) will be imported as document snippets instead of being parsed as tools. This preserves the original file structure without code analysis.
           </div>
         </FormGroup>
 

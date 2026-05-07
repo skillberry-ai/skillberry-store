@@ -110,10 +110,24 @@ jobs:
         id: issue
         run: |
           echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
-          echo "issue_title=${{ github.event.issue.title }}" >> $GITHUB_OUTPUT
-          echo "issue_body<<EOF" >> $GITHUB_OUTPUT
-          echo "${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Properly escape issue title for GitHub Actions output
+          ISSUE_TITLE=$(cat <<'TITLE_EOF'
+          ${{ github.event.issue.title }}
+          TITLE_EOF
+          )
+          echo "issue_title<<TITLE_EOF" >> $GITHUB_OUTPUT
+          echo "$ISSUE_TITLE" >> $GITHUB_OUTPUT
+          echo "TITLE_EOF" >> $GITHUB_OUTPUT
+          
+          # Properly escape issue body for GitHub Actions output
+          ISSUE_BODY=$(cat <<'BODY_EOF'
+          ${{ github.event.issue.body }}
+          BODY_EOF
+          )
+          echo "issue_body<<BODY_EOF" >> $GITHUB_OUTPUT
+          echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
+          echo "BODY_EOF" >> $GITHUB_OUTPUT
       
       - name: Configure Git
         run: |
@@ -127,26 +141,31 @@ jobs:
           echo "BRANCH_NAME=${BRANCH_NAME}" >> $GITHUB_ENV
       
       - name: Execute Bob to Fix Issue
+        uses: nick-invision/retry@v3
+        with:
+          timeout_minutes: 15
+          max_attempts: 3
+          retry_wait_seconds: 10
+          command: |
+            # Create a comprehensive prompt for Bob Shell
+            PROMPT="Fix GitHub issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}
+
+            Repository: ${{ github.repository }}
+            Issue URL: ${{ github.event.issue.html_url }}
+
+            Issue Description:
+            ${{ steps.issue.outputs.issue_body }}
+
+            Please analyze this issue and make all necessary code changes to fix it.
+            Ensure the changes are complete, follow best practices, and resolve the issue."
+
+            # --accept-license: required on first run in a fresh CI environment
+            # --yolo: required to enable file writing (disabled by default)
+            bob --accept-license --yolo -p "${PROMPT}"
         env:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
           ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Create a comprehensive prompt for Bob Shell
-          PROMPT="Fix GitHub issue #${ISSUE_NUMBER}: ${{ steps.issue.outputs.issue_title }}
-
-          Repository: ${{ github.repository }}
-          Issue URL: ${{ github.event.issue.html_url }}
-
-          Issue Description:
-          ${{ steps.issue.outputs.issue_body }}
-
-          Please analyze this issue and make all necessary code changes to fix it.
-          Ensure the changes are complete, follow best practices, and resolve the issue."
-
-          # --accept-license: required on first run in a fresh CI environment
-          # --yolo: required to enable file writing (disabled by default)
-          bob --accept-license --yolo -p "${PROMPT}"
       
       - name: Check for Changes
         id: changes
