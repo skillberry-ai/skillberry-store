@@ -506,7 +506,7 @@ def register_skills_api(
                     for tag in additional_tags:
                         if tag and tag not in tool_tags:
                             tool_tags.append(tag)
-                    
+
                     tool_data = {
                         "uuid": tool_uuid,
                         "name": tool_dict["name"],
@@ -581,11 +581,13 @@ def register_skills_api(
                     snippet_uuid = str(uuid.uuid4())
 
                     # Add additional tags to snippet tags
-                    snippet_tags = snippet_dict["tags"].copy() if snippet_dict["tags"] else []
+                    snippet_tags = (
+                        snippet_dict["tags"].copy() if snippet_dict["tags"] else []
+                    )
                     for tag in additional_tags:
                         if tag and tag not in snippet_tags:
                             snippet_tags.append(tag)
-                    
+
                     # Prepare snippet data
                     snippet_data = {
                         "uuid": snippet_uuid,
@@ -613,7 +615,7 @@ def register_skills_api(
             for tag in additional_tags:
                 if tag and tag not in skill_tags:
                     skill_tags.append(tag)
-            
+
             skill_uuid = str(uuid.uuid4())
             skill_data = {
                 "uuid": skill_uuid,
