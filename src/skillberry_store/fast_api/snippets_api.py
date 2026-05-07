@@ -105,7 +105,13 @@ def register_snippets_api(
         # Check if snippet with this UUID already exists
         try:
             snippet_handler.read_manifest(snippet.uuid.lower())
+            # If we get here, the snippet exists - raise 409 Conflict
+            raise HTTPException(
+                status_code=409,
+                detail=f"Snippet with UUID '{snippet.uuid}' already exists"
+            )
         except HTTPException as e:
+            # If it's a 404, that's good - snippet doesn't exist yet
             if e.status_code != 404:
                 raise
 
@@ -262,11 +268,28 @@ def register_snippets_api(
                     detail=f"Snippet with ID '{id}' not found"
                 )
 
-            # Update modified timestamp
-            snippet.modified_at = datetime.now(timezone.utc).isoformat()
+            # Read existing manifest to preserve uuid and created_at
+            existing_manifest = snippet_handler.read_manifest(snippet_uuid)
+            
+            # Convert update data to dict
+            update_data = snippet.to_dict()
+            
+            # Merge: preserve uuid and created_at from existing, update modified_at
+            merged_manifest = {**existing_manifest, **update_data}
+            merged_manifest["uuid"] = existing_manifest.get("uuid", snippet_uuid)
+            merged_manifest["created_at"] = existing_manifest.get("created_at")
+            merged_manifest["modified_at"] = datetime.now(timezone.utc).isoformat()
 
-            # Update the snippet manifest using ResourceHandler
-            snippet_handler.write_manifest(snippet_uuid, snippet.to_dict())
+            # Write the merged manifest using ResourceHandler
+            snippet_handler.write_manifest(snippet_uuid, merged_manifest)
+            
+            # Update description for search capability (indexed by UUID)
+            if snippets_descriptions and merged_manifest.get("description"):
+                snippets_descriptions.write_description(
+                    snippet_uuid, merged_manifest["description"]
+                )
+                logger.info(f"Snippet description updated for UUID: {snippet_uuid}")
+            
             logger.info(f"Snippet with ID '{id}' (UUID: {snippet_uuid}) updated successfully")
             return {"message": f"Snippet with ID '{id}' updated successfully."}
         except HTTPException:
