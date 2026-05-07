@@ -2,17 +2,16 @@
 """
 Download and Import Skills from skills.sh
 
-This script implements a 7-phase process to:
-1. Extract repository URLs from skills.sh
-2. Clone repositories
-3. Auto-discover skills
-4. Transform to skillberry format
-5. Import via API
-6. Validate imports
-7. Generate documentation
+This script implements a 6-phase process to:
+1. Extract repository metadata from skills.sh
+2. Clone repositories until finding N skills
+3. Discover skills in /skills/ folders
+4. Import via Anthropic API
+5. Validate imports
+6. Generate final report
 
 Usage:
-    python download_and_import_skills.py --max-repos 10
+    python download_and_import_skills.py --max-skills 10
 """
 
 import argparse
@@ -417,104 +416,18 @@ class SkillsImporter:
         self.discovered_skills = discovered
         return discovered
     
-    # ========== PHASE 4: Transform to Skillberry Format ==========
-    
-    def transform_skills(self, discovered_skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Phase 4: Transform discovered skills to skillberry format
-        
-        Args:
-            discovered_skills: List of discovered skills
-            
-        Returns:
-            List of transformed skills
-        """
-        logger.info("\n" + "=" * 60)
-        logger.info("PHASE 4: Transforming to skillberry format")
-        logger.info("=" * 60)
-        
-        transformed = []
-        
-        for skill in discovered_skills:
-            try:
-                # Generate UUID
-                skill_uuid = str(uuid.uuid4())
-                
-                # Extract description from SKILL.md content
-                content = skill['content']
-                description = self._extract_description(content, 'md')  # All skills are SKILL.md files
-                
-                # Create skill schema matching ManifestSchema/SkillSchema
-                skill_schema = {
-                    'uuid': skill_uuid,
-                    'name': f"{skill['repo_name']}__{skill['skill_name']}",
-                    'description': description,
-                    'tool_uuids': [],  # Will be populated if we extract tools
-                    'snippet_uuids': [],  # Will be populated if we extract snippets
-                    'state': 'approved',  # Use 'state' not 'lifecycle_state'
-                    'created_at': datetime.now(timezone.utc).isoformat(),
-                    'modified_at': datetime.now(timezone.utc).isoformat(),  # Use 'modified_at' not 'updated_at'
-                    'extra': {  # Use 'extra' not 'metadata'
-                        'source': skill['repo_source'],
-                        'original_path': skill['skill_path'],
-                        'skill_folder': skill['skill_folder'],
-                        'file_type': 'md'  # All skills are SKILL.md files
-                    }
-                }
-                
-                transformed.append(skill_schema)
-                logger.info(f"  ✓ Transformed: {skill_schema['name']}")
-                
-            except Exception as e:
-                logger.error(f"  ✗ Error transforming {skill.get('skill_name', 'unknown')}: {e}")
-        
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Transform Summary:")
-        logger.info(f"  Total transformed: {len(transformed)}")
-        logger.info(f"{'='*60}")
-        
-        # Save transformed skills
-        transformed_dir = self.script_dir / 'transformed-skills'
-        transformed_dir.mkdir(exist_ok=True)
-        
-        for skill in transformed:
-            skill_file = transformed_dir / f"{skill['name']}.json"
-            with open(skill_file, 'w') as f:
-                json.dump(skill, f, indent=2)
-        
-        logger.info(f"Saved to {transformed_dir}")
-        
-        self.transformed_skills = transformed
-        return transformed
-    
-    def _extract_description(self, content: str, file_type: str) -> str:
-        """Extract description from content based on file type"""
-        if file_type == 'md':
-            # Extract first paragraph from markdown
-            lines = content.split('\n')
-            for line in lines:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    return line[:500]
-        elif file_type in ['py', 'js', 'ts']:
-            # Extract docstring or first comment
-            if '"""' in content:
-                start = content.find('"""') + 3
-                end = content.find('"""', start)
-                if end > start:
-                    return content[start:end].strip()[:500]
-        
-        # Default: first 200 chars
-        return content[:200].strip()
-    
-    # ========== PHASE 5: Import via Anthropic API ==========
+    # ========== PHASE 4: Import via Anthropic API ==========
     
     def import_skills_via_api(self, discovered_skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Phase 5: Import skills via skillberry-store Anthropic import API
+        Phase 4: Import skills via skillberry-store Anthropic import API
         
         Uses the /skills/import-anthropic endpoint with folder source type.
-        Each skill folder is imported separately.
+        Each skill folder is imported separately. The API handles:
+        - Parsing SKILL.md for metadata
+        - Extracting tools from code files
+        - Creating snippets from text files
+        - Creating the skill with proper schema
         
         Args:
             discovered_skills: List of discovered skills from Phase 3
@@ -523,7 +436,7 @@ class SkillsImporter:
             List of import results
         """
         logger.info("\n" + "=" * 60)
-        logger.info("PHASE 5: Importing skills via Anthropic API")
+        logger.info("PHASE 4: Importing skills via Anthropic API")
         logger.info("=" * 60)
         logger.info("Using /skills/import-anthropic endpoint with folder source")
         
@@ -611,7 +524,7 @@ class SkillsImporter:
         self.import_results = results
         return results
     
-    # ========== PHASE 6: Validation ==========
+    # ========== PHASE 5: Validation ==========
     
     def validate_imports(self, import_results: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -624,7 +537,7 @@ class SkillsImporter:
             Validation report
         """
         logger.info("\n" + "=" * 60)
-        logger.info("PHASE 6: Validating imports")
+        logger.info("PHASE 5: Validating imports")
         logger.info("=" * 60)
         
         validation = {
@@ -671,7 +584,7 @@ class SkillsImporter:
             validation: Validation results
         """
         logger.info("\n" + "=" * 60)
-        logger.info("PHASE 7: Generating final report")
+        logger.info("PHASE 6: Generating final report")
         logger.info("=" * 60)
         
         report = {
@@ -692,14 +605,11 @@ class SkillsImporter:
             'phase_3_discover': {
                 'skills_discovered': len(self.discovered_skills)
             },
-            'phase_4_transform': {
-                'skills_transformed': len(self.transformed_skills)
-            },
-            'phase_5_import': {
+            'phase_4_import': {
                 'successful': sum(1 for r in self.import_results if r['status'] == 'success'),
                 'failed': sum(1 for r in self.import_results if r['status'] != 'success')
             },
-            'phase_6_validation': validation,
+            'phase_5_validation': validation,
             'success': validation.get('api_check', False)
         }
         
@@ -715,9 +625,8 @@ class SkillsImporter:
         logger.info(f"Unique repos cloned: {report['phase_2_clone']['unique_repos_cloned']}")
         logger.info(f"Skills from cloned repos: {report['phase_2_clone']['skills_cloned']}")
         logger.info(f"Skills discovered in repos: {report['phase_3_discover']['skills_discovered']}")
-        logger.info(f"Skills transformed: {report['phase_4_transform']['skills_transformed']}")
-        logger.info(f"Skills imported: {report['phase_5_import']['successful']}")
-        logger.info(f"Import failures: {report['phase_5_import']['failed']}")
+        logger.info(f"Skills imported: {report['phase_4_import']['successful']}")
+        logger.info(f"Import failures: {report['phase_4_import']['failed']}")
         logger.info(f"Validation: {'✓ PASSED' if report['success'] else '✗ FAILED'}")
         logger.info(f"{'='*60}")
         logger.info(f"\nFull report saved to: {report_file}")
@@ -757,18 +666,13 @@ class SkillsImporter:
                 logger.error("No skills discovered. Aborting.")
                 return
             
-            # Phase 4: Skip transformation - use Anthropic import API directly
-            logger.info("\n" + "=" * 60)
-            logger.info("PHASE 4: Skipped (using Anthropic import API)")
-            logger.info("=" * 60)
-            
-            # Phase 5: Import via Anthropic API
+            # Phase 4: Import via Anthropic API
             results = self.import_skills_via_api(discovered)
             
-            # Phase 6: Validate
+            # Phase 5: Validate
             validation = self.validate_imports(results)
             
-            # Phase 7: Generate report
+            # Phase 6: Generate report
             self.generate_final_report(validation)
             
             elapsed = time.time() - start_time

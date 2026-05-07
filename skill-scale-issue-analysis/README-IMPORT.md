@@ -4,14 +4,13 @@ Automated tool to download and import skills from [skills.sh](https://skills.sh)
 
 ## Overview
 
-This tool implements a 7-phase process to:
+This tool implements a 6-phase process to:
 1. Extract all repository metadata from skills.sh (sorted by popularity)
 2. Clone repositories iteratively until finding N skill subfolders with SKILL.md
 3. Discover skills in /skills/ folders
-4. Transform skills to skillberry format
-5. Import skills via API
-6. Validate imports
-7. Generate comprehensive reports
+4. Import skills via Anthropic API (handles transformation automatically)
+5. Validate imports
+6. Generate comprehensive reports
 
 **Key Feature:** A "skill" is defined as a subfolder in `/skills/` directory containing a `SKILL.md` file. The tool clones repositories from skills.sh (by popularity) until it finds N such skills.
 
@@ -105,7 +104,7 @@ python3 download_and_import_skills.py --clone-only --clone-depth 0
 When using `--clone-only`, the script will:
 1. ✅ Execute Phase 1 (Extract metadata)
 2. ✅ Execute Phase 2 (Clone repositories)
-3. ⏭️ Skip Phases 3-7 (Discovery, Transform, Import, Validate, Report)
+3. ⏭️ Skip Phases 3-6 (Discovery, Import, Validate, Report)
 
 **Files created:**
 - `skills-metadata.json` - All repository metadata from skills.sh (in script directory)
@@ -178,24 +177,19 @@ When using `--clone-only`, the script will:
 }
 ```
 
-### Phase 4: Transform to Skillberry Format
-- Converts discovered skills to SkillSchema format
-- Generates UUIDs
-- Extracts descriptions
-- Creates metadata links
-
-**Output:**
-- `transformed-skills/` - Individual skill JSON files
-
-### Phase 5: Import via API
-- Imports skills using POST /skills/ endpoint
-- Handles errors and retries
-- Logs success/failure for each skill
+### Phase 4: Import via Anthropic API
+- Uses `/skills/import-anthropic` endpoint with folder source
+- API automatically handles:
+  - Parsing SKILL.md for metadata
+  - Extracting tools from code files
+  - Creating snippets from text files
+  - Creating skill with proper schema
+- Imports each skill folder separately
 
 **Output:**
 - `import_results.json` - Import status for each skill
 
-### Phase 6: Validation
+### Phase 5: Validation
 - Verifies API accessibility
 - Checks imported skill count
 - Validates data integrity
@@ -203,7 +197,7 @@ When using `--clone-only`, the script will:
 **Output:**
 - `validation_report.json` - Validation results
 
-### Phase 7: Documentation
+### Phase 6: Documentation
 - Generates comprehensive final report
 - Summarizes all phases
 - Provides success metrics
@@ -242,7 +236,7 @@ skill-scale-issue-analysis/
 ```
 ╔═══════════════════════════════════════════════════════════╗
 ║  Skills.sh Importer for Skillberry Store                  ║
-║  7-Phase Import Process                                   ║
+║  6-Phase Import Process                                   ║
 ╚═══════════════════════════════════════════════════════════╝
 
 ============================================================
@@ -304,42 +298,31 @@ Discovery Summary:
   Total skills discovered: 45
 
 ============================================================
-PHASE 4: Transforming to skillberry format
-============================================================
-  ✓ Transformed: vercel__ai__ai-sdk
-  ✓ Transformed: vercel__ai__streaming
-  ...
-
-Transform Summary:
-  Total transformed: 45
-
-============================================================
-PHASE 5: Importing skills via API
+PHASE 4: Importing skills via Anthropic API
 ============================================================
 [1/45] Importing vercel__ai__ai-sdk...
   ✓ Successfully imported
 
 Import Summary:
-  Total: 45
-  Successful: 42
-  Failed: 3
+  Total: 25
+  Successful: 23
+  Failed: 2
 
 ============================================================
-PHASE 6: Validating imports
+PHASE 5: Validating imports
 ============================================================
   ✓ API accessible
   ✓ Found 42 skills in store
 
 ============================================================
-PHASE 7: Generating final report
+PHASE 6: Generating final report
 ============================================================
 FINAL REPORT
 ============================================================
-Repos cloned: 9/10
-Skills discovered: 45
-Skills transformed: 45
-Skills imported: 42
-Import failures: 3
+Repos cloned: 3
+Skills discovered: 25
+Skills imported: 23
+Import failures: 2
 Validation: ✓ PASSED
 ============================================================
 
