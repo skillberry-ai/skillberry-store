@@ -185,10 +185,10 @@ async def test_get_tool_module_nonexistent_tool(run_sbs):
 
 @pytest.mark.asyncio
 async def test_create_duplicate_tool(run_sbs):
-    """Test that creating a duplicate tool fails."""
+    """Test that creating a duplicate tool UUID fails."""
     tool_params = {
         "name": "test_tool",
-        "description": "A test tool for demonstration",
+        "description": "A test tool",
         "programming_language": "python",
         "packaging_format": "code",
         "state": "approved"
@@ -200,10 +200,28 @@ async def test_create_duplicate_tool(run_sbs):
         files = {
             "module": ("test_tool.py", file_content, "text/x-python")
         }
-        response = await client.post(f"{BASE_URL}/tools/", params=tool_params, files=files)
-        # Should fail with 409 Conflict
-        assert response.status_code == 409, f"Expected 409, got {response.status_code}: {response.text}"
-        assert "already exists" in response.json().get("detail", "")
+
+        create_response = await client.post(f"{BASE_URL}/tools/", params=tool_params, files=files)
+        assert create_response.status_code == 200, (
+            f"Expected 200, got {create_response.status_code}: {create_response.text}"
+        )
+        created = create_response.json()
+        created_uuid = created.get("uuid")
+        assert created_uuid is not None
+
+        duplicate_params = {
+            **tool_params,
+            "uuid": created_uuid,
+        }
+        duplicate_response = await client.post(
+            f"{BASE_URL}/tools/",
+            params=duplicate_params,
+            files=files,
+        )
+        assert duplicate_response.status_code == 409, (
+            f"Expected 409, got {duplicate_response.status_code}: {duplicate_response.text}"
+        )
+        assert "already exists" in duplicate_response.json().get("detail", "")
 
 
 @pytest.mark.asyncio
@@ -318,7 +336,7 @@ async def test_add_tool_from_python_endpoint_update(run_sbs):
         assert updated.get("message") == "Tool 'add_via_tools_add_update' created successfully."
         assert updated.get("module_name") == "add_via_tools_add_update.py"
         assert updated.get("uuid") is not None
-        assert updated.get("uuid") != first_uuid
+        assert updated.get("uuid") == first_uuid    # When updating with add from python, UUID should be the same
         assert updated.get("description") == "Add two integers with updated description."
 
         get_response = await client.get(f"{BASE_URL}/tools/add_via_tools_add_update")
