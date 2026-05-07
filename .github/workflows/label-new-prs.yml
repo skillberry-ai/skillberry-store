@@ -73,7 +73,7 @@ jobs:
             
             // Check if manually triggered
             if (context.eventName === 'workflow_dispatch') {
-              prNumber = ${{ inputs.pr_number }};
+              prNumber = context.payload.inputs.pr_number;
               core.info(`Manual trigger for PR #${prNumber}`);
             } else {
               // Original workflow_run logic
