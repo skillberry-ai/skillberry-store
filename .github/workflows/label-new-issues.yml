@@ -45,6 +45,12 @@ name: Label New Issues
 on:
   issues:
     types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to label'
+        required: true
+        type: number
 
 jobs:
   auto-label-issues:
@@ -114,25 +120,35 @@ jobs:
       
       - name: Get Issue Details
         id: issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          # Determine issue number based on trigger type
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ISSUE_NUMBER="${{ inputs.issue_number }}"
+          else
+            ISSUE_NUMBER="${{ github.event.issue.number }}"
+          fi
           
-          # Properly escape issue title for GitHub Actions output
-          ISSUE_TITLE=$(cat <<'TITLE_EOF'
-          ${{ github.event.issue.title }}
-          TITLE_EOF
-          )
+          echo "issue_number=${ISSUE_NUMBER}" >> $GITHUB_OUTPUT
+          
+          # Fetch issue details from GitHub API for workflow_dispatch
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ISSUE_DATA=$(gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER})
+            ISSUE_TITLE=$(echo "${ISSUE_DATA}" | jq -r '.title')
+            ISSUE_BODY=$(echo "${ISSUE_DATA}" | jq -r '.body // ""')
+          else
+            ISSUE_TITLE="${{ github.event.issue.title }}"
+            ISSUE_BODY="${{ github.event.issue.body }}"
+          fi
+          
+          # Save issue title and body to output
           echo "issue_title<<TITLE_EOF" >> $GITHUB_OUTPUT
-          echo "$ISSUE_TITLE" >> $GITHUB_OUTPUT
+          echo "${ISSUE_TITLE}" >> $GITHUB_OUTPUT
           echo "TITLE_EOF" >> $GITHUB_OUTPUT
           
-          # Properly escape issue body for GitHub Actions output
-          ISSUE_BODY=$(cat <<'BODY_EOF'
-          ${{ github.event.issue.body }}
-          BODY_EOF
-          )
           echo "issue_body<<BODY_EOF" >> $GITHUB_OUTPUT
-          echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
+          echo "${ISSUE_BODY}" >> $GITHUB_OUTPUT
           echo "BODY_EOF" >> $GITHUB_OUTPUT
       
       - name: Analyze Issue and Select Labels
