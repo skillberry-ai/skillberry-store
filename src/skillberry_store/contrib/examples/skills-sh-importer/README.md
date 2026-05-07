@@ -352,35 +352,6 @@ Total execution time: 123.45 seconds
 - Review validation-report.json for details
 - Check skillberry-store logs
 
-## Advanced Configuration
-
-### Custom Skill Discovery
-Edit the `discover_skills()` method to add custom search patterns:
-```python
-# Add custom directory
-search_dirs.append(repo_path / 'custom' / 'skills')
-
-# Add custom file extension
-for ext in ['.md', '.py', '.js', '.ts', '.json', '.yaml']:
-    skill_files.extend(search_dir.glob(f'*{ext}'))
-```
-
-### Retry Failed Imports
-```bash
-# Extract failed skills from import-results.json
-# Re-run import for specific skills
-python3 -c "
-import json
-import requests
-
-with open('import-results.json') as f:
-    data = json.load(f)
-    
-failed = [r for r in data['results'] if r['status'] != 'success']
-print(f'Found {len(failed)} failed imports')
-"
-```
-
 ## Performance Tips
 
 1. **Use shallow clones** (default): `--clone-depth 1`
@@ -403,24 +374,3 @@ curl http://localhost:8000/skills/{uuid}
 # Search skills
 curl "http://localhost:8000/skills/search?query=ai"
 ```
-
-## Contributing
-
-To extend this tool:
-
-1. Add new phases in the `SkillsImporter` class
-2. Update the `run()` method to include new phases
-3. Add CLI arguments as needed
-4. Update documentation
-
-## License
-
-Same as skillberry-store project.
-
-## Support
-
-For issues or questions:
-1. Check the `import-skills.log` file
-2. Review `final-report.json` for summary
-3. Check individual phase output files
-4. Consult the implementation plan: `import-skills-from-skills-sh-plan.md`
