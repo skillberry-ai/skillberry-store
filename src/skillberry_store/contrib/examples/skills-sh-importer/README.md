@@ -106,11 +106,16 @@ When using `--clone-only`, the script will:
 2. ✅ Execute Phase 2 (Clone repositories)
 3. ⏭️ Skip Phases 3-6 (Discovery, Import, Validate, Report)
 
-**Files created:**
-- `skills-metadata.json` - All repository metadata from skills.sh (in script directory)
-- `clone_results.json` - Clone status (includes skill counts per repo) (in script directory)
+**Files created in clone-only mode:**
+- `clone-results.json` - Clone status (includes skill counts per repo)
 - `<temp>/skills-sh-repos/` or custom directory - Cloned repositories (only those with skills)
-- `import_skills.log` - Execution log (in script directory)
+- `import-skills.log` - Execution log
+
+**Additional files created in full mode (without --clone-only):**
+- `discovered-skills.json` - All discovered skills with SKILL.md content
+- `import-results.json` - Import status for each skill
+- `validation-report.json` - Validation results
+- `final-report.json` - Complete execution summary
 
 ## Process Flow
 
@@ -119,18 +124,6 @@ When using `--clone-only`, the script will:
 - Parses HTML to extract ALL repository metadata
 - Sorts by popularity (install count)
 - **No limiting at this phase** - Phase 2 will clone until N skills found
-- Saves to `skills-metadata.json`
-
-**Output:**
-```json
-{
-  "source": "vercel/ai",
-  "skillId": "ai-sdk",
-  "name": "ai-sdk",
-  "installs": 43210,
-  "isOfficial": true
-}
-```
 
 **Example:** Extracts all ~500 repositories from skills.sh, sorted by popularity.
 
@@ -145,7 +138,7 @@ When using `--clone-only`, the script will:
 **Skill Definition:** A skill = a subfolder in `/skills/` directory containing `SKILL.md` file
 
 **Output:**
-- `clone_results.json` - Contains:
+- `clone-results.json` - Contains:
   - `cloned_repos`: Repos with skills (includes skill count per repo)
   - `skipped_repos`: Repos without /skills/ folder
   - `failed_repos`: Repos that failed to clone
@@ -187,7 +180,7 @@ When using `--clone-only`, the script will:
 - Imports each skill folder separately
 
 **Output:**
-- `import_results.json` - Import status for each skill
+- `import-results.json` - Import status for each skill
 
 ### Phase 5: Validation
 - Verifies API accessibility
@@ -195,7 +188,7 @@ When using `--clone-only`, the script will:
 - Validates data integrity
 
 **Output:**
-- `validation_report.json` - Validation results
+- `validation-report.json` - Validation results
 
 ### Phase 6: Documentation
 - Generates comprehensive final report
@@ -203,8 +196,8 @@ When using `--clone-only`, the script will:
 - Provides success metrics
 
 **Output:**
-- `FINAL_REPORT.json` - Complete execution summary
-- `import_skills.log` - Detailed execution log
+- `final-report.json` - Complete execution summary
+- `import-skills.log` - Detailed execution log
 
 ## Output Files
 
@@ -214,19 +207,15 @@ After execution, the following files are created:
 skill-scale-issue-analysis/
 ├── download_and_import_skills.py    # Main script
 ├── import-skills-from-skills-sh-plan.md  # Implementation plan
-├── skills-metadata.json             # Extracted metadata from skills.sh
-├── clone_results.json               # Repository clone results
+├── clone-results.json               # Repository clone results
 ├── discovered-skills.json           # Discovered skills
-├── import_results.json              # Import results
-├── validation_report.json           # Validation results
-├── FINAL_REPORT.json                # Final summary report
-├── import_skills.log                # Detailed execution log
-├── skills-sh-repos/                 # Cloned repositories
-│   ├── vercel__ai/
-│   ├── anthropics__skills/
-│   └── ...
-└── transformed-skills/              # Transformed skill JSON files
-    ├── vercel__ai__skill1.json
+├── import-results.json              # Import results
+├── validation-report.json           # Validation results
+├── final-report.json                # Final summary report
+├── import-skills.log                # Detailed execution log
+└── skills-sh-repos/                 # Cloned repositories
+    ├── vercel__ai/
+    ├── anthropics__skills/
     └── ...
 ```
 
@@ -360,7 +349,7 @@ Total execution time: 123.45 seconds
 **Solution:**
 - Check API is accessible
 - Verify imported skills exist
-- Review validation_report.json for details
+- Review validation-report.json for details
 - Check skillberry-store logs
 
 ## Advanced Configuration
@@ -387,13 +376,13 @@ for ext in ['.md', '.py', '.js', '.ts', '.json', '.yaml']:
 
 ### Retry Failed Imports
 ```bash
-# Extract failed skills from import_results.json
+# Extract failed skills from import-results.json
 # Re-run import for specific skills
 python3 -c "
 import json
 import requests
 
-with open('import_results.json') as f:
+with open('import-results.json') as f:
     data = json.load(f)
     
 failed = [r for r in data['results'] if r['status'] != 'success']
@@ -407,7 +396,7 @@ print(f'Found {len(failed)} failed imports')
 2. **Start small**: Test with `--max-skills 5` first
 3. **Increase timeout** for slow networks: `--timeout 60`
 4. **Run in background**: `nohup python3 download_and_import_skills.py &`
-5. **Monitor progress**: `tail -f import_skills.log`
+5. **Monitor progress**: `tail -f import-skills.log`
 
 ## Integration with Skillberry Store
 
@@ -440,7 +429,7 @@ Same as skillberry-store project.
 ## Support
 
 For issues or questions:
-1. Check the `import_skills.log` file
-2. Review `FINAL_REPORT.json` for summary
+1. Check the `import-skills.log` file
+2. Review `final-report.json` for summary
 3. Check individual phase output files
 4. Consult the implementation plan: `import-skills-from-skills-sh-plan.md`

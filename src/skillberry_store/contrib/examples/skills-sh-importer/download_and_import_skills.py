@@ -35,7 +35,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('import_skills.log'),
+        logging.FileHandler('import-skills.log'),
         logging.StreamHandler()
     ]
 )
@@ -128,12 +128,6 @@ class SkillsImporter:
             
             logger.info(f"Extracted {len(skills)} total skills from skills.sh")
             logger.info(f"Sorted by popularity (installs)")
-            
-            # Save all metadata
-            metadata_file = self.script_dir / 'skills-metadata.json'
-            with open(metadata_file, 'w') as f:
-                json.dump(skills, f, indent=2)
-            logger.info(f"Saved metadata to {metadata_file}")
             
             # Show top skills
             logger.info(f"\nTop 10 most popular repositories:")
@@ -307,7 +301,7 @@ class SkillsImporter:
             }
         }
         
-        results_file = self.script_dir / 'clone_results.json'
+        results_file = self.script_dir / 'clone-results.json'
         with open(results_file, 'w') as f:
             json.dump(clone_results, f, indent=2)
         
@@ -508,7 +502,7 @@ class SkillsImporter:
         logger.info(f"{'='*60}")
         
         # Save results
-        import_file = self.script_dir / 'import_results.json'
+        import_file = self.script_dir / 'import-results.json'
         with open(import_file, 'w') as f:
             json.dump({
                 'results': results,
@@ -566,7 +560,7 @@ class SkillsImporter:
             logger.error(f"  ✗ Validation error: {e}")
         
         # Save validation report
-        validation_file = self.script_dir / 'validation_report.json'
+        validation_file = self.script_dir / 'validation-report.json'
         with open(validation_file, 'w') as f:
             json.dump(validation, f, indent=2)
         
@@ -614,7 +608,7 @@ class SkillsImporter:
         }
         
         # Save final report
-        report_file = self.script_dir / 'FINAL_REPORT.json'
+        report_file = self.script_dir / 'final-report.json'
         with open(report_file, 'w') as f:
             json.dump(report, f, indent=2)
         
