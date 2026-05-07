@@ -17,16 +17,14 @@ Usage:
 import argparse
 import json
 import logging
-import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 import requests
 
