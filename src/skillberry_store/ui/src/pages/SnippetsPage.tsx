@@ -16,7 +16,6 @@ import {
   ToolbarContent,
   ToolbarItem,
   Button,
-  SearchInput,
   Text,
   Spinner,
   EmptyState,
@@ -39,7 +38,6 @@ import { PlusIcon, FileCodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon }
 import { snippetsApi } from '@/services/api';
 import type { Snippet } from '@/types';
 
-type SortableColumn = 'name' | 'description' | 'state' | 'content_type' | 'version';
 
 export function SnippetsPage() {
   const navigate = useNavigate();

@@ -16,7 +16,6 @@ import {
   ToolbarContent,
   ToolbarItem,
   Button,
-  SearchInput,
   Text,
   Label,
   Spinner,
@@ -28,18 +27,14 @@ import {
   Form,
   FormGroup,
   TextInput,
-  TextArea,
   FileUpload,
   Alert,
-  FormSelect,
-  FormSelectOption,
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
 import { PlusIcon, CubeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon } from '@patternfly/react-icons';
 import { toolsApi } from '@/services/api';
 import type { Tool } from '@/types';
 
-type SortableColumn = 'name' | 'description' | 'state' | 'module_name' | 'version';
 
 export function ToolsPage() {
   const navigate = useNavigate();

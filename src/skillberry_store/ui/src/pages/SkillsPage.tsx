@@ -16,7 +16,6 @@ import {
   ToolbarContent,
   ToolbarItem,
   Button,
-  SearchInput,
   Text,
   Spinner,
   EmptyState,
@@ -43,7 +42,6 @@ import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
 import type { Skill } from '@/types';
 import { AnthropicSkillImporter } from '../components/AnthropicSkillImporter';
 
-type SortableColumn = 'name' | 'description' | 'version';
 
 export function SkillsPage() {
   const navigate = useNavigate();
