@@ -50,13 +50,13 @@ python3 download_and_import_skills.py --max-skills 50 --clone-only
 # Use custom API URL
 python3 download_and_import_skills.py --api-url http://localhost:9000
 
-# Full configuration
+# Full configuration with custom output directory (must be absolute)
 python3 download_and_import_skills.py \
     --max-skills 15 \
     --api-url http://localhost:8000 \
     --clone-depth 1 \
     --timeout 60 \
-    --output-dir my-repos
+    --output-dir /absolute/path/to/my-repos
 ```
 
 **Note:** `--max-skills` limits the number of actual skills found (subfolders with SKILL.md in /skills/ directories). The tool clones repositories one at a time until reaching or exceeding this target. Repositories without /skills/ folders are skipped. The final count may exceed the target if the last repository cloned contains multiple skills.
@@ -70,8 +70,13 @@ python3 download_and_import_skills.py \
 | `--skills-url` | https://skills.sh | Skills.sh marketplace URL |
 | `--clone-depth` | 1 | Git clone depth (1 = shallow clone) |
 | `--timeout` | 30 | API request timeout in seconds |
-| `--output-dir` | skills-sh-repos | Output directory for cloned repos |
+| `--output-dir` | `<temp>/skills-sh-repos` | Output directory (must be absolute path if specified) |
 | `--clone-only` | false | Only clone repositories, skip phases 3-7 |
+
+**Note on --output-dir:**
+- **Default**: Uses system temp directory (e.g., `/tmp/skills-sh-repos` on Linux, `C:\Users\<user>\AppData\Local\Temp\skills-sh-repos` on Windows)
+- **Custom**: Must provide an absolute path (e.g., `/home/user/my-skills` or `C:\skills`)
+- **Relative paths are not allowed** to avoid confusion about working directory
 
 ## Clone-Only Mode
 
@@ -88,8 +93,8 @@ Use `--clone-only` to only clone repositories without discovering or importing s
 # Clone repos until finding 50 skills for later analysis
 python3 download_and_import_skills.py --max-skills 50 --clone-only
 
-# Clone to custom directory
-python3 download_and_import_skills.py --clone-only --output-dir my-skills-repos
+# Clone to custom directory (must be absolute path)
+python3 download_and_import_skills.py --clone-only --output-dir /home/user/my-skills-repos
 
 # Clone with full history (not shallow)
 python3 download_and_import_skills.py --clone-only --clone-depth 0
@@ -103,10 +108,10 @@ When using `--clone-only`, the script will:
 3. ⏭️ Skip Phases 3-7 (Discovery, Transform, Import, Validate, Report)
 
 **Files created:**
-- `skills-metadata.json` - All repository metadata from skills.sh
-- `clone_results.json` - Clone status (includes skill counts per repo)
-- `skills-sh-repos/` - Cloned repositories (only those with skills)
-- `import_skills.log` - Execution log
+- `skills-metadata.json` - All repository metadata from skills.sh (in script directory)
+- `clone_results.json` - Clone status (includes skill counts per repo) (in script directory)
+- `<temp>/skills-sh-repos/` or custom directory - Cloned repositories (only those with skills)
+- `import_skills.log` - Execution log (in script directory)
 
 ## Process Flow
 
@@ -236,7 +241,7 @@ skill-scale-issue-analysis/
 ### Successful Execution
 ```
 ╔═══════════════════════════════════════════════════════════╗
-║  Skills.sh Importer for Skillberry Store                 ║
+║  Skills.sh Importer for Skillberry Store                  ║
 ║  7-Phase Import Process                                   ║
 ╚═══════════════════════════════════════════════════════════╝
 

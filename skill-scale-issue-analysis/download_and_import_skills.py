@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
@@ -48,8 +49,20 @@ class SkillsImporter:
     def __init__(self, args):
         self.args = args
         self.script_dir = Path(__file__).parent
-        self.repos_dir = self.script_dir / args.output_dir
-        self.repos_dir.mkdir(exist_ok=True)
+        
+        # Determine output directory
+        if args.output_dir:
+            # User specified a directory - must be absolute
+            output_path = Path(args.output_dir)
+            if not output_path.is_absolute():
+                raise ValueError(f"--output-dir must be an absolute path, got: {args.output_dir}")
+            self.repos_dir = output_path
+        else:
+            # Default: use system temp directory
+            temp_dir = Path(tempfile.gettempdir())
+            self.repos_dir = temp_dir / 'skills-sh-repos'
+        
+        self.repos_dir.mkdir(parents=True, exist_ok=True)
         
         self.metadata = []
         self.cloned_repos = []
@@ -813,8 +826,8 @@ def parse_arguments():
     parser.add_argument(
         '--output-dir',
         type=str,
-        default='skills-sh-repos',
-        help='Output directory for cloned repos (default: skills-sh-repos)'
+        default=None,
+        help='Output directory for cloned repos (must be absolute path). Default: <system-temp>/skills-sh-repos'
     )
     
     parser.add_argument(
