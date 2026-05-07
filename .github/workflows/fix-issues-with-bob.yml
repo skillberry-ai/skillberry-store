@@ -147,8 +147,9 @@ jobs:
           max_attempts: 3
           retry_wait_seconds: 10
           command: |
-            # Create a comprehensive prompt for Bob Shell
-            PROMPT="Fix GitHub issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}
+            # Create a comprehensive prompt for Bob Shell using heredoc
+            PROMPT=$(cat <<'EOF'
+            Fix GitHub issue #${{ steps.issue.outputs.issue_number }}: ${{ steps.issue.outputs.issue_title }}
 
             Repository: ${{ github.repository }}
             Issue URL: ${{ github.event.issue.html_url }}
@@ -157,7 +158,9 @@ jobs:
             ${{ steps.issue.outputs.issue_body }}
 
             Please analyze this issue and make all necessary code changes to fix it.
-            Ensure the changes are complete, follow best practices, and resolve the issue."
+            Ensure the changes are complete, follow best practices, and resolve the issue.
+            EOF
+            )
 
             # --accept-license: required on first run in a fresh CI environment
             # --yolo: required to enable file writing (disabled by default)
