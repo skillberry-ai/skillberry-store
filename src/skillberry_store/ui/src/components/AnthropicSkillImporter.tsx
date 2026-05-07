@@ -1,7 +1,7 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Modal,
   ModalVariant,
@@ -16,7 +16,14 @@ import {
   ProgressMeasureLocation,
   List,
   ListItem,
+  Select,
+  SelectOption,
+  SelectList,
+  MenuToggle,
+  MenuToggleElement,
+  Label,
 } from '@patternfly/react-core';
+import { skillsApi } from '@/services/api';
 
 interface AnthropicSkillImporterProps {
   isOpen: boolean;
@@ -48,6 +55,39 @@ export function AnthropicSkillImporter({
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
+  
+  // Namespace selection state
+  const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
+  const [existingNamespaces, setExistingNamespaces] = useState<string[]>([]);
+  const [isNamespaceSelectOpen, setIsNamespaceSelectOpen] = useState(false);
+  const [namespaceInput, setNamespaceInput] = useState('');
+
+  // Fetch existing namespaces from skills when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchExistingNamespaces();
+    }
+  }, [isOpen]);
+
+  const fetchExistingNamespaces = async () => {
+    try {
+      const skills = await skillsApi.list();
+      const namespaceSet = new Set<string>();
+      
+      skills.forEach(skill => {
+        skill.tags?.forEach(tag => {
+          if (tag.startsWith('namespace:')) {
+            const namespace = tag.substring('namespace:'.length);
+            namespaceSet.add(namespace);
+          }
+        });
+      });
+      
+      setExistingNamespaces(Array.from(namespaceSet).sort());
+    } catch (error) {
+      console.error('Failed to fetch existing namespaces:', error);
+    }
+  };
 
   const resetState = () => {
     setGithubUrl('');
@@ -56,6 +96,8 @@ export function AnthropicSkillImporter({
     setFolderPath('');
     setProgress(0);
     setResult(null);
+    setSelectedNamespaces([]);
+    setNamespaceInput('');
   };
 
   const handleClose = () => {
@@ -63,6 +105,27 @@ export function AnthropicSkillImporter({
       resetState();
       onClose();
     }
+  };
+
+  const handleSelectNamespace = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
+    if (typeof value === 'string' && value && !selectedNamespaces.includes(value)) {
+      setSelectedNamespaces([...selectedNamespaces, value]);
+      setIsNamespaceSelectOpen(false);
+      setNamespaceInput('');
+    }
+  };
+
+  const handleAddCustomNamespace = () => {
+    const trimmedInput = namespaceInput.trim();
+    if (trimmedInput && !selectedNamespaces.includes(trimmedInput)) {
+      setSelectedNamespaces([...selectedNamespaces, trimmedInput]);
+      setNamespaceInput('');
+      setIsNamespaceSelectOpen(false);
+    }
+  };
+
+  const handleRemoveNamespace = (namespaceToRemove: string) => {
+    setSelectedNamespaces(selectedNamespaces.filter(ns => ns !== namespaceToRemove));
   };
 
   const handleImport = async () => {
@@ -76,6 +139,11 @@ export function AnthropicSkillImporter({
       formData.append('source_type', importSource);
       formData.append('snippet_mode', snippetMode);
       formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
+      
+      // Add namespaces as additional tags with namespace: prefix
+      selectedNamespaces.forEach(namespace => {
+        formData.append('additional_tags', `namespace:${namespace}`);
+      });
 
       if (importSource === 'url') {
         if (!githubUrl) {
@@ -226,6 +294,91 @@ export function AnthropicSkillImporter({
           <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
             When enabled, code files (e.g., .py, .sh) will be imported as document snippets instead of being parsed as tools. This preserves the original file structure without code analysis.
           </div>
+        </FormGroup>
+
+        <FormGroup label="Namespaces (Optional)" fieldId="namespaces">
+          <div style={{ fontSize: '0.875rem', color: '#6a6e73', marginBottom: '0.5rem' }}>
+            Add one or more namespaces to label all imported objects (skills, tools, snippets). Select from existing namespaces or add new ones.
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <Select
+              id="namespace-select"
+              isOpen={isNamespaceSelectOpen}
+              selected={null}
+              onSelect={handleSelectNamespace}
+              onOpenChange={(isOpen) => setIsNamespaceSelectOpen(isOpen)}
+              toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
+                <MenuToggle
+                  ref={toggleRef}
+                  onClick={() => setIsNamespaceSelectOpen(!isNamespaceSelectOpen)}
+                  isExpanded={isNamespaceSelectOpen}
+                  isDisabled={isImporting}
+                  style={{ width: '100%' }}
+                >
+                  {namespaceInput || 'Select or add namespace...'}
+                </MenuToggle>
+              )}
+            >
+              <SelectList>
+                <TextInput
+                  type="text"
+                  value={namespaceInput}
+                  onChange={(_, value) => setNamespaceInput(value)}
+                  placeholder="Type to search or add new..."
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomNamespace();
+                    }
+                  }}
+                  style={{ padding: '0.5rem', borderBottom: '1px solid #d2d2d2' }}
+                />
+                {namespaceInput.trim() && !existingNamespaces.includes(namespaceInput.trim()) && (
+                  <SelectOption value={namespaceInput.trim()}>
+                    Add new: "{namespaceInput.trim()}"
+                  </SelectOption>
+                )}
+                {existingNamespaces
+                  .filter(ns =>
+                    ns.toLowerCase().includes(namespaceInput.toLowerCase()) &&
+                    !selectedNamespaces.includes(ns)
+                  )
+                  .map((namespace) => (
+                    <SelectOption key={namespace} value={namespace}>
+                      {namespace}
+                    </SelectOption>
+                  ))}
+                {existingNamespaces.length === 0 && !namespaceInput.trim() && (
+                  <SelectOption isDisabled>
+                    No existing namespaces. Type to add new.
+                  </SelectOption>
+                )}
+              </SelectList>
+            </Select>
+            {namespaceInput.trim() && (
+              <Button
+                variant="secondary"
+                onClick={handleAddCustomNamespace}
+                isDisabled={isImporting}
+              >
+                Add
+              </Button>
+            )}
+          </div>
+          {selectedNamespaces.length > 0 && (
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {selectedNamespaces.map((namespace) => (
+                <Label
+                  key={namespace}
+                  color="blue"
+                  isCompact
+                  onClose={isImporting ? undefined : () => handleRemoveNamespace(namespace)}
+                >
+                  {namespace}
+                </Label>
+              ))}
+            </div>
+          )}
         </FormGroup>
 
         {importSource === 'url' ? (
