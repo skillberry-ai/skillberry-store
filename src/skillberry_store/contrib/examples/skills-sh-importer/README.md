@@ -121,14 +121,14 @@ When using `--clone-only`, the script will:
 
 ### Phase 1: Extract Repository Metadata from skills.sh
 - Fetches skills.sh homepage
-- Parses HTML to extract ALL repository metadata
-- Sorts by popularity (install count)
+- Parses HTML to extract repository sources
+- Prepares repository records for cloning
 - **No limiting at this phase** - Phase 2 will clone until N skills found
 
-**Example:** Extracts all ~500 repositories from skills.sh, sorted by popularity.
+**Example:** Extracts repository records from skills.sh for Phase 2 cloning.
 
 ### Phase 2: Clone Repositories Until N Skills Found
-- Clones repositories one at a time in popularity order
+- Clones repositories one at a time from the extracted repository list
 - After each clone, checks for `/skills/` directory
 - Counts subfolders in `/skills/` that contain `SKILL.md`
 - Accumulates skill count until reaching `--max-skills` target
@@ -139,9 +139,9 @@ When using `--clone-only`, the script will:
 
 **Output:**
 - `clone-results.json` - Contains:
-  - `cloned_repos`: Repos with skills (includes skill count per repo)
-  - `skipped_repos`: Repos without /skills/ folder
-  - `failed_repos`: Repos that failed to clone
+  - `cloned_repos`: Repositories with skills
+  - `skipped_repos`: Repositories without `/skills/` folder
+  - `failed_repos`: Repositories that failed to clone
   - `summary`: Statistics
 - `skills-sh-repos/` - Cloned repositories
 
@@ -184,7 +184,7 @@ When using `--clone-only`, the script will:
 
 ### Phase 5: Validation
 - Verifies API accessibility
-- Checks imported skill count
+- Checks the number of skills returned by the API
 - Validates data integrity
 
 **Output:**
@@ -204,16 +204,16 @@ When using `--clone-only`, the script will:
 After execution, the following files are created:
 
 ```
-skill-scale-issue-analysis/
+src/skillberry_store/contrib/examples/skills-sh-importer/
 ├── download_and_import_skills.py    # Main script
-├── import-skills-from-skills-sh-plan.md  # Implementation plan
+├── README.md                        # This document
 ├── clone-results.json               # Repository clone results
 ├── discovered-skills.json           # Discovered skills
 ├── import-results.json              # Import results
 ├── validation-report.json           # Validation results
 ├── final-report.json                # Final summary report
 ├── import-skills.log                # Detailed execution log
-└── skills-sh-repos/                 # Cloned repositories
+└── /tmp/skills-sh-repos/            # Default clone location on Linux
     ├── vercel__ai/
     ├── anthropics__skills/
     └── ...
