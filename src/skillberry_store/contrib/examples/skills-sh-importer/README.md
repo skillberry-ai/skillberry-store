@@ -46,13 +46,13 @@ python3 download_and_import_skills.py --max-skills 20
 # Clone repos until finding 50 skills, without importing
 python3 download_and_import_skills.py --max-skills 50 --clone-only
 
-# Use custom API URL
-python3 download_and_import_skills.py --api-url http://localhost:9000
+# Use custom SBS URL
+python3 download_and_import_skills.py --sbs-url http://localhost:9000
 
 # Full configuration with custom output directory (must be absolute)
 python3 download_and_import_skills.py \
     --max-skills 15 \
-    --api-url http://localhost:8000 \
+    --sbs-url http://localhost:8000 \
     --clone-depth 1 \
     --timeout 60 \
     --output-dir /absolute/path/to/my-repos
@@ -65,7 +65,7 @@ python3 download_and_import_skills.py \
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--max-skills` | 10 | Target number of skills (may exceed if last repo has multiple skills) |
-| `--api-url` | http://localhost:8000 | Skillberry API URL |
+| `--sbs-url` | http://localhost:8000 | Skillberry Store URL |
 | `--skills-url` | https://skills.sh | Skills.sh marketplace URL |
 | `--clone-depth` | 1 | Git clone depth (1 = shallow clone) |
 | `--timeout` | 30 | API request timeout in seconds |
@@ -356,8 +356,8 @@ Total execution time: 123.45 seconds
 
 ### Environment Variables
 ```bash
-# Override API URL
-export SKILLBERRY_API_URL=http://localhost:9000
+# Override SBS URL
+export SKILLBERRY_SBS_URL=http://localhost:9000
 
 # Run script
 python3 download_and_import_skills.py

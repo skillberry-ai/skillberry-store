@@ -72,7 +72,7 @@ class SkillsImporter:
         logger.info(f"Initialized SkillsImporter")
         logger.info(f"Output directory: {self.repos_dir}")
         logger.info(f"Max skills: {args.max_skills}")
-        logger.info(f"API URL: {args.api_url}")
+        logger.info(f"SBS URL: {args.sbs_url}")
     
     # ========== PHASE 1: Extract Repository URLs ==========
     
@@ -447,7 +447,7 @@ class SkillsImporter:
             
             try:
                 # Use the Anthropic import API endpoint
-                url = f"{self.args.api_url}/skills/import-anthropic"
+                url = f"{self.args.sbs_url}/skills/import-anthropic"
                 
                 # Prepare form data
                 data = {
@@ -542,7 +542,7 @@ class SkillsImporter:
         
         try:
             # Check API is accessible
-            url = f"{self.args.api_url}/skills/"
+            url = f"{self.args.sbs_url}/skills/"
             response = requests.get(url, timeout=10)
             
             if response.status_code == 200:
@@ -585,7 +585,7 @@ class SkillsImporter:
             'execution_time': datetime.now(timezone.utc).isoformat(),
             'configuration': {
                 'max_skills': self.args.max_skills,
-                'api_url': self.args.api_url,
+                'sbs_url': self.args.sbs_url,
                 'clone_depth': self.args.clone_depth
             },
             'phase_1_extract': {
@@ -694,10 +694,10 @@ def parse_arguments():
     )
     
     parser.add_argument(
-        '--api-url',
+        '--sbs-url',
         type=str,
         default='http://localhost:8000',
-        help='Skillberry API URL (default: http://localhost:8000)'
+        help='Skillberry Store URL (default: http://localhost:8000)'
     )
     
     parser.add_argument(
