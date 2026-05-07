@@ -192,10 +192,18 @@ jobs:
             echo "${RESPONSE}"
             
             # Extract JSON array from response (Bob might add explanation text)
-            LABELS_JSON=$(echo "${RESPONSE}" | grep -oP '\[.*\]' | head -1)
+            # Look for a valid JSON array with quoted strings
+            LABELS_JSON=$(echo "${RESPONSE}" | grep -oP '\["[^"]*"(?:,\s*"[^"]*")*\]' | head -1)
             
+            # If that fails, try to find any array-like structure and validate it
             if [ -z "${LABELS_JSON}" ]; then
-              echo "Warning: Could not extract labels JSON from response"
+              echo "Warning: Could not extract labels JSON with strict pattern, trying fallback..."
+              LABELS_JSON=$(echo "${RESPONSE}" | grep -oP '\[(?:[^\[\]]*)\]' | grep -v 'using tool' | grep -v 'Cost:' | head -1)
+            fi
+            
+            # Final fallback - empty array
+            if [ -z "${LABELS_JSON}" ] || ! echo "${LABELS_JSON}" | jq empty 2>/dev/null; then
+              echo "Warning: Could not extract valid labels JSON from response"
               LABELS_JSON="[]"
             fi
             
