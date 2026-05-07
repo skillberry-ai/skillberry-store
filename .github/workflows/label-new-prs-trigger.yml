@@ -54,11 +54,17 @@ jobs:
           echo "base_ref=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
           
           # Create JSON with proper escaping using jq
+          # Use heredoc to safely pass PR body to jq
+          PR_BODY_ESCAPED=$(cat <<'BODY_EOF'
+          ${{ github.event.pull_request.body }}
+          BODY_EOF
+          )
+          
           jq -n \
             --arg pr_number "${{ github.event.pull_request.number }}" \
             --arg pr_title "${{ github.event.pull_request.title }}" \
             --arg pr_author "${{ github.event.pull_request.user.login }}" \
-            --arg pr_body "${{ github.event.pull_request.body }}" \
+            --arg pr_body "${PR_BODY_ESCAPED}" \
             --arg head_ref "${{ github.event.pull_request.head.ref }}" \
             --arg head_repo "${{ github.event.pull_request.head.repo.full_name }}" \
             --arg base_ref "${{ github.event.pull_request.base.ref }}" \
