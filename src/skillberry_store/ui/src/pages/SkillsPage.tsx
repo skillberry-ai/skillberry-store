@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
+import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportSkills, importSkills, downloadJSON } from '../utils/exportImportHelpers';
 import {
@@ -52,6 +53,7 @@ export function SkillsPage() {
   const [maxResults, setMaxResults] = useState(10);
   const [similarityThreshold, setSimilarityThreshold] = useState(1);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newSkill, setNewSkill] = useState({
     name: '',
@@ -342,14 +344,33 @@ export function SkillsPage() {
     ];
   };
 
-  // Get all unique tags from skills
+  // Get all unique tags from skills (excluding namespace tags)
   const allTags = useMemo(() => {
     if (!skills) return [];
     const tagSet = new Set<string>();
     skills.forEach(skill => {
-      skill.tags?.forEach(tag => tagSet.add(tag));
+      skill.tags?.forEach(tag => {
+        if (!tag.startsWith('namespace:')) {
+          tagSet.add(tag);
+        }
+      });
     });
     return Array.from(tagSet).sort();
+  }, [skills]);
+
+  // Get all unique namespaces from skills
+  const allNamespaces = useMemo(() => {
+    if (!skills) return [];
+    const namespaceSet = new Set<string>();
+    skills.forEach(skill => {
+      skill.tags?.forEach(tag => {
+        if (tag.startsWith('namespace:')) {
+          const namespace = tag.substring('namespace:'.length);
+          namespaceSet.add(namespace);
+        }
+      });
+    });
+    return Array.from(namespaceSet).sort();
   }, [skills]);
 
   const filteredSkills = useMemo(() => {
@@ -379,6 +400,15 @@ export function SkillsPage() {
       filtered = filtered.filter(skill =>
         selectedTags.every(selectedTag =>
           skill.tags?.includes(selectedTag)
+        )
+      );
+    }
+
+    // Apply namespace filtering
+    if (filtered && selectedNamespaces.length > 0) {
+      filtered = filtered.filter(skill =>
+        selectedNamespaces.every(selectedNamespace =>
+          skill.tags?.includes(`namespace:${selectedNamespace}`)
         )
       );
     }
@@ -463,6 +493,13 @@ export function SkillsPage() {
                 allTags={allTags}
                 selectedTags={selectedTags}
                 onTagsChange={setSelectedTags}
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <NamespaceFilter
+                allNamespaces={allNamespaces}
+                selectedNamespaces={selectedNamespaces}
+                onNamespacesChange={setSelectedNamespaces}
               />
             </ToolbarItem>
             <ToolbarItem>
@@ -583,9 +620,9 @@ export function SkillsPage() {
                     onClick={() => navigate(`/skills/${skill.name}`)}
                     style={{ cursor: 'pointer' }}
                   >
-                    {skill.tags && skill.tags.length > 0 ? (
+                    {skill.tags && skill.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (
                       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                        {skill.tags.map((tag) => (
+                        {skill.tags.filter(tag => !tag.startsWith('namespace:')).map((tag) => (
                           <Label key={tag} color={getTagColor(tag)} isCompact>
                             {tag}
                           </Label>
