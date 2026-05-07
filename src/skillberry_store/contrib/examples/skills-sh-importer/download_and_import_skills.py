@@ -17,16 +17,14 @@ Usage:
 import argparse
 import json
 import logging
-import os
 import re
 import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 import requests
 
@@ -78,10 +76,10 @@ class SkillsImporter:
     
     def extract_skills_metadata(self) -> List[Dict[str, Any]]:
         """
-        Phase 1: Extract repository metadata from skills.sh
+        Phase 1: Extract unique repository metadata from skills.sh
         
         Returns:
-            List of skill metadata dictionaries
+            List of repository metadata dictionaries
         """
         logger.info("=" * 60)
         logger.info("PHASE 1: Extracting repository URLs from skills.sh")
@@ -95,52 +93,48 @@ class SkillsImporter:
             html_content = response.text
             logger.info(f"Received {len(html_content)} bytes")
             
-            # Extract skills data using regex
-            # The data is in escaped JSON format within the HTML
-            pattern = r'\\"source\\":\\"([^\\]+)\\"[^}]*\\"skillId\\":\\"([^\\]+)\\"[^}]*\\"name\\":\\"([^\\]+)\\"[^}]*\\"installs\\":(\d+)(?:[^}]*\\"isOfficial\\":true)?'
-            
+            # Extract repository sources from skills.sh HTML.
+            # The page may contain multiple skill entries for the same repository,
+            # so Phase 1 deduplicates by source and keeps only repo-level fields.
+            pattern = r'\\"source\\":\\"([^\\]+)\\"'
             matches = re.findall(pattern, html_content)
             
             if not matches:
-                logger.warning("No skills found with primary pattern, trying alternative...")
-                # Try simpler pattern
-                pattern2 = r'"source":"([^"]+)".*?"skillId":"([^"]+)".*?"name":"([^"]+)".*?"installs":(\d+)'
+                logger.warning("No repositories found with primary pattern, trying alternative...")
+                pattern2 = r'"source":"([^"]+)"'
                 matches = re.findall(pattern2, html_content)
             
             if not matches:
-                logger.error("Could not extract skills from HTML")
+                logger.error("Could not extract repository sources from HTML")
                 return []
             
-            # Convert matches to dictionaries
-            skills = []
-            for source, skill_id, name, installs in matches:
-                skill = {
+            # Deduplicate while preserving order of first appearance
+            seen_sources = set()
+            repos = []
+            for source in matches:
+                if source in seen_sources:
+                    continue
+                seen_sources.add(source)
+                repo_name = source.replace('/', '__').replace(':', '_')
+                repo_path = str(self.repos_dir / repo_name)
+                repos.append({
                     "source": source,
-                    "skillId": skill_id,
-                    "name": name,
-                    "installs": int(installs),
-                    "isOfficial": True  # Assume official if on skills.sh
-                }
-                skills.append(skill)
+                    "repo_name": repo_name,
+                    "repo_path": repo_path,
+                    "skills_count": None,
+                })
             
-            # Sort by installs (descending) - this determines clone order
-            skills.sort(key=lambda x: x['installs'], reverse=True)
+            logger.info(f"Extracted {len(repos)} unique repositories from skills.sh")
             
-            logger.info(f"Extracted {len(skills)} total skills from skills.sh")
-            logger.info(f"Sorted by popularity (installs)")
+            logger.info(f"\nTop 10 repositories by appearance order:")
+            for i, repo in enumerate(repos[:10], 1):
+                logger.info(f"  {i}. {repo['source']} -> {repo['repo_name']}")
             
-            # Show top skills
-            logger.info(f"\nTop 10 most popular repositories:")
-            for i, skill in enumerate(skills[:10], 1):
-                logger.info(f"  {i}. {skill['name']} ({skill['source']}) - {skill['installs']:,} installs")
-            
-            # Count unique repositories
-            unique_repos = set(skill['source'] for skill in skills)
-            logger.info(f"\nTotal: {len(skills)} skill entries from {len(unique_repos)} unique repositories")
+            logger.info(f"\nTotal: {len(repos)} unique repositories")
             logger.info(f"Phase 2 will clone repos until finding {self.args.max_skills} actual skills (subfolders with SKILL.md)")
             
-            self.metadata = skills
-            return skills
+            self.metadata = repos
+            return repos
             
         except Exception as e:
             logger.error(f"Error extracting metadata: {e}", exc_info=True)
@@ -201,12 +195,10 @@ class SkillsImporter:
                 break
             
             source = repo_meta['source']
+            repo_name = repo_meta['repo_name']
+            repo_path = Path(repo_meta['repo_path'])
             logger.info(f"\n[Repo {i}] Processing {source}...")
             repos_processed += 1
-            
-            # Sanitize repo name for filesystem
-            repo_name = source.replace('/', '__').replace(':', '_')
-            repo_path = self.repos_dir / repo_name
             
             try:
                 
@@ -268,7 +260,6 @@ class SkillsImporter:
                     'repo_path': str(repo_path),
                     'skills_count': skill_count,
                     'already_existed': already_existed,
-                    **repo_meta  # Include original metadata (installs, isOfficial, etc.)
                 })
                     
             except subprocess.TimeoutExpired:
@@ -589,11 +580,11 @@ class SkillsImporter:
                 'clone_depth': self.args.clone_depth
             },
             'phase_1_extract': {
-                'total_skills_found': len(self.metadata),
-                'skills_selected': self.args.max_skills
+                'total_repositories_found': len(self.metadata),
+                'target_skills': self.args.max_skills
             },
             'phase_2_clone': {
-                'skills_cloned': len(self.cloned_repos),
+                'repositories_cloned': len(self.cloned_repos),
                 'unique_repos_cloned': len(set(s.get('repo_name', '') for s in self.cloned_repos))
             },
             'phase_3_discover': {
@@ -615,9 +606,9 @@ class SkillsImporter:
         logger.info(f"\n{'='*60}")
         logger.info("FINAL REPORT")
         logger.info(f"{'='*60}")
-        logger.info(f"Skills selected: {report['phase_1_extract']['skills_selected']}")
+        logger.info(f"Repositories extracted: {report['phase_1_extract']['total_repositories_found']}")
         logger.info(f"Unique repos cloned: {report['phase_2_clone']['unique_repos_cloned']}")
-        logger.info(f"Skills from cloned repos: {report['phase_2_clone']['skills_cloned']}")
+        logger.info(f"Repositories cloned: {report['phase_2_clone']['repositories_cloned']}")
         logger.info(f"Skills discovered in repos: {report['phase_3_discover']['skills_discovered']}")
         logger.info(f"Skills imported: {report['phase_4_import']['successful']}")
         logger.info(f"Import failures: {report['phase_4_import']['failed']}")
