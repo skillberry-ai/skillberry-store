@@ -44,11 +44,17 @@ on:
     workflows: ["Label New PRs - Trigger"]
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Pull request number to label'
+        required: true
+        type: number
 
 jobs:
   label-new-prs:
-    # Only run if the trigger workflow completed successfully
-    if: github.event.workflow_run.conclusion == 'success'
+    # Only run if the trigger workflow completed successfully OR if manually triggered
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     
     permissions:
@@ -63,56 +69,67 @@ jobs:
         with:
           github-token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
           script: |
-            const workflowRun = context.payload.workflow_run;
+            let prNumber;
             
-            core.info(`Workflow run ID: ${workflowRun.id}`);
-            core.info(`Workflow run head SHA: ${workflowRun.head_sha}`);
-            core.info(`Workflow run head branch: ${workflowRun.head_branch}`);
-            
-            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              run_id: workflowRun.id,
-              per_page: 100
-            });
-            
-            const payloadArtifact = artifacts.artifacts?.find(artifact => artifact.name === 'pr-context');
-            if (!payloadArtifact) {
-              core.setFailed('Could not find pr-context artifact on trigger workflow run');
-              return;
+            // Check if manually triggered
+            if (context.eventName === 'workflow_dispatch') {
+              prNumber = ${{ inputs.pr_number }};
+              core.info(`Manual trigger for PR #${prNumber}`);
+            } else {
+              // Original workflow_run logic
+              const workflowRun = context.payload.workflow_run;
+              
+              core.info(`Workflow run ID: ${workflowRun.id}`);
+              core.info(`Workflow run head SHA: ${workflowRun.head_sha}`);
+              core.info(`Workflow run head branch: ${workflowRun.head_branch}`);
+              
+              const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: workflowRun.id,
+                per_page: 100
+              });
+              
+              const payloadArtifact = artifacts.artifacts?.find(artifact => artifact.name === 'pr-context');
+              if (!payloadArtifact) {
+                core.setFailed('Could not find pr-context artifact on trigger workflow run');
+                return;
+              }
+              
+              core.info(`Found artifact ${payloadArtifact.name} (${payloadArtifact.id})`);
+              
+              const zipResponse = await github.rest.actions.downloadArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: payloadArtifact.id,
+                archive_format: 'zip'
+              });
+              
+              const fs = require('fs');
+              const os = require('os');
+              const path = require('path');
+              const { execFileSync } = require('child_process');
+              
+              const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-pr-label-'));
+              const zipPath = path.join(tempDir, 'artifact.zip');
+              const zipBuffer = Buffer.isBuffer(zipResponse.data)
+                ? zipResponse.data
+                : Buffer.from(zipResponse.data);
+              fs.writeFileSync(zipPath, zipBuffer);
+              execFileSync('unzip', ['-o', zipPath, '-d', tempDir], { stdio: 'inherit' });
+              
+              const payloadPath = path.join(tempDir, 'pr-context.json');
+              const payload = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
+              
+              prNumber = payload.pr_number;
+              core.info(`Loaded PR #${prNumber} from trigger artifact`);
             }
             
-            core.info(`Found artifact ${payloadArtifact.name} (${payloadArtifact.id})`);
-            
-            const zipResponse = await github.rest.actions.downloadArtifact({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              artifact_id: payloadArtifact.id,
-              archive_format: 'zip'
-            });
-            
-            const fs = require('fs');
-            const os = require('os');
-            const path = require('path');
-            const { execFileSync } = require('child_process');
-            
-            const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-pr-label-'));
-            const zipPath = path.join(tempDir, 'artifact.zip');
-            const zipBuffer = Buffer.isBuffer(zipResponse.data)
-              ? zipResponse.data
-              : Buffer.from(zipResponse.data);
-            fs.writeFileSync(zipPath, zipBuffer);
-            execFileSync('unzip', ['-o', zipPath, '-d', tempDir], { stdio: 'inherit' });
-            
-            const payloadPath = path.join(tempDir, 'pr-context.json');
-            const payload = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
-            
-            core.info(`Loaded PR #${payload.pr_number} from trigger artifact`);
-            
+            // Fetch PR details for both manual and automatic triggers
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              pull_number: payload.pr_number
+              pull_number: prNumber
             });
             
             core.setOutput('pr_number', String(pr.number));
