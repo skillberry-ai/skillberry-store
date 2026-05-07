@@ -7,7 +7,13 @@ from typing import Any, Dict, Optional
 
 from skillberry_store.modules.vmcp_server import VirtualMcpServer
 from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.tools.configure import get_vmcp_directory
+from skillberry_store.modules.lookup_cache import build_lookup_cache
+from skillberry_store.tools.configure import (
+    get_skills_directory,
+    get_snippets_directory,
+    get_tools_directory,
+    get_vmcp_directory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -187,123 +193,65 @@ class VirtualMcpServerManager:
                                     f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load"
                                 )
                                 try:
-                                    from skillberry_store.tools.configure import (
-                                        get_skills_directory,
-                                        get_tools_directory,
-                                        get_snippets_directory,
-                                    )
-
                                     skills_handler = FileHandler(get_skills_directory())
                                     tools_handler = FileHandler(get_tools_directory())
                                     snippets_handler = FileHandler(
                                         get_snippets_directory()
                                     )
+                                    lookup_cache = build_lookup_cache(
+                                        skills_handler=skills_handler,
+                                        tools_handler=tools_handler,
+                                        snippets_handler=snippets_handler,
+                                    )
 
-                                    # Find skill by UUID
-                                    skill_tool_uuids = []
-                                    skill_snippet_uuids = []
-                                    for skill_filename in skills_handler.list_files():
-                                        if skill_filename.endswith(".json"):
-                                            try:
-                                                skill_content = (
-                                                    skills_handler.read_file(
-                                                        skill_filename, raw_content=True
-                                                    )
-                                                )
-                                                if isinstance(skill_content, str):
-                                                    skill_dict = json.loads(
-                                                        skill_content
-                                                    )
-                                                    if (
-                                                        skill_dict.get("uuid")
-                                                        == skill_uuid
-                                                    ):
-                                                        skill_tool_uuids = (
-                                                            skill_dict.get(
-                                                                "tool_uuids", []
-                                                            )
-                                                        )
-                                                        skill_snippet_uuids = (
-                                                            skill_dict.get(
-                                                                "snippet_uuids", []
-                                                            )
-                                                        )
-                                                        logger.info(
-                                                            f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs"
-                                                        )
-                                                        break
-                                            except Exception as e:
-                                                logger.warning(
-                                                    f"Error reading skill file {skill_filename}: {e}"
-                                                )
+                                    skill_dict = lookup_cache.skills_by_uuid.get(
+                                        skill_uuid
+                                    )
+                                    skill_tool_uuids = (
+                                        skill_dict.get("tool_uuids", [])
+                                        if skill_dict
+                                        else []
+                                    )
+                                    skill_snippet_uuids = (
+                                        skill_dict.get("snippet_uuids", [])
+                                        if skill_dict
+                                        else []
+                                    )
 
-                                    # Resolve tool UUIDs to tool names
+                                    if skill_dict:
+                                        logger.info(
+                                            f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs"
+                                        )
+
                                     for tool_uuid in skill_tool_uuids:
-                                        for tool_filename in tools_handler.list_files():
-                                            if tool_filename.endswith(".json"):
-                                                try:
-                                                    tool_content = (
-                                                        tools_handler.read_file(
-                                                            tool_filename,
-                                                            raw_content=True,
-                                                        )
-                                                    )
-                                                    if isinstance(tool_content, str):
-                                                        tool_dict = json.loads(
-                                                            tool_content
-                                                        )
-                                                        if (
-                                                            tool_dict.get("uuid")
-                                                            == tool_uuid
-                                                        ):
-                                                            tool_name = tool_dict.get(
-                                                                "name"
-                                                            )
-                                                            tool_names.append(tool_name)
-                                                            logger.info(
-                                                                f"Resolved tool UUID {tool_uuid} to name '{tool_name}'"
-                                                            )
-                                                            break
-                                                except Exception as e:
-                                                    logger.warning(
-                                                        f"Error reading tool file {tool_filename}: {e}"
-                                                    )
+                                        tool_dict = lookup_cache.tools_by_uuid.get(
+                                            tool_uuid
+                                        )
+                                        tool_name = (
+                                            tool_dict.get("name") if tool_dict else None
+                                        )
+                                        if tool_name:
+                                            tool_names.append(tool_name)
+                                            logger.info(
+                                                f"Resolved tool UUID {tool_uuid} to name '{tool_name}'"
+                                            )
 
-                                    # Resolve snippet UUIDs to snippet names
                                     for snippet_uuid in skill_snippet_uuids:
-                                        for (
-                                            snippet_filename
-                                        ) in snippets_handler.list_files():
-                                            if snippet_filename.endswith(".json"):
-                                                try:
-                                                    snippet_content = (
-                                                        snippets_handler.read_file(
-                                                            snippet_filename,
-                                                            raw_content=True,
-                                                        )
-                                                    )
-                                                    if isinstance(snippet_content, str):
-                                                        snippet_dict = json.loads(
-                                                            snippet_content
-                                                        )
-                                                        if (
-                                                            snippet_dict.get("uuid")
-                                                            == snippet_uuid
-                                                        ):
-                                                            snippet_name = (
-                                                                snippet_dict.get("name")
-                                                            )
-                                                            snippet_names.append(
-                                                                snippet_name
-                                                            )
-                                                            logger.info(
-                                                                f"Resolved snippet UUID {snippet_uuid} to name '{snippet_name}'"
-                                                            )
-                                                            break
-                                                except Exception as e:
-                                                    logger.warning(
-                                                        f"Error reading snippet file {snippet_filename}: {e}"
-                                                    )
+                                        snippet_dict = (
+                                            lookup_cache.snippets_by_uuid.get(
+                                                snippet_uuid
+                                            )
+                                        )
+                                        snippet_name = (
+                                            snippet_dict.get("name")
+                                            if snippet_dict
+                                            else None
+                                        )
+                                        if snippet_name:
+                                            snippet_names.append(snippet_name)
+                                            logger.info(
+                                                f"Resolved snippet UUID {snippet_uuid} to name '{snippet_name}'"
+                                            )
 
                                     logger.info(
                                         f"Resolved {len(tool_names)} tool names and {len(snippet_names)} snippet names for server '{name}'"
