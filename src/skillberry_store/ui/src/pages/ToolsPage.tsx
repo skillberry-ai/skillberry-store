@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
+import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportTools, importTools, downloadJSON } from '../utils/exportImportHelpers';
 import {
@@ -15,7 +16,6 @@ import {
   ToolbarContent,
   ToolbarItem,
   Button,
-  SearchInput,
   Text,
   Label,
   Spinner,
@@ -27,18 +27,14 @@ import {
   Form,
   FormGroup,
   TextInput,
-  TextArea,
   FileUpload,
   Alert,
-  FormSelect,
-  FormSelectOption,
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
 import { PlusIcon, CubeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon } from '@patternfly/react-icons';
 import { toolsApi } from '@/services/api';
 import type { Tool } from '@/types';
 
-type SortableColumn = 'name' | 'description' | 'state' | 'module_name' | 'version';
 
 export function ToolsPage() {
   const navigate = useNavigate();
@@ -48,6 +44,7 @@ export function ToolsPage() {
   const [maxResults, setMaxResults] = useState(10);
   const [similarityThreshold, setSimilarityThreshold] = useState(1);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [toolName, setToolName] = useState('');
   const [moduleFile, setModuleFile] = useState<File | null>(null);
@@ -184,14 +181,33 @@ export function ToolsPage() {
     ];
   };
 
-  // Get all unique tags from tools
+  // Get all unique tags from tools (excluding namespace tags)
   const allTags = useMemo(() => {
     if (!tools) return [];
     const tagSet = new Set<string>();
     tools.forEach(tool => {
-      tool.tags?.forEach(tag => tagSet.add(tag));
+      tool.tags?.forEach(tag => {
+        if (!tag.startsWith('namespace:')) {
+          tagSet.add(tag);
+        }
+      });
     });
     return Array.from(tagSet).sort();
+  }, [tools]);
+
+  // Get all unique namespaces from tools
+  const allNamespaces = useMemo(() => {
+    if (!tools) return [];
+    const namespaceSet = new Set<string>();
+    tools.forEach(tool => {
+      tool.tags?.forEach(tag => {
+        if (tag.startsWith('namespace:')) {
+          const namespace = tag.substring('namespace:'.length);
+          namespaceSet.add(namespace);
+        }
+      });
+    });
+    return Array.from(namespaceSet).sort();
   }, [tools]);
 
   const filteredTools = useMemo(() => {
@@ -216,11 +232,20 @@ export function ToolsPage() {
       }
     }
 
-    // Apply tag filtering
+    // Apply tag filtering (excluding namespace tags)
     if (filtered && selectedTags.length > 0) {
       filtered = filtered.filter(tool =>
         selectedTags.every(selectedTag =>
           tool.tags?.includes(selectedTag)
+        )
+      );
+    }
+
+    // Apply namespace filtering
+    if (filtered && selectedNamespaces.length > 0) {
+      filtered = filtered.filter(tool =>
+        selectedNamespaces.every(selectedNamespace =>
+          tool.tags?.includes(`namespace:${selectedNamespace}`)
         )
       );
     }
@@ -240,7 +265,7 @@ export function ToolsPage() {
     }
 
     return filtered;
-  }, [tools, searchResults, searchTerm, searchMode, selectedTags, activeSortIndex, activeSortDirection]);
+  }, [tools, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -298,6 +323,13 @@ export function ToolsPage() {
                 onMaxResultsChange={setMaxResults}
                 similarityThreshold={similarityThreshold}
                 onSimilarityThresholdChange={setSimilarityThreshold}
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <NamespaceFilter
+                allNamespaces={allNamespaces}
+                selectedNamespaces={selectedNamespaces}
+                onNamespacesChange={setSelectedNamespaces}
               />
             </ToolbarItem>
             <ToolbarItem>
@@ -423,13 +455,15 @@ export function ToolsPage() {
                     onClick={() => navigate(`/tools/${tool.name}`)}
                     style={{ cursor: 'pointer' }}
                   >
-                    {tool.tags && tool.tags.length > 0 ? (
+                    {tool.tags && tool.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (
                       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                        {tool.tags.map((tag) => (
-                          <Label key={tag} color={getTagColor(tag)} isCompact>
-                            {tag}
-                          </Label>
-                        ))}
+                        {tool.tags
+                          .filter(tag => !tag.startsWith('namespace:'))
+                          .map((tag) => (
+                            <Label key={tag} color={getTagColor(tag)} isCompact>
+                              {tag}
+                            </Label>
+                          ))}
                       </div>
                     ) : (
                       '-'

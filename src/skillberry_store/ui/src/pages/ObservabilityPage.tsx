@@ -594,7 +594,7 @@ export function ObservabilityPage() {
           
           {/* Plot lines for each metric */}
           {selectedMetrics.map((metricKey, metricIndex) => {
-            let data = timeSeriesData.filter(d => d[metricKey] !== undefined);
+            const data = timeSeriesData.filter(d => d[metricKey] !== undefined);
             if (data.length === 0) return null;
             
             // For counter metrics in rate mode, calculate rates
