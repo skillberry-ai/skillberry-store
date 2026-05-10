@@ -178,12 +178,14 @@ jobs:
             1. Select ALL relevant labels that apply to this issue
             2. Use label descriptions to guide your selection
             3. CRITICAL: You MUST ONLY use labels from the AVAILABLE LABELS list above. DO NOT invent or create new labels.
-            4. For the 'fix-with-bob' label specifically:
+            4. CRITICAL: Every label you suggest MUST exist exactly as shown in the AVAILABLE LABELS list above
+            5. CRITICAL: Do NOT add labels like "---output---" or any other invented labels
+            6. For the 'fix-with-bob' label specifically:
                - ONLY add it if the issue describes a coding task
                - ONLY add it if the implementation is straightforward and not complex
                - ONLY add it if you believe Bob Shell can fix it with simple code changes
                - DO NOT add it for complex features, architectural changes, or unclear requirements
-            4. Common label mappings:
+            7. Common label mappings (only use if they exist in AVAILABLE LABELS):
                - 'bug': Issue reports something broken or not working correctly
                - 'enhancement': Issue requests a new feature or improvement
                - 'documentation': Issue relates to docs, README, or comments
@@ -199,7 +201,7 @@ jobs:
             Example: ["enhancement", "fix-with-bob"]
             Example: ["question"]
 
-            If no labels are appropriate, respond with an empty array: []
+            If no labels from the available list are appropriate, respond with an empty array: []
             PROMPT_EOF
 
             # Run Bob Shell with the prompt
@@ -207,6 +209,11 @@ jobs:
             
             echo "Bob Shell Response:"
             echo "${RESPONSE}"
+            
+            # Get list of valid repository labels
+            VALID_LABELS=$(cat /tmp/repo_labels.json | jq -r '.[].name')
+            echo "Valid repository labels:"
+            echo "${VALID_LABELS}"
             
             # Extract JSON array from response (Bob might add explanation text)
             # First, try to extract from ---output--- section if it exists
@@ -243,13 +250,36 @@ jobs:
               LABELS_JSON="[]"
             fi
             
-            echo "Extracted labels: ${LABELS_JSON}"
+            echo "Extracted labels (before validation): ${LABELS_JSON}"
+            
+            # Validate each label against repository labels
+            VALIDATED_LABELS="[]"
+            INVALID_LABELS=""
+            
+            if [ "${LABELS_JSON}" != "[]" ]; then
+              # Extract labels from JSON and validate each one
+              VALIDATED_LABELS=$(echo "${LABELS_JSON}" | jq -c --argjson valid "$(echo "${VALID_LABELS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')" '
+                map(select(. as $label | $valid | index($label) != null))
+              ')
+              
+              # Find invalid labels for reporting
+              INVALID_LABELS=$(echo "${LABELS_JSON}" | jq -r --argjson valid "$(echo "${VALID_LABELS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')" '
+                map(select(. as $label | $valid | index($label) == null)) | join(", ")
+              ')
+            fi
+            
+            # Report invalid labels
+            if [ -n "${INVALID_LABELS}" ] && [ "${INVALID_LABELS}" != "" ]; then
+              echo "⚠️ Warning: Bob suggested invalid labels that don't exist in repository: ${INVALID_LABELS}"
+            fi
+            
+            echo "Validated labels: ${VALIDATED_LABELS}"
             
             # Save to output
-            echo "selected_labels=${LABELS_JSON}" >> $GITHUB_OUTPUT
+            echo "selected_labels=${VALIDATED_LABELS}" >> $GITHUB_OUTPUT
             
             # Also save to file for next step
-            echo "${LABELS_JSON}" > /tmp/selected_labels.json
+            echo "${VALIDATED_LABELS}" > /tmp/selected_labels.json
         env:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
       
