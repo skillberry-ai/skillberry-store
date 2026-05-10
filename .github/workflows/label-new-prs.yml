@@ -273,12 +273,14 @@ jobs:
 
             **Instructions:**
             1. Analyze the PR title, description, and changed files
-            2. Select the most relevant labels from the available labels list
+            2. Select the most relevant labels from the available labels list above
             3. Consider the label descriptions to ensure accurate categorization
             4. You can suggest multiple labels if appropriate
-            5. IMPORTANT: Do NOT suggest the 'fix-with-bob' label - it is reserved for other workflows
-            6. Output ONLY the label names, one per line, nothing else
-            7. If no labels are appropriate, output 'NONE'
+            5. CRITICAL: You MUST ONLY select labels that exist in the "Available Repository Labels" list above
+            6. CRITICAL: Do NOT invent, create, or suggest any labels that are not in the available labels list
+            7. IMPORTANT: Do NOT suggest the 'fix-with-bob' label - it is reserved for other workflows
+            8. Output ONLY the label names, one per line, nothing else
+            9. If no labels from the available list are appropriate, output 'NONE'
 
             **Output Format:**
             label-name-1
@@ -294,19 +296,55 @@ jobs:
             echo "Bob Shell output:"
             echo "${BOB_OUTPUT}"
             
+            # Get list of valid repository labels (excluding fix-with-bob)
+            VALID_LABELS=$(cat /tmp/labels_info.txt | grep -oP '(?<=\*\*)[^*]+(?=\*\*)' | grep -v "^fix-with-bob$")
+            
+            echo "Valid repository labels:"
+            echo "${VALID_LABELS}"
+            
             # Extract label suggestions (last lines of output, one label per line)
             # Filter out any non-label text and empty lines
-            SUGGESTED_LABELS=$(echo "${BOB_OUTPUT}" | grep -v "^$" | tail -n 20 | grep -E "^[a-z0-9-]+$" || echo "")
+            RAW_SUGGESTIONS=$(echo "${BOB_OUTPUT}" | grep -v "^$" | tail -n 20 | grep -E "^[a-z0-9-]+$" || echo "")
             
-            if [ -z "${SUGGESTED_LABELS}" ] || [ "${SUGGESTED_LABELS}" = "NONE" ]; then
-              echo "No labels suggested by Bob Shell"
+            # Validate each suggested label against repository labels
+            VALIDATED_LABELS=""
+            INVALID_LABELS=""
+            
+            if [ -n "${RAW_SUGGESTIONS}" ] && [ "${RAW_SUGGESTIONS}" != "NONE" ]; then
+              while IFS= read -r label; do
+                if [ -n "${label}" ]; then
+                  # Check if label exists in valid labels list
+                  if echo "${VALID_LABELS}" | grep -qx "${label}"; then
+                    if [ -z "${VALIDATED_LABELS}" ]; then
+                      VALIDATED_LABELS="${label}"
+                    else
+                      VALIDATED_LABELS="${VALIDATED_LABELS}"$'\n'"${label}"
+                    fi
+                  else
+                    if [ -z "${INVALID_LABELS}" ]; then
+                      INVALID_LABELS="${label}"
+                    else
+                      INVALID_LABELS="${INVALID_LABELS}, ${label}"
+                    fi
+                  fi
+                fi
+              done <<< "${RAW_SUGGESTIONS}"
+            fi
+            
+            # Report invalid labels
+            if [ -n "${INVALID_LABELS}" ]; then
+              echo "⚠️ Warning: Bob suggested invalid labels that don't exist in repository: ${INVALID_LABELS}"
+            fi
+            
+            if [ -z "${VALIDATED_LABELS}" ]; then
+              echo "No valid labels suggested by Bob Shell"
               echo "suggested_labels=" >> $GITHUB_OUTPUT
             else
-              echo "Suggested labels:"
-              echo "${SUGGESTED_LABELS}"
+              echo "Validated labels:"
+              echo "${VALIDATED_LABELS}"
               
               # Convert to comma-separated for GitHub API
-              LABELS_CSV=$(echo "${SUGGESTED_LABELS}" | tr '\n' ',' | sed 's/,$//')
+              LABELS_CSV=$(echo "${VALIDATED_LABELS}" | tr '\n' ',' | sed 's/,$//')
               echo "suggested_labels=${LABELS_CSV}" >> $GITHUB_OUTPUT
             fi
         env:
