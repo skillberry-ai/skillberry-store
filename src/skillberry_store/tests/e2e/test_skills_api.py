@@ -261,16 +261,20 @@ async def test_update_skill(run_sbs):
 
 @pytest.mark.asyncio
 async def test_update_nonexistent_skill(run_sbs):
-    """Test that updating a non-existent skill fails."""
+    """Test that updating a non-existent skill fails with 404.
+
+    The URL name is a valid Anthropic slug that simply doesn't exist on disk,
+    so we exercise the existence check rather than the new slug validation.
+    """
     updated_data = {
-        "name": "nonexistent_skill",
+        "name": "nonexistent-skill",
         "description": "This should fail",
         "tool_uuids": [],
         "snippet_uuids": []
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.put(f"{BASE_URL}/skills/nonexistent_skill", json=updated_data)
+        response = await client.put(f"{BASE_URL}/skills/nonexistent-skill", json=updated_data)
         assert response.status_code == 404
 
 

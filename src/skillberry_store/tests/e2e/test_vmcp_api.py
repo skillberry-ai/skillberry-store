@@ -179,9 +179,13 @@ async def test_update_vmcp_server(run_sbs):
 
 @pytest.mark.asyncio
 async def test_update_nonexistent_vmcp_server(run_sbs):
-    """Test that updating a non-existent VMCP server fails."""
+    """Test that updating a non-existent VMCP server fails with 404.
+
+    The URL name is a valid Anthropic slug that simply doesn't exist on disk,
+    so we exercise the existence check rather than the new slug validation.
+    """
     updated_data = {
-        "name": "nonexistent_vmcp_server",
+        "name": "nonexistent-vmcp-server",
         "description": "This should fail",
         "port": 9003,
         "skill.name": "test-skill",
@@ -190,7 +194,7 @@ async def test_update_nonexistent_vmcp_server(run_sbs):
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.put(f"{BASE_URL}/vmcp_servers/nonexistent_vmcp_server", params=updated_data)
+        response = await client.put(f"{BASE_URL}/vmcp_servers/nonexistent-vmcp-server", params=updated_data)
         assert response.status_code == 404
 
 
