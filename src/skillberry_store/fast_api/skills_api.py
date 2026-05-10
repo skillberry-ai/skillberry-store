@@ -4,7 +4,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Annotated
+from typing import Optional, Annotated, List
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from prometheus_client import Counter
@@ -423,6 +423,7 @@ def register_skills_api(
         folder_path: Optional[str] = Form(None),
         snippet_mode: str = Form("file"),
         treat_all_as_documents: bool = Form(False),
+        tags: List[str] = Form([]),
     ):
         """Import an Anthropic skill from GitHub URL, ZIP file, or local folder.
 
@@ -432,6 +433,7 @@ def register_skills_api(
             zip_file: ZIP file upload (required if source_type='zip')
             folder_path: Local folder path (required if source_type='folder')
             snippet_mode: 'file' or 'paragraph' - how to import text files
+            tags: List of additional tags to add to all imported objects (skills, tools, snippets)
 
         Returns:
             dict: Import result with created tools, snippets, and skill info
@@ -499,12 +501,18 @@ def register_skills_api(
                     )
                     module_filename = f"{tool_dict['name']}{ext}"
 
+                    # Add additional tags to tool tags
+                    tool_tags = tool_dict["tags"].copy() if tool_dict["tags"] else []
+                    for tag in tags:
+                        if tag and tag not in tool_tags:
+                            tool_tags.append(tag)
+
                     tool_data = {
                         "uuid": tool_uuid,
                         "name": tool_dict["name"],
                         "version": tool_dict["version"],
                         "description": tool_dict["description"],
-                        "tags": tool_dict["tags"],
+                        "tags": tool_tags,
                         "programming_language": tool_dict["programmingLanguage"],
                         "module_name": module_filename,
                         "packaging_format": "code",
@@ -572,6 +580,14 @@ def register_skills_api(
                     snippet_dict = snippet.to_dict()
                     snippet_uuid = str(uuid.uuid4())
 
+                    # Add additional tags to snippet tags
+                    snippet_tags = (
+                        snippet_dict["tags"].copy() if snippet_dict["tags"] else []
+                    )
+                    for tag in tags:
+                        if tag and tag not in snippet_tags:
+                            snippet_tags.append(tag)
+
                     # Prepare snippet data
                     snippet_data = {
                         "uuid": snippet_uuid,
@@ -579,7 +595,7 @@ def register_skills_api(
                         "version": snippet_dict["version"],
                         "description": snippet_dict["description"],
                         "content": snippet_dict["content"],
-                        "tags": snippet_dict["tags"],
+                        "tags": snippet_tags,
                         "content_type": "text/plain",
                         "state": "approved",
                     }
@@ -594,14 +610,19 @@ def register_skills_api(
                 except Exception as e:
                     logger.error(f"Failed to create snippet {snippet.name}: {e}")
 
-            # Create skill
+            # Create skill with additional tags
+            skill_tags = ["anthropic", "imported"]
+            for tag in tags:
+                if tag and tag not in skill_tags:
+                    skill_tags.append(tag)
+
             skill_uuid = str(uuid.uuid4())
             skill_data = {
                 "uuid": skill_uuid,
                 "name": skill_name,
                 "version": "1.0.0",
                 "description": skill_description,
-                "tags": ["anthropic", "imported"],
+                "tags": skill_tags,
                 "tool_uuids": created_tool_uuids,
                 "snippet_uuids": created_snippet_uuids,
                 "state": "approved",

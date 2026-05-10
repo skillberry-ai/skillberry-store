@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
+import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportSnippets, importSnippets, downloadJSON } from '../utils/exportImportHelpers';
 import {
@@ -15,7 +16,6 @@ import {
   ToolbarContent,
   ToolbarItem,
   Button,
-  SearchInput,
   Text,
   Spinner,
   EmptyState,
@@ -38,7 +38,6 @@ import { PlusIcon, FileCodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon }
 import { snippetsApi } from '@/services/api';
 import type { Snippet } from '@/types';
 
-type SortableColumn = 'name' | 'description' | 'state' | 'content_type' | 'version';
 
 export function SnippetsPage() {
   const navigate = useNavigate();
@@ -48,6 +47,7 @@ export function SnippetsPage() {
   const [maxResults, setMaxResults] = useState(10);
   const [similarityThreshold, setSimilarityThreshold] = useState(1);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newSnippet, setNewSnippet] = useState({
     name: '',
@@ -213,14 +213,33 @@ export function SnippetsPage() {
     ];
   };
 
-  // Get all unique tags from snippets
+  // Get all unique tags from snippets (excluding namespace tags)
   const allTags = useMemo(() => {
     if (!snippets) return [];
     const tagSet = new Set<string>();
     snippets.forEach(snippet => {
-      snippet.tags?.forEach(tag => tagSet.add(tag));
+      snippet.tags?.forEach(tag => {
+        if (!tag.startsWith('namespace:')) {
+          tagSet.add(tag);
+        }
+      });
     });
     return Array.from(tagSet).sort();
+  }, [snippets]);
+
+  // Get all unique namespaces from snippets
+  const allNamespaces = useMemo(() => {
+    if (!snippets) return [];
+    const namespaceSet = new Set<string>();
+    snippets.forEach(snippet => {
+      snippet.tags?.forEach(tag => {
+        if (tag.startsWith('namespace:')) {
+          const namespace = tag.substring('namespace:'.length);
+          namespaceSet.add(namespace);
+        }
+      });
+    });
+    return Array.from(namespaceSet).sort();
   }, [snippets]);
 
   const filteredSnippets = useMemo(() => {
@@ -245,11 +264,20 @@ export function SnippetsPage() {
       }
     }
 
-    // Apply tag filtering
+    // Apply tag filtering (excluding namespace tags)
     if (filtered && selectedTags.length > 0) {
       filtered = filtered.filter(snippet =>
         selectedTags.every(selectedTag =>
           snippet.tags?.includes(selectedTag)
+        )
+      );
+    }
+
+    // Apply namespace filtering
+    if (filtered && selectedNamespaces.length > 0) {
+      filtered = filtered.filter(snippet =>
+        selectedNamespaces.every(selectedNamespace =>
+          snippet.tags?.includes(`namespace:${selectedNamespace}`)
         )
       );
     }
@@ -269,7 +297,7 @@ export function SnippetsPage() {
     }
 
     return filtered;
-  }, [snippets, searchResults, searchTerm, searchMode, selectedTags, activeSortIndex, activeSortDirection]);
+  }, [snippets, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -327,6 +355,13 @@ export function SnippetsPage() {
                 onMaxResultsChange={setMaxResults}
                 similarityThreshold={similarityThreshold}
                 onSimilarityThresholdChange={setSimilarityThreshold}
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <NamespaceFilter
+                allNamespaces={allNamespaces}
+                selectedNamespaces={selectedNamespaces}
+                onNamespacesChange={setSelectedNamespaces}
               />
             </ToolbarItem>
             <ToolbarItem>
@@ -452,13 +487,15 @@ export function SnippetsPage() {
                     onClick={() => navigate(`/snippets/${snippet.name}`)}
                     style={{ cursor: 'pointer' }}
                   >
-                    {snippet.tags && snippet.tags.length > 0 ? (
+                    {snippet.tags && snippet.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (
                       <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                        {snippet.tags.map((tag) => (
-                          <Label key={tag} color={getTagColor(tag)} isCompact>
-                            {tag}
-                          </Label>
-                        ))}
+                        {snippet.tags
+                          .filter(tag => !tag.startsWith('namespace:'))
+                          .map((tag) => (
+                            <Label key={tag} color={getTagColor(tag)} isCompact>
+                              {tag}
+                            </Label>
+                          ))}
                       </div>
                     ) : (
                       '-'

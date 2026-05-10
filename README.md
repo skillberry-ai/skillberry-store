@@ -11,6 +11,7 @@ This service implements a smart skills repository for agentic workflows. Manage,
 - **Tools Search and list**: Shortlist tools using semantic and classic search.
 - **Tools Life Cycle Management**: Provides tools life cycle management (state, visibility, etc.).
 - **Tools Persistence**: Support persistence of tools into filesystem, GitHub repos etc.
+- **Namespaces**: Organize and label skills, tools, and snippets using namespaces for better categorization and filtering.
 - **Observability**: Provide metrics and traces for operational and behavioural analysis of tools usage.
 - **OpenAPI frontend**: FastAPI endpoint to interact and manage tools (using tools-manifest artifacts)
 - **CLI Support**: Command-line interface for all API operations.
