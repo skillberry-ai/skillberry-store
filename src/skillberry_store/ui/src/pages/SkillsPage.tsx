@@ -26,6 +26,9 @@ import {
   ModalVariant,
   Form,
   FormGroup,
+  FormHelperText,
+  HelperText,
+  HelperTextItem,
   TextInput,
   TextArea,
   Label,
@@ -690,20 +693,28 @@ export function SkillsPage() {
               isRequired
               type="text"
               id="skill-name"
+              aria-describedby="skill-name-helper"
               value={newSkill.name}
               validated={newSkill.name === '' || isValidStoreName(newSkill.name) ? 'default' : 'error'}
-              onChange={(_, value) => setNewSkill({ ...newSkill, name: value })}
+              onChange={(_, value) => {
+                // Typing in the name field always clears any stale submit
+                // error — the alert from the previous failed submit shouldn't
+                // linger once the user starts correcting it.
+                if (createError) setCreateError('');
+                setNewSkill({ ...newSkill, name: value });
+              }}
             />
             {newSkill.name !== '' && !isValidStoreName(newSkill.name) && (
-              <div
-                style={{
-                  marginTop: '0.25rem',
-                  fontSize: '0.85em',
-                  color: 'var(--pf-v5-global--danger-color--100)',
-                }}
-              >
-                Invalid name for Claude Code MCP. {STORE_NAME_HINT}
-              </div>
+              <FormHelperText>
+                <HelperText>
+                  <HelperTextItem
+                    id="skill-name-helper"
+                    variant="error"
+                  >
+                    Invalid name for Claude Code MCP. {STORE_NAME_HINT}
+                  </HelperTextItem>
+                </HelperText>
+              </FormHelperText>
             )}
           </FormGroup>
           <FormGroup label="Version" fieldId="skill-version">

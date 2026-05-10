@@ -12,8 +12,11 @@ import type {
 
 const API_BASE = '/api';
 
-// Anthropic Agent Skills naming format — used for skill, VMCP, external MCP,
-// and tool names. Source: https://code.claude.com/docs/en/skills frontmatter.
+// Anthropic Agent Skills naming format — currently enforced for skill and
+// VMCP names on create/update. External MCP and tool names are out of scope
+// for this iteration, but share the same pattern so the constants are
+// exported here for future reuse.
+// Source: https://code.claude.com/docs/en/skills frontmatter.
 export const STORE_NAME_PATTERN = /^[a-z0-9-]{1,64}$/;
 export const STORE_NAME_HINT =
   "Lowercase letters, digits, and hyphens (-) only; 1 to 64 characters. No spaces, underscores, or uppercase. Examples: 'docs-research', 'context7', 'pdf-to-markdown'.";
@@ -31,12 +34,35 @@ class ApiError extends Error {
   }
 }
 
+// FastAPI's HTTPException.detail is `any` — some endpoints return a string,
+// others return a structured object (e.g. name_validation returns
+// `{error, kind, name, hint, pattern}`). Collapse both to a human-readable
+// message so callers can surface the actual reason instead of
+// `[object Object]`.
+function formatErrorDetail(detail: unknown): string {
+  if (typeof detail === 'string') return detail;
+  if (detail && typeof detail === 'object') {
+    const d = detail as Record<string, unknown>;
+    const hint = typeof d.hint === 'string' ? d.hint : undefined;
+    const error = typeof d.error === 'string' ? d.error : undefined;
+    const name = typeof d.name === 'string' ? `'${d.name}'` : undefined;
+    if (hint) return name ? `${hint} (got ${name})` : hint;
+    if (error) return name ? `${error}: ${name}` : error;
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return 'An error occurred';
+    }
+  }
+  return 'An error occurred';
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({
       detail: response.statusText,
     }));
-    throw new ApiError(error.detail || 'An error occurred', response.status);
+    throw new ApiError(formatErrorDetail(error.detail), response.status);
   }
   return response.json();
 }

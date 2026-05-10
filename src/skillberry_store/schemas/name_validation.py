@@ -73,6 +73,28 @@ def validate_store_name(name: Any, kind: str = "name") -> None:
         )
 
 
+def slugify_store_name(name: Any) -> str | None:
+    """Best-effort conversion of an arbitrary name to the Anthropic slug format.
+
+    Lowercases, replaces runs of underscores/whitespace/dots with a single
+    hyphen, and strips every character that is not a lowercase letter, digit,
+    or hyphen. Collapses repeat hyphens and trims leading/trailing ones, then
+    truncates to 64 characters.
+
+    Returns the slug if it is a valid store name, otherwise None. This is for
+    external sources where we cannot ask the user to correct the name (e.g.
+    Anthropic skill importer pulling a SKILL.md `name` field).
+    """
+    if not isinstance(name, str):
+        return None
+    slug = name.strip().lower()
+    slug = re.sub(r"[\s._]+", "-", slug)
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    slug = slug[:64]
+    return slug if is_valid_store_name(slug) else None
+
+
 def validate_store_name_message(name: Any, kind: str = "name") -> str | None:
     """Non-raising variant. Returns None if valid, or a message string if not.
 

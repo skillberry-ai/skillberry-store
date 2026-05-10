@@ -41,6 +41,55 @@ async def test_create_vmcp_server(run_sbs):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_name",
+    [
+        "test_vmcp_server",
+        "Test-VMCP",
+        "my vmcp",
+        "vmcp.server",
+        "",
+        "a" * 65,
+    ],
+)
+async def test_create_vmcp_server_rejects_invalid_name(run_sbs, invalid_name):
+    """POST /vmcp_servers/ must reject names that are not Anthropic-slug compatible."""
+    vmcp_data = {
+        "name": invalid_name,
+        "description": "should be rejected",
+        "port": 9199,
+    }
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data)
+        assert response.status_code == 400, (
+            f"Expected 400 for invalid VMCP name {invalid_name!r}, "
+            f"got {response.status_code}: {response.text}"
+        )
+        detail = response.json().get("detail")
+        assert isinstance(detail, dict), f"Expected structured detail, got {detail!r}"
+        assert detail.get("error") == "invalid_name"
+        assert detail.get("kind") == "VMCP server"
+
+
+@pytest.mark.asyncio
+async def test_update_vmcp_server_rejects_invalid_name_in_url(run_sbs):
+    """PUT /vmcp_servers/{name} must reject invalid URL names before any state change."""
+    async with httpx.AsyncClient() as client:
+        response = await client.put(
+            f"{BASE_URL}/vmcp_servers/bad_name",
+            params={
+                "name": "bad_name",
+                "description": "irrelevant",
+                "port": 9198,
+            },
+        )
+        assert response.status_code == 400
+        detail = response.json().get("detail")
+        assert isinstance(detail, dict)
+        assert detail.get("error") == "invalid_name"
+
+
+@pytest.mark.asyncio
 async def test_create_duplicate_vmcp_server(run_sbs):
     """Test that creating a duplicate VMCP server fails."""
     vmcp_data = {

@@ -101,6 +101,60 @@ async def test_create_skill(run_sbs):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_name",
+    [
+        "test_skill",       # underscore — classic legacy case
+        "Test-Skill",       # uppercase
+        "test skill",       # space
+        "test.skill",       # dot
+        "test/skill",       # slash
+        "",                 # empty
+        "a" * 65,           # too long (max 64)
+    ],
+)
+async def test_create_skill_rejects_invalid_name(run_sbs, invalid_name):
+    """POST /skills/ must reject names that are not Anthropic-slug compatible."""
+    skill_data = {
+        "name": invalid_name,
+        "description": "should be rejected",
+        "tool_uuids": [],
+        "snippet_uuids": [],
+    }
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
+        assert response.status_code == 400, (
+            f"Expected 400 for invalid skill name {invalid_name!r}, "
+            f"got {response.status_code}: {response.text}"
+        )
+        detail = response.json().get("detail")
+        assert isinstance(detail, dict), f"Expected structured detail, got {detail!r}"
+        assert detail.get("error") == "invalid_name"
+        assert detail.get("kind") == "skill"
+
+
+@pytest.mark.asyncio
+async def test_update_skill_rejects_invalid_name_in_url(run_sbs):
+    """PUT /skills/{name} must re-validate the URL name even if the skill exists."""
+    # Invalid URL names (underscore/uppercase) should be rejected before we
+    # even touch the filesystem.
+    async with httpx.AsyncClient() as client:
+        response = await client.put(
+            f"{BASE_URL}/skills/bad_name",
+            json={
+                "name": "bad_name",
+                "description": "irrelevant",
+                "tool_uuids": [],
+                "snippet_uuids": [],
+            },
+        )
+        assert response.status_code == 400
+        detail = response.json().get("detail")
+        assert isinstance(detail, dict)
+        assert detail.get("error") == "invalid_name"
+
+
+@pytest.mark.asyncio
 async def test_create_duplicate_skill(run_sbs):
     """Test that creating a duplicate skill fails."""
     skill_data = {

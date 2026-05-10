@@ -482,6 +482,13 @@ def register_vmcp_api(
         update_vmcp_counter.inc()
 
         try:
+            # VMCP server names are immutable post-creation: they are the
+            # on-disk filename, the URL segment, and the MCP server ident.
+            # Reject any rename attempt via the body and re-validate the
+            # path `name` so we never persist an invalid slug.
+            validate_store_name(name, kind="VMCP server")
+            vmcp.name = name
+
             vmcp_filename = f"{name}.json"
 
             # Check if vmcp server exists
