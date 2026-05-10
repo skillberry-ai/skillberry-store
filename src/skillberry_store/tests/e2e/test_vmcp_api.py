@@ -17,10 +17,10 @@ async def test_create_vmcp_server(run_sbs):
     """Test creating a new VMCP server."""
     # Using params for Query() parameters - FastAPI will handle the nested structure
     vmcp_data = {
-        "name": "test_vmcp_server",
+        "name": "test-vmcp-server",
         "description": "A test VMCP server for demonstration",
         "port": 9001,
-        "skill.name": "test_skill",
+        "skill.name": "test-skill",
         "skill.description": "Test skill",
         "skill.tool_uuids": ["tool1", "tool2"]
     }
@@ -29,7 +29,7 @@ async def test_create_vmcp_server(run_sbs):
         response = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data)
         assert response.status_code == 200
         data = response.json()
-        assert data.get("name") == "test_vmcp_server"
+        assert data.get("name") == "test-vmcp-server"
         assert "created successfully" in data.get("message", "")
         # Verify UUID was generated
         assert "uuid" in data
@@ -41,13 +41,62 @@ async def test_create_vmcp_server(run_sbs):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_name",
+    [
+        "test_vmcp_server",
+        "Test-VMCP",
+        "my vmcp",
+        "vmcp.server",
+        "",
+        "a" * 65,
+    ],
+)
+async def test_create_vmcp_server_rejects_invalid_name(run_sbs, invalid_name):
+    """POST /vmcp_servers/ must reject names that are not Anthropic-slug compatible."""
+    vmcp_data = {
+        "name": invalid_name,
+        "description": "should be rejected",
+        "port": 9199,
+    }
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data)
+        assert response.status_code == 400, (
+            f"Expected 400 for invalid VMCP name {invalid_name!r}, "
+            f"got {response.status_code}: {response.text}"
+        )
+        detail = response.json().get("detail")
+        assert isinstance(detail, dict), f"Expected structured detail, got {detail!r}"
+        assert detail.get("error") == "invalid_name"
+        assert detail.get("kind") == "VMCP server"
+
+
+@pytest.mark.asyncio
+async def test_update_vmcp_server_rejects_invalid_name_in_url(run_sbs):
+    """PUT /vmcp_servers/{name} must reject invalid URL names before any state change."""
+    async with httpx.AsyncClient() as client:
+        response = await client.put(
+            f"{BASE_URL}/vmcp_servers/bad_name",
+            params={
+                "name": "bad_name",
+                "description": "irrelevant",
+                "port": 9198,
+            },
+        )
+        assert response.status_code == 400
+        detail = response.json().get("detail")
+        assert isinstance(detail, dict)
+        assert detail.get("error") == "invalid_name"
+
+
+@pytest.mark.asyncio
 async def test_create_duplicate_vmcp_server(run_sbs):
     """Test that creating a duplicate VMCP server fails."""
     vmcp_data = {
-        "name": "test_vmcp_server",
+        "name": "test-vmcp-server",
         "description": "A test VMCP server for demonstration",
         "port": 9001,
-        "skill.name": "test_skill",
+        "skill.name": "test-skill",
         "skill.description": "Test skill",
         "skill.tool_uuids": ["tool1", "tool2"]
     }
@@ -74,17 +123,17 @@ async def test_list_vmcp_servers(run_sbs):
         assert len(vmcp_servers) > 0
         
         # Check that our test VMCP server is in the dict keys
-        assert "test_vmcp_server" in vmcp_servers
+        assert "test-vmcp-server" in vmcp_servers
 
 
 @pytest.mark.asyncio
 async def test_get_vmcp_server(run_sbs):
     """Test getting a specific VMCP server by name."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server")
+        response = await client.get(f"{BASE_URL}/vmcp_servers/test-vmcp-server")
         assert response.status_code == 200
         vmcp = response.json()
-        assert vmcp.get("name") == "test_vmcp_server"
+        assert vmcp.get("name") == "test-vmcp-server"
         assert vmcp.get("description") == "A test VMCP server for demonstration"
         assert "port" in vmcp
         assert "running" in vmcp
@@ -104,44 +153,48 @@ async def test_get_nonexistent_vmcp_server(run_sbs):
 async def test_update_vmcp_server(run_sbs):
     """Test updating an existing VMCP server."""
     updated_data = {
-        "name": "test_vmcp_server",
+        "name": "test-vmcp-server",
         "description": "Updated test VMCP server description",
         "port": 9002,
-        "skill.name": "updated_skill",
+        "skill.name": "updated-skill",
         "skill.description": "Updated test skill",
         "skill.tool_uuids": ["tool3", "tool4"]
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.put(f"{BASE_URL}/vmcp_servers/test_vmcp_server", params=updated_data)
+        response = await client.put(f"{BASE_URL}/vmcp_servers/test-vmcp-server", params=updated_data)
         assert response.status_code == 200
         data = response.json()
         assert "updated successfully" in data.get("message", "")
         assert "port" in data
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server")
+        get_response = await client.get(f"{BASE_URL}/vmcp_servers/test-vmcp-server")
         assert get_response.status_code == 200
         vmcp = get_response.json()
         assert vmcp.get("description") == "Updated test VMCP server description"
         if vmcp.get("skill") is not None:
-            assert vmcp.get("skill").get("name") == "updated_skill"
+            assert vmcp.get("skill").get("name") == "updated-skill"
 
 
 @pytest.mark.asyncio
 async def test_update_nonexistent_vmcp_server(run_sbs):
-    """Test that updating a non-existent VMCP server fails."""
+    """Test that updating a non-existent VMCP server fails with 404.
+
+    The URL name is a valid Anthropic slug that simply doesn't exist on disk,
+    so we exercise the existence check rather than the new slug validation.
+    """
     updated_data = {
-        "name": "nonexistent_vmcp_server",
+        "name": "nonexistent-vmcp-server",
         "description": "This should fail",
         "port": 9003,
-        "skill.name": "test_skill",
+        "skill.name": "test-skill",
         "skill.description": "Test skill",
         "skill.tool_uuids": ["tool1"]
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.put(f"{BASE_URL}/vmcp_servers/nonexistent_vmcp_server", params=updated_data)
+        response = await client.put(f"{BASE_URL}/vmcp_servers/nonexistent-vmcp-server", params=updated_data)
         assert response.status_code == 404
 
 
@@ -149,13 +202,13 @@ async def test_update_nonexistent_vmcp_server(run_sbs):
 async def test_delete_vmcp_server(run_sbs):
     """Test deleting a VMCP server."""
     async with httpx.AsyncClient() as client:
-        response = await client.delete(f"{BASE_URL}/vmcp_servers/test_vmcp_server")
+        response = await client.delete(f"{BASE_URL}/vmcp_servers/test-vmcp-server")
         assert response.status_code == 200
         data = response.json()
         assert "deleted successfully" in data.get("message", "")
 
         # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server")
+        get_response = await client.get(f"{BASE_URL}/vmcp_servers/test-vmcp-server")
         assert get_response.status_code == 404  # File not found results in 404
 
 
@@ -170,7 +223,7 @@ async def test_delete_nonexistent_vmcp_server(run_sbs):
 @pytest.mark.asyncio
 async def test_vmcp_server_lifecycle(run_sbs):
     """Test the complete lifecycle of a VMCP server: create, read, update, delete."""
-    vmcp_name = "lifecycle_test_vmcp_server"
+    vmcp_name = "lifecycle-test-vmcp-server"
     
     async with httpx.AsyncClient() as client:
         # Clean up if exists from previous run
@@ -207,7 +260,7 @@ async def test_vmcp_server_lifecycle(run_sbs):
             "name": vmcp_name,
             "description": "Updated lifecycle test VMCP server",
             "port": 9101,
-            "skill.name": "updated_lifecycle_skill",
+            "skill.name": "updated-lifecycle-skill",
             "skill.description": "Updated lifecycle test skill",
             "skill.tool_uuids": ["tool2", "tool3"]
         }
@@ -221,7 +274,7 @@ async def test_vmcp_server_lifecycle(run_sbs):
         updated_vmcp = get_updated_response.json()
         assert updated_vmcp.get("description") == "Updated lifecycle test VMCP server"
         if updated_vmcp.get("skill") is not None:
-            assert updated_vmcp.get("skill").get("name") == "updated_lifecycle_skill"
+            assert updated_vmcp.get("skill").get("name") == "updated-lifecycle-skill"
 
         # 5. Delete
         delete_response = await client.delete(f"{BASE_URL}/vmcp_servers/{vmcp_name}")
@@ -240,26 +293,26 @@ async def test_search_vmcp_servers(run_sbs):
     # Create test VMCP servers with different descriptions
     test_vmcp_servers = [
         {
-            "name": "python_vmcp_server",
+            "name": "python-vmcp-server",
             "description": "A Python MCP server for executing Python code and scripts with logging capabilities",
             "port": 9020,
-            "skill.name": "python_skill",
+            "skill.name": "python-skill",
             "skill.description": "Python execution skill",
             "skill.tool_uuids": ["python_tool"]
         },
         {
-            "name": "javascript_vmcp_server",
+            "name": "javascript-vmcp-server",
             "description": "JavaScript MCP server for running Node.js scripts and handling HTTP requests",
             "port": 9021,
-            "skill.name": "javascript_skill",
+            "skill.name": "javascript-skill",
             "skill.description": "JavaScript execution skill",
             "skill.tool_uuids": ["js_tool"]
         },
         {
-            "name": "database_vmcp_server",
+            "name": "database-vmcp-server",
             "description": "Database MCP server for SQL queries and database operations with connection pooling",
             "port": 9022,
-            "skill.name": "database_skill",
+            "skill.name": "database-skill",
             "skill.description": "Database operations skill",
             "skill.tool_uuids": ["db_tool"]
         }
@@ -287,9 +340,9 @@ async def test_search_vmcp_servers(run_sbs):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching VMCP server"
         
-        # Verify python_vmcp_server is in results
+        # Verify python-vmcp-server is in results
         filenames = [r.get("filename") for r in results]
-        assert "python_vmcp_server" in filenames, f"python_vmcp_server should be in search results, got: {filenames}"
+        assert "python-vmcp-server" in filenames, f"python-vmcp-server should be in search results, got: {filenames}"
         
         # Test search for "HTTP requests"
         search_response = await client.get(

@@ -22,6 +22,7 @@ from skillberry_store.tools.configure import (
 )
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
 from skillberry_store.fast_api.search_filters import apply_search_filters
+from skillberry_store.schemas.name_validation import validate_store_name
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,10 @@ def register_vmcp_api(
         """
         logger.info(f"Request to create vmcp server: {vmcp.name}")
         create_vmcp_counter.inc()
+
+        # VMCP names are used as `claude mcp add <name>` args and URL
+        # segments, so they must match the Anthropic slug format.
+        validate_store_name(vmcp.name, kind="VMCP server")
 
         # Generate UUID if not provided
         if not vmcp.uuid:
@@ -437,6 +442,13 @@ def register_vmcp_api(
         update_vmcp_counter.inc()
 
         try:
+            # VMCP server names are immutable post-creation: they are the
+            # on-disk filename, the URL segment, and the MCP server ident.
+            # Reject any rename attempt via the body and re-validate the
+            # path `name` so we never persist an invalid slug.
+            validate_store_name(name, kind="VMCP server")
+            vmcp.name = name
+
             vmcp_filename = f"{name}.json"
 
             # Check if vmcp server exists
