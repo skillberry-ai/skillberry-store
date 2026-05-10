@@ -423,7 +423,7 @@ def register_skills_api(
         folder_path: Optional[str] = Form(None),
         snippet_mode: str = Form("file"),
         treat_all_as_documents: bool = Form(False),
-        additional_tags: List[str] = Form([]),
+        tags: List[str] = Form([]),
     ):
         """Import an Anthropic skill from GitHub URL, ZIP file, or local folder.
 
@@ -433,7 +433,7 @@ def register_skills_api(
             zip_file: ZIP file upload (required if source_type='zip')
             folder_path: Local folder path (required if source_type='folder')
             snippet_mode: 'file' or 'paragraph' - how to import text files
-            additional_tags: List of additional tags to add to all imported objects (skills, tools, snippets)
+            tags: List of additional tags to add to all imported objects (skills, tools, snippets)
 
         Returns:
             dict: Import result with created tools, snippets, and skill info
@@ -503,7 +503,7 @@ def register_skills_api(
 
                     # Add additional tags to tool tags
                     tool_tags = tool_dict["tags"].copy() if tool_dict["tags"] else []
-                    for tag in additional_tags:
+                    for tag in tags:
                         if tag and tag not in tool_tags:
                             tool_tags.append(tag)
 
@@ -584,7 +584,7 @@ def register_skills_api(
                     snippet_tags = (
                         snippet_dict["tags"].copy() if snippet_dict["tags"] else []
                     )
-                    for tag in additional_tags:
+                    for tag in tags:
                         if tag and tag not in snippet_tags:
                             snippet_tags.append(tag)
 
@@ -612,7 +612,7 @@ def register_skills_api(
 
             # Create skill with additional tags
             skill_tags = ["anthropic", "imported"]
-            for tag in additional_tags:
+            for tag in tags:
                 if tag and tag not in skill_tags:
                     skill_tags.append(tag)
 

@@ -141,8 +141,10 @@ export function AnthropicSkillImporter({
       formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
       
       // Add namespaces as additional tags with namespace: prefix
-      selectedNamespaces.forEach(namespace => {
-        formData.append('additional_tags', `namespace:${namespace}`);
+      // If no namespaces are selected, use "default" namespace
+      const namespacesToUse = selectedNamespaces.length > 0 ? selectedNamespaces : ['default'];
+      namespacesToUse.forEach(namespace => {
+        formData.append('tags', `namespace:${namespace}`);
       });
 
       if (importSource === 'url') {
