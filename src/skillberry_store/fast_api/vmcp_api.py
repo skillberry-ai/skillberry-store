@@ -207,9 +207,17 @@ def register_vmcp_api(
                 "port": server.port,
             }
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Error creating vmcp server '{vmcp.name}': {e}")
+            
+            # Check if it's a port conflict error
+            if "port" in error_msg.lower() and ("not available" in error_msg.lower() or "already in use" in error_msg.lower() or "in use" in error_msg.lower()):
+                raise HTTPException(
+                    status_code=409, detail=f"Port conflict: {error_msg}"
+                )
+            
             raise HTTPException(
-                status_code=500, detail=f"Error creating vmcp server: {str(e)}"
+                status_code=500, detail=f"Error creating vmcp server: {error_msg}"
             )
 
     @app.get("/vmcp_servers/", tags=[tags])
