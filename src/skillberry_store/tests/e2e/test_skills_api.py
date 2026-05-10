@@ -102,16 +102,25 @@ async def test_create_skill(run_sbs):
 
 @pytest.mark.asyncio
 async def test_create_duplicate_skill(run_sbs):
-    """Test that creating a duplicate skill fails."""
-    skill_data = {
-        "name": "test_skill",
-        "description": "A test skill for demonstration",
-        "tool_uuids": [],
-        "snippet_uuids": []
-    }
-
+    """Test that creating a skill with a duplicate UUID fails."""
     async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
+        # First get the existing skill to obtain its UUID
+        get_response = await client.get(f"{BASE_URL}/skills/test_skill")
+        assert get_response.status_code == 200, "test_skill should exist from previous test"
+        skill_data = get_response.json()
+        existing_uuid = skill_data.get("uuid")
+        assert existing_uuid is not None, "Skill UUID should be present"
+        
+        # Try to create a new skill with the same UUID
+        duplicate_skill_data = {
+            "name": "different_name_skill",
+            "description": "A skill with duplicate UUID",
+            "tool_uuids": [],
+            "snippet_uuids": [],
+            "uuid": existing_uuid  # Using the same UUID
+        }
+        
+        response = await client.post(f"{BASE_URL}/skills/", params=duplicate_skill_data)
         # Should fail with 409 Conflict
         assert response.status_code == 409
         assert "already exists" in response.json().get("detail", "")
@@ -222,16 +231,24 @@ async def test_update_nonexistent_skill(run_sbs):
 
 @pytest.mark.asyncio
 async def test_delete_skill(run_sbs):
-    """Test deleting a skill."""
+    """Test deleting a skill by UUID."""
     async with httpx.AsyncClient() as client:
-        response = await client.delete(f"{BASE_URL}/skills/test_skill")
+        # First get the skill by name to obtain its UUID
+        get_response = await client.get(f"{BASE_URL}/skills/test_skill")
+        assert get_response.status_code == 200
+        skill_data = get_response.json()
+        skill_uuid = skill_data.get("uuid")
+        assert skill_uuid is not None, "Skill UUID should be present"
+        
+        # Delete by UUID
+        response = await client.delete(f"{BASE_URL}/skills/{skill_uuid}")
         assert response.status_code == 200
         data = response.json()
         assert "deleted successfully" in data.get("message", "")
 
-        # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/skills/test_skill")
-        assert get_response.status_code == 404
+        # Verify deletion by UUID
+        verify_response = await client.get(f"{BASE_URL}/skills/{skill_uuid}")
+        assert verify_response.status_code == 404
 
 
 @pytest.mark.asyncio

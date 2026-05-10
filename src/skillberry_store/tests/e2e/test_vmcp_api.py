@@ -56,7 +56,7 @@ async def test_create_duplicate_vmcp_server(run_sbs):
         response = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data)
         # Should fail with 409 Conflict
         assert response.status_code == 409
-        assert "already exists" in response.json().get("detail", "")
+        assert "Port conflict" in response.json().get("detail", "")
 
 
 @pytest.mark.asyncio

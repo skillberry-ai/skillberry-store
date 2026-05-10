@@ -443,16 +443,24 @@ async def test_update_nonexistent_tool(run_sbs):
 
 @pytest.mark.asyncio
 async def test_delete_tool(run_sbs):
-    """Test deleting a tool."""
+    """Test deleting a tool by UUID."""
     async with httpx.AsyncClient() as client:
-        response = await client.delete(f"{BASE_URL}/tools/test_tool")
+        # First get the tool by name to obtain its UUID
+        get_response = await client.get(f"{BASE_URL}/tools/test_tool")
+        assert get_response.status_code == 200
+        tool_data = get_response.json()
+        tool_uuid = tool_data.get("uuid")
+        assert tool_uuid is not None, "Tool UUID should be present"
+        
+        # Delete by UUID
+        response = await client.delete(f"{BASE_URL}/tools/{tool_uuid}")
         assert response.status_code == 200
         data = response.json()
         assert "deleted successfully" in data.get("message", "")
 
-        # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/tools/test_tool")
-        assert get_response.status_code == 404
+        # Verify deletion by UUID
+        verify_response = await client.get(f"{BASE_URL}/tools/{tool_uuid}")
+        assert verify_response.status_code == 404
 
 
 @pytest.mark.asyncio

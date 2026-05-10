@@ -153,29 +153,45 @@ async def test_execute_tool_with_mcp_packaging(run_sbs):
             skill_name="mcp_test_skill"
         )
         
-        # Step 4: Create a tool with MCP packaging format
+        # Step 4: Create a tool with MCP packaging format using the API
+        print("\n" + "="*60)
+        print("Step 4: Creating MCP tool via API...")
+        print("="*60)
+        
+        # Create a dummy Python file (required by the endpoint but not used for MCP tools)
+        dummy_module_content = b"""# This is a placeholder module for MCP tool
+def placeholder():
+    pass
+"""
+        
+        # Prepare the tool data with MCP packaging
+        # Note: packaging_params must be sent as JSON string for FastAPI Query() compatibility
         mcp_tool_data = {
             "name": tool_name,
             "description": "MCP-based tool for testing",
             "programming_language": "python",
             "packaging_format": "mcp",
-            "packaging_params": {
+            "packaging_params": json.dumps({
                 "mcp_url": vmcp_url,
                 "mcp_tool_name": code_tool_name
-            },
+            }),
             "state": "approved"
         }
         
-        # For MCP tools, we don't need to upload a module file
-        # Create the tool JSON manually
-        tool_json = json.dumps(mcp_tool_data, indent=4)
+        files = {
+            "module": (f"{tool_name}.py", dummy_module_content, "text/x-python")
+        }
         
-        # Write the tool JSON directly to the tools directory
-        from skillberry_store.tools.configure import get_tools_directory
-        from skillberry_store.modules.file_handler import FileHandler
-        tools_directory = get_tools_directory()
-        tool_handler = FileHandler(tools_directory)
-        tool_handler.write_file_content(f"{tool_name}.json", tool_json)
+        # Create the tool using POST /tools/
+        response = await client.post(
+            f"{BASE_URL}/tools/",
+            params=mcp_tool_data,
+            files=files
+        )
+        print(f"Tool creation response: {response.status_code}")
+        assert response.status_code == 200, f"Tool creation failed: {response.text}"
+        tool_response = response.json()
+        print(f"✓ Created MCP tool: {tool_response.get('name')}")
         
         # Step 4a: Verify the tool is visible in the tools list
         print("\n" + "="*60)
@@ -505,30 +521,45 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
             
             assert sse_ready or server_running, f"VMCP server not ready: running={server_running}, sse_ready={sse_ready}"
 
-        # Step 4: Create a tool with MCP packaging format
+        # Step 4: Create a tool with MCP packaging format using the API
         print("\n" + "="*60)
-        print("Step 4: Creating MCP tool...")
+        print("Step 4: Creating MCP tool via API...")
         print("="*60)
+        
+        # Create a dummy Python file (required by the endpoint but not used for MCP tools)
+        dummy_module_content = b"""# This is a placeholder module for MCP tool
+def placeholder():
+    pass
+"""
+        
+        # Prepare the tool data with MCP packaging
+        # Note: packaging_params must be sent as JSON string for FastAPI Query() compatibility
         mcp_tool_data = {
             "name": tool_name,
             "description": "MCP-based tool for module testing",
             "programming_language": "python",
             "packaging_format": "mcp",
-            "packaging_params": {
+            "packaging_params": json.dumps({
                 "mcp_url": vmcp_url,
                 "mcp_tool_name": code_tool_name
-            },
+            }),
             "state": "approved"
         }
         
-        # Write the tool JSON directly
-        tool_json = json.dumps(mcp_tool_data, indent=4)
-        from skillberry_store.tools.configure import get_tools_directory
-        from skillberry_store.modules.file_handler import FileHandler
-        tools_directory = get_tools_directory()
-        tool_handler = FileHandler(tools_directory)
-        tool_handler.write_file_content(f"{tool_name}.json", tool_json)
-        print(f"Created MCP tool JSON file for: {tool_name}")
+        files = {
+            "module": (f"{tool_name}.py", dummy_module_content, "text/x-python")
+        }
+        
+        # Create the tool using POST /tools/
+        response = await client.post(
+            f"{BASE_URL}/tools/",
+            params=mcp_tool_data,
+            files=files
+        )
+        print(f"Tool creation response: {response.status_code}")
+        assert response.status_code == 200, f"Tool creation failed: {response.text}"
+        tool_response = response.json()
+        print(f"✓ Created MCP tool: {tool_response.get('name')}")
         
         # Step 5: Get the module content for the MCP tool
         print("\n" + "="*60)
@@ -569,26 +600,38 @@ async def test_mcp_tool_not_found(run_sbs):
     tool_name = "nonexistent_mcp_tool"
     
     async with httpx.AsyncClient() as client:
-        # Create a tool with MCP packaging format pointing to a non-existent MCP tool
+        # Create a tool with MCP packaging format pointing to a non-existent MCP tool using the API
+        # Create a dummy Python file (required by the endpoint but not used for MCP tools)
+        dummy_module_content = b"""# This is a placeholder module for MCP tool
+def placeholder():
+    pass
+"""
+        
+        # Prepare the tool data with MCP packaging
+        # Note: packaging_params must be sent as JSON string for FastAPI Query() compatibility
         mcp_tool_data = {
             "name": tool_name,
             "description": "Non-existent MCP tool",
             "programming_language": "python",
             "packaging_format": "mcp",
-            "packaging_params": {
+            "packaging_params": json.dumps({
                 "mcp_url": "http://localhost:9999/sse",  # Non-existent server
                 "mcp_tool_name": "nonexistent_tool"
-            },
+            }),
             "state": "approved"
         }
         
-        # Write the tool JSON directly
-        tool_json = json.dumps(mcp_tool_data, indent=4)
-        from skillberry_store.tools.configure import get_tools_directory
-        from skillberry_store.modules.file_handler import FileHandler
-        tools_directory = get_tools_directory()
-        tool_handler = FileHandler(tools_directory)
-        tool_handler.write_file_content(f"{tool_name}.json", tool_json)
+        files = {
+            "module": (f"{tool_name}.py", dummy_module_content, "text/x-python")
+        }
+        
+        # Create the tool using POST /tools/
+        response = await client.post(
+            f"{BASE_URL}/tools/",
+            params=mcp_tool_data,
+            files=files
+        )
+        assert response.status_code == 200, f"Tool creation failed: {response.text}"
         
         # Try to execute the tool - should fail
         execute_params = {"x": 5}
