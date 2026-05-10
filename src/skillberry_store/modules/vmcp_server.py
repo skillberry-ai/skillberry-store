@@ -476,14 +476,21 @@ class VirtualMcpServer:
                     f"Tool '{tool_name}' has no module_name in cached manifest"
                 )
 
-            file_handler = FileHandler(get_files_directory_path())
-            module_content = file_handler.read_file(module_name, raw_content=True)
+            tool_uuid = tool_dict.get("uuid")
+            if not tool_uuid:
+                raise ValueError(
+                    f"Tool '{tool_name}' has no uuid in cached manifest"
+                )
+
+            # Use the resource handler to read the module file from the tool's UUID subdirectory
+            module_content = self.tools_handler.read_resource_file(
+                tool_uuid, module_name, raw_content=True
+            )
             if not isinstance(module_content, str):
                 raise ValueError(f"Could not read module for tool '{tool_name}'")
 
             # Load tool dependencies recursively using the shared function
             dependencies = tool_dict.get("dependencies", [])
-            tool_uuid = tool_dict.get("uuid")
             tools_handler = FileHandler(get_tools_directory())
             tool_dep_ids = find_tool_dependencies(
                 dependencies=dependencies,
