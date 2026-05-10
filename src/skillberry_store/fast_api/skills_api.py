@@ -9,11 +9,13 @@ from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from prometheus_client import Counter
 
+from skillberry_store.tools.anthropic.importer import import_from_anthropic_skill
 from skillberry_store.modules.resource_handler import ResourceHandler
 from skillberry_store.modules.file_executor import detect_tool_dependencies
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
+from skillberry_store.schemas.manifest_schema import ManifestState
 from skillberry_store.tools.configure import (
     get_skills_directory,
     get_tools_directory,
@@ -281,15 +283,26 @@ def register_skills_api(
                     status_code=404, detail=f"Skill with ID '{id}' not found."
                 )
 
-            # Update modified timestamp
-            skill.modified_at = datetime.now(timezone.utc).isoformat()
+            # Read existing manifest to preserve uuid and created_at
+            existing_manifest = skill_handler.read_manifest(skill_uuid)
+            
+            # Convert update data to dict
+            update_data = skill.to_dict()
+            
+            # Merge: preserve uuid and created_at from existing, update modified_at
+            merged_manifest = {**existing_manifest, **update_data}
+            merged_manifest["uuid"] = existing_manifest.get("uuid", skill_uuid)
+            merged_manifest["created_at"] = existing_manifest.get("created_at")
+            merged_manifest["modified_at"] = datetime.now(timezone.utc).isoformat()
 
-            # Ensure UUID is preserved
-            if not skill.uuid:
-                skill.uuid = skill_uuid
-
-            # Update the skill manifest
-            skill_handler.write_manifest(skill_uuid.lower(), skill.to_dict())
+            # Write the merged manifest using ResourceHandler
+            skill_handler.write_manifest(skill_uuid.lower(), merged_manifest)
+            
+            # Update description for search capability (indexed by UUID)
+            if skills_descriptions and merged_manifest.get("description"):
+                skills_descriptions.write_description(skill_uuid, merged_manifest["description"])
+                logger.info(f"Skill description updated for UUID: {skill_uuid}")
+            
             logger.info(f"Skill with ID '{id}' (UUID: {skill_uuid}) updated successfully")
             return {"message": f"Skill with ID '{id}' updated successfully."}
         except HTTPException:
@@ -413,8 +426,6 @@ def register_skills_api(
         logger.info(f"Request to import Anthropic skill from {source_type}")
 
         try:
-            from skillberry_store.tools.anthropic.importer import import_anthropic_skill
-
             # Prepare source data based on type
             source_data = None
             if source_type == "url":
@@ -446,7 +457,7 @@ def register_skills_api(
 
             # Import the skill
             skill_name, skill_description, tools, snippets, ignored_files = (
-                import_anthropic_skill(
+                import_from_anthropic_skill(
                     source_type=source_type,
                     source_data=source_data,
                     snippet_mode=snippet_mode,
@@ -548,33 +559,32 @@ def register_skills_api(
                 except Exception as e:
                     logger.error(f"Failed to create snippet {snippet.name}: {e}")
 
-            # Create skill
-            skill_uuid = str(uuid.uuid4())
-            skill_data = {
-                "uuid": skill_uuid,
-                "name": skill_name,
-                "version": "1.0.0",
-                "description": skill_description,
-                "tags": ["anthropic", "imported"],
-                "tool_uuids": created_tool_uuids,
-                "snippet_uuids": created_snippet_uuids,
-                "state": "approved",
-            }
+            # Prepare skill schema with UUID (either existing or None for new)
+            skill_schema = SkillSchema(
+                uuid=None,
+                name=skill_name,
+                version="1.0.0",
+                description=skill_description,
+                tags=["anthropic", "imported"],
+                tool_uuids=created_tool_uuids,
+                snippet_uuids=created_snippet_uuids,
+                state=ManifestState.APPROVED,
+            )
             
-            # Save skill manifest to UUID subfolder
-            skill_handler.write_manifest(skill_uuid.lower(), skill_data)
+            # Create new skill
+            logger.info(f"Creating new skill '{skill_name}'...")
+            result = create_skill(skill_schema)
+            skill_uuid = result.get("uuid")
+            action = "created"
             
-            # Write description for search capability (indexed by UUID)
-            if skills_descriptions and skill_description:
-                skills_descriptions.write_description(skill_uuid, skill_description)
-            
-            logger.info(f"Successfully imported Anthropic skill: {skill_name}")
+            logger.info(f"Successfully imported Anthropic skill: {skill_name} ({action})")
 
             return {
                 "success": True,
-                "message": f"Successfully imported Anthropic skill '{skill_name}'",
+                "message": f"Successfully imported Anthropic skill '{skill_name}' ({action})",
                 "skill_name": skill_name,
                 "skill_uuid": skill_uuid,
+                "action": action,
                 "tools_created": len(created_tool_uuids),
                 "snippets_created": len(created_snippet_uuids),
                 "ignored_files": ignored_files,
