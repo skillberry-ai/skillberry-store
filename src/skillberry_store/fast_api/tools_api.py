@@ -716,7 +716,7 @@ def register_tools_api(
     @app.post("/tools/add", tags=[tags])
     async def add_tool_from_python(
         tool: UploadFile = File(...),
-        tool_name: Optional[str] = None,
+        selected_func: Optional[str] = None,
         update: bool = False,
     ) -> Dict[str, Any]:
         """Add a tool by automatically extracting parameters from Python code docstring.
@@ -727,7 +727,7 @@ def register_tools_api(
 
         Args:
             tool: The Python file to upload containing the function.
-            tool_name: Optional name of the specific function to extract. If not provided,
+            selected_func: Optional name of the specific function to extract. If not provided,
                       the first function in the file will be used.
             update: Whether to update if a tool with the same name already exists.
 
@@ -752,7 +752,7 @@ def register_tools_api(
             tool_bytes = await tool.read()
 
             try:
-                func_name, docstring_obj = extract_docstring(tool_bytes, tool_name=tool_name)  # type: ignore
+                func_name, docstring_obj = extract_docstring(tool_bytes, selected_func)  # type: ignore
                 logger.info(f"Extracted function '{func_name}' from uploaded file")
             except Exception as e:
                 logger.error(f"Failed to extract docstring: {e}")
@@ -793,10 +793,11 @@ def register_tools_api(
             dependencies = None
             if is_auto_detect_dependencies_enabled():
                 try:
+                    available_tools = tool_handler.get_available_resource_names()
                     detected_deps = detect_tool_dependencies(
                         tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
                         func_name,
-                        tool_handler
+                        available_tools
                     )
                     if detected_deps:
                         dependencies = detected_deps
@@ -804,12 +805,8 @@ def register_tools_api(
                 except Exception as e:
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
             
-            if existing_tool:
-                if not update:
-                    raise HTTPException(
-                        status_code=409,
-                        detail=f"Tool '{func_name}' already exists. Set update=true to overwrite."
-                    )
+            if update and existing_tool:
+
                 logger.info(f"Updating existing tool: {func_name}")
                 
                 # Use existing UUID for update
