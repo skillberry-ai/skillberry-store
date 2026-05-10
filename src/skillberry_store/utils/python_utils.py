@@ -1,7 +1,8 @@
 import ast
+from typing import Tuple, Optional
 
 from docstring_parser import parse, ParseError
-from docstring_parser.common import DocstringParam
+from docstring_parser.common import DocstringParam, Docstring
 
 
 def _annotation_to_string(annotation) -> str:
@@ -47,13 +48,13 @@ def get_function_node(tool_bytes: bytes, tool_name: str):
         raise Exception(f"Failed to parse Python code: {str(e)}")
 
 
-def extract_docstring(tool_bytes: bytes, tool_name: str = None) -> str:
+def extract_docstring(tool_bytes: bytes, selected_func: Optional[str] = None) -> Tuple[str, Docstring]:
     """
     Extracts the docstring of a function from a Python module code.
 
     Parameters:
         tool (byte): Python module code.
-        tool_name (str): The name of the function (Optional).
+        selected_func (str): The name of the function to process (Optional).
 
     Returns:
         (str, docstring_obj):
@@ -71,10 +72,10 @@ def extract_docstring(tool_bytes: bytes, tool_name: str = None) -> str:
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
                 # return the first (if no name) or the matched one
-                if not tool_name or tool_name == node.name:
+                if not selected_func or selected_func == node.name:
                     docstring = ast.get_docstring(node)
                     if not docstring:
-                        raise Exception(f"Docstring is missing for tool: {tool_name}")
+                        raise Exception(f"Docstring is missing for tool: {selected_func}")
                     try:
                         docstring_obj = parse(docstring)
                         assert (
@@ -90,8 +91,8 @@ def extract_docstring(tool_bytes: bytes, tool_name: str = None) -> str:
                     return node.name, docstring_obj
 
         raise Exception(
-            f"Function {tool_name} not found in module code"
-            if tool_name
+            f"Function {selected_func} not found in module code"
+            if selected_func
             else "No functions found in module code"
         )
 
