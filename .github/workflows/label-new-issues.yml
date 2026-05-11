@@ -132,24 +132,23 @@ jobs:
           
           echo "issue_number=${ISSUE_NUMBER}" >> $GITHUB_OUTPUT
           
-          # Fetch issue details from GitHub API for workflow_dispatch
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            ISSUE_DATA=$(gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER})
-            ISSUE_TITLE=$(echo "${ISSUE_DATA}" | jq -r '.title')
-            ISSUE_BODY=$(echo "${ISSUE_DATA}" | jq -r '.body // ""')
-          else
-            ISSUE_TITLE="${{ github.event.issue.title }}"
-            ISSUE_BODY="${{ github.event.issue.body }}"
-          fi
+          # Always fetch issue details from GitHub API to ensure consistent JSON handling
+          # This prevents issues with special characters (backticks, quotes, etc.) in issue bodies
+          ISSUE_DATA=$(gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER})
           
-          # Save issue title and body to output
-          echo "issue_title<<TITLE_EOF" >> $GITHUB_OUTPUT
-          echo "${ISSUE_TITLE}" >> $GITHUB_OUTPUT
-          echo "TITLE_EOF" >> $GITHUB_OUTPUT
+          # Use jq to safely extract and handle special characters
+          ISSUE_TITLE=$(echo "${ISSUE_DATA}" | jq -r '.title')
+          ISSUE_BODY=$(echo "${ISSUE_DATA}" | jq -r '.body // ""')
           
-          echo "issue_body<<BODY_EOF" >> $GITHUB_OUTPUT
-          echo "${ISSUE_BODY}" >> $GITHUB_OUTPUT
-          echo "BODY_EOF" >> $GITHUB_OUTPUT
+          # Save issue title and body to output using heredoc
+          {
+            echo "issue_title<<TITLE_EOF"
+            echo "${ISSUE_TITLE}"
+            echo "TITLE_EOF"
+            echo "issue_body<<BODY_EOF"
+            echo "${ISSUE_BODY}"
+            echo "BODY_EOF"
+          } >> $GITHUB_OUTPUT
       
       - name: Analyze Issue and Select Labels
         id: analyze
