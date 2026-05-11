@@ -1,0 +1,14 @@
+# Research Test File
+
+This is a test file created for GitHub issue #107.
+
+## Purpose
+This file serves as a test resource for the skillberry-store project.
+
+## Contents
+- Test data placeholder
+- Research notes placeholder
+- Example content for testing purposes
+
+## Usage
+This file can be used in test scenarios that require reading or processing text files.
