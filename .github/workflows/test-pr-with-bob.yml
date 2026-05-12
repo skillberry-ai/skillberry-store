@@ -1,0 +1,715 @@
+# ============================================================================
+# GitHub Workflow: Test PR with Bob
+# ============================================================================
+#
+# PURPOSE:
+# This workflow tests a PR after the `test-with-bob` label is added.
+# It is triggered by the unprivileged "Test PR with Bob - Trigger" workflow.
+#
+# WHAT IT DOES:
+# 1. Downloads PR context from the trigger workflow artifact
+# 2. Verifies that the PR is still open and still has the `test-with-bob` label
+# 3. Restricts execution to trusted PR head owners by default
+# 4. Checks out the PR branch
+# 5. Configures Bob Shell and Playwright MCP
+# 6. Asks Bob to generate focused tests for the PR diff
+# 7. Commits the generated tests back to the PR branch
+# 8. Installs dependencies and runs project tests
+# 9. Runs Playwright UI tests and collects screenshots/reports
+# 10. Posts a markdown report to the PR with stats, failures, artifacts, and recommendations
+#
+# REQUIRED SECRETS:
+# - BOBSHELL_API_KEY: Bob Shell API key
+# - SKILLBERRY_BOT_TOKEN: token with permission to comment on PRs and push to trusted PR branches
+#
+# OPTIONAL REPOSITORY VARIABLE:
+# - BOB_ALLOWED_HEAD_OWNERS: comma-separated list of trusted GitHub org/user owners.
+#   Default: `${{ github.repository_owner }},skillberry-bot`
+#
+# IMPORTANT SECURITY NOTE:
+# This workflow checks out and runs PR code. Keep the trusted-owner guard unless
+# you intentionally want to allow broader execution after manual label approval.
+# ============================================================================
+
+name: Test PR with Bob
+
+on:
+  workflow_run:
+    workflows: ["Test PR with Bob - Trigger"]
+    types: [completed]
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  test-pr-with-bob:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      TEST_WITH_BOB_LABEL: test-with-bob
+      ARTIFACT_DIR: ${{ runner.temp }}/bob-pr-test-artifacts
+
+    steps:
+      - name: Get PR context from trigger workflow
+        id: pr
+        uses: actions/github-script@v7
+        env:
+          TEST_WITH_BOB_LABEL: test-with-bob
+          BOB_ALLOWED_HEAD_OWNERS: ${{ vars.BOB_ALLOWED_HEAD_OWNERS }}
+        with:
+          github-token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const os = require('os');
+            const path = require('path');
+            const { execFileSync } = require('child_process');
+
+            const workflowRun = context.payload.workflow_run;
+            core.info(`Trigger workflow run ID: ${workflowRun.id}`);
+
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: workflowRun.id,
+              per_page: 100,
+            });
+
+            const artifact = artifacts.artifacts.find(a => a.name === 'pr-test-context');
+            if (!artifact) {
+              core.setFailed('Could not find pr-test-context artifact from trigger workflow');
+              return;
+            }
+
+            const zipResponse = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifact.id,
+              archive_format: 'zip',
+            });
+
+            const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bob-pr-test-'));
+            const zipPath = path.join(tempDir, 'artifact.zip');
+            const zipBuffer = Buffer.isBuffer(zipResponse.data)
+              ? zipResponse.data
+              : Buffer.from(zipResponse.data);
+            fs.writeFileSync(zipPath, zipBuffer);
+            execFileSync('unzip', ['-o', zipPath, '-d', tempDir], { stdio: 'inherit' });
+
+            const payloadPath = path.join(tempDir, 'context.json');
+            const payload = JSON.parse(fs.readFileSync(payloadPath, 'utf8'));
+            core.info(`Loaded PR #${payload.pr_number} from trigger context`);
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: payload.pr_number,
+            });
+
+            const labelName = process.env.TEST_WITH_BOB_LABEL || 'test-with-bob';
+            const hasLabel = pr.labels.some(label => label.name === labelName);
+            if (!hasLabel) {
+              core.info(`PR #${pr.number} no longer has label ${labelName}; skipping`);
+              core.setOutput('should_run', 'false');
+              return;
+            }
+
+            if (pr.state !== 'open') {
+              core.info(`PR #${pr.number} is ${pr.state}; skipping`);
+              core.setOutput('should_run', 'false');
+              return;
+            }
+
+            if (pr.draft) {
+              core.info(`PR #${pr.number} is draft; skipping`);
+              core.setOutput('should_run', 'false');
+              return;
+            }
+
+            const defaultAllowedOwners = `${context.repo.owner},skillberry-bot`;
+            const allowedOwners = (process.env.BOB_ALLOWED_HEAD_OWNERS || defaultAllowedOwners)
+              .split(',')
+              .map(owner => owner.trim())
+              .filter(Boolean);
+
+            const headOwner = pr.head.repo.owner.login;
+            if (!allowedOwners.includes(headOwner)) {
+              core.warning(
+                `Skipping PR #${pr.number}: head owner '${headOwner}' is not in allowed owners: ${allowedOwners.join(', ')}`
+              );
+              core.setOutput('should_run', 'false');
+              return;
+            }
+
+            core.setOutput('should_run', 'true');
+            core.setOutput('pr_number', String(pr.number));
+            core.setOutput('pr_title', pr.title || '');
+            const artifactDir = process.env.ARTIFACT_DIR || path.join(os.tmpdir(), 'bob-pr-test-artifacts');
+            fs.mkdirSync(artifactDir, { recursive: true });
+            fs.writeFileSync(path.join(artifactDir, 'pr-body.md'), pr.body || '');
+            fs.writeFileSync(path.join(artifactDir, 'pr-title.txt'), pr.title || '');
+            fs.writeFileSync(path.join(artifactDir, 'pr-url.txt'), pr.html_url || '');
+            fs.writeFileSync(path.join(artifactDir, 'pr-context.json'), JSON.stringify({
+              number: pr.number,
+              title: pr.title || '',
+              url: pr.html_url || '',
+              base: { ref: pr.base.ref, sha: pr.base.sha },
+              head: { repo: pr.head.repo.full_name, ref: pr.head.ref, sha: pr.head.sha, owner: headOwner },
+              labels: pr.labels.map(label => label.name),
+            }, null, 2));
+
+            core.setOutput('pr_url', pr.html_url || '');
+            core.setOutput('base_ref', pr.base.ref);
+            core.setOutput('base_sha', pr.base.sha);
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('head_repo', pr.head.repo.full_name);
+            core.setOutput('head_owner', headOwner);
+
+            core.info(`Will test PR #${pr.number}: ${pr.title}`);
+            core.info(`Head: ${pr.head.repo.full_name}:${pr.head.ref} @ ${pr.head.sha}`);
+            core.info(`Base: ${context.repo.owner}/${context.repo.repo}:${pr.base.ref} @ ${pr.base.sha}`);
+
+      - name: Checkout PR branch
+        if: steps.pr.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
+          persist-credentials: false
+
+      - name: Fetch base branch and collect diff
+        if: steps.pr.outputs.should_run == 'true'
+        env:
+          BASE_REF: ${{ steps.pr.outputs.base_ref }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${ARTIFACT_DIR}/logs" "${ARTIFACT_DIR}/playwright-output" "${ARTIFACT_DIR}/screenshots"
+
+          git remote add upstream "https://github.com/${{ github.repository }}.git" 2>/dev/null || \
+            git remote set-url upstream "https://github.com/${{ github.repository }}.git"
+          git fetch upstream "${BASE_REF}" --depth=1
+
+          echo "Collecting diff for PR #${PR_NUMBER} against upstream/${BASE_REF}"
+          git diff --name-status "upstream/${BASE_REF}...HEAD" | tee "${ARTIFACT_DIR}/changed-files.txt"
+          git diff --stat "upstream/${BASE_REF}...HEAD" | tee "${ARTIFACT_DIR}/diff-stat.txt"
+          git diff "upstream/${BASE_REF}...HEAD" > "${ARTIFACT_DIR}/pr.diff" || true
+
+      - name: Setup Node.js
+        if: steps.pr.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Bob Shell
+        if: steps.pr.outputs.should_run == 'true'
+        run: |
+          echo "Installing Bob Shell..."
+          curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash -s -- --package-manager npm
+
+          if command -v bob &> /dev/null; then
+            echo "Bob Shell installed successfully"
+            bob --version
+          else
+            echo "Bob Shell installation failed"
+            exit 1
+          fi
+
+      - name: Authenticate Bob Shell
+        if: steps.pr.outputs.should_run == 'true'
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+        run: |
+          if [ -z "${BOBSHELL_API_KEY}" ]; then
+            echo "Error: BOBSHELL_API_KEY secret is not set"
+            exit 1
+          fi
+          echo "Bob Shell authentication configured successfully"
+
+      - name: Configure Playwright MCP for Bob
+        if: steps.pr.outputs.should_run == 'true'
+        run: |
+          cat > .mcp.json <<'EOF'
+          {
+            "mcpServers": {
+              "playwright": {
+                "command": "npx",
+                "args": ["@playwright/mcp@latest"]
+              }
+            }
+          }
+          EOF
+          cat .mcp.json
+
+      - name: Ask Bob to generate focused tests for this PR
+        if: steps.pr.outputs.should_run == 'true'
+        uses: nick-invision/retry@v3
+        with:
+          timeout_minutes: 20
+          max_attempts: 2
+          retry_wait_seconds: 10
+          command: |
+            set -euo pipefail
+
+            PROMPT_FILE="${ARTIFACT_DIR}/bob-generate-tests-prompt.md"
+            {
+              cat <<'EOF'
+            You are IBM Bob Shell running inside GitHub Actions.
+
+            Task: generate high-quality tests for this pull request.
+
+            Requirements:
+            - Analyze the PR title, body, changed files, and diff.
+            - Create focused tests that exercise the behavior changed by the PR.
+            - Prefer adding tests to the repository's existing test structure and framework.
+            - Do not rewrite unrelated production code.
+            - Only change production code if a small testability fix is strictly required.
+            - If the PR changes UI behavior, create or update Playwright tests with @playwright/test.
+            - Use the configured Playwright MCP server in .mcp.json to inspect UI behavior where helpful.
+            - For UI states, capture meaningful screenshots from Playwright tests using page.screenshot() or test.info().outputPath().
+            - Keep tests deterministic and CI-friendly.
+            - Avoid snapshots that are too broad or flaky.
+            - Write a short markdown note to .bob-pr-test-notes.md with:
+              1. what tests you added,
+              2. what user flows are covered,
+              3. what risks remain,
+              4. recommendations for reviewers.
+
+            Pull request metadata:
+            EOF
+              echo "PR number: #${{ steps.pr.outputs.pr_number }}"
+              echo "PR title: ${{ steps.pr.outputs.pr_title }}"
+              echo "PR URL: ${{ steps.pr.outputs.pr_url }}"
+              echo "Head repo: ${{ steps.pr.outputs.head_repo }}"
+              echo "Head ref: ${{ steps.pr.outputs.head_ref }}"
+              echo "Base ref: ${{ steps.pr.outputs.base_ref }}"
+              echo
+              echo "PR body:"
+              cat "${ARTIFACT_DIR}/pr-body.md" 2>/dev/null || true
+              echo
+              echo "Changed files:"
+              cat "${ARTIFACT_DIR}/changed-files.txt" || true
+              echo
+              echo "Diff stat:"
+              cat "${ARTIFACT_DIR}/diff-stat.txt" || true
+              echo
+              echo "PR diff, truncated to the first 120000 bytes:"
+              head -c 120000 "${ARTIFACT_DIR}/pr.diff" || true
+            } > "${PROMPT_FILE}"
+
+            bob --accept-license --yolo -p "$(cat "${PROMPT_FILE}")"
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit generated tests to the PR branch
+        if: steps.pr.outputs.should_run == 'true'
+        id: commit_tests
+        env:
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
+          HEAD_REPO: ${{ steps.pr.outputs.head_repo }}
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          if [ -f .bob-pr-test-notes.md ]; then
+            cp .bob-pr-test-notes.md "${ARTIFACT_DIR}/bob-pr-test-notes.md"
+          fi
+
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "Generated changes detected:"
+            git status --short | tee "${ARTIFACT_DIR}/generated-test-changes.txt"
+
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+            git add -A
+            git reset .bob/ || true
+            git reset .mcp.json || true
+            git reset .bob-pr-test-notes.md || true
+
+            if git diff --cached --quiet; then
+              echo "committed_tests=false" >> "$GITHUB_OUTPUT"
+              echo "No committable generated test changes after excluding temporary files."
+            else
+              git commit -m "Add Bob-generated tests for PR #${PR_NUMBER}"
+              git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:${HEAD_REF}"
+              echo "committed_tests=true" >> "$GITHUB_OUTPUT"
+              echo "Generated tests were committed and pushed to the PR branch."
+            fi
+          else
+            echo "committed_tests=false" >> "$GITHUB_OUTPUT"
+            echo "Bob did not generate file changes."
+          fi
+
+      - name: Install project dependencies
+        if: steps.pr.outputs.should_run == 'true'
+        id: install_deps
+        run: |
+          set +e
+          INSTALL_EXIT=0
+
+          if [ -f package.json ]; then
+            if [ -f pnpm-lock.yaml ]; then
+              corepack enable
+              pnpm install --frozen-lockfile > "${ARTIFACT_DIR}/logs/install.log" 2>&1
+              INSTALL_EXIT=$?
+              echo "package_manager=pnpm" >> "$GITHUB_OUTPUT"
+            elif [ -f yarn.lock ]; then
+              corepack enable
+              yarn install --immutable > "${ARTIFACT_DIR}/logs/install.log" 2>&1 || \
+                yarn install --frozen-lockfile >> "${ARTIFACT_DIR}/logs/install.log" 2>&1 || \
+                yarn install >> "${ARTIFACT_DIR}/logs/install.log" 2>&1
+              INSTALL_EXIT=$?
+              echo "package_manager=yarn" >> "$GITHUB_OUTPUT"
+            elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+              npm ci > "${ARTIFACT_DIR}/logs/install.log" 2>&1
+              INSTALL_EXIT=$?
+              echo "package_manager=npm" >> "$GITHUB_OUTPUT"
+            else
+              npm install > "${ARTIFACT_DIR}/logs/install.log" 2>&1
+              INSTALL_EXIT=$?
+              echo "package_manager=npm" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "No package.json found. Skipping Node dependency installation." | tee "${ARTIFACT_DIR}/logs/install.log"
+            echo "package_manager=none" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "install_exit_code=${INSTALL_EXIT}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run project test suite
+        if: steps.pr.outputs.should_run == 'true'
+        id: project_tests
+        env:
+          PACKAGE_MANAGER: ${{ steps.install_deps.outputs.package_manager }}
+        run: |
+          set +e
+          TEST_EXIT=0
+          TEST_COMMAND="skip"
+
+          if [ -f package.json ] && [ "${PACKAGE_MANAGER}" != "none" ]; then
+            SCRIPT_NAME=$(node - <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const scripts = pkg.scripts || {};
+          if (scripts['test:ci']) console.log('test:ci');
+          else if (scripts['test:coverage']) console.log('test:coverage');
+          else if (scripts.test && !scripts.test.includes('no test specified')) console.log('test');
+          else console.log('');
+          NODE
+            )
+
+            if [ -n "${SCRIPT_NAME}" ]; then
+              if [ "${PACKAGE_MANAGER}" = "pnpm" ]; then
+                TEST_COMMAND="pnpm run ${SCRIPT_NAME}"
+              elif [ "${PACKAGE_MANAGER}" = "yarn" ]; then
+                TEST_COMMAND="yarn ${SCRIPT_NAME}"
+              else
+                TEST_COMMAND="npm run ${SCRIPT_NAME}"
+              fi
+              echo "Running project tests: ${TEST_COMMAND}"
+              bash -lc "${TEST_COMMAND}" > "${ARTIFACT_DIR}/logs/project-tests.log" 2>&1
+              TEST_EXIT=$?
+            else
+              echo "No usable project test script found." | tee "${ARTIFACT_DIR}/logs/project-tests.log"
+            fi
+          else
+            echo "No package.json/package manager found. Skipping project tests." | tee "${ARTIFACT_DIR}/logs/project-tests.log"
+          fi
+
+          echo "test_command=${TEST_COMMAND}" >> "$GITHUB_OUTPUT"
+          echo "project_tests_exit_code=${TEST_EXIT}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run Playwright UI tests
+        if: steps.pr.outputs.should_run == 'true'
+        id: playwright_tests
+        env:
+          PACKAGE_MANAGER: ${{ steps.install_deps.outputs.package_manager }}
+        run: |
+          set +e
+          PW_EXIT=0
+          PW_COMMAND="skip"
+
+          if [ -f package.json ] && [ "${PACKAGE_MANAGER}" != "none" ]; then
+            npx playwright install --with-deps > "${ARTIFACT_DIR}/logs/playwright-install.log" 2>&1 || true
+
+            PLAYWRIGHT_CANDIDATES=$(find . \
+              -path './node_modules' -prune -o \
+              \( -name 'playwright.config.*' -o -name '*playwright*.config.*' -o -path './tests/e2e/*' -o -path './e2e/*' -o -path './playwright/*' \) \
+              -print | head -n 20)
+
+            if [ -n "${PLAYWRIGHT_CANDIDATES}" ]; then
+              echo "Playwright candidates:"
+              echo "${PLAYWRIGHT_CANDIDATES}" | tee "${ARTIFACT_DIR}/playwright-candidates.txt"
+              PW_COMMAND="npx playwright test --reporter=json --output ${ARTIFACT_DIR}/playwright-output"
+              bash -lc "${PW_COMMAND}" > "${ARTIFACT_DIR}/playwright-results.json" 2> "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+              PW_EXIT=$?
+            else
+              echo "No Playwright config or e2e tests found. Skipping Playwright run." | tee "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+            fi
+          else
+            echo "No package.json/package manager found. Skipping Playwright tests." | tee "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+          fi
+
+          find "${ARTIFACT_DIR}" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) \
+            > "${ARTIFACT_DIR}/screenshots-list.txt" || true
+
+          echo "playwright_command=${PW_COMMAND}" >> "$GITHUB_OUTPUT"
+          echo "playwright_exit_code=${PW_EXIT}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Generate run stats
+        if: steps.pr.outputs.should_run == 'true'
+        id: stats
+        env:
+          INSTALL_EXIT: ${{ steps.install_deps.outputs.install_exit_code }}
+          PROJECT_TEST_EXIT: ${{ steps.project_tests.outputs.project_tests_exit_code }}
+          PLAYWRIGHT_EXIT: ${{ steps.playwright_tests.outputs.playwright_exit_code }}
+          PROJECT_TEST_COMMAND: ${{ steps.project_tests.outputs.test_command }}
+          PLAYWRIGHT_COMMAND: ${{ steps.playwright_tests.outputs.playwright_command }}
+          COMMITTED_TESTS: ${{ steps.commit_tests.outputs.committed_tests }}
+        run: |
+          set -euo pipefail
+
+          CHANGED_FILE_COUNT=$(grep -cve '^$' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null || echo 0)
+          GENERATED_CHANGE_COUNT=$(grep -cve '^$' "${ARTIFACT_DIR}/generated-test-changes.txt" 2>/dev/null || echo 0)
+          SCREENSHOT_COUNT=$(grep -cve '^$' "${ARTIFACT_DIR}/screenshots-list.txt" 2>/dev/null || echo 0)
+          TEST_FILE_COUNT=$(git ls-files | grep -Ei '(test|spec)\.(js|jsx|ts|tsx|mjs|cjs|py)$' | wc -l | tr -d ' ')
+
+          COVERAGE_SUMMARY="not found"
+          COVERAGE_FILE=$(find . -path './node_modules' -prune -o -name 'coverage-summary.json' -print | head -n 1)
+          if [ -n "${COVERAGE_FILE}" ] && [ -f "${COVERAGE_FILE}" ]; then
+            COVERAGE_SUMMARY=$(node - "${COVERAGE_FILE}" <<'NODE'
+          const fs = require('fs');
+          const file = process.argv[2];
+          const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const total = data.total || {};
+          const pct = key => total[key] && typeof total[key].pct !== 'undefined' ? `${total[key].pct}%` : 'n/a';
+          console.log(`lines=${pct('lines')}, statements=${pct('statements')}, branches=${pct('branches')}, functions=${pct('functions')}`);
+          NODE
+            )
+          fi
+
+          PLAYWRIGHT_SUMMARY="not run"
+          if [ -s "${ARTIFACT_DIR}/playwright-results.json" ]; then
+            PLAYWRIGHT_SUMMARY=$(node - "${ARTIFACT_DIR}/playwright-results.json" <<'NODE' || echo "unable to parse Playwright JSON"
+          const fs = require('fs');
+          const file = process.argv[2];
+          const raw = fs.readFileSync(file, 'utf8');
+          const data = JSON.parse(raw);
+          const stats = data.stats || {};
+          const parts = [];
+          for (const key of ['expected', 'unexpected', 'flaky', 'skipped']) {
+            if (typeof stats[key] !== 'undefined') parts.push(`${key}=${stats[key]}`);
+          }
+          console.log(parts.length ? parts.join(', ') : 'stats unavailable');
+          NODE
+            )
+          fi
+
+          cat > "${ARTIFACT_DIR}/stats.env" <<EOF
+          changed_file_count=${CHANGED_FILE_COUNT}
+          generated_change_count=${GENERATED_CHANGE_COUNT}
+          screenshot_count=${SCREENSHOT_COUNT}
+          test_file_count=${TEST_FILE_COUNT}
+          install_exit=${INSTALL_EXIT}
+          project_test_exit=${PROJECT_TEST_EXIT}
+          playwright_exit=${PLAYWRIGHT_EXIT}
+          project_test_command=${PROJECT_TEST_COMMAND}
+          playwright_command=${PLAYWRIGHT_COMMAND}
+          committed_tests=${COMMITTED_TESTS}
+          coverage_summary=${COVERAGE_SUMMARY}
+          playwright_summary=${PLAYWRIGHT_SUMMARY}
+          EOF
+
+          cat "${ARTIFACT_DIR}/stats.env"
+
+          echo "changed_file_count=${CHANGED_FILE_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "generated_change_count=${GENERATED_CHANGE_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "screenshot_count=${SCREENSHOT_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "test_file_count=${TEST_FILE_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "coverage_summary=${COVERAGE_SUMMARY}" >> "$GITHUB_OUTPUT"
+          echo "playwright_summary=${PLAYWRIGHT_SUMMARY}" >> "$GITHUB_OUTPUT"
+
+      - name: Ask Bob for recommendations
+        if: steps.pr.outputs.should_run == 'true'
+        id: bob_recommendations
+        env:
+          BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
+        run: |
+          set +e
+
+          PROMPT_FILE="${ARTIFACT_DIR}/bob-report-prompt.md"
+          {
+            cat <<'EOF'
+          Create a concise, reviewer-friendly markdown report for this PR test run.
+          Use only the provided facts. Do not claim tests passed if exit codes show failure.
+
+          Include these sections:
+          - Summary
+          - Generated/updated tests
+          - Project test results
+          - Playwright/UI results
+          - Coverage and screenshots
+          - Risks and reviewer recommendations
+          EOF
+            echo
+            echo "PR: #${{ steps.pr.outputs.pr_number }} - ${{ steps.pr.outputs.pr_title }}"
+            echo "PR URL: ${{ steps.pr.outputs.pr_url }}"
+            echo
+            echo "Stats:"
+            cat "${ARTIFACT_DIR}/stats.env" 2>/dev/null || true
+            echo
+            echo "Changed files:"
+            cat "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null || true
+            echo
+            echo "Generated test changes:"
+            cat "${ARTIFACT_DIR}/generated-test-changes.txt" 2>/dev/null || true
+            echo
+            echo "Bob test notes:"
+            cat "${ARTIFACT_DIR}/bob-pr-test-notes.md" 2>/dev/null || true
+            echo
+            echo "Tail of project test log:"
+            tail -c 30000 "${ARTIFACT_DIR}/logs/project-tests.log" 2>/dev/null || true
+            echo
+            echo "Tail of Playwright stderr/log:"
+            tail -c 20000 "${ARTIFACT_DIR}/logs/playwright.stderr.log" 2>/dev/null || true
+          } > "${PROMPT_FILE}"
+
+          bob --accept-license -p "$(cat "${PROMPT_FILE}")" > "${ARTIFACT_DIR}/bob-recommendations.md" 2> "${ARTIFACT_DIR}/logs/bob-report.stderr.log"
+          echo "bob_report_exit_code=$?" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build PR comment report
+        if: steps.pr.outputs.should_run == 'true'
+        id: report
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          PR_TITLE: ${{ steps.pr.outputs.pr_title }}
+          COMMITTED_TESTS: ${{ steps.commit_tests.outputs.committed_tests }}
+          INSTALL_EXIT: ${{ steps.install_deps.outputs.install_exit_code }}
+          PROJECT_TEST_EXIT: ${{ steps.project_tests.outputs.project_tests_exit_code }}
+          PLAYWRIGHT_EXIT: ${{ steps.playwright_tests.outputs.playwright_exit_code }}
+          PROJECT_TEST_COMMAND: ${{ steps.project_tests.outputs.test_command }}
+          PLAYWRIGHT_COMMAND: ${{ steps.playwright_tests.outputs.playwright_command }}
+          COVERAGE_SUMMARY: ${{ steps.stats.outputs.coverage_summary }}
+          PLAYWRIGHT_SUMMARY: ${{ steps.stats.outputs.playwright_summary }}
+          SCREENSHOT_COUNT: ${{ steps.stats.outputs.screenshot_count }}
+        run: |
+          set -euo pipefail
+
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          REPORT_FILE="${ARTIFACT_DIR}/bob-pr-test-report.md"
+
+          cat > "${REPORT_FILE}" <<EOF
+          ## 🤖 Bob PR Test Report
+
+          **PR:** #${PR_NUMBER} — ${PR_TITLE}  
+          **Workflow run:** ${RUN_URL}  
+          **Generated tests committed to PR:** ${COMMITTED_TESTS:-false}
+
+          ### Run stats
+
+          | Area | Result |
+          |---|---|
+          | Dependency install exit code | ${INSTALL_EXIT:-unknown} |
+          | Project test command | \`${PROJECT_TEST_COMMAND:-skip}\` |
+          | Project test exit code | ${PROJECT_TEST_EXIT:-unknown} |
+          | Playwright command | \`${PLAYWRIGHT_COMMAND:-skip}\` |
+          | Playwright exit code | ${PLAYWRIGHT_EXIT:-unknown} |
+          | Playwright summary | ${PLAYWRIGHT_SUMMARY:-not available} |
+          | Coverage summary | ${COVERAGE_SUMMARY:-not found} |
+          | Screenshots collected | ${SCREENSHOT_COUNT:-0} |
+
+          ### Changed files in the PR
+
+          \`\`\`
+          $(cat "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null || echo "not available")
+          \`\`\`
+
+          ### Generated test changes
+
+          \`\`\`
+          $(cat "${ARTIFACT_DIR}/generated-test-changes.txt" 2>/dev/null || echo "No generated file changes were committed.")
+          \`\`\`
+
+          ### Bob recommendations
+
+          EOF
+
+          if [ -s "${ARTIFACT_DIR}/bob-recommendations.md" ]; then
+            cat "${ARTIFACT_DIR}/bob-recommendations.md" >> "${REPORT_FILE}"
+          else
+            cat >> "${REPORT_FILE}" <<'EOF'
+          Bob could not generate the recommendation section. Please inspect the workflow logs and artifacts.
+          EOF
+          fi
+
+          cat >> "${REPORT_FILE}" <<EOF
+
+          ### Artifacts
+
+          The workflow uploaded logs, diff stats, generated test notes, Playwright JSON output, Playwright output files, and screenshots when available. Open the workflow run artifacts from: ${RUN_URL}
+          EOF
+
+          cat "${REPORT_FILE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "report_file=${REPORT_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Bob PR test artifacts
+        if: steps.pr.outputs.should_run == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bob-pr-test-report-${{ steps.pr.outputs.pr_number }}
+          path: ${{ runner.temp }}/bob-pr-test-artifacts
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Comment report on PR
+        if: steps.pr.outputs.should_run == 'true' && always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          REPORT_FILE: ${{ steps.report.outputs.report_file }}
+        run: |
+          set -euo pipefail
+          if [ -f "${REPORT_FILE}" ]; then
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              -f body="$(cat "${REPORT_FILE}")"
+          else
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              -f body="❌ Bob PR testing workflow could not generate a report. Please inspect the workflow logs."
+          fi
+
+      - name: Fail workflow if tests failed
+        if: steps.pr.outputs.should_run == 'true' && always()
+        env:
+          INSTALL_EXIT: ${{ steps.install_deps.outputs.install_exit_code }}
+          PROJECT_TEST_EXIT: ${{ steps.project_tests.outputs.project_tests_exit_code }}
+          PLAYWRIGHT_EXIT: ${{ steps.playwright_tests.outputs.playwright_exit_code }}
+        run: |
+          set -euo pipefail
+          if [ "${INSTALL_EXIT:-0}" != "0" ] || [ "${PROJECT_TEST_EXIT:-0}" != "0" ] || [ "${PLAYWRIGHT_EXIT:-0}" != "0" ]; then
+            echo "One or more test stages failed. See the PR report and artifacts."
+            exit 1
+          fi
+          echo "All configured test stages passed."
