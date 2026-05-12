@@ -56,6 +56,7 @@ ENABLE_UI=false make run
 ## Prerequisites 🛠️
 
 - Docker or Podman is installed on your machine.
+- **Bob Shell API Key** (Optional): For AI-assisted development and code generation features.
 
 The default is `docker`. If you want to use `podman`, include this line
 ```
@@ -76,6 +77,23 @@ Additional requisites for local deployment:
 > docker info --format '{{.LoggingDriver}}'
 > ```
 > If the response is not `json-file` or `journald`, configure your Docker logging as documented [here](https://docs.docker.com/engine/logging/configure/#configure-the-default-logging-driver).
+
+### Bob Shell API Key Configuration 🔑
+
+Bob Shell is an AI-powered development assistant that can help with code generation, debugging, and development tasks. To use Bob Shell features:
+
+1. **Obtain your API Key**: Sign up at [Bob Shell](https://bob-shell.ai) to get your API key
+2. **Set the environment variable**:
+   ```bash
+   export BOB_API_KEY="your-api-key-here"
+   ```
+3. **Add to your shell profile** (optional, for persistence):
+   ```bash
+   echo 'export BOB_API_KEY="your-api-key-here"' >> ~/.bashrc  # or ~/.zshrc
+   source ~/.bashrc  # or ~/.zshrc
+   ```
+
+> **Note**: The Bob Shell API key is optional. The service will work without it, but AI-assisted features will be unavailable.
 
 ## Running with podman on MacOS ⚒️
 
