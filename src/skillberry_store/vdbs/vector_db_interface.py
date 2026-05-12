@@ -31,24 +31,24 @@ class VectorDBInterface(ABC):
         pass
 
     @abstractmethod
-    def add_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+    def add_vector(self, uuid: str, vector: List[float], metadata: Dict[str, Any]) -> None:
         """
         Add a new vector to the database
 
         Args:
-            id: Unique identifier for the vector
+            uuid: Unique identifier for the vector
             vector: Vector embedding as list of floats
             metadata: Dictionary containing metadata
         """
         pass
 
     @abstractmethod
-    def update_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+    def update_vector(self, uuid: str, vector: List[float], metadata: Dict[str, Any]) -> None:
         """
         Update an existing vector
 
         Args:
-            id: Unique identifier for the vector
+            uuid: Unique identifier for the vector
             vector: Updated vector embedding
             metadata: Updated metadata dictionary
         """
@@ -66,17 +66,17 @@ class VectorDBInterface(ABC):
             filters: Optional metadata filters
 
         Returns:
-            List of dictionaries with keys: id, score, metadata
+            List of dictionaries with keys: uuid, score, metadata
         """
         pass
 
     @abstractmethod
-    def delete_vector(self, id: str) -> None:
+    def delete_vector(self, uuid: str) -> None:
         """
         Delete a vector by ID
 
         Args:
-            id: Unique identifier of vector to delete
+            uuid: Unique identifier of vector to delete
         """
         pass
 
@@ -98,10 +98,10 @@ class VectorDBInterface(ABC):
         Add multiple vectors in batch (default implementation)
 
         Args:
-            vectors: List of dicts with keys: id, vector, metadata
+            vectors: List of dicts with keys: uuid, vector, metadata
         """
         for item in vectors:
-            self.add_vector(item['id'], item['vector'], item['metadata'])
+            self.add_vector(item['uuid'], item['vector'], item['metadata'])
 
     def search_by_text(self, query_text: str, top_k: int = 5,
                        filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:

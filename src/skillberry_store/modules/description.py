@@ -81,7 +81,7 @@ class Description:
             # Add description embedding to the vector index
             embedding = text_to_vector(description)
             self.vector_index.add_vector(
-                id=filename,
+                uuid=filename,
                 vector=embedding,
                 metadata={"placeholder": "default"},
             )
@@ -113,7 +113,7 @@ class Description:
             # Update the description in the vector index
             embedding = text_to_vector(new_description)
             self.vector_index.update_vector(
-                id=filename,
+                uuid=filename,
                 vector=embedding,
                 metadata={"placeholder": "default"},
             )

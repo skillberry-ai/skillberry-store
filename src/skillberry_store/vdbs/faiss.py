@@ -47,9 +47,9 @@ class FaissDB(VectorDBInterface):
         # Store metadata separately (FAISS doesn't store metadata)
         self.metadata_store: Dict[str, Dict[str, Any]] = {}
 
-        # Map string IDs to integer IDs for FAISS
-        self.id_to_int: Dict[str, int] = {}
-        self.int_to_id: Dict[int, str] = {}
+        # Map string UUIDs to integer IDs for FAISS
+        self.uuid_to_int: Dict[str, int] = {}
+        self.int_to_uuid: Dict[int, str] = {}
         self.next_id = 0
         self.load_index()
 
@@ -106,18 +106,18 @@ class FaissDB(VectorDBInterface):
 
         return index_with_ids
 
-    def _get_int_id(self, str_id: str) -> int:
-        """Get or create integer ID for string ID"""
-        if str_id not in self.id_to_int:
-            self.id_to_int[str_id] = self.next_id
-            self.int_to_id[self.next_id] = str_id
+    def _get_int_id(self, str_uuid: str) -> int:
+        """Get or create integer ID for string UUID"""
+        if str_uuid not in self.uuid_to_int:
+            self.uuid_to_int[str_uuid] = self.next_id
+            self.int_to_uuid[self.next_id] = str_uuid
             self.next_id += 1
-        return self.id_to_int[str_id]
+        return self.uuid_to_int[str_uuid]
 
-    def add_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+    def add_vector(self, uuid: str, vector: List[float], metadata: Dict[str, Any]) -> None:
         """Add a vector with metadata"""
         logger.info(f"faiss add_vector")
-        int_id = self._get_int_id(id)
+        int_id = self._get_int_id(uuid)
 
         # Convert to numpy array and normalize if using cosine
         vec = np.array([vector], dtype="float32")
@@ -129,14 +129,14 @@ class FaissDB(VectorDBInterface):
         self.index.add_with_ids(vec, ids)
 
         # Store metadata
-        self.metadata_store[id] = metadata
+        self.metadata_store[uuid] = metadata
         self.save_index()
 
-    def update_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+    def update_vector(self, uuid: str, vector: List[float], metadata: Dict[str, Any]) -> None:
         """Update existing vector (remove and re-add)"""
-        if id in self.id_to_int:
-            self.delete_vector(id)
-        self.add_vector(id, vector, metadata)
+        if uuid in self.uuid_to_int:
+            self.delete_vector(uuid)
+        self.add_vector(uuid, vector, metadata)
 
     def search(
         self, query_vector: List[float], top_k: int = 5, filters: Optional[Dict[str, Any]] = None
@@ -156,11 +156,11 @@ class FaissDB(VectorDBInterface):
             if idx == -1:  # No result found
                 continue
 
-            str_id = self.int_to_id.get(int(idx))
-            if str_id is None:
+            str_uuid = self.int_to_uuid.get(int(idx))
+            if str_uuid is None:
                 continue
 
-            metadata = self.metadata_store.get(str_id, {})
+            metadata = self.metadata_store.get(str_uuid, {})
 
             # Apply filters if provided
             if filters:
@@ -176,8 +176,8 @@ class FaissDB(VectorDBInterface):
 
             results.append(
                 {
-                    "filename": str_id,
-                    "id": str_id,
+                    "filename": str_uuid,
+                    "uuid": str_uuid,
                     "score": score,
                     "similarity_score": float(dist),
                     "metadata": metadata,
@@ -186,7 +186,7 @@ class FaissDB(VectorDBInterface):
 
         return results
 
-    def delete_vector(self, id: str) -> None:
+    def delete_vector(self, uuid: str) -> None:
         """
         Delete a vector by ID
 
@@ -194,14 +194,14 @@ class FaissDB(VectorDBInterface):
         removes from metadata but the vector remains in the index.
         For true deletion, rebuild the index without the deleted vector.
         """
-        if id in self.metadata_store:
-            del self.metadata_store[id]
+        if uuid in self.metadata_store:
+            del self.metadata_store[uuid]
 
-        if id in self.id_to_int:
-            int_id = self.id_to_int[id]
-            # Remove ID mappings
-            del self.id_to_int[id]
-            del self.int_to_id[int_id]
+        if uuid in self.uuid_to_int:
+            int_id = self.uuid_to_int[uuid]
+            # Remove UUID mappings
+            del self.uuid_to_int[uuid]
+            del self.int_to_uuid[int_id]
 
             # Note: FAISS IndexIDMap2 doesn't support remove_ids efficiently
             # For production, consider rebuilding index periodically
@@ -227,8 +227,8 @@ class FaissDB(VectorDBInterface):
             pickle.dump(
                 {
                     "metadata_store": self.metadata_store,
-                    "id_to_int": self.id_to_int,
-                    "int_to_id": self.int_to_id,
+                    "uuid_to_int": self.uuid_to_int,
+                    "int_to_uuid": self.int_to_uuid,
                     "next_id": self.next_id,
                     "dimension": self.dimension,
                     "index_type": self.index_type,
@@ -254,8 +254,8 @@ class FaissDB(VectorDBInterface):
             with open(metadata_path, "rb") as f:
                 data = pickle.load(f)
                 self.metadata_store = data["metadata_store"]
-                self.id_to_int = data["id_to_int"]
-                self.int_to_id = data["int_to_id"]
+                self.uuid_to_int = data["uuid_to_int"]
+                self.int_to_uuid = data["int_to_uuid"]
                 self.next_id = data["next_id"]
                 self.dimension = data["dimension"]
                 self.index_type = data["index_type"]
@@ -279,9 +279,9 @@ class FaissDB(VectorDBInterface):
         vectors = []
         ids = []
 
-        for str_id, metadata in self.metadata_store.items():
-            if str_id in self.id_to_int:
-                int_id = self.id_to_int[str_id]
+        for str_uuid, metadata in self.metadata_store.items():
+            if str_uuid in self.uuid_to_int:
+                int_id = self.uuid_to_int[str_uuid]
                 # Reconstruct vector from index
                 vec = self.index.reconstruct(int_id)
                 vectors.append(vec)

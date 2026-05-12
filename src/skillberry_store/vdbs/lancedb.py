@@ -23,26 +23,26 @@ class LanceDB(VectorDBInterface):
             self.table = self.db.open_table(self.table_name)
         except Exception:
             sample_data = pd.DataFrame({
-                "id": ["init"],
+                "uuid": ["init"],
                 "vector": [text_to_vector("initialization")],
                 "text": [""],
                 "metadata": [{}]
             })
             self.table = self.db.create_table(self.table_name, data=sample_data, mode="overwrite")
     
-    def add_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+    def add_vector(self, uuid: str, vector: List[float], metadata: Dict[str, Any]) -> None:
         logger.info(f"lancedb add_vector")
         data = pd.DataFrame({
-            "id": [id],
+            "uuid": [uuid],
             "vector": [vector],
             #"text": [metadata.get("text", "")],
             #"metadata": [metadata]
         })
         self.table.add(data)
 
-    def update_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]) -> None:
-        self.delete_vector(id)
-        self.add_vector(id, vector, metadata)
+    def update_vector(self, uuid: str, vector: List[float], metadata: Dict[str, Any]) -> None:
+        self.delete_vector(uuid)
+        self.add_vector(uuid, vector, metadata)
     
     def search(self, query_vector: List[float], top_k: int = 5, 
                filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -52,8 +52,8 @@ class LanceDB(VectorDBInterface):
         
         return [
             {
-                "filename": row["id"],
-                "id": row["id"],
+                "filename": row["uuid"],
+                "uuid": row["uuid"],
                 "score": 1 / (1 + row["_distance"]),
                 "similarity_score": row["_distance"],
                 "metadata": row["metadata"]
@@ -61,8 +61,8 @@ class LanceDB(VectorDBInterface):
             for _, row in results.iterrows()
         ]
     
-    def delete_vector(self, id: str) -> None:
-        self.table.delete(f'id = "{id}"')
+    def delete_vector(self, uuid: str) -> None:
+        self.table.delete(f'uuid = "{uuid}"')
     
     def load_index(self) -> None:
         if os.path.exists(self.db_path):

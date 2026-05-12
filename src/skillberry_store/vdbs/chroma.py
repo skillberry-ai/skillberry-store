@@ -21,19 +21,19 @@ class ChromaVectorDB(VectorDBInterface):
             metadata={"hnsw:space": "l2"}
         )
 
-    def add_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]):
+    def add_vector(self, uuid: str, vector: List[float], metadata: Dict[str, Any]):
         """Add a vector with metadata"""
         logger.info(f"chroma add_vector")
         self.collection.add(
-            ids=[id],
+            ids=[uuid],
             embeddings=[vector],
             metadatas=[metadata]
         )
 
-    def update_vector(self, id: str, vector: List[float], metadata: Dict[str, Any]):
+    def update_vector(self, uuid: str, vector: List[float], metadata: Dict[str, Any]):
         """Update existing vector"""
         self.collection.update(
-            ids=[id],
+            ids=[uuid],
             embeddings=[vector],
             metadatas=[metadata]
         )
@@ -51,16 +51,16 @@ class ChromaVectorDB(VectorDBInterface):
         for i in range(len(results['ids'][0])):
             output.append({
                 "filename": results['ids'][0][i],
-                "id": results['ids'][0][i],
+                "uuid": results['ids'][0][i],
                 "score": 1 / (1 + results['distances'][0][i]),  # Convert distance to similarity
                 "similarity_score": results['distances'][0][i],
                 "metadata": results['metadatas'][0][i] if results['metadatas'] else {}
             })
         return output
     
-    def delete_vector(self, id: str):
+    def delete_vector(self, uuid: str):
         """Delete a vector by ID"""
-        self.collection.delete(ids=[id])
+        self.collection.delete(ids=[uuid])
     
     def load_index(self):
         """Restore from backup"""
