@@ -31,7 +31,7 @@ from skillberry_store.tools.configure import (
     get_tools_directory,
     get_files_directory_path,
 )
-from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
+from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys, normalize_uuid
 from skillberry_store.utils.python_utils import extract_docstring
 from skillberry_store.fast_api.server_utils import (
     get_mcp_tools,
@@ -183,8 +183,10 @@ def register_tools_api(
         tool.modified_at = current_time
 
         # Check if tool with this UUID already exists
-        tool_uuid_lower = tool.uuid.lower()
-        if tool_handler.resource_exists(tool_uuid_lower):
+        tool_uuid_normalized = normalize_uuid(tool.uuid)
+        if not tool_uuid_normalized:
+            raise HTTPException(status_code=400, detail=f"Invalid UUID format: {tool.uuid}")
+        if tool_handler.resource_exists(tool_uuid_normalized):
             raise HTTPException(
                 status_code=409, detail=f"Tool with UUID '{tool.uuid}' already exists."
             )
@@ -195,7 +197,7 @@ def register_tools_api(
             module_filename = module.filename if module.filename else f"{tool.name}.py"
 
             # Write module file to tool's UUID sub-folder
-            tool_handler.write_resource_file(tool.uuid.lower(), module_filename, file_content)
+            tool_handler.write_resource_file(tool_uuid_normalized, module_filename, file_content)
             tool.module_name = module_filename
             logger.info(f"Saved module file to UUID sub-folder: {module_filename}")
 
@@ -220,7 +222,7 @@ def register_tools_api(
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
 
             # Convert tool to JSON and save as tool.json in UUID folder
-            tool_handler.write_manifest(tool.uuid.lower(), tool.to_dict())
+            tool_handler.write_manifest(tool_uuid_normalized, tool.to_dict())
 
             # Write description for search capability (indexed by UUID)
             if tools_descriptions and tool.description and tool.uuid:
@@ -813,8 +815,11 @@ def register_tools_api(
                 tool_uuid = existing_tool.get("uuid", str(uuid.uuid4()))
                 
                 # Update the module file in UUID sub-folder (update_tool doesn't handle files)
+                tool_uuid_normalized = normalize_uuid(tool_uuid)
+                if not tool_uuid_normalized:
+                    raise HTTPException(status_code=400, detail=f"Invalid UUID format: {tool_uuid}")
                 module_filename = tool.filename if tool.filename else f"{func_name}.py"
-                tool_handler.write_resource_file(tool_uuid.lower(), module_filename, tool_bytes)
+                tool_handler.write_resource_file(tool_uuid_normalized, module_filename, tool_bytes)
                 logger.info(f"Updated module file in UUID sub-folder: {module_filename}")
                 
                 # Create the tool schema for update

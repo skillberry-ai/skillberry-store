@@ -14,6 +14,7 @@ from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
 from skillberry_store.tools.configure import get_snippets_directory
 from skillberry_store.fast_api.search_filters import apply_search_filters
+from skillberry_store.utils.utils import normalize_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -102,9 +103,14 @@ def register_snippets_api(
                     status_code=400, detail=f"Error reading uploaded file: {str(e)}"
                 )
 
+        # Normalize and validate UUID
+        snippet_uuid_normalized = normalize_uuid(snippet.uuid)
+        if not snippet_uuid_normalized:
+            raise HTTPException(status_code=400, detail=f"Invalid UUID format: {snippet.uuid}")
+
         # Check if snippet with this UUID already exists
         try:
-            snippet_handler.read_manifest(snippet.uuid.lower())
+            snippet_handler.read_manifest(snippet_uuid_normalized)
             # If we get here, the snippet exists - raise 409 Conflict
             raise HTTPException(
                 status_code=409,
@@ -117,12 +123,12 @@ def register_snippets_api(
 
         try:
             # Save snippet manifest to UUID subfolder
-            snippet_handler.write_manifest(snippet.uuid.lower(), snippet.to_dict())
+            snippet_handler.write_manifest(snippet_uuid_normalized, snippet.to_dict())
 
             # Write description for search capability (indexed by UUID)
             if snippets_descriptions and snippet.description:
                 snippets_descriptions.write_description(
-                    snippet.uuid, snippet.description
+                    snippet_uuid_normalized, snippet.description
                 )
                 logger.info(f"Snippet description saved for UUID: {snippet.uuid}")
 

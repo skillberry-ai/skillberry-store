@@ -15,6 +15,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from fastapi import HTTPException
 
 from skillberry_store.modules.file_handler import FileHandler
+from skillberry_store.utils.utils import normalize_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -57,10 +58,7 @@ class ResourceHandler:
         Returns:
             bool: True if the string is a valid UUID, False otherwise.
         """
-        try:
-            return str(uuid.UUID(id_str)) == id_str.lower()
-        except (ValueError, AttributeError):
-            return False
+        return normalize_uuid(id_str) is not None
     
     def lookup_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """
@@ -118,15 +116,16 @@ class ResourceHandler:
             Optional[str]: The resolved UUID if found, None otherwise.
         """
         # Check if it's already a valid UUID
-        if self.is_valid_uuid(id_str):
-            return id_str.lower()
+        normalized = normalize_uuid(id_str)
+        if normalized:
+            return normalized
         
         # Try to resolve as a name
         resource = self.lookup_by_name(id_str)
         if resource and resource.get("uuid"):
             resource_uuid = resource["uuid"]
             logger.debug(f"Resolved name '{id_str}' to UUID '{resource_uuid}'")
-            return resource_uuid.lower()
+            return normalize_uuid(resource_uuid)
         
         # Could not resolve
         logger.warning(f"Could not resolve ID '{id_str}' to a UUID")
@@ -146,7 +145,10 @@ class ResourceHandler:
         Returns:
             str: Full path to the resource's sub-folder.
         """
-        return os.path.join(self.base_directory, resource_uuid.lower())
+        normalized = normalize_uuid(resource_uuid)
+        if not normalized:
+            raise ValueError(f"Invalid UUID: {resource_uuid}")
+        return os.path.join(self.base_directory, normalized)
     
     def ensure_resource_subfolder(self, resource_uuid: str) -> str:
         """
@@ -209,10 +211,13 @@ class ResourceHandler:
             HTTPException: If manifest not found (404) or read fails (500).
         """
         try:
+            normalized = normalize_uuid(resource_uuid)
+            if not normalized:
+                raise ValueError(f"Invalid UUID: {resource_uuid}")
             manifest_content = self.file_handler.read_file(
                 self.manifest_filename,
                 raw_content=True,
-                subdirectory=resource_uuid.lower()
+                subdirectory=normalized
             )
             if not isinstance(manifest_content, str):
                 raise HTTPException(
@@ -244,11 +249,14 @@ class ResourceHandler:
             HTTPException: If write fails (500).
         """
         try:
+            normalized = normalize_uuid(resource_uuid)
+            if not normalized:
+                raise ValueError(f"Invalid UUID: {resource_uuid}")
             manifest_json = json.dumps(manifest_data, indent=4)
             return self.file_handler.write_file_content(
                 self.manifest_filename,
                 manifest_json,
-                subdirectory=resource_uuid.lower()
+                subdirectory=normalized
             )
         except Exception as e:
             logger.error(f"Error writing manifest for {self.resource_type} UUID {resource_uuid}: {e}")
@@ -271,8 +279,11 @@ class ResourceHandler:
             HTTPException: If deletion fails (404 or 500).
         """
         try:
+            normalized = normalize_uuid(resource_uuid)
+            if not normalized:
+                raise ValueError(f"Invalid UUID: {resource_uuid}")
             # Delete the entire UUID subfolder (contains manifest and any other files)
-            return self.file_handler.delete_subdirectory(resource_uuid.lower())
+            return self.file_handler.delete_subdirectory(normalized)
         except HTTPException:
             raise
         except Exception as e:
@@ -304,10 +315,13 @@ class ResourceHandler:
         Raises:
             HTTPException: If file not found (404) or read fails (500).
         """
+        normalized = normalize_uuid(resource_uuid)
+        if not normalized:
+            raise ValueError(f"Invalid UUID: {resource_uuid}")
         return self.file_handler.read_file(
             filename,
             raw_content=raw_content,
-            subdirectory=resource_uuid.lower()
+            subdirectory=normalized
         )
     
     def write_resource_file(
@@ -330,17 +344,20 @@ class ResourceHandler:
         Raises:
             HTTPException: If write fails (500).
         """
+        normalized = normalize_uuid(resource_uuid)
+        if not normalized:
+            raise ValueError(f"Invalid UUID: {resource_uuid}")
         if isinstance(content, str):
             return self.file_handler.write_file_content(
                 filename,
                 content,
-                subdirectory=resource_uuid.lower()
+                subdirectory=normalized
             )
         else:
             return self.file_handler.write_file(
                 content,
                 filename,
-                subdirectory=resource_uuid.lower()
+                subdirectory=normalized
             )
     
     def delete_resource_file(self, resource_uuid: str, filename: str) -> Dict:
@@ -357,9 +374,12 @@ class ResourceHandler:
         Raises:
             HTTPException: If file not found (404) or deletion fails (500).
         """
+        normalized = normalize_uuid(resource_uuid)
+        if not normalized:
+            raise ValueError(f"Invalid UUID: {resource_uuid}")
         return self.file_handler.delete_file(
             filename,
-            subdirectory=resource_uuid.lower()
+            subdirectory=normalized
         )
     
     # ==================== Resource Management ====================

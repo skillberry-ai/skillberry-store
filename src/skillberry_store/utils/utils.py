@@ -1,4 +1,5 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+import uuid
 
 import logging
 
@@ -6,6 +7,44 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: common skillberry library
+
+
+def normalize_uuid(uuid_str: Optional[str]) -> Optional[str]:
+    """
+    Normalize a UUID string to lowercase format.
+    
+    This function ensures consistent UUID handling across the codebase by:
+    - Converting UUIDs to lowercase
+    - Validating UUID format
+    - Returning None for invalid or None inputs
+    
+    Args:
+        uuid_str: A UUID string (can be uppercase, lowercase, or mixed case)
+        
+    Returns:
+        Lowercase UUID string if valid, None otherwise
+        
+    Examples:
+        >>> normalize_uuid("12345678-1234-1234-1234-123456789ABC")
+        '12345678-1234-1234-1234-123456789abc'
+        >>> normalize_uuid("ABCDEF12-3456-7890-ABCD-EF1234567890")
+        'abcdef12-3456-7890-abcd-ef1234567890'
+        >>> normalize_uuid("invalid-uuid")
+        None
+        >>> normalize_uuid(None)
+        None
+    """
+    if not uuid_str:
+        return None
+    
+    try:
+        # Validate and normalize the UUID
+        # uuid.UUID() will raise ValueError if the string is not a valid UUID
+        validated_uuid = uuid.UUID(uuid_str)
+        return str(validated_uuid).lower()
+    except (ValueError, AttributeError, TypeError):
+        logger.debug(f"Invalid UUID format: {uuid_str}")
+        return None
 
 SKILLBERRY_CONTEXT = "skillberry-context"
 
