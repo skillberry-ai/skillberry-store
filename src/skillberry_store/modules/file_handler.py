@@ -24,6 +24,37 @@ class FileHandler:
         logger.info(f"Initialized FileHandler with directory: {self.directory_path}")
         ShellHook().execute("init_filehandler", directory_path=self.directory_path)
 
+    def _validate_path(self, path: str) -> str:
+        """
+        Validate that a path stays within the base directory boundaries.
+        
+        This prevents path traversal attacks by ensuring the resolved path
+        is within the allowed directory.
+
+        Args:
+            path (str): The path to validate.
+
+        Returns:
+            str: The validated path.
+
+        Raises:
+            HTTPException: If the path attempts to escape the base directory.
+        """
+        # Resolve to absolute path to handle symbolic links and relative paths
+        resolved_path = os.path.realpath(path)
+        base_path = os.path.realpath(self.directory_path)
+        
+        # Ensure the resolved path starts with the base path
+        # Add os.sep to prevent partial directory name matches
+        if not resolved_path.startswith(base_path + os.sep) and resolved_path != base_path:
+            logger.warning(f"Path traversal attempt detected: {path} -> {resolved_path}")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid path: Path traversal detected"
+            )
+        
+        return resolved_path
+
     def _get_full_path(self, filename: str, subdirectory: Optional[str] = None) -> str:
         """
         Get the full file path, optionally within a subdirectory.
@@ -34,13 +65,23 @@ class FileHandler:
 
         Returns:
             str: The full file path.
+            
+        Raises:
+            HTTPException: If path traversal is detected.
         """
         if subdirectory:
-            # Ensure subdirectory exists
+            # Build the subdirectory path
             subdir_path = os.path.join(self.directory_path, subdirectory)
-            os.makedirs(subdir_path, exist_ok=True)
-            return os.path.join(subdir_path, filename)
-        return os.path.join(self.directory_path, filename)
+            # Validate the subdirectory path before creating it
+            validated_subdir = self._validate_path(subdir_path)
+            # Ensure subdirectory exists
+            os.makedirs(validated_subdir, exist_ok=True)
+            # Build and validate the full file path
+            full_path = os.path.join(validated_subdir, filename)
+            return self._validate_path(full_path)
+        
+        full_path = os.path.join(self.directory_path, filename)
+        return self._validate_path(full_path)
 
     def list_files(self) -> List[str]:
         """
@@ -283,7 +324,7 @@ class FileHandler:
             dict: A message confirming the subdirectory was deleted successfully.
 
         Raises:
-            HTTPException: If subdirectory not found (404) or deletion fails (500).
+            HTTPException: If subdirectory not found (404), path traversal detected (400), or deletion fails (500).
         """
         ShellHook().execute(
             "pre_" + inspect.stack()[0].function,
@@ -291,12 +332,14 @@ class FileHandler:
             subdirectory=subdirectory,
         )
         
+        # Build and validate the subdirectory path to prevent path traversal
         subdir_path = os.path.join(self.directory_path, subdirectory)
+        validated_path = self._validate_path(subdir_path)
         
         try:
-            if os.path.exists(subdir_path):
-                shutil.rmtree(subdir_path)
-                logger.info(f"Subdirectory deleted: {subdir_path}")
+            if os.path.exists(validated_path):
+                shutil.rmtree(validated_path)
+                logger.info(f"Subdirectory deleted: {validated_path}")
                 ShellHook().execute(
                     "post_" + inspect.stack()[0].function,
                     directory_path=self.directory_path,
