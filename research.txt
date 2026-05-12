@@ -1,0 +1,46 @@
+# Research Notes for Skillberry Store
+
+## Overview
+This document contains research notes and findings related to the Skillberry Store project development.
+
+## Key Research Areas
+
+### 1. Tool Management Systems
+- Investigation into existing tool/skill management frameworks
+- Analysis of MCP (Model Context Protocol) server implementations
+- Best practices for tool discovery and registration
+
+### 2. Vector Database Integration
+- Comparison of vector databases (Chroma, FAISS, LanceDB)
+- Performance benchmarks for similarity search
+- Optimal indexing strategies for tool descriptions
+
+### 3. API Design Patterns
+- RESTful API best practices for tool management
+- FastAPI framework capabilities and limitations
+- Authentication and authorization patterns
+
+### 4. Testing Strategies
+- Unit testing approaches for tool executors
+- Integration testing for MCP server interactions
+- End-to-end testing methodologies
+
+### 5. Dependency Management
+- Auto-detection mechanisms for tool dependencies
+- Environment isolation strategies
+- Package version compatibility research
+
+## Future Research Topics
+- Scalability considerations for large tool repositories
+- Caching strategies for improved performance
+- Multi-tenancy support and isolation
+- Advanced search and filtering capabilities
+
+## References
+- MCP Protocol Specification
+- FastAPI Documentation
+- Vector Database Performance Studies
+- Python Packaging Best Practices
+
+---
+Last Updated: 2026-05-12
