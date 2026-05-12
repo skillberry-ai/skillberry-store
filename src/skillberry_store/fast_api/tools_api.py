@@ -60,20 +60,20 @@ def find_tool_dependencies(
     Returns:
         - Set of UUIDs of all dependencies (transitive closure) of the given tool.
     """
-    dep_ids: Set[str] = set()
+    dependencies_uuids: Set[str] = set()
 
     if not dependencies:
-        return dep_ids
+        return dependencies_uuids
 
     logger.info(f"Scanning {len(dependencies)} dependencies for tool '{tool_uuid}'")
     
     for dep_uuid in dependencies:
         # Skip if already visited (avoid circular dependencies)
-        if dep_uuid in dep_ids:
+        if dep_uuid in dependencies_uuids:
             logger.debug(f"Skipping already found dependency: {dep_uuid}")
             continue
 
-        dep_ids.add(dep_uuid)
+        dependencies_uuids.add(dep_uuid)
 
         dep_dict = tool_handler.read_manifest(dep_uuid)
             
@@ -86,9 +86,9 @@ def find_tool_dependencies(
                 tool_handler=tool_handler,
                 tool_uuid=dep_uuid
             )
-            dep_ids.update(nested_deps)
+            dependencies_uuids.update(nested_deps)
 
-    return dep_ids
+    return dependencies_uuids
 
 
 # observability - metrics
@@ -570,13 +570,13 @@ def register_tools_api(
                     raise HTTPException(status_code=500, detail=f"Invalid module content type for tool with ID '{id}'")
 
             # Find tool dependencies if they exist
-            tool_dep_ids = find_tool_dependencies(
+            tool_dependencies_uuids = find_tool_dependencies(
                 dependencies=tool_dict.get("dependencies", []),
                 tool_handler=tool_handler,
                 tool_uuid=tool_uuid
             )
 
-            dep_manifests = tool_handler.get_resources_by_ids(list(tool_dep_ids))
+            dep_manifests = tool_handler.get_resources_by_ids(list(tool_dependencies_uuids))
             dep_files = [tool_handler.read_resource_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_manifests]
 
             # Execute the tool using FileExecutor
