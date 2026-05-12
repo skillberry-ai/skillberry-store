@@ -71,14 +71,30 @@ def register_skills_api(
         """Populate full tool and snippet objects from UUIDs."""
         # Populate tools using get_resources_by_ids
         if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
-            tools = tools_handler.get_resources_by_ids(skill_dict["tool_uuids"])
+            requested_count = len(skill_dict['tool_uuids'])
+            tools = tools_handler.get_resources_by_ids(skill_dict['tool_uuids'])
+            if len(tools) < requested_count:
+                missing = set(skill_dict['tool_uuids']) - {t['uuid'] for t in tools}
+                logger.error(f"Skill '{skill_dict['name']}' references missing tools: {missing}")
+                raise HTTPException(
+                    status_code=505,
+                    detail=f"Skill '{skill_dict['name']}' references missing tools: {missing}"
+                )
             skill_dict["tools"] = tools
         else:
             skill_dict["tools"] = []
             
         # Populate snippets using get_resources_by_ids
         if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
+            requested_count = len(skill_dict['snippet_uuids'])
             snippets = snippets_handler.get_resources_by_ids(skill_dict["snippet_uuids"])
+            if len(snippets) < requested_count:
+                missing = set(skill_dict['snippet_uuids']) - {s['uuid'] for s in snippets}
+                logger.error(f"Skill '{skill_dict['name']}' references missing snippets: {missing}")
+                raise HTTPException(
+                    status_code=505,
+                    detail=f"Skill '{skill_dict['name']}' references missing snippets: {missing}"
+                )
             skill_dict["snippets"] = snippets
         else:
             skill_dict["snippets"] = []
