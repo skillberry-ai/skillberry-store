@@ -42,6 +42,8 @@ import {
   TreeViewDataItem,
 } from '@patternfly/react-core';
 import { EditIcon, TrashIcon, FolderIcon, FileIcon, FileCodeIcon, ExportIcon } from '@patternfly/react-icons';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
 import type { Skill } from '@/types';
 
@@ -706,20 +708,27 @@ export function SkillDetailPage() {
                             <Title headingLevel="h4" size="md" style={{ marginBottom: '0.5rem' }}>
                               {selectedToolModule.name}
                             </Title>
-                            <CodeBlock>
-                              <CodeBlockCode
-                                style={{
-                                  backgroundColor: '#f5f5f5',
-                                  color: '#151515',
-                                  padding: '1rem',
-                                  borderRadius: '4px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5'
+                            <div style={{
+                              maxHeight: '70vh',
+                              overflow: 'auto',
+                              border: '1px solid #3d3d3d',
+                              borderRadius: '6px'
+                            }}>
+                              <SyntaxHighlighter
+                                language="python"
+                                style={vscDarkPlus}
+                                showLineNumbers={true}
+                                wrapLines={false}
+                                customStyle={{
+                                  margin: 0,
+                                  fontSize: '15px',
+                                  lineHeight: '1.6',
+                                  minHeight: '100%',
                                 }}
                               >
                                 {selectedToolModule.module}
-                              </CodeBlockCode>
-                            </CodeBlock>
+                              </SyntaxHighlighter>
+                            </div>
                           </div>
                         ) : (
                           <div style={{
@@ -770,20 +779,38 @@ export function SkillDetailPage() {
                             <Title headingLevel="h4" size="md" style={{ marginBottom: '0.5rem' }}>
                               {selectedSnippet.name}
                             </Title>
-                            <CodeBlock>
-                              <CodeBlockCode
-                                style={{
-                                  backgroundColor: '#f5f5f5',
-                                  color: '#151515',
-                                  padding: '1rem',
-                                  borderRadius: '4px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5'
+                            <div style={{
+                              maxHeight: '70vh',
+                              overflow: 'auto',
+                              border: '1px solid #3d3d3d',
+                              borderRadius: '6px'
+                            }}>
+                              <SyntaxHighlighter
+                                language={
+                                  selectedSnippet.content_type?.includes('python') ? 'python' :
+                                  selectedSnippet.content_type?.includes('javascript') ? 'javascript' :
+                                  selectedSnippet.content_type?.includes('java') ? 'java' :
+                                  selectedSnippet.content_type?.includes('go') ? 'go' :
+                                  selectedSnippet.content_type?.includes('sh') || selectedSnippet.content_type?.includes('bash') ? 'bash' :
+                                  selectedSnippet.content_type?.includes('yaml') ? 'yaml' :
+                                  selectedSnippet.content_type?.includes('json') ? 'json' :
+                                  selectedSnippet.content_type?.includes('html') ? 'html' :
+                                  selectedSnippet.content_type?.includes('css') ? 'css' :
+                                  'text'
+                                }
+                                style={vscDarkPlus}
+                                showLineNumbers={true}
+                                wrapLines={false}
+                                customStyle={{
+                                  margin: 0,
+                                  fontSize: '15px',
+                                  lineHeight: '1.6',
+                                  minHeight: '100%',
                                 }}
                               >
                                 {selectedSnippet.content}
-                              </CodeBlockCode>
-                            </CodeBlock>
+                              </SyntaxHighlighter>
+                            </div>
                           </div>
                         ) : (
                           <div style={{
