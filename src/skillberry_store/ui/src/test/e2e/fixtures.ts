@@ -26,7 +26,7 @@ const API_BASE = process.env.API_BASE_URL || 'http://localhost:8000';
 export const test = base.extend<TestFixtures>({
   testSkill: async ({ request }, use) => {
     // Create a test skill with tools
-    const skillResponse = await request.post(`${API_BASE}/skills`, {
+    const skillResponse = await request.post(`${API_BASE}/api/skills/`, {
       data: {
         name: `E2E Test Skill ${Date.now()}`,
         description: 'A test skill for E2E testing',
@@ -96,13 +96,13 @@ greet('World');`,
 
     // Cleanup after test
     if (skillId) {
-      await request.delete(`${API_BASE}/skills/${skillId}`);
+      await request.delete(`${API_BASE}/api/skills/${skillId}`);
     }
   },
 
   testSnippet: async ({ request }, use) => {
     // Create a test snippet
-    const snippetResponse = await request.post(`${API_BASE}/snippets`, {
+    const snippetResponse = await request.post(`${API_BASE}/api/snippets/`, {
       data: {
         name: `E2E Test Snippet ${Date.now()}`,
         description: 'A test snippet for E2E testing',
@@ -147,7 +147,7 @@ print(f"Factorial(5) = {factorial(5)}")`,
 
     // Cleanup after test
     if (snippetId) {
-      await request.delete(`${API_BASE}/snippets/${snippetId}`);
+      await request.delete(`${API_BASE}/api/snippets/${snippetId}`);
     }
   }
 });
