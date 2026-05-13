@@ -3,6 +3,7 @@
 
 import { useNavigate } from 'react-router-dom';
 import { Label } from '@patternfly/react-core';
+import { WrenchIcon, FileCodeIcon } from '@patternfly/react-icons';
 import { getTagColor } from '../utils/tagColors';
 import type { Skill } from '@/types';
 
@@ -12,17 +13,17 @@ interface SkillCardProps {
   onSelect: (isSelected: boolean) => void;
 }
 
-const STATE_COLORS: Record<string, { background: string; color: string }> = {
-  approved: { background: '#d3f7d3', color: '#1e4620' },
-  checked:  { background: '#bee1f4', color: '#002952' },
-  new:      { background: '#d2f4ea', color: '#0d5738' },
-  unknown:  { background: '#f2f2f2', color: '#555555' },
-  any:      { background: '#f2f2f2', color: '#555555' },
+const STATE_LABEL_COLOR: Record<string, 'green' | 'blue' | 'cyan' | 'orange' | 'grey'> = {
+  approved: 'green',
+  checked:  'blue',
+  new:      'cyan',
+  unknown:  'grey',
+  any:      'grey',
 };
 
 export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
   const navigate = useNavigate();
-  const stateColor = STATE_COLORS[skill.state ?? 'unknown'] ?? STATE_COLORS.unknown;
+  const stateLabelColor = STATE_LABEL_COLOR[skill.state ?? 'unknown'] ?? 'grey';
   const visibleTags = skill.tags?.filter(t => !t.startsWith('namespace:')) ?? [];
 
   return (
@@ -63,18 +64,9 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
               {skill.name}
             </span>
             {skill.state && (
-              <span style={{
-                background: stateColor.background,
-                color: stateColor.color,
-                fontSize: '11px',
-                padding: '2px 6px',
-                borderRadius: '10px',
-                flexShrink: 0,
-                marginLeft: '6px',
-                whiteSpace: 'nowrap',
-              }}>
+              <Label color={stateLabelColor} isCompact style={{ flexShrink: 0, marginLeft: '6px' }}>
                 {skill.state}
-              </span>
+              </Label>
             )}
           </div>
         </div>
@@ -117,15 +109,13 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
         alignItems: 'center',
         marginTop: 'auto',
       }}>
-        <span>
-          {skill.tools && skill.tools.length > 0
-            ? `🔧 ${skill.tools.length} tools`
-            : '— tools'}
+        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <WrenchIcon />
+          {skill.tools && skill.tools.length > 0 ? `${skill.tools.length} tools` : '—'}
         </span>
-        <span>
-          {skill.snippets && skill.snippets.length > 0
-            ? `📄 ${skill.snippets.length} snippets`
-            : '— snippets'}
+        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <FileCodeIcon />
+          {skill.snippets && skill.snippets.length > 0 ? `${skill.snippets.length} snippets` : '—'}
         </span>
         {skill.version && (
           <span style={{ marginLeft: 'auto', color: '#6a6e73' }}>{skill.version}</span>
