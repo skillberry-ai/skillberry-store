@@ -14,8 +14,9 @@ export function SkillCardView({ skills, selectedSkills, onSelectSkill }: SkillCa
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-      gap: '14px',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+      gap: '16px',
+      marginTop: '1rem',
     }}>
       {skills.map(skill => (
         <SkillCard

@@ -43,7 +43,7 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
       {/* Header */}
       <div
         style={{
-          padding: '14px 14px 10px',
+          padding: '16px 16px 12px',
           background: isSelected ? '#f0f7ff' : '#fff',
         }}
       >
@@ -71,14 +71,14 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
           </div>
         </div>
 
-        {/* Description — 2-line clamp */}
+        {/* Description — 3-line clamp */}
         <p style={{
           color: '#444',
-          margin: '0 0 8px',
-          lineHeight: '1.4',
+          margin: '0 0 10px',
+          lineHeight: '1.5',
           fontSize: '13px',
           display: '-webkit-box',
-          WebkitLineClamp: 2,
+          WebkitLineClamp: 3,
           WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
           paddingLeft: '22px',
