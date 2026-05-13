@@ -108,26 +108,29 @@ jobs:
       
       - name: Get Issue Details
         id: issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "issue_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          ISSUE_NUMBER="${{ github.event.issue.number }}"
+          echo "issue_number=${ISSUE_NUMBER}" >> $GITHUB_OUTPUT
           
-          # Properly escape issue title for GitHub Actions output
-          ISSUE_TITLE=$(cat <<'TITLE_EOF'
-          ${{ github.event.issue.title }}
-          TITLE_EOF
-          )
-          echo "issue_title<<TITLE_EOF" >> $GITHUB_OUTPUT
-          echo "$ISSUE_TITLE" >> $GITHUB_OUTPUT
-          echo "TITLE_EOF" >> $GITHUB_OUTPUT
+          # Always fetch from GitHub API to ensure consistent JSON handling
+          # This prevents issues with special characters (backticks, quotes, etc.) in issue bodies
+          ISSUE_DATA=$(gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER})
           
-          # Properly escape issue body for GitHub Actions output
-          ISSUE_BODY=$(cat <<'BODY_EOF'
-          ${{ github.event.issue.body }}
-          BODY_EOF
-          )
-          echo "issue_body<<BODY_EOF" >> $GITHUB_OUTPUT
-          echo "$ISSUE_BODY" >> $GITHUB_OUTPUT
-          echo "BODY_EOF" >> $GITHUB_OUTPUT
+          # Use jq to safely extract and handle special characters
+          ISSUE_TITLE=$(echo "${ISSUE_DATA}" | jq -r '.title')
+          ISSUE_BODY=$(echo "${ISSUE_DATA}" | jq -r '.body // ""')
+          
+          # Save issue title and body to output using heredoc
+          {
+            echo "issue_title<<TITLE_EOF"
+            echo "${ISSUE_TITLE}"
+            echo "TITLE_EOF"
+            echo "issue_body<<BODY_EOF"
+            echo "${ISSUE_BODY}"
+            echo "BODY_EOF"
+          } >> $GITHUB_OUTPUT
       
       - name: Configure Git
         run: |
