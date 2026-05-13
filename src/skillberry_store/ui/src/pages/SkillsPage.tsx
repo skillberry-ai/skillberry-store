@@ -2,9 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
@@ -28,23 +26,25 @@ import {
   FormGroup,
   TextInput,
   TextArea,
-  Label,
   FileUpload,
   Select,
   SelectOption,
   SelectList,
   MenuToggle,
   MenuToggleElement,
+  ToggleGroup,
+  ToggleGroupItem,
 } from '@patternfly/react-core';
-import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
-import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon, UploadIcon } from '@patternfly/react-icons';
+import type { ThProps } from '@patternfly/react-table';
+import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon, UploadIcon, ThLargeIcon, ListIcon } from '@patternfly/react-icons';
 import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
 import type { Skill } from '@/types';
 import { AnthropicSkillImporter } from '../components/AnthropicSkillImporter';
+import { SkillCardView } from '../components/SkillCardView';
+import { SkillListView } from '../components/SkillListView';
 
 
 export function SkillsPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [searchMode, setSearchMode] = useState<SearchMode>('text');
@@ -71,7 +71,11 @@ export function SkillsPage() {
   const [isAnthropicImportModalOpen, setIsAnthropicImportModalOpen] = useState(false);
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
-  
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
+    const stored = localStorage.getItem('skills-view-mode');
+    return stored === 'cards' || stored === 'list' ? stored : 'cards';
+  });
+
   // Select dropdown states
   const [isToolSelectOpen, setIsToolSelectOpen] = useState(false);
   const [isSnippetSelectOpen, setIsSnippetSelectOpen] = useState(false);
@@ -122,7 +126,7 @@ export function SkillsPage() {
       setSnippetSearchTerm('');
       setCreateError('');
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       setCreateError(error.message || 'Failed to create skill');
     },
   });
@@ -440,6 +444,7 @@ export function SkillsPage() {
     columnIndex,
   });
 
+
   if (isLoading) {
     return (
       <PageSection>
@@ -547,6 +552,32 @@ export function SkillsPage() {
                 Create Skill
               </Button>
             </ToolbarItem>
+            <ToolbarItem>
+              <ToggleGroup aria-label="Skills view mode">
+                <ToggleGroupItem
+                  icon={<ThLargeIcon />}
+                  text="Cards"
+                  isSelected={viewMode === 'cards'}
+                  onChange={(_event, isSelected) => {
+                    if (isSelected) {
+                      setViewMode('cards');
+                      localStorage.setItem('skills-view-mode', 'cards');
+                    }
+                  }}
+                />
+                <ToggleGroupItem
+                  icon={<ListIcon />}
+                  text="List"
+                  isSelected={viewMode === 'list'}
+                  onChange={(_event, isSelected) => {
+                    if (isSelected) {
+                      setViewMode('list');
+                      localStorage.setItem('skills-view-mode', 'list');
+                    }
+                  }}
+                />
+              </ToggleGroup>
+            </ToolbarItem>
           </ToolbarContent>
         </Toolbar>
 
@@ -571,92 +602,20 @@ export function SkillsPage() {
               </Button>
             )}
           </EmptyState>
+        ) : viewMode === 'cards' ? (
+          <SkillCardView
+            skills={filteredSkills}
+            selectedSkills={selectedSkills}
+            onSelectSkill={handleSelectSkill}
+          />
         ) : (
-          <Table aria-label="Skills table" variant="compact">
-            <Thead>
-              <Tr>
-                <Th
-                  select={{
-                    onSelect: (_event, isSelected) => handleSelectAll(isSelected),
-                    isSelected: selectedSkills.length === filteredSkills.length && filteredSkills.length > 0,
-                  }}
-                />
-                <Th sort={getSortParams(0)}>Name</Th>
-                <Th sort={getSortParams(1)}>Description</Th>
-                <Th>Tags</Th>
-                <Th>Tools</Th>
-                <Th>Snippets</Th>
-                <Th sort={getSortParams(2)}>Version</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {filteredSkills.map((skill, index) => (
-                <Tr key={skill.uuid}>
-                  <Td
-                    select={{
-                      rowIndex: index,
-                      onSelect: (_event, isSelected) => handleSelectSkill(skill.name, isSelected),
-                      isSelected: selectedSkills.includes(skill.name),
-                    }}
-                  />
-                  <Td
-                    dataLabel="Name"
-                    onClick={() => navigate(`/skills/${skill.name}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {skill.name}
-                  </Td>
-                  <Td
-                    dataLabel="Description"
-                    onClick={() => navigate(`/skills/${skill.name}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {skill.description || 'No description'}
-                  </Td>
-                  <Td
-                    dataLabel="Tags"
-                    onClick={() => navigate(`/skills/${skill.name}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {skill.tags && skill.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (
-                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                        {skill.tags
-                          .filter(tag => !tag.startsWith('namespace:'))
-                          .map((tag) => (
-                            <Label key={tag} color={getTagColor(tag)} isCompact>
-                              {tag}
-                            </Label>
-                          ))}
-                      </div>
-                    ) : (
-                      '-'
-                    )}
-                  </Td>
-                  <Td
-                    dataLabel="Tools"
-                    onClick={() => navigate(`/skills/${skill.name}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {skill.tools && skill.tools.length > 0 ? skill.tools.length : '-'}
-                  </Td>
-                  <Td
-                    dataLabel="Snippets"
-                    onClick={() => navigate(`/skills/${skill.name}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {skill.snippets && skill.snippets.length > 0 ? skill.snippets.length : '-'}
-                  </Td>
-                  <Td
-                    dataLabel="Version"
-                    onClick={() => navigate(`/skills/${skill.name}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    {skill.version || '-'}
-                  </Td>
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
+          <SkillListView
+            skills={filteredSkills}
+            selectedSkills={selectedSkills}
+            onSelectSkill={handleSelectSkill}
+            onSelectAll={handleSelectAll}
+            getSortParams={getSortParams}
+          />
         )}
       </PageSection>
 
@@ -989,7 +948,7 @@ export function SkillsPage() {
           id="import-file"
           value={importFile || undefined}
           filename={importFile?.name}
-          onFileInputChange={(_event: any, file: File) => setImportFile(file)}
+          onFileInputChange={(_event, file: File) => setImportFile(file)}
           onClearClick={() => setImportFile(null)}
           hideDefaultPreview
           browseButtonText="Select JSON File"
