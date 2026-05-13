@@ -5,6 +5,9 @@ import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
+import { detectLanguage } from '../utils/languageDetection';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   PageSection,
   Title,
@@ -706,20 +709,33 @@ export function SkillDetailPage() {
                             <Title headingLevel="h4" size="md" style={{ marginBottom: '0.5rem' }}>
                               {selectedToolModule.name}
                             </Title>
-                            <CodeBlock>
-                              <CodeBlockCode
-                                style={{
-                                  backgroundColor: '#f5f5f5',
-                                  color: '#151515',
-                                  padding: '1rem',
-                                  borderRadius: '4px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5'
+                            <div style={{
+                              maxHeight: '70vh',
+                              overflow: 'auto',
+                              border: '1px solid #3d3d3d',
+                              borderRadius: '6px'
+                            }}>
+                              <SyntaxHighlighter
+                                language={detectLanguage(
+                                  skill.tools?.find(t => t.name === selectedToolModule.name)?.programming_language 
+                                    ? `text/x-${skill.tools?.find(t => t.name === selectedToolModule.name)?.programming_language}`
+                                    : undefined,
+                                  undefined,
+                                  skill.tools?.find(t => t.name === selectedToolModule.name)?.tags
+                                )}
+                                style={vscDarkPlus}
+                                showLineNumbers={true}
+                                wrapLines={false}
+                                customStyle={{
+                                  margin: 0,
+                                  fontSize: '15px',
+                                  lineHeight: '1.6',
+                                  minHeight: '100%',
                                 }}
                               >
                                 {selectedToolModule.module}
-                              </CodeBlockCode>
-                            </CodeBlock>
+                              </SyntaxHighlighter>
+                            </div>
                           </div>
                         ) : (
                           <div style={{
@@ -770,20 +786,27 @@ export function SkillDetailPage() {
                             <Title headingLevel="h4" size="md" style={{ marginBottom: '0.5rem' }}>
                               {selectedSnippet.name}
                             </Title>
-                            <CodeBlock>
-                              <CodeBlockCode
-                                style={{
-                                  backgroundColor: '#f5f5f5',
-                                  color: '#151515',
-                                  padding: '1rem',
-                                  borderRadius: '4px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5'
+                            <div style={{
+                              maxHeight: '70vh',
+                              overflow: 'auto',
+                              border: '1px solid #3d3d3d',
+                              borderRadius: '6px'
+                            }}>
+                              <SyntaxHighlighter
+                                language={detectLanguage(selectedSnippet.content_type, undefined, selectedSnippet.tags)}
+                                style={vscDarkPlus}
+                                showLineNumbers={true}
+                                wrapLines={false}
+                                customStyle={{
+                                  margin: 0,
+                                  fontSize: '15px',
+                                  lineHeight: '1.6',
+                                  minHeight: '100%',
                                 }}
                               >
                                 {selectedSnippet.content}
-                              </CodeBlockCode>
-                            </CodeBlock>
+                              </SyntaxHighlighter>
+                            </div>
                           </div>
                         ) : (
                           <div style={{

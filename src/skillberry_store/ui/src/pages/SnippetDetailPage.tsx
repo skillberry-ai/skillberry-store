@@ -5,6 +5,9 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
+import { detectLanguage } from '../utils/languageDetection';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import {
   PageSection,
   Title,
@@ -312,20 +315,27 @@ export function SnippetDetailPage() {
         <Card style={{ marginTop: '1rem' }}>
           <CardTitle>Content</CardTitle>
           <CardBody>
-            <CodeBlock>
-              <CodeBlockCode
-                style={{
-                  backgroundColor: '#f5f5f5',
-                  color: '#151515',
-                  padding: '1rem',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  lineHeight: '1.5'
+            <div style={{
+              maxHeight: '70vh',
+              overflow: 'auto',
+              border: '1px solid #3d3d3d',
+              borderRadius: '6px'
+            }}>
+              <SyntaxHighlighter
+                language={detectLanguage(snippet.content_type, undefined, snippet.tags)}
+                style={vscDarkPlus}
+                showLineNumbers={true}
+                wrapLines={false}
+                customStyle={{
+                  margin: 0,
+                  fontSize: '15px',
+                  lineHeight: '1.6',
+                  minHeight: '100%',
                 }}
               >
                 {snippet.content}
-              </CodeBlockCode>
-            </CodeBlock>
+              </SyntaxHighlighter>
+            </div>
           </CardBody>
         </Card>
       </PageSection>
