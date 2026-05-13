@@ -204,7 +204,7 @@ jobs:
 
           git remote add upstream "https://github.com/${{ github.repository }}.git" 2>/dev/null || \
             git remote set-url upstream "https://github.com/${{ github.repository }}.git"
-          git fetch upstream "${BASE_REF}" --depth=1
+          git fetch upstream "${BASE_REF}"
 
           echo "Collecting diff for PR #${PR_NUMBER} against upstream/${BASE_REF}"
           git diff --name-status "upstream/${BASE_REF}...HEAD" | tee "${ARTIFACT_DIR}/changed-files.txt"
