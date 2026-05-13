@@ -57,9 +57,11 @@ jobs:
 
     env:
       TEST_WITH_BOB_LABEL: test-with-bob
-      ARTIFACT_DIR: ${{ runner.temp }}/bob-pr-test-artifacts
 
     steps:
+      - name: Set artifact directory
+        run: echo "ARTIFACT_DIR=${RUNNER_TEMP}/bob-pr-test-artifacts" >> "$GITHUB_ENV"
+
       - name: Get PR context from trigger workflow
         id: pr
         uses: actions/github-script@v7
