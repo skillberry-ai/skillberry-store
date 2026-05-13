@@ -28,8 +28,6 @@
 name: Test PR with Bob - Trigger
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
 
