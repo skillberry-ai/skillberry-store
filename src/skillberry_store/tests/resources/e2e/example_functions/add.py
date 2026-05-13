@@ -1,14 +1,14 @@
 import operator
 
-def add(a: int, b: int) -> int:
+def add(a: float, b: float) -> float:
     '''
-    Adds two integer numbers using the operator module and returns the result.
+    Adds two numbers using the operator module and returns the result.
 
     Args:
-        a (int): The first number to be added.
-        b (int): The second number to be added.
+        a (float): The first number to be added.
+        b (float): The second number to be added.
 
     Returns:
-        int: The result of adding a and b.
+        float: The result of adding a and b.
     '''
     return operator.add(a, b)
