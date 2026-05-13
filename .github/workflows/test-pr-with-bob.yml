@@ -35,7 +35,7 @@
 # you intentionally want to allow broader execution after manual label approval.
 # ============================================================================
 
-name: "Test PR with Bob"
+name: Test PR with Bob
 
 on:
   workflow_run:
