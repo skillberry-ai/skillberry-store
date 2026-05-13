@@ -9,7 +9,6 @@
 # 2. Analyzes the issue content using Bob Shell
 # 3. Selects appropriate labels based on the issue description
 # 4. Applies the selected labels to the issue
-# 5. Adds 'fix-with-bob' label only if the issue is simple enough for Bob to fix
 #
 # WORKFLOW STEPS:
 # 1. Trigger: Activated when a new issue is opened
@@ -24,10 +23,7 @@
 # LABEL SELECTION CRITERIA:
 # - Bob Shell analyzes the issue content against available label descriptions
 # - Multiple labels can be applied if relevant
-# - 'fix-with-bob' is only added if:
-#   * The issue describes a coding task
-#   * The implementation is straightforward and not complex
-#   * Bob Shell can likely fix it with simple code changes
+# - Certain labels are excluded from automatic assignment (fix-with-bob, good first issue)
 #
 # REQUIREMENTS:
 # - GitHub Secrets (must be configured in repository settings):
@@ -179,11 +175,9 @@ jobs:
             3. CRITICAL: You MUST ONLY use labels from the AVAILABLE LABELS list above. DO NOT invent or create new labels.
             4. CRITICAL: Every label you suggest MUST exist exactly as shown in the AVAILABLE LABELS list above
             5. CRITICAL: Do NOT add labels like "---output---" or any other invented labels
-            6. For the 'fix-with-bob' label specifically:
-               - ONLY add it if the issue describes a coding task
-               - ONLY add it if the implementation is straightforward and not complex
-               - ONLY add it if you believe Bob Shell can fix it with simple code changes
-               - DO NOT add it for complex features, architectural changes, or unclear requirements
+            6. CRITICAL: NEVER add the following labels (they are managed manually):
+               - 'fix-with-bob'
+               - 'good first issue'
             7. Common label mappings (only use if they exist in AVAILABLE LABELS):
                - 'bug': Issue reports something broken or not working correctly
                - 'enhancement': Issue requests a new feature or improvement
@@ -191,13 +185,12 @@ jobs:
                - 'question': Issue asks for clarification or information
                - 'security': Issue relates to security vulnerabilities or concerns
                - 'automation': Issue relates to CI/CD, workflows, or automated processes
-               - 'good first issue': Issue is simple and suitable for newcomers
                - 'help wanted': Issue needs community assistance
 
             OUTPUT FORMAT:
             Respond with ONLY a JSON array of label names to apply. Nothing else.
             Example: ["bug", "documentation"]
-            Example: ["enhancement", "fix-with-bob"]
+            Example: ["enhancement", "automation"]
             Example: ["question"]
 
             If no labels from the available list are appropriate, respond with an empty array: []
@@ -251,20 +244,39 @@ jobs:
             
             echo "Extracted labels (before validation): ${LABELS_JSON}"
             
-            # Validate each label against repository labels
+            # Define excluded labels that should never be auto-applied
+            EXCLUDED_LABELS='["fix-with-bob", "good first issue"]'
+            
+            # Validate each label against repository labels and exclude forbidden labels
             VALIDATED_LABELS="[]"
             INVALID_LABELS=""
+            EXCLUDED_FOUND=""
             
             if [ "${LABELS_JSON}" != "[]" ]; then
-              # Extract labels from JSON and validate each one
-              VALIDATED_LABELS=$(echo "${LABELS_JSON}" | jq -c --argjson valid "$(echo "${VALID_LABELS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')" '
+              # First, filter out excluded labels
+              FILTERED_LABELS=$(echo "${LABELS_JSON}" | jq -c --argjson excluded "${EXCLUDED_LABELS}" '
+                map(select(. as $label | $excluded | index($label) == null))
+              ')
+              
+              # Find excluded labels that were suggested (for reporting)
+              EXCLUDED_FOUND=$(echo "${LABELS_JSON}" | jq -r --argjson excluded "${EXCLUDED_LABELS}" '
+                map(select(. as $label | $excluded | index($label) != null)) | join(", ")
+              ')
+              
+              # Extract labels from JSON and validate each one against repository labels
+              VALIDATED_LABELS=$(echo "${FILTERED_LABELS}" | jq -c --argjson valid "$(echo "${VALID_LABELS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')" '
                 map(select(. as $label | $valid | index($label) != null))
               ')
               
               # Find invalid labels for reporting
-              INVALID_LABELS=$(echo "${LABELS_JSON}" | jq -r --argjson valid "$(echo "${VALID_LABELS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')" '
+              INVALID_LABELS=$(echo "${FILTERED_LABELS}" | jq -r --argjson valid "$(echo "${VALID_LABELS}" | jq -R -s -c 'split("\n") | map(select(length > 0))')" '
                 map(select(. as $label | $valid | index($label) == null)) | join(", ")
               ')
+            fi
+            
+            # Report excluded labels
+            if [ -n "${EXCLUDED_FOUND}" ] && [ "${EXCLUDED_FOUND}" != "" ]; then
+              echo "⚠️ Warning: Bob suggested excluded labels that are managed manually: ${EXCLUDED_FOUND}"
             fi
             
             # Report invalid labels
@@ -301,17 +313,43 @@ jobs:
           # Get list of valid repository labels
           REPO_LABELS=$(cat /tmp/repo_labels.json | jq -r '.[].name')
           
+          # Define excluded labels that should never be auto-applied
+          EXCLUDED_LABELS=("fix-with-bob" "good first issue")
+          
           # Validate and filter selected labels
           VALID_LABELS=()
           INVALID_LABELS=()
+          EXCLUDED_FOUND=()
           
           while IFS= read -r label; do
+            # Check if label is in excluded list
+            is_excluded=false
+            for excluded in "${EXCLUDED_LABELS[@]}"; do
+              if [ "${label}" = "${excluded}" ]; then
+                is_excluded=true
+                EXCLUDED_FOUND+=("${label}")
+                break
+              fi
+            done
+            
+            # Skip excluded labels
+            if [ "${is_excluded}" = true ]; then
+              continue
+            fi
+            
+            # Check if label exists in repository
             if echo "${REPO_LABELS}" | grep -qx "${label}"; then
               VALID_LABELS+=("${label}")
             else
               INVALID_LABELS+=("${label}")
             fi
           done < <(echo "${LABELS_JSON}" | jq -r '.[]')
+          
+          # Report excluded labels
+          if [ ${#EXCLUDED_FOUND[@]} -gt 0 ]; then
+            echo "⚠️ Warning: The following labels are excluded from automatic assignment and were skipped:"
+            printf '%s\n' "${EXCLUDED_FOUND[@]}"
+          fi
           
           # Report invalid labels
           if [ ${#INVALID_LABELS[@]} -gt 0 ]; then
