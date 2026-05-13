@@ -37,6 +37,8 @@ import {
   ToolbarItem,
 } from '@patternfly/react-core';
 import { EditIcon, TrashIcon } from '@patternfly/react-icons';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { snippetsApi } from '@/services/api';
 import type { Snippet } from '@/types';
 
@@ -312,20 +314,38 @@ export function SnippetDetailPage() {
         <Card style={{ marginTop: '1rem' }}>
           <CardTitle>Content</CardTitle>
           <CardBody>
-            <CodeBlock>
-              <CodeBlockCode
-                style={{
-                  backgroundColor: '#f5f5f5',
-                  color: '#151515',
-                  padding: '1rem',
-                  borderRadius: '4px',
-                  fontSize: '14px',
-                  lineHeight: '1.5'
+            <div style={{
+              maxHeight: '70vh',
+              overflow: 'auto',
+              border: '1px solid #3d3d3d',
+              borderRadius: '6px'
+            }}>
+              <SyntaxHighlighter
+                language={
+                  snippet.content_type === 'text/x-python' ? 'python' :
+                  snippet.content_type === 'text/javascript' ? 'javascript' :
+                  snippet.content_type === 'text/x-java' ? 'java' :
+                  snippet.content_type === 'text/x-go' ? 'go' :
+                  snippet.content_type === 'text/x-sh' ? 'bash' :
+                  snippet.content_type === 'text/x-yaml' ? 'yaml' :
+                  snippet.content_type === 'application/json' ? 'json' :
+                  snippet.content_type === 'text/html' ? 'html' :
+                  snippet.content_type === 'text/css' ? 'css' :
+                  'text'
+                }
+                style={vscDarkPlus}
+                showLineNumbers={true}
+                wrapLines={false}
+                customStyle={{
+                  margin: 0,
+                  fontSize: '15px',
+                  lineHeight: '1.6',
+                  minHeight: '100%',
                 }}
               >
                 {snippet.content}
-              </CodeBlockCode>
-            </CodeBlock>
+              </SyntaxHighlighter>
+            </div>
           </CardBody>
         </Card>
       </PageSection>
