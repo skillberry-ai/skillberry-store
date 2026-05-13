@@ -14,8 +14,9 @@
 # allowing a second workflow to comment on the PR.
 #
 # USAGE:
-# Add the label `test-with-bob` to a PR. The workflow also reruns on synchronize,
-# reopened, and ready_for_review while the label remains attached.
+# Add the label `test-with-bob` or `fix-with-bob` to a PR. The workflow also
+# reruns on synchronize, reopened, and ready_for_review while either label
+# remains attached.
 # ============================================================================
 
 name: Test PR with Bob - Trigger
@@ -32,7 +33,8 @@ jobs:
   collect-pr-context:
     if: >-
       !github.event.pull_request.draft &&
-      contains(github.event.pull_request.labels.*.name, 'test-with-bob')
+      (contains(github.event.pull_request.labels.*.name, 'test-with-bob') ||
+       contains(github.event.pull_request.labels.*.name, 'fix-with-bob'))
     runs-on: ubuntu-latest
 
     steps:

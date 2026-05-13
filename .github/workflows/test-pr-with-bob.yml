@@ -3,7 +3,7 @@
 # ============================================================================
 #
 # PURPOSE:
-# This workflow tests a PR after the `test-with-bob` label is added.
+# This workflow tests a PR after the `test-with-bob` or `fix-with-bob` label is added.
 # It is triggered by the unprivileged "Test PR with Bob - Trigger" workflow.
 #
 # WHAT IT DOES:
@@ -25,6 +25,10 @@
 # OPTIONAL REPOSITORY VARIABLE:
 # - BOB_ALLOWED_HEAD_OWNERS: comma-separated list of trusted GitHub org/user owners.
 #   Default: `${{ github.repository_owner }},skillberry-bot`
+#
+# LABELS:
+# - test-with-bob: Triggers the workflow for testing PRs
+# - fix-with-bob: Also triggers the workflow (alternative label)
 #
 # IMPORTANT SECURITY NOTE:
 # This workflow checks out and runs PR code. Keep the trusted-owner guard unless
@@ -112,9 +116,11 @@ jobs:
             });
 
             const labelName = process.env.TEST_WITH_BOB_LABEL || 'test-with-bob';
-            const hasLabel = pr.labels.some(label => label.name === labelName);
+            const hasLabel = pr.labels.some(label =>
+              label.name === labelName || label.name === 'fix-with-bob'
+            );
             if (!hasLabel) {
-              core.info(`PR #${pr.number} no longer has label ${labelName}; skipping`);
+              core.info(`PR #${pr.number} no longer has label ${labelName} or fix-with-bob; skipping`);
               core.setOutput('should_run', 'false');
               return;
             }
