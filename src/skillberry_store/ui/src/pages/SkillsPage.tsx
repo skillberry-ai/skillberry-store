@@ -71,9 +71,10 @@ export function SkillsPage() {
   const [isAnthropicImportModalOpen, setIsAnthropicImportModalOpen] = useState(false);
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>(
-    () => (localStorage.getItem('skills-view-mode') as 'cards' | 'list') ?? 'cards'
-  );
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
+    const stored = localStorage.getItem('skills-view-mode');
+    return stored === 'cards' || stored === 'list' ? stored : 'cards';
+  });
 
   // Select dropdown states
   const [isToolSelectOpen, setIsToolSelectOpen] = useState(false);
@@ -443,12 +444,6 @@ export function SkillsPage() {
     columnIndex,
   });
 
-  const handleViewModeChange = (_event: React.MouseEvent, isSelected: boolean, mode: 'cards' | 'list') => {
-    if (isSelected) {
-      setViewMode(mode);
-      localStorage.setItem('skills-view-mode', mode);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -563,13 +558,23 @@ export function SkillsPage() {
                   icon={<ThLargeIcon />}
                   text="Cards"
                   isSelected={viewMode === 'cards'}
-                  onChange={(_event, isSelected) => handleViewModeChange(_event as React.MouseEvent, isSelected, 'cards')}
+                  onChange={(_event, isSelected) => {
+                    if (isSelected) {
+                      setViewMode('cards');
+                      localStorage.setItem('skills-view-mode', 'cards');
+                    }
+                  }}
                 />
                 <ToggleGroupItem
                   icon={<ListIcon />}
                   text="List"
                   isSelected={viewMode === 'list'}
-                  onChange={(_event, isSelected) => handleViewModeChange(_event as React.MouseEvent, isSelected, 'list')}
+                  onChange={(_event, isSelected) => {
+                    if (isSelected) {
+                      setViewMode('list');
+                      localStorage.setItem('skills-view-mode', 'list');
+                    }
+                  }}
                 />
               </ToggleGroup>
             </ToolbarItem>
