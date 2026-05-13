@@ -58,12 +58,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1  # Shallow clone is sufficient
       
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
       
@@ -148,7 +148,7 @@ jobs:
       
       - name: Analyze Issue and Select Labels
         id: analyze
-        uses: nick-invision/retry@v3
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 5
           max_attempts: 2

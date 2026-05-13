@@ -64,7 +64,7 @@ jobs:
 
       - name: Get PR context from trigger workflow
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           TEST_WITH_BOB_LABEL: test-with-bob
           BOB_ALLOWED_HEAD_OWNERS: ${{ vars.BOB_ALLOWED_HEAD_OWNERS }}
@@ -185,7 +185,7 @@ jobs:
 
       - name: Checkout PR branch
         if: steps.pr.outputs.should_run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}
@@ -213,7 +213,7 @@ jobs:
 
       - name: Setup Node.js
         if: steps.pr.outputs.should_run == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
 
@@ -259,7 +259,7 @@ jobs:
 
       - name: Ask Bob to generate focused tests for this PR
         if: steps.pr.outputs.should_run == 'true'
-        uses: nick-invision/retry@v3
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 20
           max_attempts: 2
@@ -443,6 +443,7 @@ jobs:
       - name: Run Playwright UI tests
         if: steps.pr.outputs.should_run == 'true'
         id: playwright_tests
+        timeout-minutes: 15
         env:
           PACKAGE_MANAGER: ${{ steps.install_deps.outputs.package_manager }}
         run: |
@@ -677,7 +678,7 @@ jobs:
 
       - name: Upload Bob PR test artifacts
         if: steps.pr.outputs.should_run == 'true' && always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bob-pr-test-report-${{ steps.pr.outputs.pr_number }}
           path: ${{ runner.temp }}/bob-pr-test-artifacts

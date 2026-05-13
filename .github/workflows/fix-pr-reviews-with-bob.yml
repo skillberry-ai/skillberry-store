@@ -60,7 +60,7 @@ jobs:
     steps:
       - name: Get PR details from workflow run
         id: get_pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
           script: |
@@ -149,7 +149,7 @@ jobs:
       
       - name: Checkout repository
         if: steps.get_pr.outputs.should_run == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ steps.get_pr.outputs.head_repo }}
           ref: ${{ steps.get_pr.outputs.head_ref }}
@@ -158,7 +158,7 @@ jobs:
       
       - name: Setup Node.js
         if: steps.get_pr.outputs.should_run == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
       
@@ -237,7 +237,7 @@ jobs:
       
       - name: Execute Bob to Address Review Comments
         if: steps.get_pr.outputs.should_run == 'true'
-        uses: nick-invision/retry@v3
+        uses: nick-fields/retry@v4
         with:
           timeout_minutes: 15
           max_attempts: 3
