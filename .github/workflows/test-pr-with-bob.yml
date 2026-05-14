@@ -3,7 +3,7 @@
 # ============================================================================
 #
 # PURPOSE:
-# This workflow tests a PR after the `test-with-bob` or `fix-with-bob` label is added.
+# This workflow tests a PR after the `test-with-bob` label is added.
 # It is triggered by the unprivileged "Test PR with Bob - Trigger" workflow.
 #
 # WHAT IT DOES:
@@ -26,10 +26,6 @@
 # - BOB_ALLOWED_HEAD_OWNERS: comma-separated list of trusted GitHub org/user owners.
 #   Default: `${{ github.repository_owner }},skillberry-bot`
 #
-# LABELS:
-# - test-with-bob: Triggers the workflow for testing PRs
-# - fix-with-bob: Also triggers the workflow (alternative label)
-#
 # IMPORTANT SECURITY NOTE:
 # This workflow checks out and runs PR code. Keep the trusted-owner guard unless
 # you intentionally want to allow broader execution after manual label approval.
@@ -49,6 +45,10 @@ permissions:
   issues: write
   pull-requests: write
 
+env:
+  # Opt in now to the same JavaScript action runtime GitHub will force later in 2026.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   test-pr-with-bob:
     if: github.event.workflow_run.conclusion == 'success'
@@ -57,14 +57,12 @@ jobs:
 
     env:
       TEST_WITH_BOB_LABEL: test-with-bob
+      ARTIFACT_DIR: ${{ runner.temp }}/bob-pr-test-artifacts
 
     steps:
-      - name: Set artifact directory
-        run: echo "ARTIFACT_DIR=${RUNNER_TEMP}/bob-pr-test-artifacts" >> "$GITHUB_ENV"
-
       - name: Get PR context from trigger workflow
         id: pr
-        uses: actions/github-script@v9
+        uses: actions/github-script@v8
         env:
           TEST_WITH_BOB_LABEL: test-with-bob
           BOB_ALLOWED_HEAD_OWNERS: ${{ vars.BOB_ALLOWED_HEAD_OWNERS }}
@@ -118,11 +116,9 @@ jobs:
             });
 
             const labelName = process.env.TEST_WITH_BOB_LABEL || 'test-with-bob';
-            const hasLabel = pr.labels.some(label =>
-              label.name === labelName || label.name === 'fix-with-bob'
-            );
+            const hasLabel = pr.labels.some(label => label.name === labelName);
             if (!hasLabel) {
-              core.info(`PR #${pr.number} no longer has label ${labelName} or fix-with-bob; skipping`);
+              core.info(`PR #${pr.number} no longer has label ${labelName}; skipping`);
               core.setOutput('should_run', 'false');
               return;
             }
@@ -185,13 +181,19 @@ jobs:
 
       - name: Checkout PR branch
         if: steps.pr.outputs.should_run == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v5
         with:
           repository: ${{ steps.pr.outputs.head_repo }}
           ref: ${{ steps.pr.outputs.head_ref }}
           fetch-depth: 0
           token: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
           persist-credentials: false
+
+      - name: Mark workspace as a safe Git directory
+        if: steps.pr.outputs.should_run == 'true'
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git rev-parse --show-toplevel
 
       - name: Fetch base branch and collect diff
         if: steps.pr.outputs.should_run == 'true'
@@ -204,16 +206,72 @@ jobs:
 
           git remote add upstream "https://github.com/${{ github.repository }}.git" 2>/dev/null || \
             git remote set-url upstream "https://github.com/${{ github.repository }}.git"
-          git fetch upstream "${BASE_REF}"
+          git fetch upstream "${BASE_REF}" --depth=1
 
           echo "Collecting diff for PR #${PR_NUMBER} against upstream/${BASE_REF}"
           git diff --name-status "upstream/${BASE_REF}...HEAD" | tee "${ARTIFACT_DIR}/changed-files.txt"
           git diff --stat "upstream/${BASE_REF}...HEAD" | tee "${ARTIFACT_DIR}/diff-stat.txt"
           git diff "upstream/${BASE_REF}...HEAD" > "${ARTIFACT_DIR}/pr.diff" || true
 
+      - name: Detect JavaScript project directories
+        if: steps.pr.outputs.should_run == 'true'
+        id: js_projects
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact_dir = Path(os.environ["ARTIFACT_DIR"])
+          changed_file = artifact_dir / "changed-files.txt"
+          candidates = set()
+
+          def nearest_package_dir(path: Path):
+              if path.is_file() and path.name == "package.json":
+                  return path.parent
+              current = path if path.is_dir() else path.parent
+              for parent in [current, *current.parents]:
+                  if (parent / "package.json").is_file():
+                      return parent
+                  if parent == Path("."):
+                      break
+              return None
+
+          if changed_file.is_file():
+              for raw in changed_file.read_text(errors="replace").splitlines():
+                  parts = raw.split("\t")
+                  candidate_path = Path(parts[-1]) if parts else None
+                  if candidate_path:
+                      package_dir = nearest_package_dir(candidate_path)
+                      if package_dir is not None:
+                          candidates.add(str(package_dir))
+
+          for config_glob in ("**/playwright.config.*", "**/vitest.config.*"):
+              for config in Path(".").glob(config_glob):
+                  if "node_modules" in config.parts or ".git" in config.parts:
+                      continue
+                  package_dir = nearest_package_dir(config)
+                  if package_dir is not None:
+                      candidates.add(str(package_dir))
+
+          if not candidates and Path("package.json").is_file():
+              candidates.add(".")
+
+          dirs = sorted(candidates, key=lambda p: (p.count("/"), p))
+          artifact_dir.mkdir(parents=True, exist_ok=True)
+          (artifact_dir / "js-project-dirs.txt").write_text("\n".join(dirs) + ("\n" if dirs else ""))
+          print("Detected JS project dirs:")
+          print("\n".join(dirs) if dirs else "none")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("project_dirs_json=" + json.dumps(dirs) + "\n")
+              out.write("project_dirs=" + ",".join(dirs) + "\n")
+          PY
+
       - name: Setup Node.js
         if: steps.pr.outputs.should_run == 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
@@ -257,9 +315,16 @@ jobs:
           EOF
           cat .mcp.json
 
+          # Keep Bob/MCP runtime files out of generated commits and out of git-add scans.
+          {
+            echo ".bob/"
+            echo ".mcp.json"
+            echo ".bob-pr-test-notes.md"
+          } >> .git/info/exclude
+
       - name: Ask Bob to generate focused tests for this PR
         if: steps.pr.outputs.should_run == 'true'
-        uses: nick-fields/retry@v4
+        uses: nick-invision/retry@v3
         with:
           timeout_minutes: 20
           max_attempts: 2
@@ -333,66 +398,90 @@ jobs:
             cp .bob-pr-test-notes.md "${ARTIFACT_DIR}/bob-pr-test-notes.md"
           fi
 
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "Generated changes detected:"
-            git status --short | tee "${ARTIFACT_DIR}/generated-test-changes.txt"
+          STATUS_FILE="${ARTIFACT_DIR}/generated-test-changes.txt"
+          git status --short             -- ':!.bob' ':!.mcp.json' ':!.bob-pr-test-notes.md'             | tee "${STATUS_FILE}"
 
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-            git add -A
-            git reset .bob/ || true
-            git reset .mcp.json || true
-            git reset .bob-pr-test-notes.md || true
-
-            if git diff --cached --quiet; then
-              echo "committed_tests=false" >> "$GITHUB_OUTPUT"
-              echo "No committable generated test changes after excluding temporary files."
-            else
-              git commit -m "Add Bob-generated tests for PR #${PR_NUMBER}"
-              git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:${HEAD_REF}"
-              echo "committed_tests=true" >> "$GITHUB_OUTPUT"
-              echo "Generated tests were committed and pushed to the PR branch."
-            fi
-          else
+          if [ ! -s "${STATUS_FILE}" ]; then
             echo "committed_tests=false" >> "$GITHUB_OUTPUT"
-            echo "Bob did not generate file changes."
+            echo "No committable generated test changes after excluding Bob/MCP temporary files."
+            exit 0
           fi
+
+          echo "Generated committable changes detected."
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -A -- . ':!.bob' ':!.mcp.json' ':!.bob-pr-test-notes.md'
+
+          if git diff --cached --quiet; then
+            echo "committed_tests=false" >> "$GITHUB_OUTPUT"
+            echo "No staged generated test changes after exclusions."
+            exit 0
+          fi
+
+          git commit -m "Add Bob-generated tests for PR #${PR_NUMBER}"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${HEAD_REPO}.git" "HEAD:${HEAD_REF}"
+          echo "committed_tests=true" >> "$GITHUB_OUTPUT"
+          echo "Generated tests were committed and pushed to the PR branch."
 
       - name: Install project dependencies
         if: steps.pr.outputs.should_run == 'true'
         id: install_deps
+        env:
+          PROJECT_DIRS_JSON: ${{ steps.js_projects.outputs.project_dirs_json }}
         run: |
           set +e
+          mkdir -p "${ARTIFACT_DIR}/logs"
           INSTALL_EXIT=0
+          PACKAGE_MANAGERS=()
 
-          if [ -f package.json ]; then
-            if [ -f pnpm-lock.yaml ]; then
-              corepack enable
-              pnpm install --frozen-lockfile > "${ARTIFACT_DIR}/logs/install.log" 2>&1
-              INSTALL_EXIT=$?
-              echo "package_manager=pnpm" >> "$GITHUB_OUTPUT"
-            elif [ -f yarn.lock ]; then
-              corepack enable
-              yarn install --immutable > "${ARTIFACT_DIR}/logs/install.log" 2>&1 || \
-                yarn install --frozen-lockfile >> "${ARTIFACT_DIR}/logs/install.log" 2>&1 || \
-                yarn install >> "${ARTIFACT_DIR}/logs/install.log" 2>&1
-              INSTALL_EXIT=$?
-              echo "package_manager=yarn" >> "$GITHUB_OUTPUT"
-            elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-              npm ci > "${ARTIFACT_DIR}/logs/install.log" 2>&1
-              INSTALL_EXIT=$?
-              echo "package_manager=npm" >> "$GITHUB_OUTPUT"
-            else
-              npm install > "${ARTIFACT_DIR}/logs/install.log" 2>&1
-              INSTALL_EXIT=$?
-              echo "package_manager=npm" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            echo "No package.json found. Skipping Node dependency installation." | tee "${ARTIFACT_DIR}/logs/install.log"
+          python3 - <<'PY' > "${RUNNER_TEMP}/project-dirs.txt"
+          import json
+          import os
+          for project_dir in json.loads(os.environ.get("PROJECT_DIRS_JSON") or "[]"):
+              print(project_dir)
+          PY
+
+          if [ ! -s "${RUNNER_TEMP}/project-dirs.txt" ]; then
+            echo "No JavaScript package.json project directories found." | tee "${ARTIFACT_DIR}/logs/install.log"
             echo "package_manager=none" >> "$GITHUB_OUTPUT"
+            echo "install_exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          : > "${ARTIFACT_DIR}/logs/install.log"
+          while IFS= read -r PROJECT_DIR; do
+            [ -n "${PROJECT_DIR}" ] || continue
+            SAFE_NAME=$(echo "${PROJECT_DIR}" | sed 's#[^A-Za-z0-9_.-]#_#g')
+            LOG_FILE="${ARTIFACT_DIR}/logs/install-${SAFE_NAME}.log"
+            echo "=== Installing dependencies in ${PROJECT_DIR} ===" | tee -a "${ARTIFACT_DIR}/logs/install.log"
+            (
+              cd "${PROJECT_DIR}" || exit 2
+              if [ -f pnpm-lock.yaml ]; then
+                corepack enable
+                pnpm install --frozen-lockfile
+              elif [ -f yarn.lock ]; then
+                corepack enable
+                yarn install --immutable || yarn install --frozen-lockfile || yarn install
+              elif [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+                npm ci
+              else
+                npm install
+              fi
+            ) > "${LOG_FILE}" 2>&1
+            EXIT_CODE=$?
+            cat "${LOG_FILE}" >> "${ARTIFACT_DIR}/logs/install.log"
+            if [ "${EXIT_CODE}" != "0" ]; then
+              INSTALL_EXIT=${EXIT_CODE}
+            fi
+
+            if [ -f "${PROJECT_DIR}/pnpm-lock.yaml" ]; then PACKAGE_MANAGERS+=("pnpm");
+            elif [ -f "${PROJECT_DIR}/yarn.lock" ]; then PACKAGE_MANAGERS+=("yarn");
+            else PACKAGE_MANAGERS+=("npm"); fi
+          done < "${RUNNER_TEMP}/project-dirs.txt"
+
+          UNIQUE_PM=$(printf "%s\n" "${PACKAGE_MANAGERS[@]}" | sort -u | paste -sd "," -)
+          echo "package_manager=${UNIQUE_PM:-none}" >> "$GITHUB_OUTPUT"
           echo "install_exit_code=${INSTALL_EXIT}" >> "$GITHUB_OUTPUT"
           exit 0
 
@@ -400,82 +489,160 @@ jobs:
         if: steps.pr.outputs.should_run == 'true'
         id: project_tests
         env:
-          PACKAGE_MANAGER: ${{ steps.install_deps.outputs.package_manager }}
+          PROJECT_DIRS_JSON: ${{ steps.js_projects.outputs.project_dirs_json }}
         run: |
           set +e
           TEST_EXIT=0
-          TEST_COMMAND="skip"
+          TEST_COMMANDS=()
 
-          if [ -f package.json ] && [ "${PACKAGE_MANAGER}" != "none" ]; then
-            SCRIPT_NAME=$(node - <<'NODE'
+          python3 - <<'PY' > "${RUNNER_TEMP}/project-dirs.txt"
+          import json
+          import os
+          for project_dir in json.loads(os.environ.get("PROJECT_DIRS_JSON") or "[]"):
+              print(project_dir)
+          PY
+
+          : > "${ARTIFACT_DIR}/logs/project-tests.log"
+          if [ ! -s "${RUNNER_TEMP}/project-dirs.txt" ]; then
+            echo "No JavaScript project directories found. Skipping project tests." | tee -a "${ARTIFACT_DIR}/logs/project-tests.log"
+            echo "test_command=skip" >> "$GITHUB_OUTPUT"
+            echo "project_tests_exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          while IFS= read -r PROJECT_DIR; do
+            [ -n "${PROJECT_DIR}" ] || continue
+            SAFE_NAME=$(echo "${PROJECT_DIR}" | sed 's#[^A-Za-z0-9_.-]#_#g')
+            LOG_FILE="${ARTIFACT_DIR}/logs/project-tests-${SAFE_NAME}.log"
+
+            SCRIPT_NAME=$(
+              cd "${PROJECT_DIR}" && node - <<'NODE'
           const fs = require('fs');
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const scripts = pkg.scripts || {};
           if (scripts['test:ci']) console.log('test:ci');
           else if (scripts['test:coverage']) console.log('test:coverage');
           else if (scripts.test && !scripts.test.includes('no test specified')) console.log('test');
+          else if (scripts.typecheck) console.log('typecheck');
           else console.log('');
           NODE
             )
 
-            if [ -n "${SCRIPT_NAME}" ]; then
-              if [ "${PACKAGE_MANAGER}" = "pnpm" ]; then
-                TEST_COMMAND="pnpm run ${SCRIPT_NAME}"
-              elif [ "${PACKAGE_MANAGER}" = "yarn" ]; then
-                TEST_COMMAND="yarn ${SCRIPT_NAME}"
-              else
-                TEST_COMMAND="npm run ${SCRIPT_NAME}"
-              fi
-              echo "Running project tests: ${TEST_COMMAND}"
-              bash -lc "${TEST_COMMAND}" > "${ARTIFACT_DIR}/logs/project-tests.log" 2>&1
-              TEST_EXIT=$?
-            else
-              echo "No usable project test script found." | tee "${ARTIFACT_DIR}/logs/project-tests.log"
+            if [ -z "${SCRIPT_NAME}" ]; then
+              echo "=== ${PROJECT_DIR}: no usable test/typecheck script found ===" | tee -a "${ARTIFACT_DIR}/logs/project-tests.log"
+              continue
             fi
-          else
-            echo "No package.json/package manager found. Skipping project tests." | tee "${ARTIFACT_DIR}/logs/project-tests.log"
+
+            if [ -f "${PROJECT_DIR}/pnpm-lock.yaml" ]; then
+              CMD="pnpm run ${SCRIPT_NAME}"
+            elif [ -f "${PROJECT_DIR}/yarn.lock" ]; then
+              CMD="yarn ${SCRIPT_NAME}"
+            else
+              CMD="npm run ${SCRIPT_NAME}"
+            fi
+            TEST_COMMANDS+=("${PROJECT_DIR}: ${CMD}")
+
+            echo "=== Running ${CMD} in ${PROJECT_DIR} ===" | tee -a "${ARTIFACT_DIR}/logs/project-tests.log"
+            (cd "${PROJECT_DIR}" && bash -lc "${CMD}") > "${LOG_FILE}" 2>&1
+            EXIT_CODE=$?
+            cat "${LOG_FILE}" >> "${ARTIFACT_DIR}/logs/project-tests.log"
+            if [ "${EXIT_CODE}" != "0" ]; then
+              TEST_EXIT=${EXIT_CODE}
+            fi
+          done < "${RUNNER_TEMP}/project-dirs.txt"
+
+          if [ "${#TEST_COMMANDS[@]}" -eq 0 ]; then
+            TEST_COMMANDS=("skip")
           fi
 
-          echo "test_command=${TEST_COMMAND}" >> "$GITHUB_OUTPUT"
+          {
+            echo "test_command<<EOF"
+            printf "%s\n" "${TEST_COMMANDS[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "project_tests_exit_code=${TEST_EXIT}" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Run Playwright UI tests
         if: steps.pr.outputs.should_run == 'true'
         id: playwright_tests
-        timeout-minutes: 15
         env:
-          PACKAGE_MANAGER: ${{ steps.install_deps.outputs.package_manager }}
+          PROJECT_DIRS_JSON: ${{ steps.js_projects.outputs.project_dirs_json }}
         run: |
           set +e
           PW_EXIT=0
-          PW_COMMAND="skip"
+          PW_COMMANDS=()
 
-          if [ -f package.json ] && [ "${PACKAGE_MANAGER}" != "none" ]; then
-            npx playwright install --with-deps > "${ARTIFACT_DIR}/logs/playwright-install.log" 2>&1 || true
+          python3 - <<'PY' > "${RUNNER_TEMP}/project-dirs.txt"
+          import json
+          import os
+          for project_dir in json.loads(os.environ.get("PROJECT_DIRS_JSON") or "[]"):
+              print(project_dir)
+          PY
 
-            PLAYWRIGHT_CANDIDATES=$(find . \
-              -path './node_modules' -prune -o \
-              \( -name 'playwright.config.*' -o -name '*playwright*.config.*' -o -path './tests/e2e/*' -o -path './e2e/*' -o -path './playwright/*' \) \
-              -print | head -n 20)
+          : > "${ARTIFACT_DIR}/logs/playwright-install.log"
+          : > "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+          : > "${ARTIFACT_DIR}/playwright-candidates.txt"
 
-            if [ -n "${PLAYWRIGHT_CANDIDATES}" ]; then
-              echo "Playwright candidates:"
-              echo "${PLAYWRIGHT_CANDIDATES}" | tee "${ARTIFACT_DIR}/playwright-candidates.txt"
-              PW_COMMAND="npx playwright test --reporter=json --output ${ARTIFACT_DIR}/playwright-output"
-              bash -lc "${PW_COMMAND}" > "${ARTIFACT_DIR}/playwright-results.json" 2> "${ARTIFACT_DIR}/logs/playwright.stderr.log"
-              PW_EXIT=$?
-            else
-              echo "No Playwright config or e2e tests found. Skipping Playwright run." | tee "${ARTIFACT_DIR}/logs/playwright.stderr.log"
-            fi
-          else
-            echo "No package.json/package manager found. Skipping Playwright tests." | tee "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+          if [ ! -s "${RUNNER_TEMP}/project-dirs.txt" ]; then
+            echo "No JavaScript project directories found. Skipping Playwright tests." | tee -a "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+            echo "playwright_command=skip" >> "$GITHUB_OUTPUT"
+            echo "playwright_exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          while IFS= read -r PROJECT_DIR; do
+            [ -n "${PROJECT_DIR}" ] || continue
+
+            if ! find "${PROJECT_DIR}" \
+              -path "${PROJECT_DIR}/node_modules" -prune -o \
+              \( -name 'playwright.config.*' -o -name '*playwright*.config.*' -o -path "${PROJECT_DIR}/tests/e2e/*" -o -path "${PROJECT_DIR}/e2e/*" -o -path "${PROJECT_DIR}/src/test/e2e/*" \) \
+              -print | grep -q .; then
+              echo "=== ${PROJECT_DIR}: no Playwright config/e2e tests found; skipping ===" | tee -a "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+              continue
+            fi
+
+            find "${PROJECT_DIR}" \
+              -path "${PROJECT_DIR}/node_modules" -prune -o \
+              \( -name 'playwright.config.*' -o -name '*playwright*.config.*' -o -path "${PROJECT_DIR}/tests/e2e/*" -o -path "${PROJECT_DIR}/e2e/*" -o -path "${PROJECT_DIR}/src/test/e2e/*" \) \
+              -print | tee -a "${ARTIFACT_DIR}/playwright-candidates.txt"
+
+            SAFE_NAME=$(echo "${PROJECT_DIR}" | sed 's#[^A-Za-z0-9_.-]#_#g')
+            PW_OUTPUT="${ARTIFACT_DIR}/playwright-output/${SAFE_NAME}"
+            mkdir -p "${PW_OUTPUT}"
+
+            echo "=== Installing Playwright browsers in ${PROJECT_DIR} ===" | tee -a "${ARTIFACT_DIR}/logs/playwright-install.log"
+            (cd "${PROJECT_DIR}" && npx playwright install --with-deps chromium) >> "${ARTIFACT_DIR}/logs/playwright-install.log" 2>&1 || true
+
+            if [ -f "${PROJECT_DIR}/pnpm-lock.yaml" ]; then
+              CMD="pnpm exec playwright test --reporter=json --output ${PW_OUTPUT}"
+            elif [ -f "${PROJECT_DIR}/yarn.lock" ]; then
+              CMD="yarn playwright test --reporter=json --output ${PW_OUTPUT}"
+            else
+              CMD="npx playwright test --reporter=json --output ${PW_OUTPUT}"
+            fi
+            PW_COMMANDS+=("${PROJECT_DIR}: ${CMD}")
+
+            echo "=== Running ${CMD} in ${PROJECT_DIR} ===" | tee -a "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+            (cd "${PROJECT_DIR}" && bash -lc "${CMD}") > "${ARTIFACT_DIR}/playwright-results-${SAFE_NAME}.json" 2>> "${ARTIFACT_DIR}/logs/playwright.stderr.log"
+            EXIT_CODE=$?
+            if [ "${EXIT_CODE}" != "0" ]; then
+              PW_EXIT=${EXIT_CODE}
+            fi
+          done < "${RUNNER_TEMP}/project-dirs.txt"
 
           find "${ARTIFACT_DIR}" -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) \
             > "${ARTIFACT_DIR}/screenshots-list.txt" || true
 
-          echo "playwright_command=${PW_COMMAND}" >> "$GITHUB_OUTPUT"
+          if [ "${#PW_COMMANDS[@]}" -eq 0 ]; then
+            PW_COMMANDS=("skip")
+          fi
+
+          {
+            echo "playwright_command<<EOF"
+            printf "%s\n" "${PW_COMMANDS[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "playwright_exit_code=${PW_EXIT}" >> "$GITHUB_OUTPUT"
           exit 0
 
@@ -495,7 +662,18 @@ jobs:
           CHANGED_FILE_COUNT=$(grep -cve '^$' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null || echo 0)
           GENERATED_CHANGE_COUNT=$(grep -cve '^$' "${ARTIFACT_DIR}/generated-test-changes.txt" 2>/dev/null || echo 0)
           SCREENSHOT_COUNT=$(grep -cve '^$' "${ARTIFACT_DIR}/screenshots-list.txt" 2>/dev/null || echo 0)
-          TEST_FILE_COUNT=$(git ls-files | grep -Ei '(test|spec)\.(js|jsx|ts|tsx|mjs|cjs|py)$' | wc -l | tr -d ' ')
+          TEST_FILE_COUNT=$(python3 - <<'PY'
+          import subprocess
+          import re
+          try:
+              output = subprocess.check_output(["git", "ls-files"], text=True, stderr=subprocess.DEVNULL)
+          except Exception:
+              print(0)
+          else:
+              pattern = re.compile(r"(test|spec)\.(js|jsx|ts|tsx|mjs|cjs|py)$", re.I)
+              print(sum(1 for line in output.splitlines() if pattern.search(line)))
+          PY
+          )
 
           COVERAGE_SUMMARY="not found"
           COVERAGE_FILE=$(find . -path './node_modules' -prune -o -name 'coverage-summary.json' -print | head -n 1)
@@ -512,18 +690,26 @@ jobs:
           fi
 
           PLAYWRIGHT_SUMMARY="not run"
-          if [ -s "${ARTIFACT_DIR}/playwright-results.json" ]; then
-            PLAYWRIGHT_SUMMARY=$(node - "${ARTIFACT_DIR}/playwright-results.json" <<'NODE' || echo "unable to parse Playwright JSON"
+          PLAYWRIGHT_FILES=$(find "${ARTIFACT_DIR}" -maxdepth 1 -name 'playwright-results-*.json' -type f -size +0c | sort || true)
+          if [ -n "${PLAYWRIGHT_FILES}" ]; then
+            PLAYWRIGHT_SUMMARY=$(node - ${PLAYWRIGHT_FILES} <<'NODE' || echo "unable to parse Playwright JSON"
           const fs = require('fs');
-          const file = process.argv[2];
-          const raw = fs.readFileSync(file, 'utf8');
-          const data = JSON.parse(raw);
-          const stats = data.stats || {};
-          const parts = [];
-          for (const key of ['expected', 'unexpected', 'flaky', 'skipped']) {
-            if (typeof stats[key] !== 'undefined') parts.push(`${key}=${stats[key]}`);
+          const files = process.argv.slice(2);
+          const totals = { expected: 0, unexpected: 0, flaky: 0, skipped: 0 };
+          let parsed = 0;
+          for (const file of files) {
+            try {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const stats = data.stats || {};
+              for (const key of Object.keys(totals)) totals[key] += Number(stats[key] || 0);
+              parsed++;
+            } catch (_) {}
           }
-          console.log(parts.length ? parts.join(', ') : 'stats unavailable');
+          if (!parsed) {
+            console.log('stats unavailable');
+          } else {
+            console.log(Object.entries(totals).map(([k, v]) => `${k}=${v}`).join(', '));
+          }
           NODE
             )
           fi
@@ -678,7 +864,7 @@ jobs:
 
       - name: Upload Bob PR test artifacts
         if: steps.pr.outputs.should_run == 'true' && always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v6
         with:
           name: bob-pr-test-report-${{ steps.pr.outputs.pr_number }}
           path: ${{ runner.temp }}/bob-pr-test-artifacts
