@@ -129,7 +129,7 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -151,7 +151,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -173,7 +174,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -207,7 +209,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -249,7 +252,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -325,7 +329,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -364,7 +369,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -413,7 +419,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -462,7 +469,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -494,7 +502,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const buttons = screen.getAllByRole('button');
@@ -526,7 +535,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -553,7 +563,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
@@ -575,7 +586,8 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        // expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });

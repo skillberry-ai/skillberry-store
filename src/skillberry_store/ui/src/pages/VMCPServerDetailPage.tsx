@@ -215,16 +215,20 @@ export function VMCPServerDetailPage() {
       return;
     }
 
-    const spec = generateOpenAPISpec(
-      server.name,
-      server.description || '',
-      server.port || 0,
-      mcpClient.tools,
-      mcpClient.prompts
-    );
+    try {
+      const spec = generateOpenAPISpec(
+        server.name,
+        server.description || '',
+        server.port || 0,
+        mcpClient.tools,
+        mcpClient.prompts
+      );
 
-    const filename = `${server.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_openapi.json`;
-    downloadOpenAPISpec(spec, filename);
+      const filename = `${server.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_openapi.json`;
+      downloadOpenAPISpec(spec, filename);
+    } catch (error) {
+      console.error('Failed to generate or download OpenAPI spec:', error);
+    }
   };
 
   if (isLoading) {

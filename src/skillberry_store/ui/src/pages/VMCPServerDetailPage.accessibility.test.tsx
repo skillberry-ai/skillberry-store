@@ -136,7 +136,7 @@ describe('VMCPServerDetailPage - Accessibility Tests', () => {
       renderComponent();
 
       await waitFor(() => {
-        expect(screen.getByText('test-server')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'test-server' })).toBeInTheDocument();
       });
 
       const downloadButton = screen.getByRole('button', { name: /download openapi spec/i });
