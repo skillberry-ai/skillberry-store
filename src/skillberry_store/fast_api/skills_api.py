@@ -506,6 +506,9 @@ def register_skills_api(
             existing_tools = tools_handler.get_available_resource_names()
             available_tools = existing_tools | all_tool_names.keys()
 
+            # Import timestamp
+            current_time = datetime.now(timezone.utc).isoformat()
+
             for tool in tools:
                 try:
                     tool_dict = tool.to_dict()
@@ -533,6 +536,8 @@ def register_skills_api(
                         "module_name": module_filename,
                         "packaging_format": "code",
                         "state": "approved",
+                        "created_at": current_time,
+                        "modified_at": current_time,
                     }
 
                     if "params" in tool_dict and tool_dict["params"]:
@@ -599,6 +604,8 @@ def register_skills_api(
                         "tags": snippet_tags,
                         "content_type": "text/plain",
                         "state": "approved",
+                        "created_at": current_time,
+                        "modified_at": current_time,
                     }
                     
                     # Save snippet manifest to UUID subfolder
