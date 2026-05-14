@@ -231,7 +231,7 @@ jobs:
 
           PROJECT_DIR=""
 
-          if grep -qE '^[AMDRC]\s+src/skillberry_store/ui/' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null; then
+          if grep -qE '^[AMDRC][[:space:]]+src/skillberry_store/ui/' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null; then
             PROJECT_DIR="src/skillberry_store/ui"
           elif [ -f "src/skillberry_store/ui/package.json" ]; then
             PROJECT_DIR="src/skillberry_store/ui"
