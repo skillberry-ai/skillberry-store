@@ -2,7 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 
 import { test, expect } from '@playwright/test';
-import path from 'path';
 
 /**
  * E2E tests for the OpenAPI specification download feature on VMCP Server Detail Page
@@ -137,13 +136,15 @@ test.describe('VMCP Server OpenAPI Download', () => {
     const filename = download.suggestedFilename();
     expect(filename).toMatch(/_openapi\.json$/);
     
-    // Save the download to verify content
-    const downloadPath = path.join(__dirname, 'downloads', filename);
-    await download.saveAs(downloadPath);
+    // Read the download stream to verify content
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
     
-    // Read and verify the downloaded file is valid JSON
-    const fs = require('fs');
-    const content = fs.readFileSync(downloadPath, 'utf-8');
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    
+    const content = Buffer.concat(chunks).toString('utf-8');
     const spec = JSON.parse(content);
     
     // Verify it's a valid OpenAPI spec
@@ -153,9 +154,6 @@ test.describe('VMCP Server OpenAPI Download', () => {
     expect(spec.servers).toBeDefined();
     expect(spec.paths).toBeDefined();
     expect(spec.components).toBeDefined();
-    
-    // Clean up
-    fs.unlinkSync(downloadPath);
   });
 
   test('should generate OpenAPI spec with tools and prompts', async ({ page }) => {
@@ -197,11 +195,15 @@ test.describe('VMCP Server OpenAPI Download', () => {
     await downloadButton.click();
     const download = await downloadPromise;
     
-    const downloadPath = path.join(__dirname, 'downloads', download.suggestedFilename());
-    await download.saveAs(downloadPath);
+    // Read the download stream to verify content
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
     
-    const fs = require('fs');
-    const content = fs.readFileSync(downloadPath, 'utf-8');
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    
+    const content = Buffer.concat(chunks).toString('utf-8');
     const spec = JSON.parse(content);
     
     // Verify paths are generated for tools and/or prompts
@@ -216,9 +218,6 @@ test.describe('VMCP Server OpenAPI Download', () => {
       const promptPaths = paths.filter(p => p.startsWith('/prompts/'));
       expect(promptPaths.length).toBeGreaterThan(0);
     }
-    
-    // Clean up
-    fs.unlinkSync(downloadPath);
   });
 
   test('should display download button with correct icon', async ({ page }) => {
@@ -268,5 +267,44 @@ test.describe('VMCP Server OpenAPI Download', () => {
       // Buttons should be roughly on the same horizontal line (within 20px)
       expect(Math.abs(downloadBox.y - editBox.y)).toBeLessThan(20);
     }
+  });
+
+  test('should not trigger download when disconnected', async ({ page }) => {
+    const serverLink = page.locator('a[href*="/vmcp-servers/"]').first();
+    
+    if (await serverLink.count() === 0) {
+      test.skip();
+      return;
+    }
+
+    await serverLink.click();
+    await page.waitForLoadState('networkidle');
+
+    // Ensure we're in disconnected state
+    const disconnectedLabel = page.getByText(/disconnected/i);
+    if (!(await disconnectedLabel.isVisible())) {
+      test.skip();
+      return;
+    }
+
+    const downloadButton = page.getByRole('button', { name: /download openapi spec/i });
+    
+    // Button should be disabled
+    await expect(downloadButton).toBeDisabled();
+    
+    // Verify no download event occurs even if we try to click
+    let downloadTriggered = false;
+    page.on('download', () => {
+      downloadTriggered = true;
+    });
+    
+    // Try to click (should not work since disabled)
+    await downloadButton.click({ force: true }).catch(() => {
+      // Expected to fail since button is disabled
+    });
+    
+    // Wait a bit to ensure no download was triggered
+    await page.waitForTimeout(1000);
+    expect(downloadTriggered).toBe(false);
   });
 });
