@@ -254,7 +254,7 @@ jobs:
           PROJECT_DIR=""
 
           # Prefer the Skillberry UI package when the PR touches it or when it exists.
-          if grep -qE '^[AMDRC]\s+src/skillberry_store/ui/' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null; then
+          if grep -qE '^[AMDRC][0-9]*[[:space:]]+src/skillberry_store/ui/' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null; then
             PROJECT_DIR="src/skillberry_store/ui"
           elif [ -f "src/skillberry_store/ui/package.json" ]; then
             PROJECT_DIR="src/skillberry_store/ui"
