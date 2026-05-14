@@ -6,6 +6,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { useMCPClient } from '../hooks/useMCPClient';
+import { generateOpenAPISpec, downloadOpenAPISpec } from '../utils/openApiGenerator';
 import {
   PageSection,
   Title,
@@ -25,6 +26,7 @@ import {
   Button,
   Modal,
   ModalVariant,
+  Tooltip,
   Form,
   FormGroup,
   TextInput,
@@ -40,7 +42,7 @@ import {
   CodeBlock,
   CodeBlockCode,
 } from '@patternfly/react-core';
-import { EditIcon, TrashIcon, ConnectedIcon, DisconnectedIcon } from '@patternfly/react-icons';
+import { EditIcon, TrashIcon, ConnectedIcon, DisconnectedIcon, DownloadIcon } from '@patternfly/react-icons';
 import { vmcpApi, skillsApi } from '@/services/api';
 import type { VMCPServer } from '@/types';
 
@@ -208,6 +210,23 @@ export function VMCPServerDetailPage() {
     });
   };
 
+  const handleDownloadOpenAPISpec = () => {
+    if (!server || !mcpClient.isConnected) {
+      return;
+    }
+
+    const spec = generateOpenAPISpec(
+      server.name,
+      server.description || '',
+      server.port || 0,
+      mcpClient.tools,
+      mcpClient.prompts
+    );
+
+    const filename = `${server.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_openapi.json`;
+    downloadOpenAPISpec(spec, filename);
+  };
+
   if (isLoading) {
     return (
       <PageSection>
@@ -242,6 +261,16 @@ export function VMCPServerDetailPage() {
             {server.name}
           </Title>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <Tooltip content={mcpClient.isConnected ? "Download OpenAPI specification" : "Connect to MCP server first"}>
+              <Button 
+                variant="secondary" 
+                icon={<DownloadIcon />} 
+                onClick={handleDownloadOpenAPISpec}
+                isDisabled={!mcpClient.isConnected}
+              >
+                Download OpenAPI Spec
+              </Button>
+            </Tooltip>
             <Button variant="secondary" icon={<EditIcon />} onClick={handleEditClick}>
               Edit
             </Button>
