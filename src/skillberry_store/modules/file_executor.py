@@ -5,7 +5,7 @@ import logging
 import os
 import tempfile
 import datetime
-from typing import Dict, List, Any, Tuple, AnyStr, Optional
+from typing import Dict, List, Any, Set, Tuple, AnyStr, Optional
 
 import docker
 from docker.errors import ContainerError
@@ -140,7 +140,7 @@ def extract_function_and_imports(
 
 
 def detect_tool_dependencies(
-    content: str, function_name: str, available_tools: List[str]
+    content: str, function_name: str, available_tools: Set[str]
 ) -> List[str]:
     """
     Detect tool dependencies by analyzing function calls in Python code.
@@ -172,7 +172,8 @@ def detect_tool_dependencies(
                             func_name = child.func.attr
 
                         # Check if this function name matches any available tool
-                        if func_name and func_name in available_tools:
+                        # EXCLUDE the function's own name to prevent self-dependency
+                        if func_name and func_name in available_tools and func_name != function_name:
                             if func_name not in dependencies:
                                 dependencies.append(func_name)
                                 logger.info(f"Detected dependency: {func_name}")

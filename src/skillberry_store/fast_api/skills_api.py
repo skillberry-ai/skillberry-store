@@ -494,12 +494,22 @@ def register_skills_api(
             # Create tools
             created_tool_uuids = []
             # First pass: collect all tool names for dependency detection
-            all_tool_names = [t.name for t in tools]
+            all_tool_names = {}
+
+            # Set tool UUIDs prior to creation to avoid failed lookups on tool name
+            for tool in tools:
+                tool.uuid = str(uuid.uuid4())
+                created_tool_uuids.append(tool.uuid)
+                all_tool_names[tool.name] = tool.uuid
+
+            # Get list of available tools (existing + being imported)
+            existing_tools = tools_handler.get_available_resource_names()
+            available_tools = existing_tools | all_tool_names.keys()
 
             for tool in tools:
                 try:
                     tool_dict = tool.to_dict()
-                    tool_uuid = str(uuid.uuid4())
+                    tool_uuid = tool.uuid
 
                     # Prepare tool data
                     ext = (
@@ -536,16 +546,14 @@ def register_skills_api(
                         and is_auto_detect_dependencies_enabled()
                     ):
                         try:
-                            # Get list of available tools (existing + being imported)
-                            existing_tools = tools_handler.get_available_resource_names()
-                            available_tools = list(set(existing_tools + all_tool_names))
                             # Detect dependencies from code
-                            detected_deps = detect_tool_dependencies(
+                            detected_dep_names = detect_tool_dependencies(
                                 tool_dict["moduleContent"],
                                 tool_dict["name"],
-                                available_tools,
+                                available_tools  
                             )
-                            if detected_deps:
+                            if detected_dep_names:
+                                detected_deps = [all_tool_names.get(m) if m in all_tool_names else tools_handler.resolve_id(m) for m in detected_dep_names]
                                 tool_data["dependencies"] = detected_deps
                                 logger.info(
                                     f"Auto-detected dependencies for '{tool_dict['name']}': {detected_deps}"
@@ -562,7 +570,6 @@ def register_skills_api(
                     # Save tool module to UUID subfolder
                     tools_handler.write_resource_file(tool_uuid_normalized, module_filename, tool_dict['moduleContent'])
                     
-                    created_tool_uuids.append(tool_uuid)
                     logger.info(f"Created tool: {tool_dict['name']}")
                 except Exception as e:
                     logger.error(f"Failed to create tool {tool.name}: {e}")

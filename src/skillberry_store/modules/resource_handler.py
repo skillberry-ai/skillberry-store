@@ -10,7 +10,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Set, Union
 
 from fastapi import HTTPException
 
@@ -475,14 +475,14 @@ class ResourceHandler:
         # Delete the resource folder
         return self.delete_resource_folder(resource_uuid)
     
-    def get_available_resource_names(self) -> List[str]:
+    def get_available_resource_names(self) -> Set[str]:
         """
-        Get a list of all available resource names by scanning UUID folders.
+        Get a set of all available resource names by scanning UUID folders.
         
         Returns:
-            List[str]: List of resource names.
+            Set[str]: Set of resource names.
         """
-        available_names = []
+        available_names = set()
         
         if not os.path.exists(self.base_directory):
             return available_names
@@ -504,7 +504,7 @@ class ResourceHandler:
                     if isinstance(manifest_content, str):
                         resource_dict = json.loads(manifest_content)
                         if resource_dict.get('name'):
-                            available_names.append(resource_dict['name'])
+                            available_names.add(resource_dict['name'])
                 except Exception as e:
                     logger.warning(f"Could not read {self.resource_type} name from UUID {entry}: {e}")
                     

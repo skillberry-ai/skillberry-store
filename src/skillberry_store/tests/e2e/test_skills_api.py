@@ -4,6 +4,7 @@ Tests the full lifecycle of skill operations: create, list, get, update, and del
 """
 
 import asyncio
+import os
 import pytest
 import httpx
 
@@ -433,3 +434,159 @@ async def test_search_skills(run_sbs):
         for skill_data in test_skills:
             delete_response = await client.delete(f"{BASE_URL}/skills/{skill_data['name']}")
             assert delete_response.status_code == 200, f"Failed to delete skill {skill_data['name']}"
+
+
+@pytest.mark.asyncio
+async def test_import_anthropic_skill_with_complex_dependencies(run_sbs):
+    """Test importing an Anthropic skill from ZIP with complex tool dependencies.
+    
+    This test verifies:
+    1. Successful import of a skill from ZIP file
+    2. The skill appears in list_skills
+    3. Tools have correct UUIDs and dependencies
+    4. Tool execution works correctly with dependencies
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Get the path to the ZIP file
+        zip_path = os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'resources',
+            'anthropic',
+            'sample_skill_complex_dep.zip'
+        )
+        zip_path = os.path.abspath(zip_path)
+        
+        # Verify ZIP file exists
+        assert os.path.exists(zip_path), f"Test ZIP file does not exist: {zip_path}"
+        
+        # Import the skill from ZIP
+        with open(zip_path, 'rb') as f:
+            zip_content = f.read()
+        
+        files = {
+            'zip_file': ('sample_skill_complex_dep.zip', zip_content, 'application/zip')
+        }
+        
+        response = await client.post(
+            f"{BASE_URL}/skills/import-anthropic",
+            data={
+                "source_type": "zip",
+                "snippet_mode": "file",
+            },
+            files=files,
+        )
+        
+        # 1. Verify import was successful
+        assert response.status_code == 200, f"Import failed: {response.text}"
+        
+        result = response.json()
+        assert result["success"] is True, "Import should be successful"
+        assert "skill_name" in result, "Result should contain skill_name"
+        assert result["tools_created"] == 5, f"Expected 5 tools created, got {result['tools_created']}"
+        
+        skill_name = result["skill_name"]
+        assert skill_name == "sample_skill_complex_dep", f"Expected skill name 'sample_skill_complex_dep', got '{skill_name}'"
+        
+        # 2. Verify the skill appears in list_skills
+        list_response = await client.get(f"{BASE_URL}/skills/")
+        assert list_response.status_code == 200
+        skills = list_response.json()
+        skill_names = [s.get("name") for s in skills]
+        assert skill_name in skill_names, f"Skill '{skill_name}' should be in list_skills"
+        
+        # 3. Get the skill details - this will populate full tool and snippet objects
+        get_response = await client.get(f"{BASE_URL}/skills/{skill_name}")
+        assert get_response.status_code == 200
+        skill = get_response.json()
+        
+        assert skill["name"] == skill_name
+        assert "anthropic" in skill["tags"]
+        assert "imported" in skill["tags"]
+        
+        # Verify we have 5 tools (populated as full objects)
+        tools = skill.get("tools", [])
+        assert len(tools) == 5, f"Expected 5 tools, got {len(tools)}"
+        
+        # Create a mapping of tool names to their data
+        tool_map = {tool["name"]: tool for tool in tools}
+        
+        # Verify all expected tools are present
+        expected_tools = ["add", "subtract", "multiply", "calc_add_subtract", "calc"]
+        for tool_name in expected_tools:
+            assert tool_name in tool_map, f"Tool '{tool_name}' should be present"
+            assert "uuid" in tool_map[tool_name], f"Tool '{tool_name}' should have a UUID"
+        
+        # Verify SKILL snippet was imported (populated as full objects)
+        # Note: File suffixes are dropped in naming convention, so SKILL.md becomes SKILL
+        snippets = skill.get("snippets", [])
+        assert len(snippets) > 0, "Should have at least one snippet (SKILL)"
+        skill_snippet = next((s for s in snippets if "SKILL" in s.get("name", "")), None)
+        assert skill_snippet is not None, "SKILL snippet should be present"
+        
+        # 4. Verify tool dependencies
+        # calc depends on calc_add_subtract and multiply
+        calc_tool = tool_map["calc"]
+        calc_deps = calc_tool.get("dependencies", [])
+        assert len(calc_deps) == 2, f"calc should have 2 dependencies, got {len(calc_deps)}"
+        
+        calc_dep_uuids = set(calc_deps)
+        expected_calc_deps = {tool_map["calc_add_subtract"]["uuid"], tool_map["multiply"]["uuid"]}
+        assert calc_dep_uuids == expected_calc_deps, \
+            f"calc dependencies should be calc_add_subtract and multiply UUIDs"
+        
+        # calc_add_subtract depends on add and subtract
+        calc_add_subtract_tool = tool_map["calc_add_subtract"]
+        calc_add_subtract_deps = calc_add_subtract_tool.get("dependencies", [])
+        assert len(calc_add_subtract_deps) == 2, \
+            f"calc_add_subtract should have 2 dependencies, got {len(calc_add_subtract_deps)}"
+        
+        calc_add_subtract_dep_uuids = set(calc_add_subtract_deps)
+        expected_calc_add_subtract_deps = {tool_map["add"]["uuid"], tool_map["subtract"]["uuid"]}
+        assert calc_add_subtract_dep_uuids == expected_calc_add_subtract_deps, \
+            f"calc_add_subtract dependencies should be add and subtract UUIDs"
+        
+        # multiply depends on add and subtract
+        multiply_tool = tool_map["multiply"]
+        multiply_deps = multiply_tool.get("dependencies", [])
+        assert len(multiply_deps) == 2, f"multiply should have 2 dependencies, got {len(multiply_deps)}"
+        
+        multiply_dep_uuids = set(multiply_deps)
+        expected_multiply_deps = {tool_map["add"]["uuid"], tool_map["subtract"]["uuid"]}
+        assert multiply_dep_uuids == expected_multiply_deps, \
+            f"multiply dependencies should be add and subtract UUIDs"
+        
+        # add and subtract should have no dependencies
+        assert len(tool_map["add"].get("dependencies", [])) == 0, "add should have no dependencies"
+        assert len(tool_map["subtract"].get("dependencies", [])) == 0, "subtract should have no dependencies"
+        
+        # 5. Execute the calc tool with parameters "*", 3, 5
+        # Expected: 3 * 5 = 15
+        calc_uuid = calc_tool["uuid"]
+        execute_params = {
+            "operation": "*",
+            "num1": 3,
+            "num2": 5
+        }
+        exec_response = await client.post(
+            f"{BASE_URL}/tools/{calc_uuid}/execute",
+            json=execute_params
+        )
+        
+        assert exec_response.status_code == 200, f"Tool execution failed: {exec_response.text}"
+        result = exec_response.json()
+        
+        # Verify the result is 15 (3 * 5)
+        assert result is not None
+        assert isinstance(result, dict), f"Expected dict result, got {type(result)}"
+        return_value = result.get("return value")
+        assert return_value is not None, "Expected return value to be present"
+        # The result might be a string or float
+        if isinstance(return_value, str):
+            assert return_value == "15.0" or return_value == "15", f"Expected '15' or '15.0', got '{return_value}'"
+        else:
+            assert float(return_value) == 15.0, f"Expected 15.0, got {return_value}"
+       
+        # Clean up - delete the skill
+        delete_response = await client.delete(f"{BASE_URL}/skills/{skill_name}")
+        assert delete_response.status_code == 200, f"Failed to delete skill: {delete_response.text}"
