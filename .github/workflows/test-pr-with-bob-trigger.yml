@@ -4,17 +4,17 @@
 #
 # PURPOSE:
 # This is the unprivileged trigger workflow for Bob PR testing.
-# It runs on pull_request_target events, verifies that the PR has the configured
-# label, and uploads a small PR context artifact. It does NOT checkout PR code,
-# use repository secrets, run tests, or write to the PR.
+# It runs on pull_request_target, verifies that the PR has the configured label,
+# and uploads a small PR context artifact. It does NOT checkout PR code, use
+# repository secrets, run tests, or write to the PR.
 #
 # The privileged companion workflow, "Test PR with Bob", is triggered by
-# workflow_run, downloads this artifact, then performs the Bob/test/report steps.
+# workflow_run, downloads this artifact, then performs Bob/test/report steps.
 #
 # SECURITY NOTE:
-# pull_request_target is used to handle PRs from forks/bots. This workflow stays
-# safe because it only uploads PR metadata. The actual code execution happens in
-# the privileged workflow after a trusted-owner check.
+# pull_request_target is used to handle PRs from forks or bot-created branches.
+# This workflow is safe because it only uploads PR metadata and does not execute
+# PR code. The companion workflow has a trusted-owner guard before running code.
 #
 # USAGE:
 # Add the label `test-with-bob` or `fix-with-bob` to a PR. The workflow also
@@ -31,6 +31,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  actions: read
 
 jobs:
   collect-pr-context:
@@ -39,6 +40,9 @@ jobs:
       (contains(github.event.pull_request.labels.*.name, 'test-with-bob') ||
        contains(github.event.pull_request.labels.*.name, 'fix-with-bob'))
     runs-on: ubuntu-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Write PR context artifact
@@ -70,3 +74,4 @@ jobs:
           name: pr-test-context
           path: pr-test-context/context.json
           retention-days: 7
+          if-no-files-found: error
