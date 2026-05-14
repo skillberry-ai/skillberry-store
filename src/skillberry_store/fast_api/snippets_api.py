@@ -8,12 +8,13 @@ from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 from prometheus_client import Counter
 
-from skillberry_store.modules.file_handler import FileHandler
+from skillberry_store.modules.resource_handler import ResourceHandler
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
 from skillberry_store.tools.configure import get_snippets_directory
 from skillberry_store.fast_api.search_filters import apply_search_filters
+from skillberry_store.utils.utils import normalize_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ def register_snippets_api(
         snippets_descriptions: Description instance for managing snippet descriptions.
     """
     snippets_directory = get_snippets_directory()
-    snippet_handler = FileHandler(snippets_directory)
+    snippet_handler = ResourceHandler(snippets_directory, "snippet")
 
     @app.post("/snippets/", tags=[tags])
     async def create_snippet(
@@ -102,26 +103,34 @@ def register_snippets_api(
                     status_code=400, detail=f"Error reading uploaded file: {str(e)}"
                 )
 
-        # Check if snippet already exists
-        existing_snippets = snippet_handler.list_files()
-        snippet_filename = f"{snippet.name}.json"
+        # Normalize and validate UUID
+        snippet_uuid_normalized = normalize_uuid(snippet.uuid)
+        if not snippet_uuid_normalized:
+            raise HTTPException(status_code=400, detail=f"Invalid UUID format: {snippet.uuid}")
 
-        if snippet_filename in existing_snippets:
+        # Check if snippet with this UUID already exists
+        try:
+            snippet_handler.read_manifest(snippet_uuid_normalized)
+            # If we get here, the snippet exists - raise 409 Conflict
             raise HTTPException(
-                status_code=409, detail=f"Snippet '{snippet.name}' already exists."
+                status_code=409,
+                detail=f"Snippet with UUID '{snippet.uuid}' already exists"
             )
+        except HTTPException as e:
+            # If it's a 404, that's good - snippet doesn't exist yet
+            if e.status_code != 404:
+                raise
 
         try:
-            # Convert snippet to JSON and save
-            snippet_json = json.dumps(snippet.to_dict(), indent=4)
-            snippet_handler.write_file_content(snippet_filename, snippet_json)
+            # Save snippet manifest to UUID subfolder
+            snippet_handler.write_manifest(snippet_uuid_normalized, snippet.to_dict())
 
-            # Write description for search capability
+            # Write description for search capability (indexed by UUID)
             if snippets_descriptions and snippet.description:
                 snippets_descriptions.write_description(
-                    snippet.name, snippet.description
+                    snippet_uuid_normalized, snippet.description
                 )
-                logger.info(f"Snippet description saved for: {snippet.name}")
+                logger.info(f"Snippet description saved for UUID: {snippet.uuid}")
 
             logger.info(f"Snippet '{snippet.name}' created successfully")
             return {
@@ -149,17 +158,7 @@ def register_snippets_api(
         list_snippets_counter.inc()
 
         try:
-            snippet_files = snippet_handler.list_files()
-            snippets = []
-
-            for filename in snippet_files:
-                if filename.endswith(".json"):
-                    content = snippet_handler.read_file(filename, raw_content=True)
-                    if isinstance(content, str):
-                        snippet_dict = json.loads(content)
-                    else:
-                        continue
-                    snippets.append(snippet_dict)
+            snippets = snippet_handler.list_all_resources()
 
             # Sort by modified_at in descending order (most recent first)
             snippets.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
@@ -172,12 +171,12 @@ def register_snippets_api(
                 status_code=500, detail=f"Error listing snippets: {str(e)}"
             )
 
-    @app.get("/snippets/{name}", tags=[tags])
-    def get_snippet(name: str):
-        """Get a specific snippet by name.
+    @app.get("/snippets/{id}", tags=[tags])
+    def get_snippet(id: str):
+        """Get a specific snippet by ID (name or UUID).
 
         Args:
-            name: The name of the snippet.
+            id: The ID of the snippet (can be either name or UUID).
 
         Returns:
             dict: The snippet object.
@@ -185,33 +184,27 @@ def register_snippets_api(
         Raises:
             HTTPException: If snippet not found (404) or retrieval fails (500).
         """
-        logger.info(f"Request to get snippet: {name}")
+        logger.info(f"Request to get snippet: {id}")
         get_snippet_counter.inc()
 
         try:
-            snippet_filename = f"{name}.json"
-            content = snippet_handler.read_file(snippet_filename, raw_content=True)
-            if not isinstance(content, str):
-                raise HTTPException(
-                    status_code=500, detail=f"Invalid content type for snippet '{name}'"
-                )
-            snippet_dict = json.loads(content)
-            logger.info(f"Retrieved snippet: {name}")
+            snippet_dict = snippet_handler.get_resource_by_id(id)
+            logger.info(f"Retrieved snippet: {id}")
             return snippet_dict
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving snippet '{name}': {e}")
+            logger.error(f"Error retrieving snippet '{id}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving snippet: {str(e)}"
             )
 
-    @app.delete("/snippets/{name}", tags=[tags])
-    def delete_snippet(name: str):
-        """Delete a snippet by name.
+    @app.delete("/snippets/{id}", tags=[tags])
+    def delete_snippet(id: str):
+        """Delete a snippet by ID (name or UUID).
 
         Args:
-            name: The name of the snippet to delete.
+            id: The ID of the snippet to delete (can be either name or UUID).
 
         Returns:
             dict: Success message.
@@ -219,40 +212,48 @@ def register_snippets_api(
         Raises:
             HTTPException: If snippet not found (404) or deletion fails (500).
         """
-        logger.info(f"Request to delete snippet: {name}")
+        logger.info(f"Request to delete snippet: {id}")
         delete_snippet_counter.inc()
 
         try:
-            snippet_filename = f"{name}.json"
-            result = snippet_handler.delete_file(snippet_filename)
+            # Read snippet to get UUID before deletion
+            snippet_uuid = None
+            try:
+                snippet_dict = snippet_handler.get_resource_by_id(id)
+                snippet_uuid = snippet_dict.get("uuid")
+            except Exception as e:
+                logger.warning(f"Could not read snippet before deletion: {e}")
 
-            # Delete the description for the snippet
-            if snippets_descriptions:
+            # Delete the snippet using ResourceHandler
+            result = snippet_handler.delete_resource_by_id(id)
+
+            # Delete the description for the snippet (indexed by UUID)
+            if snippets_descriptions and snippet_uuid:
                 try:
-                    snippets_descriptions.delete_description(name)
-                    logger.info(f"Snippet description deleted for: {name}")
+                    snippets_descriptions.delete_description(snippet_uuid)
+                    logger.info(f"Snippet description deleted for UUID: {snippet_uuid}")
                 except Exception as e:
                     logger.warning(
-                        f"Could not delete snippet description for '{name}': {e}"
+                        f"Could not delete snippet description for UUID '{snippet_uuid}': {e}"
                     )
 
-            logger.info(f"Snippet '{name}' deleted successfully")
-            return {"message": f"Snippet '{name}' deleted successfully."}
+            logger.info(f"Snippet with ID '{id}' deleted successfully")
+            return {"message": f"Snippet with ID '{id}' deleted successfully."}
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
             raise
         except Exception as e:
-            logger.error(f"Error deleting snippet '{name}': {e}")
+            logger.exception(f"Error deleting snippet '{id}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting snippet: {str(e)}"
             )
 
-    @app.put("/snippets/{name}", tags=[tags])
-    def update_snippet(name: str, snippet: SnippetSchema):
-        """Update an existing snippet.
+    @app.put("/snippets/{id}", tags=[tags])
+    def update_snippet(id: str, snippet: SnippetSchema):
+        """Update an existing snippet by ID (name or UUID).
 
         Args:
-            name: The name of the snippet to update.
+            id: The ID of the snippet to update (can be either name or UUID).
             snippet: The updated snippet schema.
 
         Returns:
@@ -261,31 +262,46 @@ def register_snippets_api(
         Raises:
             HTTPException: If snippet not found (404) or update fails (500).
         """
-        logger.info(f"Request to update snippet: {name}")
+        logger.info(f"Request to update snippet: {id}")
         update_snippet_counter.inc()
 
         try:
-            snippet_filename = f"{name}.json"
-
-            # Check if snippet exists
-            existing_snippets = snippet_handler.list_files()
-            if snippet_filename not in existing_snippets:
+            # Resolve ID to UUID and verify snippet exists
+            snippet_uuid = snippet_handler.resolve_id(id)
+            if not snippet_uuid:
                 raise HTTPException(
-                    status_code=404, detail=f"Snippet '{name}' not found."
+                    status_code=404,
+                    detail=f"Snippet with ID '{id}' not found"
                 )
 
-            # Update modified timestamp
-            snippet.modified_at = datetime.now(timezone.utc).isoformat()
+            # Read existing manifest to preserve uuid and created_at
+            existing_manifest = snippet_handler.read_manifest(snippet_uuid)
+            
+            # Convert update data to dict
+            update_data = snippet.to_dict()
+            
+            # Merge: preserve uuid and created_at from existing, update modified_at
+            merged_manifest = {**existing_manifest, **update_data}
+            merged_manifest["uuid"] = existing_manifest.get("uuid", snippet_uuid)
+            merged_manifest["created_at"] = existing_manifest.get("created_at")
+            merged_manifest["modified_at"] = datetime.now(timezone.utc).isoformat()
 
-            # Update the snippet
-            snippet_json = json.dumps(snippet.to_dict(), indent=4)
-            snippet_handler.write_file_content(snippet_filename, snippet_json)
-            logger.info(f"Snippet '{name}' updated successfully")
-            return {"message": f"Snippet '{name}' updated successfully."}
+            # Write the merged manifest using ResourceHandler
+            snippet_handler.write_manifest(snippet_uuid, merged_manifest)
+            
+            # Update description for search capability (indexed by UUID)
+            if snippets_descriptions and merged_manifest.get("description"):
+                snippets_descriptions.write_description(
+                    snippet_uuid, merged_manifest["description"]
+                )
+                logger.info(f"Snippet description updated for UUID: {snippet_uuid}")
+            
+            logger.info(f"Snippet with ID '{id}' (UUID: {snippet_uuid}) updated successfully")
+            return {"message": f"Snippet with ID '{id}' updated successfully."}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error updating snippet '{name}': {e}")
+            logger.error(f"Error updating snippet '{id}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating snippet: {str(e)}"
             )
@@ -329,35 +345,24 @@ def register_snippets_api(
             filtered_matched_entities = [
                 matched_entity
                 for matched_entity in matched_entities
-                if matched_entity["similarity_score"] <= similarity_threshold
+                if float(matched_entity["similarity_score"]) <= similarity_threshold
             ]
 
             # Get full snippet objects for filtering
             snippets_to_filter = []
             for matched_entity in filtered_matched_entities:
-                snippet_name = matched_entity.get("filename") or matched_entity.get(
-                    "name"
-                )
-                if not snippet_name:
-                    logger.warning(
-                        f"Matched entity missing 'filename' or 'name' field: {matched_entity}"
-                    )
+                # The matched entity filename is actually the UUID (since descriptions are indexed by UUID)
+                snippet_uuid = matched_entity.get("filename") or matched_entity.get("name")
+                if not snippet_uuid:
+                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
                     continue
                 try:
-                    snippet_filename = f"{snippet_name}.json"
-                    content = snippet_handler.read_file(
-                        snippet_filename, raw_content=True
-                    )
-                    if isinstance(content, str):
-                        snippet_dict = json.loads(content)
-                        snippet_dict["similarity_score"] = matched_entity.get(
-                            "similarity_score", 0.0
-                        )
-                        snippets_to_filter.append(snippet_dict)
+                    # Get snippet manifest by UUID
+                    snippet_dict = snippet_handler.get_resource_by_id(snippet_uuid)
+                    snippet_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                    snippets_to_filter.append(snippet_dict)
                 except Exception as e:
-                    logger.warning(
-                        f"Could not load snippet {snippet_name} for filtering: {e}"
-                    )
+                    logger.warning(f"Could not load snippet {snippet_uuid} for filtering: {e}")
 
             # Apply manifest and lifecycle filters
             filtered_snippets = apply_search_filters(

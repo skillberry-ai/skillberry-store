@@ -20,9 +20,7 @@ from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.modules.description import Description
 from skillberry_store.vdbs.identify_vdb import identify_vector_db
-from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.tools.configure import (
-    get_files_directory_path,
     get_tools_descriptions_directory,
     get_snippets_descriptions_directory,
     get_skills_descriptions_directory,
@@ -221,17 +219,6 @@ def vmcp_descriptions_api(sbs_vdb: str):
         vdb_type=sbs_vdb,
     )
     return vmcp_descriptions
-
-
-def file_api():
-    """Initialize file APIs with proper persistency and APIs.
-
-    Returns:
-        FileHandler: File handler instance configured with files directory.
-    """
-    files_directory_path = get_files_directory_path()
-    file_handler = FileHandler(files_directory_path)
-    return file_handler
 
 
 def custom_openapi(app: FastAPI, openapi_tags):

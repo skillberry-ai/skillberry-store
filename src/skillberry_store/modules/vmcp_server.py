@@ -8,6 +8,8 @@ from pydantic import Field
 from typing import Annotated, Any, List, Optional
 
 from mcp.server.fastmcp import FastMCP
+from skillberry_store.modules.resource_handler import ResourceHandler
+from skillberry_store.tools.configure import get_tools_directory, get_snippets_directory
 
 
 class VirtualMcpServer:
@@ -18,7 +20,8 @@ class VirtualMcpServer:
         name (str): The name of the virtual MCP server.
         description (str): A description of the virtual MCP server.
         port (int): The port on which the virtual MCP server is running.
-        tools (List[str]): A list of tool UUIDs registered with the virtual MCP server.
+        tool_uuids (List[str]): A list of tool UUIDs registered with the virtual MCP server.
+        snippet_uuids (List[str]): A list of snippet UUIDs registered with the virtual MCP server.
         mcp (FastMCP): The underlying FastMCP instance.
     """
 
@@ -28,8 +31,8 @@ class VirtualMcpServer:
         description: str,
         port: Optional[int],
         tools: List[str],
-        snippets: List[str] = None,
-        sts_url: str = None,
+        snippets: Optional[List[str]] = None,
+        sts_url: Optional[str] = None,
         app=None,
         env_id=None,
     ):
@@ -40,8 +43,8 @@ class VirtualMcpServer:
             name (str): The name of the virtual MCP server.
             description (str): A description of the virtual MCP server.
             port (Optional[int]): The port for the virtual MCP server. If None, an available port will be found.
-            tools (List[str]): A list of tool names to register with the virtual MCP server.
-            snippets (List[str]): A list of snippet names to register as prompts with the virtual MCP server.
+            tools (List[str]): A list of tool UUIDs to register with the virtual MCP server.
+            snippets (List[str]): A list of snippet UUIDs to register as prompts with the virtual MCP server.
             env_id (str): A string representing the environment id to be used for this server (Optional).
 
         Raises:
@@ -49,12 +52,16 @@ class VirtualMcpServer:
         """
         self.name = name
         self.description = description
-        self.tools = tools
-        self.snippets = snippets or []
+        self.tool_uuids = tools  # Store as UUIDs
+        self.snippet_uuids = snippets or []  # Store as UUIDs
         self.sts_url = sts_url or "http://localhost:8000"
         self.app = app
         self.env_id = env_id
-
+        
+        # Initialize ResourceHandlers for resolving UUIDs to resources
+        self.tools_handler = ResourceHandler(get_tools_directory(), "tool")
+        self.snippets_handler = ResourceHandler(get_snippets_directory(), "snippet")
+        
         if port is None:
             self.port = self._find_available_port()
         else:
@@ -99,7 +106,7 @@ class VirtualMcpServer:
         self._register_prompts()
         self._start_server()
         logging.info(
-            f"VirtualMcpServer '{name}' created and started on port {self.port} with {len(self.tools)} tools and {len(self.snippets)} prompts"
+            f"VirtualMcpServer '{name}' created and started on port {self.port} with {len(self.tool_uuids)} tools and {len(self.snippet_uuids)} prompts"
         )
 
     def _is_port_available(self, port: int) -> bool:
@@ -119,7 +126,7 @@ class VirtualMcpServer:
             except socket.error:
                 return False
 
-    def _find_available_port(self, start_port: int = None) -> int:
+    def _find_available_port(self, start_port: Optional[int] = None) -> int:
         """
         Finds the next available port starting from a given port.
 
@@ -140,96 +147,76 @@ class VirtualMcpServer:
     def list_tools(self):
         """
         Lists the tools registered with the virtual MCP server.
+        Resolves tool UUIDs to tool objects.
 
         Returns:
             List (mcp.types.Tool): A list of tools
         """
-        # Get tools from the tools directory directly to avoid HTTP dependency during startup
-        print(f"DEBUG list_tools: self.tools = {self.tools}")
+        print(f"DEBUG list_tools: self.tool_uuids = {self.tool_uuids}")
         tools = []
-        for tool_name in self.tools:
+        for tool_uuid in self.tool_uuids:
             try:
+
                 # Try HTTP first if available
                 if self.app:
-                    # Use direct file access when app is available (during startup)
-                    import json
-                    from skillberry_store.tools.configure import get_tools_directory
-                    from skillberry_store.modules.file_handler import FileHandler
-
-                    tools_handler = FileHandler(get_tools_directory())
-                    tool_filename = f"{tool_name}.json"
-                    content = tools_handler.read_file(tool_filename, raw_content=True)
-                    if isinstance(content, str):
-                        tool_dict = json.loads(content)
-                        print(
-                            f"DEBUG list_tools: Got tool {tool_name} from file: {tool_dict.get('name')}"
-                        )
+                    # Get tool by UUID using ResourceHandler
+                    tool_dict = self.tools_handler.get_resource_by_id(tool_uuid)
+                    tool_name = tool_dict.get('name')
+                    
+                    # Cache the tool dict
+                    if tool_name:
                         self._tool_manifests[tool_name] = tool_dict
-                        tools.append(self.tool_dict_to_mcp_tool(tool_dict))
-                    else:
-                        logging.warning(
-                            f"Failed to read tool {tool_name}: invalid content type"
-                        )
+                    
+                    print(f"DEBUG list_tools: Got tool UUID {tool_uuid}, name: {tool_name}")
+                    tools.append(self.tool_dict_to_mcp_tool(tool_dict))
                 else:
                     # Fallback to HTTP when app is not available
-                    response = requests.get(f"{self.sts_url}/tools/{tool_name}")
+                    response = requests.get(f"{self.sts_url}/tools/{tool_uuid}")
                     response.raise_for_status()
                     tool_dict = response.json()
-                    print(
-                        f"DEBUG list_tools: Got tool {tool_name} from HTTP: {tool_dict.get('name')}"
-                    )
+                    tool_name = tool_dict.get('name')
+                    print(f"DEBUG list_tools: Got tool {tool_uuid} from HTTP: {tool_name}")
                     self._tool_manifests[tool_name] = tool_dict
                     tools.append(self.tool_dict_to_mcp_tool(tool_dict))
+
+
             except Exception as e:
-                logging.warning(f"Failed to get tool {tool_name}: {e}")
-                print(f"DEBUG list_tools: Failed to get tool {tool_name}: {e}")
+                logging.warning(f"Failed to get tool UUID {tool_uuid}: {e}")
+                print(f"DEBUG list_tools: Failed to get tool UUID {tool_uuid}: {e}")
         print(f"DEBUG list_tools: Returning {len(tools)} tools")
         return tools
 
     def list_snippets(self):
         """
         Lists the snippets registered with the virtual MCP server.
+        Resolves snippet UUIDs to snippet objects.
 
         Returns:
             List[dict]: A list of snippet dictionaries
         """
-        print(f"DEBUG list_snippets: self.snippets = {self.snippets}")
+        print(f"DEBUG list_snippets: self.snippet_uuids = {self.snippet_uuids}")
         snippets = []
-        for snippet_name in self.snippets:
+        for snippet_uuid in self.snippet_uuids:
             try:
                 if self.app:
-                    # Use direct file access when app is available (during startup)
-                    import json
-                    from skillberry_store.tools.configure import get_snippets_directory
-                    from skillberry_store.modules.file_handler import FileHandler
-
-                    snippets_handler = FileHandler(get_snippets_directory())
-                    snippet_filename = f"{snippet_name}.json"
-                    content = snippets_handler.read_file(
-                        snippet_filename, raw_content=True
-                    )
-                    if isinstance(content, str):
-                        snippet_dict = json.loads(content)
-                        print(
-                            f"DEBUG list_snippets: Got snippet {snippet_name} from file: {snippet_dict.get('name')}"
-                        )
-                        snippets.append(snippet_dict)
-                    else:
-                        logging.warning(
-                            f"Failed to read snippet {snippet_name}: invalid content type"
-                        )
+                    # Get snippet by UUID using ResourceHandler
+                    snippet_dict = self.snippets_handler.get_resource_by_id(snippet_uuid)
+                    snippet_name = snippet_dict.get('name')
+                    
+                    print(f"DEBUG list_snippets: Got snippet UUID {snippet_uuid}, name: {snippet_name}")
+                    snippets.append(snippet_dict)
                 else:
                     # Fallback to HTTP when app is not available
-                    response = requests.get(f"{self.sts_url}/snippets/{snippet_name}")
+                    response = requests.get(f"{self.sts_url}/snippets/{snippet_uuid}")
                     response.raise_for_status()
                     snippet_dict = response.json()
                     print(
-                        f"DEBUG list_snippets: Got snippet {snippet_name} from HTTP: {snippet_dict.get('name')}"
+                        f"DEBUG list_snippets: Got snippet {snippet_uuid} from HTTP: {snippet_dict.get('name')}"
                     )
                     snippets.append(snippet_dict)
             except Exception as e:
-                logging.warning(f"Failed to get snippet {snippet_name}: {e}")
-                print(f"DEBUG list_snippets: Failed to get snippet {snippet_name}: {e}")
+                logging.warning(f"Failed to get snippet UUID {snippet_uuid}: {e}")
+                print(f"DEBUG list_snippets: Failed to get snippet UUID {snippet_uuid}: {e}")
         print(f"DEBUG list_snippets: Returning {len(snippets)} snippets")
         return snippets
 
@@ -462,8 +449,9 @@ class VirtualMcpServer:
             server_name=self.name, tool_name=tool_name
         ).inc()
         start_time = time.time()
-
-        if tool_name not in self.tools:
+        
+        # Check if tool_name is in our cached tool names
+        if tool_name not in self._tool_manifests:
             raise ValueError(f"Tool {tool_name} not found")
 
         try:
@@ -473,7 +461,7 @@ class VirtualMcpServer:
             )
             from skillberry_store.modules.file_handler import FileHandler
             from skillberry_store.modules.file_executor import FileExecutor
-            from skillberry_store.fast_api.tools_api import load_tool_dependencies
+            from skillberry_store.fast_api.tools_api import find_tool_dependencies
 
             # Use the manifest cached at server creation time so that a later overwrite of the
             # tool JSON file (e.g. by an MCP wrapper with the same name) cannot cause
@@ -488,27 +476,38 @@ class VirtualMcpServer:
                     f"Tool '{tool_name}' has no module_name in cached manifest"
                 )
 
-            file_handler = FileHandler(get_files_directory_path())
-            module_content = file_handler.read_file(module_name, raw_content=True)
+            tool_uuid = tool_dict.get("uuid")
+            if not tool_uuid:
+                raise ValueError(
+                    f"Tool '{tool_name}' has no uuid in cached manifest"
+                )
+
+            # Use the resource handler to read the module file from the tool's UUID subdirectory
+            module_content = self.tools_handler.read_resource_file(
+                tool_uuid, module_name, raw_content=True
+            )
             if not isinstance(module_content, str):
                 raise ValueError(f"Could not read module for tool '{tool_name}'")
 
             # Load tool dependencies recursively using the shared function
             dependencies = tool_dict.get("dependencies", [])
             tools_handler = FileHandler(get_tools_directory())
-            dependent_file_contents, dependent_tools_as_dict = load_tool_dependencies(
+            tool_dep_ids = find_tool_dependencies(
                 dependencies=dependencies,
-                tool_handler=tools_handler,
-                file_handler=file_handler,
-                tool_name=tool_name,
+                tool_handler=self.tools_handler,
+                tool_uuid=tool_uuid,
             )
+
+            dep_manifests = self.tools_handler.get_resources_by_ids(list(tool_dep_ids))
+            dep_files = [self.tools_handler.read_resource_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_manifests]
+
 
             executor = FileExecutor(
                 name=tool_name,
                 file_content=module_content,
                 file_manifest=tool_dict,
-                dependent_file_contents=dependent_file_contents,
-                dependent_tools_as_dict=dependent_tools_as_dict,
+                dependent_file_contents=dep_files,
+                dependent_tools_as_dict=dep_manifests,
             )
             result = await executor.execute_file(parameters=parameters, env_id=env_id)
 
@@ -618,8 +617,8 @@ class VirtualMcpServer:
             "name": self.name,
             "description": self.description,
             "port": self.port,
-            "tools": self.tools,
-            "snippets": self.snippets,
+            "tools": self.tool_uuids,
+            "snippets": self.snippet_uuids,
         }
 
 

@@ -40,7 +40,7 @@ def batch_get_reservation_details(reservation_ids: List[str]) -> Dict[str, Any]:
 
     function_name, docstring_obj = extract_docstring(
         code,
-        tool_name="batch_get_reservation_details",
+        selected_func="batch_get_reservation_details",
     )
 
     assert function_name == "batch_get_reservation_details"
