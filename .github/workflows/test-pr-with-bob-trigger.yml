@@ -4,20 +4,17 @@
 #
 # PURPOSE:
 # This is the unprivileged trigger workflow for Bob PR testing.
-# It runs on pull_request and pull_request_target events, verifies that the PR
-# has the configured label, and uploads a small PR context artifact. It does NOT
-# checkout PR code, use repository secrets, run tests, or write to the PR.
+# It runs on pull_request_target events, verifies that the PR has the configured
+# label, and uploads a small PR context artifact. It does NOT checkout PR code,
+# use repository secrets, run tests, or write to the PR.
 #
 # The privileged companion workflow, "Test PR with Bob", is triggered by
 # workflow_run, downloads this artifact, then performs the Bob/test/report steps.
-# This split follows GitHub's recommended pattern for testing PR code while still
-# allowing a second workflow to comment on the PR.
 #
 # SECURITY NOTE:
-# pull_request_target is used to handle PRs from forks (e.g., bot-created PRs).
-# This workflow is safe because it only uploads PR metadata and does not checkout
-# or execute PR code. The actual code execution happens in the privileged workflow
-# which has additional security checks (trusted owner validation).
+# pull_request_target is used to handle PRs from forks/bots. This workflow stays
+# safe because it only uploads PR metadata. The actual code execution happens in
+# the privileged workflow after a trusted-owner check.
 #
 # USAGE:
 # Add the label `test-with-bob` or `fix-with-bob` to a PR. The workflow also
@@ -28,8 +25,6 @@
 name: Test PR with Bob - Trigger
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
 
@@ -48,6 +43,7 @@ jobs:
     steps:
       - name: Write PR context artifact
         run: |
+          set -euo pipefail
           mkdir -p pr-test-context
           cat > pr-test-context/context.json <<'JSON'
           {
@@ -69,7 +65,7 @@ jobs:
           cat pr-test-context/context.json
 
       - name: Upload PR context
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pr-test-context
           path: pr-test-context/context.json
