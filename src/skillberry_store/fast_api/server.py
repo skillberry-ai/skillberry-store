@@ -18,6 +18,7 @@ from skillberry_store.fast_api.snippets_api import register_snippets_api
 from skillberry_store.fast_api.tools_api import register_tools_api
 from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
+from skillberry_store.fast_api.vnfs_api import register_vnfs_api
 from skillberry_store.modules.description import Description
 from skillberry_store.vdbs.identify_vdb import identify_vector_db
 from skillberry_store.modules.file_handler import FileHandler
@@ -27,6 +28,7 @@ from skillberry_store.tools.configure import (
     get_snippets_descriptions_directory,
     get_skills_descriptions_directory,
     get_vmcp_descriptions_directory,
+    get_vnfs_descriptions_directory,
     configure_logging,
 )
 
@@ -83,6 +85,7 @@ class SBS(FastAPI):
         )
         self.state.skills_descriptions = skills_descriptions_api(self.settings.sbs_vdb)
         self.state.vmcp_descriptions = vmcp_descriptions_api(self.settings.sbs_vdb)
+        self.state.vnfs_descriptions = vnfs_descriptions_api(self.settings.sbs_vdb)
 
         sts_url = f"http://{self.settings.sbs_host}:{self.settings.sbs_port}"
         register_vmcp_api(
@@ -90,6 +93,12 @@ class SBS(FastAPI):
             sts_url=sts_url,
             tags="vmcp_servers",
             vmcp_descriptions=self.state.vmcp_descriptions,
+        )
+        register_vnfs_api(
+            self,
+            sts_url=sts_url,
+            tags="vnfs_servers",
+            vnfs_descriptions=self.state.vnfs_descriptions,
         )
         register_skills_api(
             self, tags="skills", skills_descriptions=self.state.skills_descriptions
@@ -221,6 +230,22 @@ def vmcp_descriptions_api(sbs_vdb: str):
         vdb_type=sbs_vdb,
     )
     return vmcp_descriptions
+
+
+def vnfs_descriptions_api(sbs_vdb: str):
+    """Initialize vnfs descriptions APIs with proper persistency/db and APIs.
+
+    Returns:
+        Description: Description instance configured with vector index for vnfs servers.
+    """
+    vnfs_descriptions_directory = get_vnfs_descriptions_directory()
+    vector_index = identify_vector_db(sbs_vdb)
+    vnfs_descriptions = Description(
+        descriptions_directory=vnfs_descriptions_directory,
+        vector_index=vector_index,
+        vdb_type=sbs_vdb,
+    )
+    return vnfs_descriptions
 
 
 def file_api():

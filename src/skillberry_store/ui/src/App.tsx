@@ -12,6 +12,8 @@ import { SnippetsPage } from './pages/SnippetsPage';
 import { SnippetDetailPage } from './pages/SnippetDetailPage';
 import { VMCPServersPage } from './pages/VMCPServersPage';
 import { VMCPServerDetailPage } from './pages/VMCPServerDetailPage';
+import { VNFSServersPage } from './pages/VNFSServersPage';
+import { VNFSServerDetailPage } from './pages/VNFSServerDetailPage';
 import { AdminPage } from './pages/AdminPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -38,6 +40,10 @@ function App() {
         <Route path="/vmcp-servers" element={<VMCPServersPage />} />
         <Route path="/vmcp-servers/:name" element={<VMCPServerDetailPage />} />
         
+        {/* Virtual NFS Servers routes */}
+        <Route path="/vnfs-servers" element={<VNFSServersPage />} />
+        <Route path="/vnfs-servers/:name" element={<VNFSServerDetailPage />} />
+
         {/* Admin route */}
         <Route path="/admin" element={<AdminPage />} />
         

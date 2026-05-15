@@ -19,6 +19,8 @@ from skillberry_store.tools.configure import (
     get_snippets_descriptions_directory,
     get_vmcp_directory,
     get_vmcp_descriptions_directory,
+    get_vnfs_directory,
+    get_vnfs_descriptions_directory,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,15 +106,10 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         vmcp_stopped = False
         vmcp_servers_count = 0
         try:
-            # Use the existing vmcp_server_manager from app.state
             if hasattr(app, "state") and hasattr(app.state, "vmcp_server_manager"):
                 vmcp_manager = app.state.vmcp_server_manager
-
-                # Get list of all servers before stopping them
                 server_names = vmcp_manager.list_servers()
                 vmcp_servers_count = len(server_names)
-
-                # Stop and remove all servers
                 for server_name in server_names:
                     try:
                         vmcp_manager.remove_server(server_name)
@@ -121,7 +118,6 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                         logger.warning(
                             f"Failed to stop VMCP server {server_name}: {str(e)}"
                         )
-
                 vmcp_stopped = True
                 logger.info(
                     f"All {vmcp_servers_count} VMCP servers stopped and removed"
@@ -130,6 +126,31 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                 logger.warning("vmcp_server_manager not found in app.state")
         except Exception as e:
             logger.warning(f"Failed to stop VMCP servers: {str(e)}")
+
+        # Step 1b: Stop all vNFS servers
+        vnfs_stopped = False
+        vnfs_servers_count = 0
+        try:
+            if hasattr(app, "state") and hasattr(app.state, "vnfs_server_manager"):
+                vnfs_manager = app.state.vnfs_server_manager
+                server_names = vnfs_manager.list_servers()
+                vnfs_servers_count = len(server_names)
+                for server_name in server_names:
+                    try:
+                        vnfs_manager.remove_server(server_name)
+                        logger.info(f"Stopped and removed vNFS server: {server_name}")
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to stop vNFS server {server_name}: {str(e)}"
+                        )
+                vnfs_stopped = True
+                logger.info(
+                    f"All {vnfs_servers_count} vNFS servers stopped and removed"
+                )
+            else:
+                logger.warning("vnfs_server_manager not found in app.state")
+        except Exception as e:
+            logger.warning(f"Failed to stop vNFS servers: {str(e)}")
 
         # Step 2: Delete all data directories (including VMCP directory)
         directories_to_purge = [
@@ -142,6 +163,8 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             ("skills_descriptions", get_skills_descriptions_directory()),
             ("snippets_descriptions", get_snippets_descriptions_directory()),
             ("vmcp_descriptions", get_vmcp_descriptions_directory()),
+            ("vnfs", get_vnfs_directory()),
+            ("vnfs_descriptions", get_vnfs_descriptions_directory()),
         ]
 
         deleted_dirs = []
@@ -199,6 +222,10 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                     app.state.vmcp_descriptions.load_index()
                     logger.info("Reset vmcp_descriptions vector index")
 
+                if hasattr(app.state, "vnfs_descriptions"):
+                    app.state.vnfs_descriptions.load_index()
+                    logger.info("Reset vnfs_descriptions vector index")
+
                 vector_indexes_reset = True
                 logger.info("All in-memory vector indexes reset successfully")
         except Exception as e:
@@ -217,7 +244,8 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             )
 
         logger.info(
-            f"Successfully purged all data. Deleted directories: {deleted_dirs}, stopped {vmcp_servers_count} VMCP servers"
+            f"Successfully purged all data. Deleted directories: {deleted_dirs}, "
+            f"stopped {vmcp_servers_count} VMCP servers, stopped {vnfs_servers_count} vNFS servers"
         )
         return {
             "message": "All backend data successfully purged",
@@ -225,6 +253,8 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             "total_deleted": len(deleted_dirs),
             "vmcp_servers_stopped": vmcp_stopped,
             "vmcp_servers_count": vmcp_servers_count,
+            "vnfs_servers_stopped": vnfs_stopped,
+            "vnfs_servers_count": vnfs_servers_count,
             "vector_indexes_reset": vector_indexes_reset,
         }
 

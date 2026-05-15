@@ -81,6 +81,23 @@ export interface VMCPServer {
   modified_at?: string;
 }
 
+export interface VNFSServer {
+  uuid: string;
+  name: string;
+  description?: string;
+  version?: string;
+  state?: ManifestState;
+  tags?: string[];
+  port?: number;
+  skill_uuid?: string;
+  protocol?: string;
+  extra?: Record<string, any>;
+  running?: boolean;
+  export_path?: string;
+  created_at?: string;
+  modified_at?: string;
+}
+
 export interface SearchResult {
   name?: string;
   filename?: string;

@@ -1,8 +1,8 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { toolsApi, snippetsApi, vmcpApi } from '@/services/api';
-import type { Tool, Snippet, Skill, VMCPServer } from '@/types';
+import { toolsApi, snippetsApi, vmcpApi, vnfsApi } from '@/services/api';
+import type { Tool, Snippet, Skill, VMCPServer, VNFSServer } from '@/types';
 
 /**
  * Export tools with their module content
@@ -194,6 +194,29 @@ export function downloadJSON(data: any, filename: string): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Export vNFS servers
+ */
+export function exportVNFSServers(servers: VNFSServer[]): VNFSServer[] {
+  return servers;
+}
+
+/**
+ * Import vNFS servers from exported data
+ */
+export async function importVNFSServers(servers: VNFSServer[]): Promise<number> {
+  let importedCount = 0;
+  for (const server of servers) {
+    try {
+      await vnfsApi.create(server);
+      importedCount++;
+    } catch (error: any) {
+      console.error(`Failed to import vNFS server ${server.name}:`, error);
+    }
+  }
+  return importedCount;
 }
 
 // Made with Bob
