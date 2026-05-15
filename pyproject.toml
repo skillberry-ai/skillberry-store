@@ -130,6 +130,9 @@ dependencies = [
   "tomli-w",
   "sentence_transformers",
   "pandas",
+  "wsgidav>=4.3",
+  "cheroot>=10.0",
+  "shenanigaNFS @ git+https://github.com/JordanMilne/ShenanigaNFS.git",
 ]
 
 [project.optional-dependencies]

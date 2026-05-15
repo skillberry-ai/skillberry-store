@@ -243,6 +243,32 @@ def get_vmcp_descriptions_directory():
     return default_path
 
 
+def get_vnfs_directory():
+    """
+    Get the directory path for virtual NFS servers.
+    """
+    env_path = os.getenv("SBS_VNFS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using vnfs directory from environment: {env_path}")
+        return env_path
+    default_path = _default_sbs_dir("vnfs_servers")
+    logger.info(f"Using default vnfs directory: {default_path}")
+    return default_path
+
+
+def get_vnfs_descriptions_directory():
+    """
+    Get the directory path for virtual NFS server descriptions.
+    """
+    env_path = os.getenv("SBS_VNFS_DESCRIPTIONS_DIRECTORY")
+    if env_path:
+        logger.info(f"Using vnfs descriptions directory from environment: {env_path}")
+        return env_path
+    default_path = _default_sbs_dir("vnfs_descriptions")
+    logger.info(f"Using default vnfs descriptions directory: {default_path}")
+    return default_path
+
+
 def is_auto_detect_dependencies_enabled():
     """
     Check if automatic tool dependency detection is enabled.

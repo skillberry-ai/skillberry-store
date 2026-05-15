@@ -6,6 +6,7 @@ import type {
   Skill,
   Snippet,
   VMCPServer,
+  VNFSServer,
   SearchResult,
   ExecutionResult,
 } from '@/types';
@@ -321,6 +322,83 @@ export const vmcpApi = {
       similarity_threshold: threshold.toString(),
     });
     const response = await fetch(`${API_BASE}/search/vmcp_servers?${params}`);
+    return handleResponse<SearchResult[]>(response);
+  },
+};
+
+// vNFS Servers API
+export const vnfsApi = {
+  list: async (): Promise<VNFSServer[]> => {
+    const response = await fetch(`${API_BASE}/vnfs_servers/`);
+    const data = await handleResponse<{ virtual_nfs_servers: Record<string, VNFSServer> }>(response);
+    return Object.values(data.virtual_nfs_servers);
+  },
+
+  get: async (name: string): Promise<VNFSServer> => {
+    const response = await fetch(`${API_BASE}/vnfs_servers/${name}`);
+    return handleResponse<VNFSServer>(response);
+  },
+
+  create: async (
+    server: Omit<VNFSServer, 'uuid' | 'running' | 'export_path'>
+  ): Promise<{ message: string; name: string; uuid: string; port: number }> => {
+    const params = new URLSearchParams();
+    params.append('name', server.name);
+    if (server.description) params.append('description', server.description);
+    if (server.version) params.append('version', server.version);
+    if (server.state) params.append('state', server.state);
+    if (server.port) params.append('port', server.port.toString());
+    if (server.skill_uuid) params.append('skill_uuid', server.skill_uuid);
+    if (server.protocol) params.append('protocol', server.protocol);
+    if (server.tags) {
+      server.tags.forEach(tag => params.append('tags', tag));
+    }
+    if (server.extra && Object.keys(server.extra).length > 0) {
+      params.append('extra', JSON.stringify(server.extra));
+    }
+    const response = await fetch(`${API_BASE}/vnfs_servers/?${params}`, { method: 'POST' });
+    return handleResponse<{ message: string; name: string; uuid: string; port: number }>(response);
+  },
+
+  update: async (
+    name: string,
+    server: Partial<VNFSServer>
+  ): Promise<{ message: string }> => {
+    const params = new URLSearchParams();
+    if (server.description) params.append('description', server.description);
+    if (server.version) params.append('version', server.version);
+    if (server.state) params.append('state', server.state);
+    if (server.port) params.append('port', server.port.toString());
+    if (server.skill_uuid) params.append('skill_uuid', server.skill_uuid);
+    if (server.protocol) params.append('protocol', server.protocol);
+    if (server.tags) {
+      server.tags.forEach(tag => params.append('tags', tag));
+    }
+    const response = await fetch(`${API_BASE}/vnfs_servers/${name}?${params}`, { method: 'PUT' });
+    return handleResponse<{ message: string }>(response);
+  },
+
+  delete: async (name: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE}/vnfs_servers/${name}`, { method: 'DELETE' });
+    return handleResponse<{ message: string }>(response);
+  },
+
+  start: async (name: string): Promise<{ message: string; port: number }> => {
+    const response = await fetch(`${API_BASE}/vnfs_servers/${name}/start`, { method: 'POST' });
+    return handleResponse<{ message: string; port: number }>(response);
+  },
+
+  search: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1
+  ): Promise<SearchResult[]> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+    });
+    const response = await fetch(`${API_BASE}/search/vnfs_servers?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
 };

@@ -257,6 +257,53 @@ def merge_file_structures(*structures: Dict[str, str]) -> Dict[str, str]:
     return merged
 
 
+def _build_file_structure(
+    skill: Dict[str, Any],
+    tools: List[Dict[str, Any]],
+    snippets: List[Dict[str, Any]],
+    tool_modules: Optional[Dict[str, str]] = None,
+) -> Dict[str, bytes]:
+    """Build the complete file structure for a skill export.
+
+    Returns {relative_path_under_skill_name: file_content_bytes}.
+    Shared by both export variants (ZIP and directory).
+    """
+    skill_name = skill["name"]
+
+    snippet_files = build_file_structure_from_snippets(snippets, skill_name)
+    tool_files = build_file_structure_from_tools(tools, skill_name, tool_modules)
+    script_files = export_tools_to_scripts(tools, skill_name, tool_modules)
+
+    all_files = merge_file_structures(snippet_files, tool_files, script_files)
+
+    has_file_structure = len(all_files) > 0
+    skill_md_content = generate_skill_md(skill, has_file_structure, snippets)
+
+    additional_snippets = export_snippets_to_skill_md(snippets)
+    if additional_snippets:
+        skill_md_content += additional_snippets
+
+    has_skill_md_in_files = any(
+        path.upper() == "SKILL.MD" or path.upper().endswith("/SKILL.MD")
+        for path in all_files.keys()
+    )
+
+    if not has_skill_md_in_files:
+        all_files["SKILL.md"] = skill_md_content
+    else:
+        for path in list(all_files.keys()):
+            if path.upper() == "SKILL.MD" or path.upper().endswith("/SKILL.MD"):
+                all_files[path] = skill_md_content + all_files[path]
+                break
+
+    result: Dict[str, bytes] = {}
+    for file_path, content in all_files.items():
+        normalized = content if content.endswith("\n") else content + "\n"
+        result[f"{skill_name}/{file_path}"] = normalized.encode("utf-8")
+
+    return result
+
+
 def export_skill_to_anthropic_format(
     skill: Dict[str, Any],
     tools: List[Dict[str, Any]],
@@ -274,53 +321,40 @@ def export_skill_to_anthropic_format(
     Returns:
         ZIP file content as bytes
     """
-    # Create in-memory ZIP file
+    files = _build_file_structure(skill, tools, snippets, tool_modules)
+
     zip_buffer = io.BytesIO()
-
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        skill_name = skill["name"]
+        for file_path, content in files.items():
+            zip_file.writestr(file_path, content)
 
-        # Build file structures from tags
-        snippet_files = build_file_structure_from_snippets(snippets, skill_name)
-        tool_files = build_file_structure_from_tools(tools, skill_name, tool_modules)
-        script_files = export_tools_to_scripts(tools, skill_name, tool_modules)
-
-        # Merge all file structures
-        all_files = merge_file_structures(snippet_files, tool_files, script_files)
-
-        # Check if we have any file structure
-        has_file_structure = len(all_files) > 0
-
-        # Generate SKILL.md
-        skill_md_content = generate_skill_md(skill, has_file_structure, snippets)
-
-        # Add snippets without file: tags to SKILL.md
-        additional_snippets = export_snippets_to_skill_md(snippets)
-        if additional_snippets:
-            skill_md_content += additional_snippets
-
-        # Check if SKILL.md already exists in allFiles
-        has_skill_md_in_files = any(
-            path.upper() == "SKILL.MD" or path.upper().endswith("/SKILL.MD")
-            for path in all_files.keys()
-        )
-
-        # Only add SKILL.md if it doesn't already exist in the file structure
-        if not has_skill_md_in_files:
-            zip_file.writestr(f"{skill_name}/SKILL.md", skill_md_content)
-        else:
-            # If SKILL.md exists, prepend frontmatter to it
-            for path in list(all_files.keys()):
-                if path.upper() == "SKILL.MD" or path.upper().endswith("/SKILL.MD"):
-                    all_files[path] = skill_md_content + all_files[path]
-                    break
-
-        # Add all files to the zip with trailing newline
-        for file_path, content in all_files.items():
-            # Ensure content ends with a single newline (standard for text files)
-            normalized_content = content if content.endswith("\n") else content + "\n"
-            zip_file.writestr(f"{skill_name}/{file_path}", normalized_content)
-
-    # Get the ZIP content
     zip_buffer.seek(0)
     return zip_buffer.read()
+
+
+def export_skill_to_directory(
+    skill: Dict[str, Any],
+    tools: List[Dict[str, Any]],
+    snippets: List[Dict[str, Any]],
+    output_dir: str,
+    tool_modules: Optional[Dict[str, str]] = None,
+) -> None:
+    """Export skill to a directory on disk.
+
+    Writes the same file structure as export_skill_to_anthropic_format, but
+    to real files instead of a ZIP archive. Used by vNFS backends.
+
+    Args:
+        skill: The skill dictionary
+        tools: List of tool dictionaries
+        snippets: List of snippet dictionaries
+        output_dir: Destination directory path (created if absent)
+        tool_modules: Dictionary mapping tool names to module content
+    """
+    from pathlib import Path
+
+    files = _build_file_structure(skill, tools, snippets, tool_modules)
+    for rel_path, content in files.items():
+        dest = Path(output_dir) / rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
