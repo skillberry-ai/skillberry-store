@@ -42,8 +42,65 @@ import {
   TreeViewDataItem,
 } from '@patternfly/react-core';
 import { EditIcon, TrashIcon, FolderIcon, FileIcon, FileCodeIcon, ExportIcon } from '@patternfly/react-icons';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
 import type { Skill } from '@/types';
+
+// Helper function to detect language from file path or tags
+const detectLanguage = (tags: string[]): string => {
+  // Check for file: tag to extract extension
+  const fileTag = tags.find(tag => tag.startsWith('file:'));
+  if (fileTag) {
+    const filePath = fileTag.substring(5);
+    const extension = filePath.split('.').pop()?.toLowerCase();
+    
+    const languageMap: Record<string, string> = {
+      'py': 'python',
+      'js': 'javascript',
+      'ts': 'typescript',
+      'jsx': 'jsx',
+      'tsx': 'tsx',
+      'java': 'java',
+      'cpp': 'cpp',
+      'c': 'c',
+      'cs': 'csharp',
+      'go': 'go',
+      'rs': 'rust',
+      'rb': 'ruby',
+      'php': 'php',
+      'swift': 'swift',
+      'kt': 'kotlin',
+      'scala': 'scala',
+      'sh': 'bash',
+      'bash': 'bash',
+      'zsh': 'bash',
+      'sql': 'sql',
+      'json': 'json',
+      'yaml': 'yaml',
+      'yml': 'yaml',
+      'xml': 'xml',
+      'html': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'md': 'markdown',
+      'txt': 'text',
+    };
+    
+    if (extension && languageMap[extension]) {
+      return languageMap[extension];
+    }
+  }
+  
+  // Check for language: tag
+  const langTag = tags.find(tag => tag.startsWith('language:'));
+  if (langTag) {
+    return langTag.substring(9).toLowerCase();
+  }
+  
+  // Default to text
+  return 'text';
+};
 
 export function SkillDetailPage() {
   const { name } = useParams<{ name: string }>();
@@ -706,20 +763,26 @@ export function SkillDetailPage() {
                             <Title headingLevel="h4" size="md" style={{ marginBottom: '0.5rem' }}>
                               {selectedToolModule.name}
                             </Title>
-                            <CodeBlock>
-                              <CodeBlockCode
-                                style={{
-                                  backgroundColor: '#f5f5f5',
-                                  color: '#151515',
-                                  padding: '1rem',
-                                  borderRadius: '4px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5'
+                            <div style={{
+                              border: '1px solid #3d3d3d',
+                              borderRadius: '6px',
+                              overflow: 'hidden'
+                            }}>
+                              <SyntaxHighlighter
+                                language="python"
+                                style={vscDarkPlus}
+                                showLineNumbers={true}
+                                wrapLines={false}
+                                customStyle={{
+                                  margin: 0,
+                                  fontSize: '15px',
+                                  lineHeight: '1.6',
+                                  minHeight: '100%',
                                 }}
                               >
                                 {selectedToolModule.module}
-                              </CodeBlockCode>
-                            </CodeBlock>
+                              </SyntaxHighlighter>
+                            </div>
                           </div>
                         ) : (
                           <div style={{
@@ -770,20 +833,26 @@ export function SkillDetailPage() {
                             <Title headingLevel="h4" size="md" style={{ marginBottom: '0.5rem' }}>
                               {selectedSnippet.name}
                             </Title>
-                            <CodeBlock>
-                              <CodeBlockCode
-                                style={{
-                                  backgroundColor: '#f5f5f5',
-                                  color: '#151515',
-                                  padding: '1rem',
-                                  borderRadius: '4px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5'
+                            <div style={{
+                              border: '1px solid #3d3d3d',
+                              borderRadius: '6px',
+                              overflow: 'hidden'
+                            }}>
+                              <SyntaxHighlighter
+                                language={detectLanguage(selectedSnippet.tags || [])}
+                                style={vscDarkPlus}
+                                showLineNumbers={true}
+                                wrapLines={false}
+                                customStyle={{
+                                  margin: 0,
+                                  fontSize: '15px',
+                                  lineHeight: '1.6',
+                                  minHeight: '100%',
                                 }}
                               >
                                 {selectedSnippet.content}
-                              </CodeBlockCode>
-                            </CodeBlock>
+                              </SyntaxHighlighter>
+                            </div>
                           </div>
                         ) : (
                           <div style={{
