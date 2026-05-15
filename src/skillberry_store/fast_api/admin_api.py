@@ -119,7 +119,9 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                             f"Failed to stop VMCP server {server_name}: {str(e)}"
                         )
                 vmcp_stopped = True
-                logger.info(f"All {vmcp_servers_count} VMCP servers stopped and removed")
+                logger.info(
+                    f"All {vmcp_servers_count} VMCP servers stopped and removed"
+                )
             else:
                 logger.warning("vmcp_server_manager not found in app.state")
         except Exception as e:
@@ -138,9 +140,13 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                         vnfs_manager.remove_server(server_name)
                         logger.info(f"Stopped and removed vNFS server: {server_name}")
                     except Exception as e:
-                        logger.warning(f"Failed to stop vNFS server {server_name}: {str(e)}")
+                        logger.warning(
+                            f"Failed to stop vNFS server {server_name}: {str(e)}"
+                        )
                 vnfs_stopped = True
-                logger.info(f"All {vnfs_servers_count} vNFS servers stopped and removed")
+                logger.info(
+                    f"All {vnfs_servers_count} vNFS servers stopped and removed"
+                )
             else:
                 logger.warning("vnfs_server_manager not found in app.state")
         except Exception as e:

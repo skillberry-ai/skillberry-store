@@ -125,7 +125,9 @@ class VirtualNfsServerManager:
                         continue
 
                     skill_uuid = data.get("skill_uuid")
-                    skill, tools, snippets, tool_modules = self._resolve_skill(skill_uuid)
+                    skill, tools, snippets, tool_modules = self._resolve_skill(
+                        skill_uuid
+                    )
 
                     server = VirtualNfsServer(
                         name=name,
@@ -137,9 +139,7 @@ class VirtualNfsServerManager:
                     )
                     server.start(skill, tools, snippets, tool_modules)
                     self.servers[server.name] = server
-                    logger.info(
-                        f"Loaded vnfs_server '{name}' on port {server.port}"
-                    )
+                    logger.info(f"Loaded vnfs_server '{name}' on port {server.port}")
                 except Exception as exc:
                     logger.error(f"Failed to load vnfs_server from '{filename}': {exc}")
 
@@ -203,11 +203,15 @@ class VirtualNfsServerManager:
                 lang = tool.get("programming_language", "python").lower()
                 ext = ".sh" if lang in ("bash", "sh", "shell") else ".py"
                 try:
-                    content = files_handler.read_file(f"{tool_name}{ext}", raw_content=True)
+                    content = files_handler.read_file(
+                        f"{tool_name}{ext}", raw_content=True
+                    )
                     if isinstance(content, str):
                         tool_modules[tool_name] = content
                 except Exception as exc:
-                    logger.warning(f"Could not read module for tool '{tool_name}': {exc}")
+                    logger.warning(
+                        f"Could not read module for tool '{tool_name}': {exc}"
+                    )
 
             return skill_dict, tools, snippets, tool_modules
         except Exception as exc:

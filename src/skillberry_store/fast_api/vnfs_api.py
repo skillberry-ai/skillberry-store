@@ -68,7 +68,9 @@ def register_vnfs_api(
             server = vnfs_server_manager.add_server(vnfs)
             vnfs.port = server.port
 
-            vnfs_handler.write_file_content(vnfs_filename, json.dumps(vnfs.to_dict(), indent=4))
+            vnfs_handler.write_file_content(
+                vnfs_filename, json.dumps(vnfs.to_dict(), indent=4)
+            )
 
             if vnfs_descriptions and vnfs.description:
                 vnfs_descriptions.write_description(vnfs.name, vnfs.description)
@@ -88,7 +90,9 @@ def register_vnfs_api(
             raise HTTPException(status_code=500, detail=str(exc))
         except Exception as exc:
             logger.error(f"Error creating vnfs server '{vnfs.name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error creating vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error creating vNFS server: {exc}"
+            )
 
     @app.get("/vnfs_servers/", tags=[tags])
     def list_vnfs_servers():
@@ -121,7 +125,8 @@ def register_vnfs_api(
                         "skill_uuid": data.get("skill_uuid"),
                         "protocol": data.get("protocol", "webdav"),
                         "modified_at": data.get("modified_at", ""),
-                        "running": runtime_server is not None and runtime_server.running,
+                        "running": runtime_server is not None
+                        and runtime_server.running,
                         "export_path": (
                             str(runtime_server.export_path) if runtime_server else None
                         ),
@@ -135,7 +140,9 @@ def register_vnfs_api(
             return {"virtual_nfs_servers": servers_dict}
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")
-            raise HTTPException(status_code=500, detail=f"Error listing vNFS servers: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error listing vNFS servers: {exc}"
+            )
 
     @app.get("/vnfs_servers/{name}", tags=[tags])
     def get_vnfs_server(name: str):
@@ -159,7 +166,9 @@ def register_vnfs_api(
             raise
         except Exception as exc:
             logger.error(f"Error retrieving vnfs server '{name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error retrieving vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error retrieving vNFS server: {exc}"
+            )
 
     @app.delete("/vnfs_servers/{name}", tags=[tags])
     def delete_vnfs_server(name: str):
@@ -175,14 +184,18 @@ def register_vnfs_api(
                 try:
                     vnfs_descriptions.delete_description(name)
                 except Exception as exc:
-                    logger.warning(f"Could not delete vnfs description for '{name}': {exc}")
+                    logger.warning(
+                        f"Could not delete vnfs description for '{name}': {exc}"
+                    )
 
             return {"message": f"vNFS server '{name}' deleted successfully."}
         except HTTPException:
             raise
         except Exception as exc:
             logger.error(f"Error deleting vnfs server '{name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error deleting vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error deleting vNFS server: {exc}"
+            )
 
     @app.put("/vnfs_servers/{name}", tags=[tags])
     def update_vnfs_server(
@@ -194,7 +207,9 @@ def register_vnfs_api(
 
         vnfs_filename = f"{name}.json"
         if vnfs_filename not in vnfs_handler.list_files():
-            raise HTTPException(status_code=404, detail=f"vNFS server '{name}' not found.")
+            raise HTTPException(
+                status_code=404, detail=f"vNFS server '{name}' not found."
+            )
 
         try:
             vnfs.modified_at = datetime.now(timezone.utc).isoformat()
@@ -202,7 +217,9 @@ def register_vnfs_api(
             server = vnfs_server_manager.add_server(vnfs)
             vnfs.port = server.port
 
-            vnfs_handler.write_file_content(vnfs_filename, json.dumps(vnfs.to_dict(), indent=4))
+            vnfs_handler.write_file_content(
+                vnfs_filename, json.dumps(vnfs.to_dict(), indent=4)
+            )
 
             return {
                 "message": f"vNFS server '{name}' updated successfully.",
@@ -212,7 +229,9 @@ def register_vnfs_api(
             raise
         except Exception as exc:
             logger.error(f"Error updating vnfs server '{name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error updating vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error updating vNFS server: {exc}"
+            )
 
     @app.post("/vnfs_servers/{name}/start", tags=[tags])
     def start_vnfs_server(name: str, request: Request):
@@ -245,7 +264,9 @@ def register_vnfs_api(
             raise
         except Exception as exc:
             logger.error(f"Error starting vnfs server '{name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error starting vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error starting vNFS server: {exc}"
+            )
 
     @app.get("/search/vnfs_servers", tags=[tags])
     def search_vnfs_servers(
@@ -269,7 +290,9 @@ def register_vnfs_api(
             matched = vnfs_descriptions.search_description(
                 search_term=search_term, k=max_number_of_results
             )
-            filtered = [m for m in matched if m["similarity_score"] <= similarity_threshold]
+            filtered = [
+                m for m in matched if m["similarity_score"] <= similarity_threshold
+            ]
 
             servers_to_filter = []
             for m in filtered:
@@ -277,7 +300,9 @@ def register_vnfs_api(
                 if not vnfs_name:
                     continue
                 try:
-                    content = vnfs_handler.read_file(f"{vnfs_name}.json", raw_content=True)
+                    content = vnfs_handler.read_file(
+                        f"{vnfs_name}.json", raw_content=True
+                    )
                     if isinstance(content, str):
                         d = json.loads(content)
                         d["similarity_score"] = m.get("similarity_score", 0.0)
@@ -290,15 +315,18 @@ def register_vnfs_api(
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
             )
-            filtered_servers.sort(
-                key=lambda x: x.get("modified_at", ""), reverse=True
-            )
+            filtered_servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
             return [
-                {"filename": s.get("name", ""), "similarity_score": s.get("similarity_score", 0.0)}
+                {
+                    "filename": s.get("name", ""),
+                    "similarity_score": s.get("similarity_score", 0.0),
+                }
                 for s in filtered_servers
                 if s.get("name")
             ]
         except Exception as exc:
             logger.error(f"Error searching vnfs servers: {exc}")
-            raise HTTPException(status_code=500, detail=f"Error searching vNFS servers: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error searching vNFS servers: {exc}"
+            )

@@ -58,9 +58,7 @@ class ShenanigaNFSBackend(FilesystemServerBackend):
             def __init__(self, path: str):
                 super().__init__()
                 self.read_only = True
-                self.track_entry(
-                    SimpleDirectory(mode=0o0555, name=b"", root_dir=True)
-                )
+                self.track_entry(SimpleDirectory(mode=0o0555, name=b"", root_dir=True))
                 self._populate(Path(path), self.root_dir)
                 self.sanity_check()
 
@@ -84,9 +82,7 @@ class ShenanigaNFSBackend(FilesystemServerBackend):
                         )
                         parent.link_child(entry)
 
-        handle_encoder = VerifyingFileHandleEncoder(
-            hmac_secret=secrets.token_bytes(16)
-        )
+        handle_encoder = VerifyingFileHandleEncoder(hmac_secret=secrets.token_bytes(16))
         fs_manager = FileSystemManager(
             handle_encoder=handle_encoder,
             factories={b"/": lambda ctx: PathFS(export_path)},
@@ -108,7 +104,9 @@ class ShenanigaNFSBackend(FilesystemServerBackend):
 
         self._thread = threading.Thread(target=_run, daemon=True)
         self._thread.start()
-        logger.info(f"ShenanigaNFS backend started on port {port}, serving {export_path}")
+        logger.info(
+            f"ShenanigaNFS backend started on port {port}, serving {export_path}"
+        )
 
     def stop(self) -> None:
         if self._loop and self._loop.is_running():
@@ -191,9 +189,7 @@ class VirtualNfsServer:
                 raise ValueError(f"Port {port} is not available")
             self.port = port
 
-        self.export_path = Path(
-            tempfile.mkdtemp(prefix=f"vnfs_{self.uuid}_")
-        )
+        self.export_path = Path(tempfile.mkdtemp(prefix=f"vnfs_{self.uuid}_"))
         self.backend: FilesystemServerBackend = (
             ShenanigaNFSBackend() if protocol == "nfs" else WebDavBackend()
         )
@@ -233,7 +229,9 @@ class VirtualNfsServer:
         """Generate files then start the backend server."""
         from skillberry_store.tools.anthropic.exporter import export_skill_to_directory
 
-        export_skill_to_directory(skill, tools, snippets, str(self.export_path), tool_modules)
+        export_skill_to_directory(
+            skill, tools, snippets, str(self.export_path), tool_modules
+        )
         self.backend.start(str(self.export_path), self.port)
         self.running = True
         logger.info(
@@ -261,7 +259,9 @@ class VirtualNfsServer:
         """Regenerate files from updated skill without restarting the server."""
         from skillberry_store.tools.anthropic.exporter import export_skill_to_directory
 
-        export_skill_to_directory(skill, tools, snippets, str(self.export_path), tool_modules)
+        export_skill_to_directory(
+            skill, tools, snippets, str(self.export_path), tool_modules
+        )
         logger.info(f"VirtualNfsServer '{self.name}' files refreshed")
 
     def to_dict(self) -> Dict:
