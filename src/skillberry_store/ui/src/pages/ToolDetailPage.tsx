@@ -87,6 +87,9 @@ export function ToolDetailPage() {
     onSuccess: (result) => {
       setExecutionResult(result);
     },
+    onError: (error: any) => {
+      setExecutionResult({ error: error.message || 'Execution failed' });
+    },
   });
 
   // Update mutation

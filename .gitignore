@@ -5,6 +5,10 @@ CLAUDE.md
 
 .idea/
 
+# Superpowers brainstorming / spec docs
+docs/superpowers/
+.superpowers/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
