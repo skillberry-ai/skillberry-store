@@ -46,6 +46,22 @@ def normalize_uuid(uuid_str: Optional[str]) -> Optional[str]:
         logger.debug(f"Invalid UUID format: {uuid_str}")
         return None
 
+def make_name_with_uuid(name: str, uuid_str: str) -> str:
+    """Generate unique name by combining a name with a UUID.
+    
+    This ensures each object gets a unique identifier, even if
+    multiple objects share the same name.
+    
+    Args:
+        name: The human-readable name
+        uuid_str: The unique UUID
+        
+    Returns:
+        Composite name: "{name}_{uuid}"
+    """
+    return f"{name}_{uuid_str}"
+
+
 SKILLBERRY_CONTEXT = "skillberry-context"
 
 

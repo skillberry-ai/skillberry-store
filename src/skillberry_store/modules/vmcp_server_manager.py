@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from skillberry_store.modules.vmcp_server import VirtualMcpServer
 from skillberry_store.modules.resource_handler import ResourceHandler
 from skillberry_store.tools.configure import get_vmcp_directory, get_skills_directory, get_tools_directory, get_snippets_directory
+from skillberry_store.utils.utils import make_name_with_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -46,22 +47,6 @@ class VirtualMcpServerManager:
 
         logger.info(f"Loading vmcp_servers from {self.vmcp_directory}")
         self.load_servers()
-    
-    @staticmethod
-    def get_runtime_server_name(vmcp_name: str, vmcp_uuid: str) -> str:
-        """Generate unique runtime server name from VMCP name and UUID.
-        
-        This ensures each VMCP object gets a unique runtime server, even if
-        multiple VMCP objects share the same name.
-        
-        Args:
-            vmcp_name: The human-readable VMCP name
-            vmcp_uuid: The unique VMCP UUID
-            
-        Returns:
-            Composite name: "{name}_{uuid}"
-        """
-        return f"{vmcp_name}_{vmcp_uuid}"
 
     def add_server(
         self,
@@ -70,7 +55,7 @@ class VirtualMcpServerManager:
         description: str,
         port: Optional[int],
         tools: list,
-        snippets: list = None,
+        snippets: Optional[list] = None,
         env_id: str = "",
     ) -> VirtualMcpServer:
         """Add a new virtual MCP server.
@@ -91,7 +76,7 @@ class VirtualMcpServerManager:
             Exception: If error occurred
         """
         # Generate unique runtime server name
-        runtime_server_name = self.get_runtime_server_name(name, uuid)
+        runtime_server_name = make_name_with_uuid(name, uuid)
         logger.info(f"Adding vmcp_server: {runtime_server_name}")
         
         with self._lock:
@@ -119,7 +104,7 @@ class VirtualMcpServerManager:
             name: The human-readable name of the virtual MCP server.
             uuid: The UUID of the VMCP object.
         """
-        runtime_server_name = self.get_runtime_server_name(name, uuid)
+        runtime_server_name = make_name_with_uuid(name, uuid)
             
         with self._lock:
             if runtime_server_name in self.servers:
@@ -156,7 +141,7 @@ class VirtualMcpServerManager:
         Returns:
             VirtualMcpServer: The virtual MCP server instance, or None if not found.
         """
-        runtime_server_name = self.get_runtime_server_name(name, uuid)
+        runtime_server_name = make_name_with_uuid(name, uuid)
         logger.debug(f"Getting vmcp_server with composite name: {runtime_server_name}")
         
         with self._lock:
@@ -175,7 +160,7 @@ class VirtualMcpServerManager:
         Raises:
             ValueError: If the virtual MCP server is not found.
         """
-        runtime_server_name = self.get_runtime_server_name(name, uuid)
+        runtime_server_name = make_name_with_uuid(name, uuid)
         logger.debug(f"Getting details of vmcp_server: {runtime_server_name}")
         with self._lock:
             server = self.get_server(name, uuid)
@@ -226,7 +211,7 @@ class VirtualMcpServerManager:
                     # Start the runtime server with UUIDs (not names)
                     # Use composite name for uniqueness
                     if name and uuid:
-                        runtime_server_name = self.get_runtime_server_name(name, uuid)
+                        runtime_server_name = make_name_with_uuid(name, uuid)
                         server = VirtualMcpServer(
                             name=runtime_server_name,
                             description=description,
