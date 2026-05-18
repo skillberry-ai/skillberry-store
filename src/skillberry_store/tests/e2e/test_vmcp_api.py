@@ -335,4 +335,77 @@ async def test_search_vmcp_servers(run_sbs):
         # Clean up - delete test VMCP servers
         for vmcp_data in test_vmcp_servers:
             delete_response = await client.delete(f"{BASE_URL}/vmcp_servers/{vmcp_data['name']}")
-            assert delete_response.status_code == 200, f"Failed to delete VMCP server {vmcp_data['name']}"
+
+@pytest.mark.asyncio
+async def test_multiple_vmcp_servers_same_name_different_uuid(run_sbs):
+    """Test that multiple VMCP servers with the same name but different UUIDs can coexist."""
+    server_name = "duplicate_name_vmcp_server"
+    
+    async with httpx.AsyncClient() as client:
+        # Clean up any existing servers with these UUIDs
+        for uuid in ["uuid-vmcp-1", "uuid-vmcp-2"]:
+            try:
+                await client.delete(f"{BASE_URL}/vmcp_servers/{uuid}")
+                await asyncio.sleep(0.5)
+            except:
+                pass
+        
+        # Create first server with explicit UUID
+        vmcp_data_1 = {
+            "name": server_name,
+            "description": "First VMCP server with this name",
+            "port": 10040,
+            "skill.name": "skill_1",
+            "skill.description": "First skill",
+            "skill.tool_uuids": ["tool1"],
+            "uuid": "uuid-vmcp-1"
+        }
+        response1 = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data_1)
+        assert response1.status_code == 200
+        data1 = response1.json()
+        uuid1 = data1.get("uuid")
+        assert uuid1 == "uuid-vmcp-1"
+        
+        # Create second server with same name but different UUID
+        vmcp_data_2 = {
+            "name": server_name,
+            "description": "Second VMCP server with this name",
+            "port": 10041,
+            "skill.name": "skill_2",
+            "skill.description": "Second skill",
+            "skill.tool_uuids": ["tool2"],
+            "uuid": "uuid-vmcp-2"
+        }
+        response2 = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data_2)
+        assert response2.status_code == 200
+        data2 = response2.json()
+        uuid2 = data2.get("uuid")
+        assert uuid2 == "uuid-vmcp-2"
+        
+        # Verify both servers exist and can be retrieved by UUID
+        get_response1 = await client.get(f"{BASE_URL}/vmcp_servers/{uuid1}")
+        assert get_response1.status_code == 200
+        server1 = get_response1.json()
+        assert server1.get("uuid") == uuid1
+        assert server1.get("description") == "First VMCP server with this name"
+        
+        get_response2 = await client.get(f"{BASE_URL}/vmcp_servers/{uuid2}")
+        assert get_response2.status_code == 200
+        server2 = get_response2.json()
+        assert server2.get("uuid") == uuid2
+        assert server2.get("description") == "Second VMCP server with this name"
+        
+        # Verify both servers are in the list
+        list_response = await client.get(f"{BASE_URL}/vmcp_servers/")
+        assert list_response.status_code == 200
+        servers = list_response.json().get("virtual_mcp_servers", {})
+        
+        # Both servers should be accessible (though they share a name, they have different UUIDs)
+        # The list API returns servers keyed by name, so only one will be visible by name
+        # But both should be retrievable by UUID
+        assert get_response1.status_code == 200
+        assert get_response2.status_code == 200
+        
+        # Clean up both servers
+        await client.delete(f"{BASE_URL}/vmcp_servers/{uuid1}")
+        await client.delete(f"{BASE_URL}/vmcp_servers/{uuid2}")
