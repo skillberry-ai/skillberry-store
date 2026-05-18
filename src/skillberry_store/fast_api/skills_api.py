@@ -619,13 +619,18 @@ def register_skills_api(
                 except Exception as e:
                     logger.error(f"Failed to create snippet {snippet.name}: {e}")
 
+            skill_tags = ["anthropic", "imported"]
+            for tag in tags:
+                if tag and tag not in skill_tags:
+                    skill_tags.append(tag)
+
             # Prepare skill schema with UUID (either existing or None for new)
             skill_schema = SkillSchema(
                 uuid=None,
                 name=skill_name,
                 version="1.0.0",
                 description=skill_description,
-                tags=["anthropic", "imported"],
+                tags=skill_tags,
                 tool_uuids=created_tool_uuids,
                 snippet_uuids=created_snippet_uuids,
                 state=ManifestState.APPROVED,
