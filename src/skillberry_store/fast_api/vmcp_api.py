@@ -88,18 +88,6 @@ def register_vmcp_api(
     # Store in app state for cleanup access
     app.state.vmcp_server_manager = vmcp_server_manager
     
-    def get_runtime_server_name(vmcp_name: str, vmcp_uuid: str) -> str:
-        """Generate unique runtime server name from VMCP name and UUID.
-        
-        Args:
-            vmcp_name: The human-readable VMCP name
-            vmcp_uuid: The unique VMCP UUID
-            
-        Returns:
-            Composite name: "{name}_{uuid}"
-        """
-        return f"{vmcp_name}_{vmcp_uuid}"
-
     @app.post("/vmcp_servers/", tags=[tags])
     def create_vmcp_server(vmcp: Annotated[VmcpSchema, Query()], request: Request):
         """Create a new virtual MCP server.
