@@ -9,7 +9,7 @@ from typing import Annotated, Optional
 from fastapi import FastAPI, HTTPException, Query, Request
 from prometheus_client import Counter
 
-from skillberry_store.modules.file_handler import FileHandler
+from skillberry_store.modules.resource_handler import ResourceHandler
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
@@ -40,7 +40,7 @@ def register_vnfs_api(
 ):
     """Register virtual NFS server API endpoints with the FastAPI application."""
     vnfs_directory = get_vnfs_directory()
-    vnfs_handler = FileHandler(vnfs_directory)
+    vnfs_handler = ResourceHandler(vnfs_directory, "vnfs")
 
     vnfs_server_manager = VirtualNfsServerManager(sts_url=sts_url, app=app)
     app.state.vnfs_server_manager = vnfs_server_manager
@@ -58,22 +58,23 @@ def register_vnfs_api(
         vnfs.created_at = current_time
         vnfs.modified_at = current_time
 
-        vnfs_filename = f"{vnfs.name}.json"
-        if vnfs_filename in vnfs_handler.list_files():
+        # Check if vnfs server with this UUID already exists
+        if vnfs_handler.resource_exists(vnfs.uuid):
             raise HTTPException(
-                status_code=409, detail=f"vNFS server '{vnfs.name}' already exists."
+                status_code=409, detail=f"vNFS server with UUID '{vnfs.uuid}' already exists."
             )
 
         try:
             server = vnfs_server_manager.add_server(vnfs)
             vnfs.port = server.port
 
-            vnfs_handler.write_file_content(
-                vnfs_filename, json.dumps(vnfs.to_dict(), indent=4)
-            )
+            # Save using ResourceHandler with UUID
+            vnfs_handler.write_manifest(vnfs.uuid, vnfs.to_dict())
 
+            # Write description indexed by UUID
             if vnfs_descriptions and vnfs.description:
-                vnfs_descriptions.write_description(vnfs.name, vnfs.description)
+                vnfs_descriptions.write_description(vnfs.uuid, vnfs.description)
+                logger.info(f"vNFS server description saved for UUID: {vnfs.uuid}")
 
             logger.info(f"vNFS server '{vnfs.name}' created on port {server.port}")
             return {
@@ -101,32 +102,36 @@ def register_vnfs_api(
         list_vnfs_counter.inc()
 
         try:
-            all_files = vnfs_handler.list_files()
+            # Get all VNFS resources using ResourceHandler
+            vnfs_resources = vnfs_handler.list_all_resources()
+            
             servers_list = []
-            for filename in all_files:
-                if not filename.endswith(".json"):
-                    continue
-                server_name = filename[:-5]
+            for vnfs_data in vnfs_resources:
+                server_name = vnfs_data.get("name")
+                server_uuid = vnfs_data.get("uuid")
                 try:
-                    content = vnfs_handler.read_file(filename, raw_content=True)
-                    if not isinstance(content, str):
-                        continue
-                    data = json.loads(content)
+                    # Get runtime server using name and UUID
+                    runtime_server = None
+                    try:
+                        runtime_server = vnfs_server_manager.get_server(
+                            server_name or "",
+                            server_uuid or ""
+                        )
+                    except Exception:
+                        pass  # Server not running, which is fine
 
-                    runtime_server = vnfs_server_manager.get_server(server_name)
                     info = {
-                        "uuid": data.get("uuid"),
-                        "name": data.get("name"),
-                        "description": data.get("description"),
-                        "version": data.get("version"),
-                        "state": data.get("state"),
-                        "tags": data.get("tags", []),
-                        "port": data.get("port"),
-                        "skill_uuid": data.get("skill_uuid"),
-                        "protocol": data.get("protocol", "webdav"),
-                        "modified_at": data.get("modified_at", ""),
-                        "running": runtime_server is not None
-                        and runtime_server.running,
+                        "uuid": vnfs_data.get("uuid"),
+                        "name": vnfs_data.get("name"),
+                        "description": vnfs_data.get("description"),
+                        "version": vnfs_data.get("version"),
+                        "state": vnfs_data.get("state"),
+                        "tags": vnfs_data.get("tags", []),
+                        "port": vnfs_data.get("port"),
+                        "skill_uuid": vnfs_data.get("skill_uuid"),
+                        "protocol": vnfs_data.get("protocol", "webdav"),
+                        "modified_at": vnfs_data.get("modified_at", ""),
+                        "running": runtime_server is not None and runtime_server.running,
                         "export_path": (
                             str(runtime_server.export_path) if runtime_server else None
                         ),
@@ -144,126 +149,185 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error listing vNFS servers: {exc}"
             )
 
-    @app.get("/vnfs_servers/{name}", tags=[tags])
-    def get_vnfs_server(name: str):
-        """Get a specific vNFS endpoint by name."""
-        logger.info(f"Request to get vnfs server: {name}")
+    @app.get("/vnfs_servers/{id}", tags=[tags])
+    def get_vnfs_server(id: str):
+        """Get a specific vNFS endpoint by id (name or UUID)."""
+        logger.info(f"Request to get vnfs server: {id}")
         get_vnfs_counter.inc()
 
         try:
-            content = vnfs_handler.read_file(f"{name}.json", raw_content=True)
-            if not isinstance(content, str):
-                raise HTTPException(status_code=500, detail="Invalid content type")
-            data = json.loads(content)
-
-            runtime_server = vnfs_server_manager.get_server(name)
-            data["running"] = runtime_server is not None and runtime_server.running
-            data["export_path"] = (
-                str(runtime_server.export_path) if runtime_server else None
-            )
-            return data
+            # Get persistent data using ResourceHandler
+            vnfs_dict = vnfs_handler.get_resource_by_id(id)
+            server_name = vnfs_dict.get("name")
+            server_uuid = vnfs_dict.get("uuid")
+            
+            # Get runtime details from manager
+            try:
+                runtime_server = vnfs_server_manager.get_server(
+                    server_name or "",
+                    server_uuid or ""
+                )
+                vnfs_dict["running"] = runtime_server is not None and runtime_server.running
+                vnfs_dict["export_path"] = (
+                    str(runtime_server.export_path) if runtime_server else None
+                )
+            except Exception:
+                vnfs_dict["running"] = False
+                vnfs_dict["export_path"] = None
+            
+            logger.info(f"Retrieved vnfs server: {id}")
+            return vnfs_dict
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error(f"Error retrieving vnfs server '{name}': {exc}")
+            logger.error(f"Error retrieving vnfs server '{id}': {exc}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving vNFS server: {exc}"
             )
 
-    @app.delete("/vnfs_servers/{name}", tags=[tags])
-    def delete_vnfs_server(name: str):
-        """Stop and delete a vNFS endpoint."""
-        logger.info(f"Request to delete vnfs server: {name}")
+    @app.delete("/vnfs_servers/{id}", tags=[tags])
+    def delete_vnfs_server(id: str):
+        """Stop and delete a vNFS endpoint by id (name or UUID)."""
+        logger.info(f"Request to delete vnfs server: {id}")
         delete_vnfs_counter.inc()
 
         try:
-            vnfs_server_manager.remove_server(name)
-            vnfs_handler.delete_file(f"{name}.json")
+            # Get server info first to extract name and uuid
+            vnfs_dict = vnfs_handler.get_resource_by_id(id)
+            server_name = vnfs_dict.get("name")
+            server_uuid = vnfs_dict.get("uuid")
+            
+            # Stop and remove the runtime server
+            try:
+                vnfs_server_manager.remove_server(
+                    server_name or "",
+                    server_uuid or ""
+                )
+                logger.info(f"Stopped runtime server: {server_name}_{server_uuid}")
+            except Exception as e:
+                logger.warning(f"Could not stop runtime server: {e}")
 
+            # Delete persistent data using ResourceHandler
+            vnfs_handler.delete_resource_by_id(id)
+
+            # Delete the description (indexed by UUID)
             if vnfs_descriptions:
                 try:
-                    vnfs_descriptions.delete_description(name)
+                    vnfs_descriptions.delete_description(server_uuid or "")
+                    logger.info(f"vNFS server description deleted for UUID: {server_uuid}")
                 except Exception as exc:
                     logger.warning(
-                        f"Could not delete vnfs description for '{name}': {exc}"
+                        f"Could not delete vnfs description for UUID '{server_uuid}': {exc}"
                     )
 
-            return {"message": f"vNFS server '{name}' deleted successfully."}
+            logger.info(f"vNFS server '{id}' deleted successfully")
+            return {"message": f"vNFS server '{id}' deleted successfully."}
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error(f"Error deleting vnfs server '{name}': {exc}")
+            logger.error(f"Error deleting vnfs server '{id}': {exc}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting vNFS server: {exc}"
             )
 
-    @app.put("/vnfs_servers/{name}", tags=[tags])
+    @app.put("/vnfs_servers/{id}", tags=[tags])
     def update_vnfs_server(
-        name: str, vnfs: Annotated[VnfsSchema, Query()], request: Request
+        id: str, vnfs: Annotated[VnfsSchema, Query()], request: Request
     ):
         """Update metadata and restart a vNFS endpoint."""
-        logger.info(f"Request to update vnfs server: {name}")
+        logger.info(f"Request to update vnfs server: {id}")
         update_vnfs_counter.inc()
 
-        vnfs_filename = f"{name}.json"
-        if vnfs_filename not in vnfs_handler.list_files():
-            raise HTTPException(
-                status_code=404, detail=f"vNFS server '{name}' not found."
-            )
-
         try:
+            # Check if vnfs server exists and get current data
+            existing_vnfs = vnfs_handler.get_resource_by_id(id)
+            server_name = existing_vnfs.get("name")
+            server_uuid = existing_vnfs.get("uuid")
+
+            # Update modified timestamp
             vnfs.modified_at = datetime.now(timezone.utc).isoformat()
-            vnfs_server_manager.remove_server(name)
+            
+            # Preserve UUID if not provided in update
+            if not vnfs.uuid:
+                vnfs.uuid = server_uuid
+
+            # Stop the old runtime server
+            try:
+                vnfs_server_manager.remove_server(
+                    server_name or "",
+                    server_uuid or ""
+                )
+                logger.info(f"Stopped old runtime server: {server_name}_{server_uuid}")
+            except Exception as e:
+                logger.warning(f"Could not stop old runtime server: {e}")
+
+            # Start new runtime server
             server = vnfs_server_manager.add_server(vnfs)
             vnfs.port = server.port
 
-            vnfs_handler.write_file_content(
-                vnfs_filename, json.dumps(vnfs.to_dict(), indent=4)
-            )
-
+            # Update persistent data using ResourceHandler
+            vnfs_handler.write_manifest(vnfs.uuid or "", vnfs.to_dict())
+            
+            # Update description indexed by UUID
+            if vnfs_descriptions and vnfs.description and vnfs.uuid:
+                vnfs_descriptions.write_description(vnfs.uuid, vnfs.description)
+                logger.info(f"vNFS server description updated for UUID: {vnfs.uuid}")
+            
+            logger.info(f"vNFS server '{vnfs.name}' updated successfully on port {server.port}")
             return {
-                "message": f"vNFS server '{name}' updated successfully.",
+                "message": f"vNFS server '{vnfs.name}' updated successfully.",
                 "port": server.port,
             }
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error(f"Error updating vnfs server '{name}': {exc}")
+            logger.error(f"Error updating vnfs server '{id}': {exc}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating vNFS server: {exc}"
             )
 
-    @app.post("/vnfs_servers/{name}/start", tags=[tags])
-    def start_vnfs_server(name: str, request: Request):
+    @app.post("/vnfs_servers/{id}/start", tags=[tags])
+    def start_vnfs_server(id: str, request: Request):
         """Start or restart a vNFS endpoint."""
-        logger.info(f"Request to start vnfs server: {name}")
+        logger.info(f"Request to start vnfs server: {id}")
 
         try:
-            existing = vnfs_server_manager.get_server(name)
-            if existing and existing.running:
-                return {
-                    "message": f"vNFS server '{name}' is already running.",
-                    "port": existing.port,
-                }
-
-            content = vnfs_handler.read_file(f"{name}.json", raw_content=True)
-            if not isinstance(content, str):
-                raise HTTPException(status_code=500, detail="Invalid content type")
-            data = json.loads(content)
+            # Get persistent data using ResourceHandler
+            vnfs_data = vnfs_handler.get_resource_by_id(id)
+            server_name = vnfs_data.get("name", "")
+            server_uuid = vnfs_data.get("uuid", "")
+            
+            # Check if server already running
+            try:
+                existing_server = vnfs_server_manager.get_server(server_name, server_uuid)
+                if existing_server and existing_server.running:
+                    return {
+                        "message": f"vNFS server '{server_name}' is already running.",
+                        "port": existing_server.port,
+                    }
+            except Exception:
+                pass  # Server not running, proceed to start it
 
             from skillberry_store.schemas.vnfs_schema import VnfsSchema as _VnfsSchema
 
-            schema = _VnfsSchema.from_dict(data)
+            schema = _VnfsSchema.from_dict(vnfs_data)
             server = vnfs_server_manager.add_server(schema)
 
+            logger.info(f"vNFS server '{server_name}' started successfully on port {server.port}")
             return {
-                "message": f"vNFS server '{name}' started successfully.",
+                "message": f"vNFS server '{server_name}' started successfully.",
                 "port": server.port,
             }
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error(f"Error starting vnfs server '{name}': {exc}")
+            logger.error(f"Error starting vnfs server '{id}': {exc}")
             raise HTTPException(
                 status_code=500, detail=f"Error starting vNFS server: {exc}"
             )
@@ -296,19 +360,18 @@ def register_vnfs_api(
 
             servers_to_filter = []
             for m in filtered:
-                vnfs_name = m.get("filename") or m.get("name")
-                if not vnfs_name:
+                # The filename in matched entity is the UUID (since we index by UUID)
+                vnfs_uuid = m.get("filename") or m.get("name")
+                if not vnfs_uuid:
+                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {m}")
                     continue
                 try:
-                    content = vnfs_handler.read_file(
-                        f"{vnfs_name}.json", raw_content=True
-                    )
-                    if isinstance(content, str):
-                        d = json.loads(content)
-                        d["similarity_score"] = m.get("similarity_score", 0.0)
-                        servers_to_filter.append(d)
+                    # Get resource by UUID using ResourceHandler
+                    vnfs_dict = vnfs_handler.get_resource_by_id(vnfs_uuid)
+                    vnfs_dict["similarity_score"] = m.get("similarity_score", 0.0)
+                    servers_to_filter.append(vnfs_dict)
                 except Exception as exc:
-                    logger.warning(f"Could not load vnfs server '{vnfs_name}': {exc}")
+                    logger.warning(f"Could not load vnfs server with UUID '{vnfs_uuid}': {exc}")
 
             filtered_servers = apply_search_filters(
                 servers_to_filter,
