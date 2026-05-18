@@ -15,7 +15,8 @@ This service implements a smart skills repository for agentic workflows. Manage,
 - **Observability**: Provide metrics and traces for operational and behavioural analysis of tools usage.
 - **OpenAPI frontend**: FastAPI endpoint to interact and manage tools (using tools-manifest artifacts)
 - **CLI Support**: Command-line interface for all API operations.
-- **MCP frontend**: Expose virtual [MCP](https://github.com/modelcontextprotocol)  servers for any subset of the tools or all of them.
+- **MCP frontend**: Expose virtual [MCP](https://github.com/modelcontextprotocol) servers for any subset of the tools or all of them.
+- **NFS/WebDAV frontend**: Expose skills as mountable filesystems (vNFS) over WebDAV or NFSv3 — readable by any tool that can mount a network drive.
 - **Support Multiple MCP backends**: Consume and route additional tools from multiple backend MCP servers.
 - **Agentic Framework Integration**: Connect to different agentic frameworks via the MCP frontend.
 - **MCP control API**: Exposes an MCP server API for each of the available REST operations ( e.g., add tools, semantic search etc.)
@@ -42,7 +43,7 @@ The Skillberry Store now includes a modern web UI that starts automatically with
 - **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs) - OpenAPI/Swagger interface
 
 The Web UI provides:
-- Visual management of Tools, Skills, Snippets, and VMCP Servers
+- Visual management of Tools, Skills, Snippets, VMCP Servers, and vNFS Servers
 - Search and filtering capabilities
 - Tool execution with parameter input
 - Code viewing and editing
@@ -145,6 +146,7 @@ The Skillberry Store includes a modern React-based web interface with:
 - **Skills Management**: Organize tools and snippets into reusable skills
 - **Snippets Management**: Store and manage code snippets with syntax highlighting
 - **VMCP Servers**: Create and manage virtual MCP servers for tool subsets
+- **vNFS Servers**: Expose skills as mountable WebDAV or NFS filesystems
 - **Search & Filter**: Semantic search across all resources
 - **Real-time Updates**: Automatic refresh of data using TanStack Query
 - **Responsive Design**: Built with PatternFly (IBM's design system)
@@ -204,9 +206,75 @@ For detailed CLI documentation, see [docs/cli.md](docs/cli.md).
 Each control API function is available as an MCP tool to be used by agentic AI workflows.  
 To access use an MCP client against `http://127.0.0.1:8000/control_sse` .  
 
+### Virtual MCP Servers (VMCP)
+
+A VMCP server exposes a single skill's tools and snippets as a standalone MCP endpoint.
+Create one via the UI (`Virtual MCP Servers` → `Create VMCP Server`) or the REST API:
+
+```bash
+curl -X POST "http://localhost:8000/vmcp_servers/?name=my-skill&skill_uuid=<uuid>"
+```
+
+Connect an MCP client to `http://localhost:<assigned-port>/sse`.
+
 ### Support Multiple MCP Backends
 
 Follow the steps outlined in [Connecting MCP as a backend](docs/mcp-backend.md).
+
+## Virtual NFS Servers (vNFS) 🗂️
+
+A vNFS server exposes a single skill as a **mountable read-only filesystem** over WebDAV or NFSv3.
+This lets any tool — including Claude Code — read skill files directly via `mount` or `rclone`,
+without going through the REST API.
+
+Create a vNFS server via the UI (`Virtual NFS Servers` → `Create vNFS Server`) or the REST API:
+
+```bash
+# WebDAV (default)
+curl -X POST "http://localhost:8000/vnfs_servers/?name=my-skill&skill_uuid=<uuid>&protocol=webdav"
+
+# NFSv3
+curl -X POST "http://localhost:8000/vnfs_servers/?name=my-skill&skill_uuid=<uuid>&protocol=nfs"
+```
+
+### Mounting — WebDAV
+
+The easiest option is `rclone` (no root required, works on Linux, macOS, WSL2):
+
+```bash
+# Install: brew install rclone  /  apt install rclone  /  dnf install rclone
+rclone mount :webdav: /mnt/skill \
+  --webdav-url=http://localhost:<port>/<skill-name> \
+  --read-only --daemon
+
+# Unmount
+fusermount3 -u /mnt/skill
+```
+
+Alternatively, with `davfs2`:
+
+```bash
+# Install: apt install davfs2  /  dnf install davfs2
+sudo mount -t davfs http://localhost:<port>/<skill-name> /mnt/skill
+
+# Unmount
+sudo umount /mnt/skill
+```
+
+### Mounting — NFSv3
+
+```bash
+# Install: apt install nfs-common  /  dnf install nfs-utils
+sudo mount -t nfs localhost:/ /mnt/skill \
+  -o port=<port>,mountport=<port>,nfsvers=3,proto=tcp,nolock,soft
+
+# Skill files are at /mnt/skill/<skill-name>/
+
+# Unmount
+sudo umount /mnt/skill
+```
+
+The UI `Virtual NFS Servers` detail page shows the exact commands pre-filled with the correct port and skill name.
 
 ## Run SBS with GitHub backend
 

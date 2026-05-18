@@ -112,6 +112,17 @@ export function AppLayout({ children }: AppLayoutProps) {
               Virtual MCP Servers
             </NavItem>
 
+            {/* Virtual NFS Servers */}
+            <NavItem
+              key="vnfs-servers"
+              itemId="vnfs-servers"
+              isActive={location.pathname === '/vnfs-servers' ||
+                       location.pathname.startsWith('/vnfs-servers')}
+              onClick={() => navigate('/vnfs-servers')}
+            >
+              Virtual NFS Servers
+            </NavItem>
+
             <Divider style={{ margin: '0.5rem 0' }} />
 
             {/* Observability */}
