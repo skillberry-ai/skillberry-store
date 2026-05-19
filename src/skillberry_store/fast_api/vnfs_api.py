@@ -141,7 +141,8 @@ def register_vnfs_api(
                     logger.warning(f"Error loading vnfs server '{server_name}': {exc}")
 
             servers_list.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            servers_dict = {s["name"]: s for s in servers_list}
+            # Convert to dict with server UUIDs as keys to avoid duplications
+            servers_dict = {s["uuid"]: s for s in servers_list}
             return {"virtual_nfs_servers": servers_dict}
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")

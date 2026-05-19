@@ -275,8 +275,8 @@ def register_vmcp_api(
             # Sort by modified_at in descending order (most recent first)
             servers_list.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
-            # Convert to dict with server names as keys
-            servers_dict = {server["name"]: server for server in servers_list}
+            # Convert to dict with server UUIDs as keys to avoid duplications
+            servers_dict = {server["uuid"]: server for server in servers_list}
 
             logger.info(f"Listed {len(servers_dict)} vmcp servers")
             return {"virtual_mcp_servers": servers_dict}
