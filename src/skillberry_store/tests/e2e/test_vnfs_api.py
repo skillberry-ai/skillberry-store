@@ -4,23 +4,69 @@ Tests the full lifecycle of VNFS server operations: create, list, get, update, d
 """
 
 import asyncio
+import os
 import pytest
 import httpx
+import logging
 
 from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready
 
 BASE_URL = "http://localhost:8000"
+logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(scope="module")
+def imported_skill_uuid(run_sbs):
+    """
+    Import a sample skill from test resources for VNFS tests.
+    This is a module-scoped fixture to avoid importing the skill for every test.
+    """
+    # Path to the sample skill zip file
+    skill_zip_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "resources",
+        "anthropic",
+        "sample_skill_complex_dep.zip"
+    )
+    
+    # Import the skill using sync httpx client
+    with httpx.Client(timeout=30.0) as client:
+        with open(skill_zip_path, "rb") as f:
+            zip_content = f.read()
+        
+        files = {
+            'zip_file': ('sample_skill_complex_dep.zip', zip_content, 'application/zip')
+        }
+        
+        response = client.post(
+            f"{BASE_URL}/skills/import-anthropic",
+            data={
+                "source_type": "zip",
+                "snippet_mode": "file",
+            },
+            files=files,
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            skill_uuid = data.get("skill_uuid")
+            logger.info(f"Imported skill with UUID: {skill_uuid} for VNFS tests")
+            return skill_uuid
+        else:
+            logger.error(f"Failed to import skill: {response.status_code} - {response.text}")
+            pytest.fail(f"Failed to import prerequisite skill for VNFS tests: {response.text}")
 
 
 @pytest.mark.asyncio
-async def test_create_vnfs_server(run_sbs):
+async def test_create_vnfs_server(run_sbs, imported_skill_uuid):
     """Test creating a new VNFS server."""
     vnfs_data = {
         "name": "test_vnfs_server",
         "description": "A test VNFS server for demonstration",
         "port": 11001,
         "protocol": "webdav",
-        "skill_uuid": "test-skill-uuid-123"
+        "skill_uuid": imported_skill_uuid
     }
 
     async with httpx.AsyncClient() as client:
@@ -39,25 +85,7 @@ async def test_create_vnfs_server(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_create_duplicate_vnfs_server(run_sbs):
-    """Test that creating a duplicate VNFS server with same UUID fails."""
-    vnfs_data = {
-        "name": "test_vnfs_server",
-        "description": "A test VNFS server for demonstration",
-        "port": 11001,
-        "protocol": "webdav",
-        "skill_uuid": "test-skill-uuid-123"
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/vnfs_servers/", params=vnfs_data)
-        # Should fail with 409 Conflict
-        assert response.status_code == 409
-        assert "already exists" in response.json().get("detail", "")
-
-
-@pytest.mark.asyncio
-async def test_list_vnfs_servers(run_sbs):
+async def test_list_vnfs_servers(run_sbs, imported_skill_uuid):
     """Test listing all VNFS servers."""
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/vnfs_servers/")
@@ -66,16 +94,18 @@ async def test_list_vnfs_servers(run_sbs):
         assert isinstance(data, dict)
         assert "virtual_nfs_servers" in data
         vnfs_servers = data["virtual_nfs_servers"]
-        # API returns a dict of server objects keyed by server name
+        # API returns a dict of server objects keyed by UUID
         assert isinstance(vnfs_servers, dict)
         assert len(vnfs_servers) > 0
         
         # Check that our test VNFS server is in the dict keys
-        assert "test_vnfs_server" in vnfs_servers
+        find_name= "test_vnfs_server"
+        matching_name_servers = [s for s in vnfs_servers.values() if s.get("name") == find_name]
+        assert len(matching_name_servers) > 0, f"Server not found with name: {find_name}"
 
 
 @pytest.mark.asyncio
-async def test_get_vnfs_server(run_sbs):
+async def test_get_vnfs_server(run_sbs, imported_skill_uuid):
     """Test getting a specific VNFS server by name."""
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
@@ -92,7 +122,84 @@ async def test_get_vnfs_server(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_get_nonexistent_vnfs_server(run_sbs):
+async def test_create_duplicate_vnfs_server(run_sbs, imported_skill_uuid):
+    """Test that creating a duplicate VNFS server with same UUID fails."""
+    async with httpx.AsyncClient() as client:
+        # First get the existing VNFS server to obtain its UUID
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
+        assert get_response.status_code == 200, "test_vnfs_server should exist from previous test"
+        server_data = get_response.json()
+        existing_uuid = server_data.get("uuid")
+        assert existing_uuid is not None, "Server UUID should be present"
+        
+        # Try to create a new server with the same UUID but different port
+        duplicate_vnfs_data = {
+            "name": "different_name_vnfs_server",
+            "description": "A VNFS server with duplicate UUID",
+            "port": 11002,  # Different port to avoid port conflict
+            "protocol": "webdav",
+            "skill_uuid": imported_skill_uuid,
+            "uuid": existing_uuid  # Using the same UUID
+        }
+        
+        response = await client.post(f"{BASE_URL}/vnfs_servers/", params=duplicate_vnfs_data)
+        # Should fail with 409 Conflict
+        assert response.status_code == 409
+        assert "already exists" in response.json().get("detail", "")
+
+
+@pytest.mark.asyncio
+async def test_create_vnfs_server_same_name_different_uuid(run_sbs, imported_skill_uuid):
+    """Test that creating a VNFS server with same name but different UUID succeeds."""
+    vnfs_data = {
+        "name": "same_name_server",  # Use unique name to avoid conflicts with other tests
+        "description": "First server with this name",
+        "port": 11003,  # Different port
+        "protocol": "webdav",
+        "skill_uuid": imported_skill_uuid
+        # No UUID specified, so a new one will be generated
+    }
+
+    async with httpx.AsyncClient() as client:
+        # Create first server
+        response = await client.post(f"{BASE_URL}/vnfs_servers/", params=vnfs_data)
+        assert response.status_code == 200
+        data = response.json()
+        assert "created successfully" in data.get("message", "")
+        first_uuid = data.get("uuid")
+        assert first_uuid is not None
+        
+        # Create second server with same name but different UUID
+        vnfs_data2 = {
+            "name": "same_name_server",  # Same name
+            "description": "Second server with same name but different UUID",
+            "port": 11004,  # Different port
+            "protocol": "webdav",
+            "skill_uuid": imported_skill_uuid
+            # No UUID specified, so a new one will be generated
+        }
+        response2 = await client.post(f"{BASE_URL}/vnfs_servers/", params=vnfs_data2)
+        assert response2.status_code == 200
+        data2 = response2.json()
+        second_uuid = data2.get("uuid")
+        assert second_uuid is not None
+        assert first_uuid != second_uuid, "UUIDs should be different"
+        
+        # Verify both servers exist
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/")
+        assert get_response.status_code == 200
+        response_data = get_response.json()
+        servers_dict = response_data.get("virtual_nfs_servers", {})
+        same_name_servers = [s for s in servers_dict.values() if s.get("name") == "same_name_server"]
+        assert len(same_name_servers) >= 2, "Should have at least 2 servers with same name"
+        
+        # Clean up both servers
+        await client.delete(f"{BASE_URL}/vnfs_servers/{first_uuid}")
+        await client.delete(f"{BASE_URL}/vnfs_servers/{second_uuid}")
+
+
+@pytest.mark.asyncio
+async def test_get_nonexistent_vnfs_server(run_sbs, imported_skill_uuid):
     """Test that getting a non-existent VNFS server fails."""
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/vnfs_servers/nonexistent_vnfs_server")
@@ -100,14 +207,14 @@ async def test_get_nonexistent_vnfs_server(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_update_vnfs_server(run_sbs):
+async def test_update_vnfs_server(run_sbs, imported_skill_uuid):
     """Test updating an existing VNFS server."""
     updated_data = {
         "name": "test_vnfs_server",
         "description": "Updated test VNFS server description",
         "port": 11002,
         "protocol": "webdav",
-        "skill_uuid": "updated-skill-uuid-456"
+        "skill_uuid": imported_skill_uuid
     }
 
     async with httpx.AsyncClient() as client:
@@ -122,18 +229,18 @@ async def test_update_vnfs_server(run_sbs):
         assert get_response.status_code == 200
         vnfs = get_response.json()
         assert vnfs.get("description") == "Updated test VNFS server description"
-        assert vnfs.get("skill_uuid") == "updated-skill-uuid-456"
+        assert vnfs.get("skill_uuid") == imported_skill_uuid
 
 
 @pytest.mark.asyncio
-async def test_update_nonexistent_vnfs_server(run_sbs):
+async def test_update_nonexistent_vnfs_server(run_sbs, imported_skill_uuid):
     """Test that updating a non-existent VNFS server fails."""
     updated_data = {
         "name": "nonexistent_vnfs_server",
         "description": "This should fail",
         "port": 11003,
         "protocol": "webdav",
-        "skill_uuid": "test-skill-uuid"
+        "skill_uuid": imported_skill_uuid
     }
 
     async with httpx.AsyncClient() as client:
@@ -142,7 +249,7 @@ async def test_update_nonexistent_vnfs_server(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_start_vnfs_server(run_sbs):
+async def test_start_vnfs_server(run_sbs, imported_skill_uuid):
     """Test starting a VNFS server."""
     async with httpx.AsyncClient() as client:
         # First, ensure the server exists
@@ -159,21 +266,36 @@ async def test_start_vnfs_server(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_delete_vnfs_server(run_sbs):
+async def test_delete_vnfs_server(run_sbs, imported_skill_uuid):
     """Test deleting a VNFS server."""
+    # Create a server specifically for deletion test
+    vnfs_data = {
+        "name": "delete_test_server",
+        "description": "Server to be deleted",
+        "port": 11005,
+        "protocol": "webdav",
+        "skill_uuid": imported_skill_uuid
+    }
+    
     async with httpx.AsyncClient() as client:
-        response = await client.delete(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
+        # Create the server
+        create_response = await client.post(f"{BASE_URL}/vnfs_servers/", params=vnfs_data)
+        assert create_response.status_code == 200
+        server_uuid = create_response.json().get("uuid")
+        
+        # Delete it
+        response = await client.delete(f"{BASE_URL}/vnfs_servers/delete_test_server")
         assert response.status_code == 200
         data = response.json()
         assert "deleted successfully" in data.get("message", "")
 
-        # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
+        # Verify deletion by UUID (more reliable than by name)
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{server_uuid}")
         assert get_response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_delete_nonexistent_vnfs_server(run_sbs):
+async def test_delete_nonexistent_vnfs_server(run_sbs, imported_skill_uuid):
     """Test that deleting a non-existent VNFS server fails."""
     async with httpx.AsyncClient() as client:
         response = await client.delete(f"{BASE_URL}/vnfs_servers/nonexistent_vnfs_server")
@@ -181,7 +303,7 @@ async def test_delete_nonexistent_vnfs_server(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_vnfs_server_lifecycle(run_sbs):
+async def test_vnfs_server_lifecycle(run_sbs, imported_skill_uuid):
     """Test the complete lifecycle of a VNFS server: create, read, update, start, delete."""
     vnfs_name = "lifecycle_test_vnfs_server"
     
@@ -200,7 +322,7 @@ async def test_vnfs_server_lifecycle(run_sbs):
             "description": "Lifecycle test VNFS server",
             "port": 11100,
             "protocol": "webdav",
-            "skill_uuid": "lifecycle-skill-uuid"
+            "skill_uuid": imported_skill_uuid
         }
         create_response = await client.post(f"{BASE_URL}/vnfs_servers/", params=create_data)
         assert create_response.status_code == 200
@@ -220,7 +342,7 @@ async def test_vnfs_server_lifecycle(run_sbs):
             "description": "Updated lifecycle test VNFS server",
             "port": 11101,
             "protocol": "webdav",
-            "skill_uuid": "updated-lifecycle-skill-uuid"
+            "skill_uuid": imported_skill_uuid
         }
         update_response = await client.put(f"{BASE_URL}/vnfs_servers/{vnfs_name}", params=update_data)
         assert update_response.status_code == 200
@@ -231,7 +353,7 @@ async def test_vnfs_server_lifecycle(run_sbs):
         assert get_updated_response.status_code == 200
         updated_vnfs = get_updated_response.json()
         assert updated_vnfs.get("description") == "Updated lifecycle test VNFS server"
-        assert updated_vnfs.get("skill_uuid") == "updated-lifecycle-skill-uuid"
+        assert updated_vnfs.get("skill_uuid") == imported_skill_uuid
 
         # 5. Start
         start_response = await client.post(f"{BASE_URL}/vnfs_servers/{vnfs_name}/start")
@@ -248,7 +370,7 @@ async def test_vnfs_server_lifecycle(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_search_vnfs_servers(run_sbs):
+async def test_search_vnfs_servers(run_sbs, imported_skill_uuid):
     """Test searching for VNFS servers using the /search/vnfs_servers endpoint."""
     
     # Create test VNFS servers with different descriptions
@@ -258,21 +380,21 @@ async def test_search_vnfs_servers(run_sbs):
             "description": "A Python NFS server for sharing Python code and scripts with file access capabilities",
             "port": 11020,
             "protocol": "webdav",
-            "skill_uuid": "python-skill-uuid"
+            "skill_uuid": imported_skill_uuid
         },
         {
             "name": "javascript_vnfs_server",
             "description": "JavaScript NFS server for sharing Node.js scripts and handling file transfers",
             "port": 11021,
             "protocol": "webdav",
-            "skill_uuid": "js-skill-uuid"
+            "skill_uuid": imported_skill_uuid
         },
         {
             "name": "database_vnfs_server",
             "description": "Database NFS server for SQL scripts and database backup files with secure access",
             "port": 11022,
             "protocol": "webdav",
-            "skill_uuid": "db-skill-uuid"
+            "skill_uuid": imported_skill_uuid
         }
     ]
     
@@ -350,14 +472,14 @@ async def test_search_vnfs_servers(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_create_vnfs_server_with_nfs_protocol(run_sbs):
+async def test_create_vnfs_server_with_nfs_protocol(run_sbs, imported_skill_uuid):
     """Test creating a VNFS server with NFS protocol."""
     vnfs_data = {
         "name": "test_nfs_protocol_server",
         "description": "A test VNFS server using NFS protocol",
         "port": 11030,
         "protocol": "nfs",
-        "skill_uuid": "nfs-test-skill-uuid"
+        "skill_uuid": imported_skill_uuid
     }
 
     async with httpx.AsyncClient() as client:
@@ -377,9 +499,13 @@ async def test_create_vnfs_server_with_nfs_protocol(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_multiple_vnfs_servers_same_name_different_uuid(run_sbs):
+async def test_multiple_vnfs_servers_same_name_different_uuid(run_sbs, imported_skill_uuid):
     """Test that multiple VNFS servers with the same name but different UUIDs can coexist."""
+    import uuid
+    
     server_name = "duplicate_name_server"
+    uuid1 = str(uuid.uuid4())
+    uuid2 = str(uuid.uuid4())
     
     async with httpx.AsyncClient() as client:
         # Create first server with explicit UUID
@@ -388,14 +514,14 @@ async def test_multiple_vnfs_servers_same_name_different_uuid(run_sbs):
             "description": "First server with this name",
             "port": 11040,
             "protocol": "webdav",
-            "skill_uuid": "skill-uuid-1",
-            "uuid": "uuid-server-1"
+            "skill_uuid": imported_skill_uuid,
+            "uuid": uuid1
         }
         response1 = await client.post(f"{BASE_URL}/vnfs_servers/", params=vnfs_data_1)
         assert response1.status_code == 200
         data1 = response1.json()
-        uuid1 = data1.get("uuid")
-        assert uuid1 == "uuid-server-1"
+        returned_uuid1 = data1.get("uuid")
+        assert returned_uuid1 == uuid1
         
         # Create second server with same name but different UUID
         vnfs_data_2 = {
@@ -403,14 +529,14 @@ async def test_multiple_vnfs_servers_same_name_different_uuid(run_sbs):
             "description": "Second server with this name",
             "port": 11041,
             "protocol": "webdav",
-            "skill_uuid": "skill-uuid-2",
-            "uuid": "uuid-server-2"
+            "skill_uuid": imported_skill_uuid,
+            "uuid": uuid2
         }
         response2 = await client.post(f"{BASE_URL}/vnfs_servers/", params=vnfs_data_2)
         assert response2.status_code == 200
         data2 = response2.json()
-        uuid2 = data2.get("uuid")
-        assert uuid2 == "uuid-server-2"
+        returned_uuid2 = data2.get("uuid")
+        assert returned_uuid2 == uuid2
         
         # Verify both servers exist and can be retrieved by UUID
         get_response1 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid1}")
@@ -431,7 +557,7 @@ async def test_multiple_vnfs_servers_same_name_different_uuid(run_sbs):
 
 
 @pytest.mark.asyncio
-async def test_vnfs_server_webdav_accessibility(run_sbs):
+async def test_vnfs_server_webdav_accessibility(run_sbs, imported_skill_uuid):
     """Test that a VNFS server with WebDAV protocol is accessible."""
     vnfs_name = "webdav_access_test_server"
     
@@ -440,9 +566,9 @@ async def test_vnfs_server_webdav_accessibility(run_sbs):
         vnfs_data = {
             "name": vnfs_name,
             "description": "WebDAV accessibility test server",
-            "port": 11050,
+            "port": 11060,  # Changed from 11050 to avoid port conflicts
             "protocol": "webdav",
-            "skill_uuid": "webdav-test-skill-uuid"
+            "skill_uuid": imported_skill_uuid
         }
         create_response = await client.post(f"{BASE_URL}/vnfs_servers/", params=vnfs_data)
         assert create_response.status_code == 200

@@ -4,6 +4,7 @@ Tests the full lifecycle of VMCP server operations: create, list, get, update, a
 """
 
 import asyncio
+import uuid
 import pytest
 import httpx
 
@@ -69,12 +70,13 @@ async def test_list_vmcp_servers(run_sbs):
         assert isinstance(data, dict)
         assert "virtual_mcp_servers" in data
         vmcp_servers = data["virtual_mcp_servers"]
-        # API returns a dict of server objects keyed by server name
+        # API returns a dict of server objects keyed by UUID
         assert isinstance(vmcp_servers, dict)
         assert len(vmcp_servers) > 0
         
-        # Check that our test VMCP server is in the dict keys
-        assert "test_vmcp_server" in vmcp_servers
+        # Check that our test VMCP server exists by checking server names in values
+        server_names = [server.get("name") for server in vmcp_servers.values()]
+        assert "test_vmcp_server" in server_names
 
 
 @pytest.mark.asyncio
@@ -341,11 +343,15 @@ async def test_multiple_vmcp_servers_same_name_different_uuid(run_sbs):
     """Test that multiple VMCP servers with the same name but different UUIDs can coexist."""
     server_name = "duplicate_name_vmcp_server"
     
+    # Generate proper UUIDs
+    uuid1 = str(uuid.uuid4())
+    uuid2 = str(uuid.uuid4())
+    
     async with httpx.AsyncClient() as client:
         # Clean up any existing servers with these UUIDs
-        for uuid in ["uuid-vmcp-1", "uuid-vmcp-2"]:
+        for test_uuid in [uuid1, uuid2]:
             try:
-                await client.delete(f"{BASE_URL}/vmcp_servers/{uuid}")
+                await client.delete(f"{BASE_URL}/vmcp_servers/{test_uuid}")
                 await asyncio.sleep(0.5)
             except:
                 pass
@@ -358,13 +364,13 @@ async def test_multiple_vmcp_servers_same_name_different_uuid(run_sbs):
             "skill.name": "skill_1",
             "skill.description": "First skill",
             "skill.tool_uuids": ["tool1"],
-            "uuid": "uuid-vmcp-1"
+            "uuid": uuid1
         }
         response1 = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data_1)
         assert response1.status_code == 200
         data1 = response1.json()
-        uuid1 = data1.get("uuid")
-        assert uuid1 == "uuid-vmcp-1"
+        returned_uuid1 = data1.get("uuid")
+        assert returned_uuid1 == uuid1
         
         # Create second server with same name but different UUID
         vmcp_data_2 = {
@@ -374,13 +380,13 @@ async def test_multiple_vmcp_servers_same_name_different_uuid(run_sbs):
             "skill.name": "skill_2",
             "skill.description": "Second skill",
             "skill.tool_uuids": ["tool2"],
-            "uuid": "uuid-vmcp-2"
+            "uuid": uuid2
         }
         response2 = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data_2)
         assert response2.status_code == 200
         data2 = response2.json()
-        uuid2 = data2.get("uuid")
-        assert uuid2 == "uuid-vmcp-2"
+        returned_uuid2 = data2.get("uuid")
+        assert returned_uuid2 == uuid2
         
         # Verify both servers exist and can be retrieved by UUID
         get_response1 = await client.get(f"{BASE_URL}/vmcp_servers/{uuid1}")
@@ -400,9 +406,12 @@ async def test_multiple_vmcp_servers_same_name_different_uuid(run_sbs):
         assert list_response.status_code == 200
         servers = list_response.json().get("virtual_mcp_servers", {})
         
-        # Both servers should be accessible (though they share a name, they have different UUIDs)
-        # The list API returns servers keyed by name, so only one will be visible by name
-        # But both should be retrievable by UUID
+        # Both servers should be accessible (they share a name but have different UUIDs)
+        # The list API returns servers keyed by UUID, so both are visible in the dict
+        same_name_servers = [s for s in servers.values() if s.get("name") == server_name]
+        assert len(same_name_servers) >= 2, "Should have at least 2 servers with same name"
+        
+        # Both should be retrievable by UUID
         assert get_response1.status_code == 200
         assert get_response2.status_code == 200
         
