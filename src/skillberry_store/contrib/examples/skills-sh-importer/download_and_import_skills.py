@@ -79,6 +79,18 @@ class SkillsImporter:
         self.import_results = []
         self.benchmark_data = []  # Benchmark data for each import
         
+        # Set default for max_skills based on mode
+        if args.max_skills is None:
+            if args.import_only:
+                # Import-only mode: no limit (import all discovered skills)
+                self.max_skills = None
+            else:
+                # Clone-only or full mode: default to 10
+                self.max_skills = 10
+        else:
+            # User explicitly specified max_skills
+            self.max_skills = args.max_skills
+        
         # Configure logging to write to timestamped output directory
         log_file = self.output_dir / 'import-skills.log'
         logging.basicConfig(
@@ -94,7 +106,7 @@ class SkillsImporter:
         logger.info(f"Initialized SkillsImporter")
         logger.info(f"Skills directory: {self.repos_dir}")
         logger.info(f"Output directory: {self.output_dir}")
-        logger.info(f"Max skills: {args.max_skills}")
+        logger.info(f"Max skills: {self.max_skills if self.max_skills is not None else 'unlimited'}")
         logger.info(f"SBS URL: {args.sbs_url}")
     
     # ========== PHASE 1: Extract Repository URLs ==========
@@ -156,7 +168,7 @@ class SkillsImporter:
                 logger.info(f"  {i}. {repo['source']} -> {repo['repo_name']}")
             
             logger.info(f"\nTotal: {len(repos)} unique repositories")
-            logger.info(f"Phase 2 will clone repos until finding {self.args.max_skills} actual skills (subfolders with SKILL.md)")
+            logger.info(f"Phase 2 will clone repos until finding {self.max_skills if self.max_skills is not None else 'all available'} actual skills (subfolders with SKILL.md)")
             
             self.metadata = repos
             return repos
@@ -203,8 +215,11 @@ class SkillsImporter:
         logger.info("\n" + "=" * 60)
         logger.info("PHASE 2: Cloning repositories to find skills")
         logger.info("=" * 60)
-        logger.info(f"Target: {self.args.max_skills} skills")
+        logger.info(f"Target: {self.max_skills} skills")
         logger.info(f"Strategy: Clone repos by popularity, count /skills/ subfolders with SKILL.md")
+        
+        # In clone mode, max_skills is always set (never None)
+        assert self.max_skills is not None, "max_skills should be set in clone mode"
         
         cloned_repos = []
         skipped_repos = []
@@ -214,8 +229,8 @@ class SkillsImporter:
         
         for i, repo_meta in enumerate(metadata, 1):
             # Stop if we've found enough skills
-            if total_skills_found >= self.args.max_skills:
-                logger.info(f"\n✓ Reached target of {self.args.max_skills} skills!")
+            if total_skills_found >= self.max_skills:
+                logger.info(f"\n✓ Reached target of {self.max_skills} skills!")
                 logger.info(f"  Processed {repos_processed} repositories")
                 break
             
@@ -277,7 +292,7 @@ class SkillsImporter:
                 # Found skills!
                 total_skills_found += skill_count
                 logger.info(f"  ✓ Found {skill_count} skill(s) in /skills/ folder")
-                logger.info(f"  Progress: {total_skills_found}/{self.args.max_skills} skills found")
+                logger.info(f"  Progress: {total_skills_found}/{self.max_skills} skills found")
                 
                 cloned_repos.append({
                     'source': source,
@@ -313,7 +328,7 @@ class SkillsImporter:
                 'repos_skipped': len(skipped_repos),
                 'repos_failed': len(failed_repos),
                 'total_skills_found': total_skills_found,
-                'target_skills': self.args.max_skills
+                'target_skills': self.max_skills
             }
         }
         
@@ -327,7 +342,7 @@ class SkillsImporter:
         logger.info(f"  Repositories with skills: {len(cloned_repos)}")
         logger.info(f"  Repositories skipped (no skills): {len(skipped_repos)}")
         logger.info(f"  Repositories failed: {len(failed_repos)}")
-        logger.info(f"  Total skills found: {total_skills_found}/{self.args.max_skills}")
+        logger.info(f"  Total skills found: {total_skills_found}/{self.max_skills}")
         logger.info(f"  Results saved to: {results_file}")
         logger.info(f"{'='*60}")
         
@@ -811,7 +826,7 @@ class SkillsImporter:
         report = {
             'execution_time': datetime.now(timezone.utc).isoformat(),
             'configuration': {
-                'max_skills': self.args.max_skills,
+                'max_skills': self.max_skills,
                 'sbs_url': self.args.sbs_url,
                 'clone_depth': self.args.clone_depth,
                 'skills_dir': str(self.repos_dir),
@@ -821,7 +836,7 @@ class SkillsImporter:
             },
             'phase_1_extract': {
                 'total_repositories_found': len(self.metadata),
-                'target_skills': self.args.max_skills
+                'target_skills': self.max_skills
             },
             'phase_2_clone': {
                 'repositories_cloned': len(self.cloned_repos),
@@ -953,12 +968,14 @@ class SkillsImporter:
                 logger.error("No skills discovered. Aborting.")
                 return
             
-            # Apply max-skills limit if specified in import-only mode
-            if self.args.import_only and self.args.max_skills:
-                if len(discovered) > self.args.max_skills:
-                    logger.info(f"\nApplying --max-skills limit: {self.args.max_skills}")
-                    logger.info(f"Discovered {len(discovered)} skills, will import first {self.args.max_skills}")
-                    discovered = discovered[:self.args.max_skills]
+            # Apply max-skills limit if set (in import-only mode, it may be None for unlimited)
+            if self.max_skills is not None:
+                if len(discovered) > self.max_skills:
+                    logger.info(f"\nApplying --max-skills limit: {self.max_skills}")
+                    logger.info(f"Discovered {len(discovered)} skills, will import first {self.max_skills}")
+                    discovered = discovered[:self.max_skills]
+            else:
+                logger.info(f"\nNo max-skills limit set, will import all {len(discovered)} discovered skills")
             
             # Phase 4: Import via Anthropic API
             results = self.import_skills_via_api(discovered)
@@ -989,8 +1006,8 @@ def parse_arguments():
     parser.add_argument(
         '--max-skills',
         type=int,
-        default=10,
-        help='Maximum number of skills to import (default: 10)'
+        default=None,
+        help='Maximum number of skills to import (default: 10 for clone/full mode, unlimited for import-only mode)'
     )
     
     parser.add_argument(

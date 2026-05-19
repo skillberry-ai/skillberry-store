@@ -79,7 +79,7 @@ python3 download_and_import_skills.py \
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--max-skills` | 10 | Target number of skills (may exceed if last repo has multiple skills) |
+| `--max-skills` | 10 (clone/full mode), unlimited (import-only mode) | Target number of skills (may exceed if last repo has multiple skills in clone mode) |
 | `--sbs-url` | http://localhost:8000 | Skillberry Store URL |
 | `--skills-url` | https://skills.sh | Skills.sh marketplace URL |
 | `--clone-depth` | 1 | Git clone depth (1 = shallow clone) |
@@ -87,7 +87,7 @@ python3 download_and_import_skills.py \
 | `--skills-dir` | `<temp>/skills-sh-repos` | Directory for cloned skill repositories (absolute or relative path) |
 | `--output-dir` | `.` (current directory) | Directory for output files (absolute or relative path). A timestamped subdirectory is created for each run |
 | `--clone-only` | false | Only clone repositories, skip phases 3-6 |
-| `--import-only` | false | Skip phases 1-2, use existing skills from skills-dir. If --max-skills specified, import up to that limit; otherwise import all |
+| `--import-only` | false | Skip phases 1-2, use existing skills from skills-dir. If --max-skills not specified, imports all discovered skills; if specified, imports up to that limit |
 
 **Note on directories:**
 - **--skills-dir**: Where skill repositories are cloned
