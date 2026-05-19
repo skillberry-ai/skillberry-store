@@ -18,6 +18,7 @@ import argparse
 import json
 import logging
 import re
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -28,15 +29,7 @@ from typing import List, Dict, Any
 
 import requests
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('import-skills.log'),
-        logging.StreamHandler()
-    ]
-)
+# Logging will be configured after output_dir is created in __init__
 logger = logging.getLogger(__name__)
 
 
@@ -47,13 +40,14 @@ class SkillsImporter:
         self.args = args
         self.script_dir = Path(__file__).parent
         
-        # Determine output directory
-        if args.output_dir:
-            # User specified a directory - must be absolute
-            output_path = Path(args.output_dir)
-            if not output_path.is_absolute():
-                raise ValueError(f"--output-dir must be an absolute path, got: {args.output_dir}")
-            self.repos_dir = output_path
+        # Determine skills directory (where repos are cloned)
+        if args.skills_dir:
+            # User specified a directory - can be relative or absolute
+            skills_path = Path(args.skills_dir)
+            if not skills_path.is_absolute():
+                # Relative to current working directory
+                skills_path = Path.cwd() / skills_path
+            self.repos_dir = skills_path
         else:
             # Default: use system temp directory
             temp_dir = Path(tempfile.gettempdir())
@@ -61,14 +55,45 @@ class SkillsImporter:
         
         self.repos_dir.mkdir(parents=True, exist_ok=True)
         
+        # Determine output directory (where result files are saved)
+        if args.output_dir:
+            # User specified a directory - can be relative or absolute
+            output_path = Path(args.output_dir)
+            if not output_path.is_absolute():
+                # Relative to current working directory
+                output_path = Path.cwd() / output_path
+            output_base = output_path
+        else:
+            # Default: current working directory
+            output_base = Path.cwd()
+        
+        # Create timestamped subdirectory for this run
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.output_dir = output_base / timestamp
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
         self.metadata = []
         self.cloned_repos = []
         self.discovered_skills = []
         self.transformed_skills = []
         self.import_results = []
+        self.benchmark_data = []  # Benchmark data for each import
+        
+        # Configure logging to write to timestamped output directory
+        log_file = self.output_dir / 'import-skills.log'
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()
+            ],
+            force=True  # Reconfigure if already configured
+        )
         
         logger.info(f"Initialized SkillsImporter")
-        logger.info(f"Output directory: {self.repos_dir}")
+        logger.info(f"Skills directory: {self.repos_dir}")
+        logger.info(f"Output directory: {self.output_dir}")
         logger.info(f"Max skills: {args.max_skills}")
         logger.info(f"SBS URL: {args.sbs_url}")
     
@@ -292,7 +317,7 @@ class SkillsImporter:
             }
         }
         
-        results_file = self.script_dir / 'clone-results.json'
+        results_file = self.output_dir / 'clone-results.json'
         with open(results_file, 'w') as f:
             json.dump(clone_results, f, indent=2)
         
@@ -310,6 +335,60 @@ class SkillsImporter:
         return cloned_repos
     
     # ========== PHASE 3: Auto-discover Skills ==========
+    
+    def scan_existing_repos(self) -> List[Dict[str, Any]]:
+        """
+        Scan output directory for existing cloned repositories.
+        Used by --import-only mode to skip phases 1-2.
+        
+        Returns:
+            List of repository info dictionaries similar to clone_repositories output
+        """
+        logger.info("\n" + "=" * 60)
+        logger.info("IMPORT-ONLY MODE: Scanning existing repositories")
+        logger.info("=" * 60)
+        logger.info(f"Scanning directory: {self.repos_dir}")
+        
+        if not self.repos_dir.exists():
+            logger.error(f"Output directory does not exist: {self.repos_dir}")
+            return []
+        
+        cloned_repos = []
+        
+        # Scan for directories that look like cloned repos
+        for repo_dir in self.repos_dir.iterdir():
+            if not repo_dir.is_dir():
+                continue
+            
+            # Check if it has a /skills/ directory
+            skills_dir = repo_dir / 'skills'
+            if not skills_dir.exists() or not skills_dir.is_dir():
+                logger.debug(f"  Skipping {repo_dir.name} (no /skills/ directory)")
+                continue
+            
+            # Count skills in this repo
+            skill_count = self.count_skills_in_repo(repo_dir)
+            
+            if skill_count == 0:
+                logger.debug(f"  Skipping {repo_dir.name} (no SKILL.md files)")
+                continue
+            
+            logger.info(f"  Found: {repo_dir.name} with {skill_count} skill(s)")
+            
+            cloned_repos.append({
+                'source': 'unknown',  # We don't know the original source
+                'repo_name': repo_dir.name,
+                'repo_path': str(repo_dir),
+                'skills_count': skill_count,
+                'already_existed': True,
+            })
+        
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Found {len(cloned_repos)} repositories with skills")
+        logger.info(f"Total skills available: {sum(r['skills_count'] for r in cloned_repos)}")
+        logger.info(f"{'='*60}")
+        
+        return cloned_repos
     
     def discover_skills(self, cloned_repos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -393,7 +472,7 @@ class SkillsImporter:
         logger.info(f"{'='*60}")
         
         # Save discovered skills
-        discovered_file = self.script_dir / 'discovered-skills.json'
+        discovered_file = self.output_dir / 'discovered-skills.json'
         with open(discovered_file, 'w') as f:
             json.dump(discovered, f, indent=2)
         logger.info(f"Saved to {discovered_file}")
@@ -402,6 +481,53 @@ class SkillsImporter:
         return discovered
     
     # ========== PHASE 4: Import via Anthropic API ==========
+    
+    def collect_skill_metadata(self, skill_folder_path: Path) -> Dict[str, Any]:
+        """
+        Collect metadata about a skill folder for benchmarking.
+        
+        Args:
+            skill_folder_path: Path to the skill folder
+            
+        Returns:
+            Dictionary with:
+            - total_size_kb: Total size of all files in KB
+            - file_count: Total number of files
+            - tool_count: Number of Python scripts in /scripts/ folder
+            - snippet_count: Number of .md files (INCLUDING SKILL.md)
+        """
+        total_size = 0
+        file_count = 0
+        tool_count = 0
+        snippet_count = 0
+        
+        try:
+            # Walk through all files in the skill folder
+            for file_path in skill_folder_path.rglob('*'):
+                if file_path.is_file():
+                    file_count += 1
+                    total_size += file_path.stat().st_size
+                    
+                    # Count tools (Python scripts in /scripts/ folder)
+                    if file_path.suffix == '.py' and 'scripts' in file_path.parts:
+                        tool_count += 1
+                    
+                    # Count snippets (all .md files, INCLUDING SKILL.md)
+                    if file_path.suffix == '.md':
+                        snippet_count += 1
+            
+            total_size_kb = total_size / 1024.0
+            
+        except Exception as e:
+            logger.warning(f"Error collecting metadata for {skill_folder_path}: {e}")
+            total_size_kb = 0.0
+        
+        return {
+            'total_size_kb': round(total_size_kb, 2),
+            'file_count': file_count,
+            'tool_count': tool_count,
+            'snippet_count': snippet_count
+        }
     
     def import_skills_via_api(self, discovered_skills: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -436,6 +562,12 @@ class SkillsImporter:
             logger.info(f"\n[{i}/{len(discovered_skills)}] Importing {skill_name}...")
             logger.info(f"  Folder: {skill_folder_path}")
             
+            # Collect skill metadata for benchmarking
+            metadata = self.collect_skill_metadata(Path(skill_folder_path))
+            
+            # Start timing the import
+            start_time = time.time()
+            
             try:
                 # Use the Anthropic import API endpoint
                 url = f"{self.args.sbs_url}/skills/import-anthropic"
@@ -453,9 +585,12 @@ class SkillsImporter:
                     timeout=self.args.timeout
                 )
                 
+                # Calculate import duration
+                import_duration = time.time() - start_time
+                
                 if response.status_code == 200:
                     result = response.json()
-                    logger.info(f"  ✓ Successfully imported")
+                    logger.info(f"  ✓ Successfully imported in {import_duration:.2f}s")
                     logger.info(f"    Skill: {result.get('skill_name', 'N/A')}")
                     logger.info(f"    Tools: {result.get('tools_created', 0)}")
                     logger.info(f"    Snippets: {result.get('snippets_created', 0)}")
@@ -465,8 +600,20 @@ class SkillsImporter:
                         'status': 'success',
                         'response': result
                     })
+                    
+                    # Store benchmark data only for successful imports
+                    self.benchmark_data.append({
+                        'skill_name': skill_name,
+                        'import_duration_seconds': round(import_duration, 3),
+                        'total_size_kb': metadata['total_size_kb'],
+                        'file_count': metadata['file_count'],
+                        'tool_count': metadata['tool_count'],
+                        'snippet_count': metadata['snippet_count'],
+                        'status': 'success',
+                        'folder_path': skill_folder_path
+                    })
                 else:
-                    logger.error(f"  ✗ Failed: {response.status_code} - {response.text}")
+                    logger.error(f"  ✗ Failed in {import_duration:.2f}s: {response.status_code} - {response.text}")
                     failed += 1
                     results.append({
                         'skill': skill_name,
@@ -476,7 +623,8 @@ class SkillsImporter:
                     })
                     
             except Exception as e:
-                logger.error(f"  ✗ Error: {e}")
+                import_duration = time.time() - start_time
+                logger.error(f"  ✗ Error after {import_duration:.2f}s: {e}")
                 failed += 1
                 results.append({
                     'skill': skill_name,
@@ -493,7 +641,7 @@ class SkillsImporter:
         logger.info(f"{'='*60}")
         
         # Save results
-        import_file = self.script_dir / 'import-results.json'
+        import_file = self.output_dir / 'import-results.json'
         with open(import_file, 'w') as f:
             json.dump({
                 'results': results,
@@ -551,7 +699,7 @@ class SkillsImporter:
             logger.error(f"  ✗ Validation error: {e}")
         
         # Save validation report
-        validation_file = self.script_dir / 'validation-report.json'
+        validation_file = self.output_dir / 'validation-report.json'
         with open(validation_file, 'w') as f:
             json.dump(validation, f, indent=2)
         
@@ -559,11 +707,96 @@ class SkillsImporter:
         
         return validation
     
-    # ========== PHASE 7: Documentation ==========
+    # ========== Benchmark Statistics ==========
+    
+    def calculate_benchmark_statistics(self) -> Dict[str, Any]:
+        """
+        Calculate comprehensive benchmark statistics from collected data.
+        
+        Returns:
+            Dictionary with benchmark statistics including:
+            - Total import time
+            - Average, median, stdev of import times
+            - Min/max import times with skill details
+            - Import speed metrics (KB/sec, skills/sec, objects/sec)
+        """
+        if not self.benchmark_data:
+            return {
+                'has_data': False,
+                'message': 'No benchmark data available'
+            }
+        
+        # Extract successful imports only
+        successful_benchmarks = [b for b in self.benchmark_data if b['status'] == 'success']
+        
+        if not successful_benchmarks:
+            return {
+                'has_data': False,
+                'message': 'No successful imports to benchmark'
+            }
+        
+        # Calculate timing statistics
+        durations = [b['import_duration_seconds'] for b in successful_benchmarks]
+        total_time = sum(durations)
+        avg_time = statistics.mean(durations)
+        median_time = statistics.median(durations)
+        stdev_time = statistics.stdev(durations) if len(durations) > 1 else 0.0
+        
+        # Find min and max
+        min_benchmark = min(successful_benchmarks, key=lambda x: x['import_duration_seconds'])
+        max_benchmark = max(successful_benchmarks, key=lambda x: x['import_duration_seconds'])
+        
+        # Calculate totals for throughput metrics
+        total_skills = len(successful_benchmarks)
+        total_size_kb = sum(b['total_size_kb'] for b in successful_benchmarks)
+        total_tools = sum(b['tool_count'] for b in successful_benchmarks)
+        total_snippets = sum(b['snippet_count'] for b in successful_benchmarks)
+        total_objects = total_skills + total_tools + total_snippets
+        
+        # Calculate throughput metrics
+        kb_per_sec = total_size_kb / total_time if total_time > 0 else 0.0
+        skills_per_sec = total_skills / total_time if total_time > 0 else 0.0
+        objects_per_sec = total_objects / total_time if total_time > 0 else 0.0
+        
+        return {
+            'has_data': True,
+            'total_imports': total_skills,
+            'total_time_seconds': round(total_time, 2),
+            'average_time_seconds': round(avg_time, 3),
+            'median_time_seconds': round(median_time, 3),
+            'stdev_time_seconds': round(stdev_time, 3),
+            'min_import': {
+                'time_seconds': round(min_benchmark['import_duration_seconds'], 3),
+                'skill_name': min_benchmark['skill_name'],
+                'size_kb': min_benchmark['total_size_kb'],
+                'file_count': min_benchmark['file_count'],
+                'tool_count': min_benchmark['tool_count'],
+                'snippet_count': min_benchmark['snippet_count']
+            },
+            'max_import': {
+                'time_seconds': round(max_benchmark['import_duration_seconds'], 3),
+                'skill_name': max_benchmark['skill_name'],
+                'size_kb': max_benchmark['total_size_kb'],
+                'file_count': max_benchmark['file_count'],
+                'tool_count': max_benchmark['tool_count'],
+                'snippet_count': max_benchmark['snippet_count']
+            },
+            'throughput': {
+                'kb_per_sec': round(kb_per_sec, 2),
+                'skills_per_sec': round(skills_per_sec, 2),
+                'objects_per_sec': round(objects_per_sec, 2),
+                'total_size_kb': round(total_size_kb, 2),
+                'total_tools': total_tools,
+                'total_snippets': total_snippets,
+                'total_objects': total_objects
+            }
+        }
+    
+    # ========== PHASE 6: Documentation ==========
     
     def generate_final_report(self, validation: Dict[str, Any]):
         """
-        Phase 7: Generate final documentation and report
+        Phase 6: Generate final documentation and report
         
         Args:
             validation: Validation results
@@ -572,12 +805,19 @@ class SkillsImporter:
         logger.info("PHASE 6: Generating final report")
         logger.info("=" * 60)
         
+        # Calculate benchmark statistics
+        benchmark_stats = self.calculate_benchmark_statistics()
+        
         report = {
             'execution_time': datetime.now(timezone.utc).isoformat(),
             'configuration': {
                 'max_skills': self.args.max_skills,
                 'sbs_url': self.args.sbs_url,
-                'clone_depth': self.args.clone_depth
+                'clone_depth': self.args.clone_depth,
+                'skills_dir': str(self.repos_dir),
+                'output_dir': str(self.output_dir),
+                'clone_only_mode': self.args.clone_only,
+                'import_only_mode': self.args.import_only
             },
             'phase_1_extract': {
                 'total_repositories_found': len(self.metadata),
@@ -594,14 +834,25 @@ class SkillsImporter:
                 'successful': sum(1 for r in self.import_results if r['status'] == 'success'),
                 'failed': sum(1 for r in self.import_results if r['status'] != 'success')
             },
+            'phase_4_benchmarks': benchmark_stats,
             'phase_5_validation': validation,
             'success': validation.get('api_check', False)
         }
         
         # Save final report
-        report_file = self.script_dir / 'final-report.json'
+        report_file = self.output_dir / 'final-report.json'
         with open(report_file, 'w') as f:
             json.dump(report, f, indent=2)
+        
+        # Save benchmark data separately
+        if self.benchmark_data:
+            benchmark_file = self.output_dir / 'benchmark-results.json'
+            with open(benchmark_file, 'w') as f:
+                json.dump({
+                    'benchmarks': self.benchmark_data,
+                    'statistics': benchmark_stats
+                }, f, indent=2)
+            logger.info(f"Benchmark data saved to: {benchmark_file}")
         
         logger.info(f"\n{'='*60}")
         logger.info("FINAL REPORT")
@@ -614,6 +865,38 @@ class SkillsImporter:
         logger.info(f"Import failures: {report['phase_4_import']['failed']}")
         logger.info(f"Validation: {'✓ PASSED' if report['success'] else '✗ FAILED'}")
         logger.info(f"{'='*60}")
+        
+        # Display benchmark results
+        if benchmark_stats.get('has_data'):
+            logger.info(f"\n{'='*60}")
+            logger.info("BENCHMARK RESULTS")
+            logger.info(f"{'='*60}")
+            logger.info(f"Total import time: {benchmark_stats['total_time_seconds']} seconds")
+            logger.info(f"Average import time: {benchmark_stats['average_time_seconds']} seconds")
+            logger.info(f"Median import time: {benchmark_stats['median_time_seconds']} seconds")
+            logger.info(f"Std deviation: {benchmark_stats['stdev_time_seconds']} seconds")
+            logger.info(f"")
+            
+            min_imp = benchmark_stats['min_import']
+            logger.info(f"Fastest import: {min_imp['time_seconds']}s - {min_imp['skill_name']}")
+            logger.info(f"  ({min_imp['size_kb']} KB, {min_imp['file_count']} files, "
+                       f"{min_imp['tool_count']} tools, {min_imp['snippet_count']} snippets)")
+            
+            max_imp = benchmark_stats['max_import']
+            logger.info(f"Slowest import: {max_imp['time_seconds']}s - {max_imp['skill_name']}")
+            logger.info(f"  ({max_imp['size_kb']} KB, {max_imp['file_count']} files, "
+                       f"{max_imp['tool_count']} tools, {max_imp['snippet_count']} snippets)")
+            
+            logger.info(f"")
+            throughput = benchmark_stats['throughput']
+            logger.info(f"Import throughput:")
+            logger.info(f"  - {throughput['kb_per_sec']} KB/sec")
+            logger.info(f"  - {throughput['skills_per_sec']} skills/sec")
+            logger.info(f"  - {throughput['objects_per_sec']} objects/sec "
+                       f"({throughput['total_objects']} total: {benchmark_stats['total_imports']} skills + "
+                       f"{throughput['total_tools']} tools + {throughput['total_snippets']} snippets)")
+            logger.info(f"{'='*60}")
+        
         logger.info(f"\nFull report saved to: {report_file}")
     
     # ========== Main Execution ==========
@@ -623,33 +906,59 @@ class SkillsImporter:
         start_time = time.time()
         
         try:
-            # Phase 1: Extract metadata
-            metadata = self.extract_skills_metadata()
-            if not metadata:
-                logger.error("Failed to extract metadata. Aborting.")
+            # Check for mutually exclusive modes
+            if self.args.clone_only and self.args.import_only:
+                logger.error("Cannot use --clone-only and --import-only together")
                 return
             
-            # Phase 2: Clone repositories
-            cloned = self.clone_repositories(metadata)
-            if not cloned:
-                logger.error("No repositories cloned. Aborting.")
-                return
-            
-            # If clone-only mode, stop here
-            if self.args.clone_only:
+            # Import-only mode: skip phases 1-2
+            if self.args.import_only:
                 logger.info("\n" + "="*60)
-                logger.info("CLONE-ONLY MODE: Stopping after Phase 2")
+                logger.info("IMPORT-ONLY MODE: Using existing repositories")
                 logger.info("="*60)
-                logger.info(f"Cloned {len(cloned)} repositories to {self.repos_dir}")
-                elapsed = time.time() - start_time
-                logger.info(f"Total execution time: {elapsed:.2f} seconds")
-                return
+                
+                # Scan existing repos instead of cloning
+                cloned = self.scan_existing_repos()
+                if not cloned:
+                    logger.error("No existing repositories found. Aborting.")
+                    return
+                
+                # Continue to Phase 3
+            else:
+                # Normal mode: Phase 1: Extract metadata
+                metadata = self.extract_skills_metadata()
+                if not metadata:
+                    logger.error("Failed to extract metadata. Aborting.")
+                    return
+                
+                # Phase 2: Clone repositories
+                cloned = self.clone_repositories(metadata)
+                if not cloned:
+                    logger.error("No repositories cloned. Aborting.")
+                    return
+                
+                # If clone-only mode, stop here
+                if self.args.clone_only:
+                    logger.info("\n" + "="*60)
+                    logger.info("CLONE-ONLY MODE: Stopping after Phase 2")
+                    logger.info("="*60)
+                    logger.info(f"Cloned {len(cloned)} repositories to {self.repos_dir}")
+                    elapsed = time.time() - start_time
+                    logger.info(f"Total execution time: {elapsed:.2f} seconds")
+                    return
             
             # Phase 3: Discover skills
             discovered = self.discover_skills(cloned)
             if not discovered:
                 logger.error("No skills discovered. Aborting.")
                 return
+            
+            # Apply max-skills limit if specified in import-only mode
+            if self.args.import_only and self.args.max_skills:
+                if len(discovered) > self.args.max_skills:
+                    logger.info(f"\nApplying --max-skills limit: {self.args.max_skills}")
+                    logger.info(f"Discovered {len(discovered)} skills, will import first {self.args.max_skills}")
+                    discovered = discovered[:self.args.max_skills]
             
             # Phase 4: Import via Anthropic API
             results = self.import_skills_via_api(discovered)
@@ -713,16 +1022,29 @@ def parse_arguments():
     )
     
     parser.add_argument(
+        '--skills-dir',
+        type=str,
+        default=None,
+        help='Directory for cloned skill repositories (absolute or relative path). Default: <system-temp>/skills-sh-repos'
+    )
+    
+    parser.add_argument(
         '--output-dir',
         type=str,
         default=None,
-        help='Output directory for cloned repos (must be absolute path). Default: <system-temp>/skills-sh-repos'
+        help='Directory for output files (absolute or relative path). A timestamped subdirectory will be created for each run. Default: current directory'
     )
     
     parser.add_argument(
         '--clone-only',
         action='store_true',
         help='Only clone repositories, skip discovery and import phases'
+    )
+    
+    parser.add_argument(
+        '--import-only',
+        action='store_true',
+        help='Skip phases 1-2, use existing downloaded skills from skills-dir and start from phase 3. If --max-skills specified, import up to that limit; otherwise import all discovered skills.'
     )
     
     return parser.parse_args()
@@ -733,7 +1055,7 @@ def main():
     print("""
 ╔═══════════════════════════════════════════════════════════╗
 ║  Skills.sh Importer for Skillberry Store                 ║
-║  7-Phase Import Process                                   ║
+║  6-Phase Import Process with Benchmarking                ║
 ╚═══════════════════════════════════════════════════════════╝
 """)
     
