@@ -172,4 +172,39 @@ def capture_server_logs(request):
             logger.info(f"\n{'='*80}\nServer logs for {request.node.nodeid}:\n{captured_logs}\n{'='*80}")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def configure_httpx_defaults():
+    """
+    Configure httpx default timeout for all e2e tests.
+    
+    Sets a 120-second timeout for all AsyncClient instances to accommodate
+    operations that involve Docker container execution (image pull, package
+    installation, code execution).
+    
+    This fixture automatically applies to all tests without requiring any
+    code changes in individual test files.
+    """
+    import httpx
+    
+    # Store original __init__ method
+    original_init = httpx.AsyncClient.__init__
+    
+    def patched_init(self, *args, **kwargs):
+        """Patched __init__ that sets default timeout if not specified."""
+        if 'timeout' not in kwargs:
+            # Use 120 seconds total timeout, 10 seconds for connection
+            kwargs['timeout'] = httpx.Timeout(120.0, connect=10.0)
+        original_init(self, *args, **kwargs)
+    
+    # Apply the patch
+    httpx.AsyncClient.__init__ = patched_init
+    logger.info("Applied httpx default timeout: 120s for e2e tests")
+    
+    yield
+    
+    # Restore original after session completes
+    httpx.AsyncClient.__init__ = original_init
+    logger.info("Restored original httpx AsyncClient.__init__")
+
+
 # Made with Bob
