@@ -173,3 +173,6 @@ src/skillberry_store/fast_api/git_version.py
 .stamps/
 
 .claude/settings.local.json
+
+# skills-sh-importer output folders
+src/skillberry_store/contrib/examples/skills-sh-importer/*/

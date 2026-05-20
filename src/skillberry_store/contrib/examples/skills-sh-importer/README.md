@@ -1,6 +1,6 @@
 # Skills.sh Import Tool
 
-Automated tool to download and import skills from [skills.sh](https://skills.sh) into skillberry-store.
+Automated tool to download and import skills from [skills.sh](https://skills.sh) into skillberry-store with built-in benchmarking.
 
 ## Overview
 
@@ -8,11 +8,16 @@ This tool implements a 6-phase process to:
 1. Extract all repository metadata from skills.sh (sorted by popularity)
 2. Clone repositories iteratively until finding N skill subfolders with SKILL.md
 3. Discover skills in /skills/ folders
-4. Import skills via Anthropic API (handles transformation automatically)
+4. Import skills via Anthropic API (handles transformation automatically) **with automatic benchmarking**
 5. Validate imports
-6. Generate comprehensive reports
+6. Generate comprehensive reports with benchmark statistics
 
-**Key Feature:** A "skill" is defined as a subfolder in `/skills/` directory containing a `SKILL.md` file. The tool clones repositories from skills.sh (by popularity) until it finds N such skills.
+**Key Features:**
+- A "skill" is defined as a subfolder in `/skills/` directory containing a `SKILL.md` file
+- The tool clones repositories from skills.sh (by popularity) until it finds N such skills
+- **Automatic benchmarking** of all import operations (timing, size, file counts, throughput)
+- **Clone-only mode** for downloading skills without importing (Phases 1-2)
+- **Import-only mode** for importing downloaed skills (Phases 3-6) - can be used for repeated benchmarking over the same skill set
 
 ## Prerequisites
 
@@ -23,19 +28,25 @@ This tool implements a 6-phase process to:
 - Skillberry-store running locally (for API imports)
 
 ### Python Dependencies
+
+Install the required dependencies using the provided requirements.txt file:
+
 ```bash
-pip install requests
+pip install -r requirements.txt
 ```
 
 ## Usage
 
 ### Basic Usage
 ```bash
-# Import top 10 skills (default)
+# Import top 10 skills (default) with automatic benchmarking
 python3 download_and_import_skills.py
 
 # Clone only (no discovery or import)
 python3 download_and_import_skills.py --clone-only
+
+# Import only (use existing downloaded skills, benchmark again)
+python3 download_and_import_skills.py --import-only
 ```
 
 ### Advanced Usage
@@ -46,16 +57,20 @@ python3 download_and_import_skills.py --max-skills 20
 # Clone repos until finding 50 skills, without importing
 python3 download_and_import_skills.py --max-skills 50 --clone-only
 
+# Import only first 10 skills from existing downloads (for benchmarking)
+python3 download_and_import_skills.py --import-only --max-skills 10
+
 # Use custom SBS URL
 python3 download_and_import_skills.py --sbs-url http://localhost:9000
 
-# Full configuration with custom output directory (must be absolute)
+# Full configuration with custom directories
 python3 download_and_import_skills.py \
     --max-skills 15 \
     --sbs-url http://localhost:8000 \
     --clone-depth 1 \
     --timeout 60 \
-    --output-dir /absolute/path/to/my-repos
+    --skills-dir /absolute/path/to/my-repos \
+    --output-dir ./results
 ```
 
 **Note:** `--max-skills` limits the number of actual skills found (subfolders with SKILL.md in /skills/ directories). The tool clones repositories one at a time until reaching or exceeding this target. Repositories without /skills/ folders are skipped. The final count may exceed the target if the last repository cloned contains multiple skills.
@@ -64,18 +79,24 @@ python3 download_and_import_skills.py \
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--max-skills` | 10 | Target number of skills (may exceed if last repo has multiple skills) |
+| `--max-skills` | 10 (clone/full mode), unlimited (import-only mode) | Target number of skills (may exceed if last repo has multiple skills in clone mode) |
 | `--sbs-url` | http://localhost:8000 | Skillberry Store URL |
 | `--skills-url` | https://skills.sh | Skills.sh marketplace URL |
 | `--clone-depth` | 1 | Git clone depth (1 = shallow clone) |
 | `--timeout` | 30 | API request timeout in seconds |
-| `--output-dir` | `<temp>/skills-sh-repos` | Output directory (must be absolute path if specified) |
-| `--clone-only` | false | Only clone repositories, skip phases 3-7 |
+| `--skills-dir` | `<temp>/skills-sh-repos` | Directory for cloned skill repositories (absolute or relative path) |
+| `--output-dir` | `.` (current directory) | Directory for output files (absolute or relative path). A timestamped subdirectory is created for each run |
+| `--clone-only` | false | Only clone repositories, skip phases 3-6 |
+| `--import-only` | false | Skip phases 1-2, use existing skills from skills-dir. If --max-skills not specified, imports all discovered skills; if specified, imports up to that limit |
 
-**Note on --output-dir:**
-- **Default**: Uses system temp directory (e.g., `/tmp/skills-sh-repos` on Linux, `C:\Users\<user>\AppData\Local\Temp\skills-sh-repos` on Windows)
-- **Custom**: Must provide an absolute path (e.g., `/home/user/my-skills` or `C:\skills`)
-- **Relative paths are not allowed** to avoid confusion about working directory
+**Note on directories:**
+- **--skills-dir**: Where skill repositories are cloned
+  - **Default**: System temp directory (e.g., `/tmp/skills-sh-repos` on Linux, `C:\Users\<user>\AppData\Local\Temp\skills-sh-repos` on Windows)
+  - **Custom**: Can be absolute (e.g., `/home/user/my-skills`) or relative (e.g., `./my-skills`)
+- **--output-dir**: Where result files are saved
+  - **Default**: Current working directory
+  - **Custom**: Can be absolute or relative
+  - **Timestamped subdirectories**: Each run creates a subdirectory named `YYYYMMDD_HHMMSS` (e.g., `20260519_180804`)
 
 ## Clone-Only Mode
 
@@ -92,8 +113,8 @@ Use `--clone-only` to only clone repositories without discovering or importing s
 # Clone repos until finding 50 skills for later analysis
 python3 download_and_import_skills.py --max-skills 50 --clone-only
 
-# Clone to custom directory (must be absolute path)
-python3 download_and_import_skills.py --clone-only --output-dir /home/user/my-skills-repos
+# Clone to custom directory
+python3 download_and_import_skills.py --clone-only --skills-dir /home/user/my-skills-repos
 
 # Clone with full history (not shallow)
 python3 download_and_import_skills.py --clone-only --clone-depth 0
@@ -107,15 +128,53 @@ When using `--clone-only`, the script will:
 3. ⏭️ Skip Phases 3-6 (Discovery, Import, Validate, Report)
 
 **Files created in clone-only mode:**
-- `clone-results.json` - Clone status (includes skill counts per repo)
-- `<temp>/skills-sh-repos/` or custom directory - Cloned repositories (only those with skills)
-- `import-skills.log` - Execution log
+- `<output-dir>/<timestamp>/clone-results.json` - Clone status (includes skill counts per repo)
+- `<output-dir>/<timestamp>/import-skills.log` - Execution log
+- `<skills-dir>/` - Cloned repositories (only those with skills)
 
-**Additional files created in full mode (without --clone-only):**
+## Import-Only Mode
+
+Use `--import-only` to skip cloning and use existing downloaded skills. This is ideal for:
+
+- **Repeated benchmarking**: Test import performance multiple times on the same skill set
+- **Performance optimization**: Benchmark after making changes to the import process
+- **Selective importing**: Import a subset of previously downloaded skills
+- **Development/testing**: Quickly test import logic without re-downloading
+
+### Example Usage
+
+```bash
+# Import all skills from existing downloads (with benchmarking)
+python3 download_and_import_skills.py --import-only
+
+# Import only first 10 skills from existing downloads
+python3 download_and_import_skills.py --import-only --max-skills 10
+
+# Import from custom skills directory
+python3 download_and_import_skills.py --import-only --skills-dir /home/user/my-skills-repos
+
+# Benchmark with different SBS instance and save results to custom output directory
+python3 download_and_import_skills.py --import-only --sbs-url http://localhost:9000 --output-dir ./benchmark-results
+```
+
+### Output in Import-Only Mode
+
+When using `--import-only`, the script will:
+1. ⏭️ Skip Phase 1 (Extract metadata)
+2. ⏭️ Skip Phase 2 (Clone repositories)
+3. ✅ Execute Phase 3 (Discover skills in existing repos)
+4. ✅ Execute Phase 4 (Import with benchmarking)
+5. ✅ Execute Phase 5 (Validate)
+6. ✅ Execute Phase 6 (Report with benchmark statistics)
+
+**Additional files created in full mode (without --clone-only or --import-only):**
+All files are saved in `<output-dir>/<timestamp>/`:
 - `discovered-skills.json` - All discovered skills with SKILL.md content
 - `import-results.json` - Import status for each skill
 - `validation-report.json` - Validation results
 - `final-report.json` - Complete execution summary
+- `benchmark-results.json` - Detailed benchmark data and statistics
+- `import-skills.log` - Detailed execution log
 
 ## Process Flow
 
@@ -170,7 +229,7 @@ When using `--clone-only`, the script will:
 }
 ```
 
-### Phase 4: Import via Anthropic API
+### Phase 4: Import via Anthropic API (with Benchmarking)
 - Uses `/skills/import-anthropic` endpoint with folder source
 - API automatically handles:
   - Parsing SKILL.md for metadata
@@ -178,9 +237,16 @@ When using `--clone-only`, the script will:
   - Creating snippets from text files
   - Creating skill with proper schema
 - Imports each skill folder separately
+- **Automatically collects benchmark data for each successful import:**
+  - Import duration (seconds)
+  - Skill size (KB)
+  - File count
+  - Tool count (Python scripts in /scripts/)
+  - Snippet count (all .md files including SKILL.md)
 
 **Output:**
 - `import-results.json` - Import status for each skill
+- `benchmark-results.json` - Detailed benchmark data for all successful imports
 
 ### Phase 5: Validation
 - Verifies API accessibility
@@ -190,33 +256,55 @@ When using `--clone-only`, the script will:
 **Output:**
 - `validation-report.json` - Validation results
 
-### Phase 6: Documentation
+### Phase 6: Documentation and Benchmarking Report
 - Generates comprehensive final report
 - Summarizes all phases
 - Provides success metrics
+- **Calculates and displays benchmark statistics:**
+  - Total import time
+  - Average, median, and standard deviation of import times
+  - Fastest and slowest imports with skill details
+  - Import throughput (KB/sec, skills/sec, objects/sec)
 
 **Output:**
-- `final-report.json` - Complete execution summary
+- `final-report.json` - Complete execution summary with benchmark statistics
+- `benchmark-results.json` - Detailed benchmark data for each import
 - `import-skills.log` - Detailed execution log
 
 ## Output Files
 
-After execution, the following files are created:
+After execution, files are organized into two directories:
 
+### Skills Directory (--skills-dir)
+Contains cloned skill repositories:
 ```
-src/skillberry_store/contrib/examples/skills-sh-importer/
-├── download_and_import_skills.py    # Main script
-├── README.md                        # This document
-├── clone-results.json               # Repository clone results
-├── discovered-skills.json           # Discovered skills
-├── import-results.json              # Import results
-├── validation-report.json           # Validation results
-├── final-report.json                # Final summary report
-├── import-skills.log                # Detailed execution log
-└── /tmp/skills-sh-repos/            # Default clone location on Linux
-    ├── vercel__ai/
-    ├── anthropics__skills/
-    └── ...
+/tmp/skills-sh-repos/                # Default location on Linux
+├── vercel__ai/
+│   └── skills/
+│       ├── ai-sdk/
+│       ├── streaming/
+│       └── ...
+├── anthropics__skills/
+│   └── skills/
+│       └── ...
+└── ...
+```
+
+### Output Directory (--output-dir)
+Contains timestamped subdirectories with result files:
+```
+./                                   # Default: current directory
+├── 20260519_180804/                 # Timestamped run folder
+│   ├── clone-results.json           # Repository clone results
+│   ├── discovered-skills.json       # Discovered skills
+│   ├── import-results.json          # Import results
+│   ├── benchmark-results.json       # Benchmark data and statistics
+│   ├── validation-report.json       # Validation results
+│   ├── final-report.json            # Final summary report with benchmarks
+│   └── import-skills.log            # Detailed execution log
+├── 20260519_181205/                 # Another run
+│   └── ...
+└── ...
 ```
 
 ## Example Output
@@ -224,8 +312,8 @@ src/skillberry_store/contrib/examples/skills-sh-importer/
 ### Successful Execution
 ```
 ╔═══════════════════════════════════════════════════════════╗
-║  Skills.sh Importer for Skillberry Store                  ║
-║  6-Phase Import Process                                   ║
+║  Skills.sh Importer for Skillberry Store                 ║
+║  6-Phase Import Process with Benchmarking                ║
 ╚═══════════════════════════════════════════════════════════╝
 
 ============================================================
@@ -284,38 +372,148 @@ Scanning vercel__ai...
   Total: 3 skill(s) found
 
 Discovery Summary:
-  Total skills discovered: 45
+  Total skills discovered: 10
 
 ============================================================
 PHASE 4: Importing skills via Anthropic API
 ============================================================
-[1/45] Importing vercel__ai__ai-sdk...
-  ✓ Successfully imported
+[1/10] Importing ai-sdk...
+  Folder: /tmp/skills-sh-repos/vercel__ai/skills/ai-sdk
+  ✓ Successfully imported in 1.23s
+    Skill: ai-sdk
+    Tools: 3
+    Snippets: 2
+
+
+## Benchmarking
+
+The tool automatically collects benchmark data during Phase 4 (import operations) for all successful imports. This feature is always active and requires no configuration.
+
+### What is Benchmarked
+
+For each successful skill import, the following metrics are collected:
+- **Import duration**: Time taken to import the skill (seconds)
+- **Skill size**: Total size of all files in the skill folder (KB)
+- **File count**: Total number of files in the skill folder
+- **Tool count**: Number of Python scripts in the `/scripts/` subfolder
+- **Snippet count**: Number of `.md` files (including SKILL.md)
+
+### Benchmark Statistics
+
+After all imports complete, Phase 6 calculates and reports:
+- **Total import time**: Sum of all import durations
+- **Average import time**: Mean import duration
+- **Median import time**: Median import duration
+- **Standard deviation**: Variability in import times
+- **Fastest import**: Minimum import time with skill details
+- **Slowest import**: Maximum import time with skill details
+- **Import throughput**:
+  - KB/sec: Total size divided by total time
+  - Skills/sec: Total skills divided by total time
+  - Objects/sec: (Skills + Tools + Snippets) divided by total time
+
+### Benchmark Output Files
+
+Benchmark data is saved to the timestamped output directory:
+- `<output-dir>/<timestamp>/benchmark-results.json`: Detailed data for each import plus statistics
+- `<output-dir>/<timestamp>/final-report.json`: Includes benchmark statistics in the report
+
+### Use Cases
+
+**Performance Testing:**
+```bash
+# Benchmark import performance on 20 skills
+python3 download_and_import_skills.py --max-skills 20
+
+# Review results in timestamped output directory
+cat ./20260519_180804/benchmark-results.json
+```
+
+**Repeated Benchmarking:**
+```bash
+# First, download skills
+python3 download_and_import_skills.py --max-skills 50 --clone-only
+
+# Then benchmark multiple times (each creates a new timestamped directory)
+python3 download_and_import_skills.py --import-only --max-skills 10
+python3 download_and_import_skills.py --import-only --max-skills 20
+python3 download_and_import_skills.py --import-only --max-skills 50
+
+# Results are in separate timestamped directories:
+# ./20260519_180804/benchmark-results.json
+# ./20260519_180912/benchmark-results.json
+# ./20260519_181023/benchmark-results.json
+```
+
+**Optimization Testing:**
+```bash
+# Benchmark before optimization
+python3 download_and_import_skills.py --import-only --output-dir ./benchmarks
+
+# Make changes to skillberry-store import logic
+
+# Benchmark after optimization
+python3 download_and_import_skills.py --import-only --output-dir ./benchmarks
+
+# Compare benchmark results from timestamped directories:
+# ./benchmarks/20260519_180804/benchmark-results.json (before)
+# ./benchmarks/20260519_181205/benchmark-results.json (after)
+```
+
+[2/10] Importing streaming...
+  Folder: /tmp/skills-sh-repos/vercel__ai/skills/streaming
+  ✓ Successfully imported in 0.87s
+    Skill: streaming
+    Tools: 2
+    Snippets: 1
 
 Import Summary:
-  Total: 25
-  Successful: 23
-  Failed: 2
+  Total: 10
+  Successful: 10
+  Failed: 0
 
 ============================================================
 PHASE 5: Validating imports
 ============================================================
   ✓ API accessible
-  ✓ Found 42 skills in store
+  ✓ Found 10 skills in store
 
 ============================================================
 PHASE 6: Generating final report
 ============================================================
 FINAL REPORT
 ============================================================
-Repos cloned: 3
-Skills discovered: 25
-Skills imported: 23
-Import failures: 2
+Repositories extracted: 500
+Unique repos cloned: 3
+Repositories cloned: 3
+Skills discovered in repos: 10
+Skills imported: 10
+Import failures: 0
 Validation: ✓ PASSED
 ============================================================
 
-Total execution time: 123.45 seconds
+============================================================
+BENCHMARK RESULTS
+============================================================
+Total import time: 12.45 seconds
+Average import time: 1.245 seconds
+Median import time: 1.180 seconds
+Std deviation: 0.342 seconds
+
+Fastest import: 0.87s - streaming
+  (125.5 KB, 8 files, 2 tools, 1 snippets)
+Slowest import: 2.15s - pdf-processing
+  (450.2 KB, 25 files, 8 tools, 3 snippets)
+
+Import throughput:
+  - 198.4 KB/sec
+  - 0.80 skills/sec
+  - 4.82 objects/sec (60 total: 10 skills + 35 tools + 15 snippets)
+============================================================
+
+Full report saved to: final-report.json
+
+Total execution time: 45.67 seconds
 ```
 
 ## Troubleshooting
