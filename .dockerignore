@@ -12,3 +12,4 @@ venv/
 .vscode/
 .idea/
 .stamps/
+src/skillberry_store/contrib/examples/skills-sh-importer/*/
