@@ -8,7 +8,7 @@ from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, Request
 from prometheus_client import Counter, Histogram
 
-from skillberry_store.modules.resource_handler import ResourceHandler
+from skillberry_store.modules.resource_handler import get_resource_handler
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
@@ -79,8 +79,7 @@ def register_vmcp_api(
         tags: FastAPI tags for grouping the endpoints in documentation.
         vmcp_descriptions: Description instance for managing vmcp descriptions.
     """
-    vmcp_directory = get_vmcp_directory()
-    vmcp_handler = ResourceHandler(vmcp_directory, "vmcp")
+    vmcp_handler = get_resource_handler("vmcp")
     
     # Initialize the server manager for runtime management
     vmcp_server_manager = VirtualMcpServerManager(sts_url=sts_url, app=app)
@@ -145,9 +144,7 @@ def register_vmcp_api(
                     f"Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}"
                 )
                 # Load the skill to get tool UUIDs and snippet UUIDs
-                from skillberry_store.tools.configure import get_skills_directory
-                
-                skills_handler = ResourceHandler(get_skills_directory(), "skill")
+                skills_handler = get_resource_handler("skill")
                 
                 try:
                     # Get skill by UUID using ResourceHandler
@@ -451,9 +448,7 @@ def register_vmcp_api(
             tool_uuids = []
             snippet_uuids = []
             if vmcp.skill_uuid:
-                from skillberry_store.tools.configure import get_skills_directory
-                
-                skills_handler = ResourceHandler(get_skills_directory(), "skill")
+                skills_handler = get_resource_handler("skill")
                 
                 try:
                     # Get skill by UUID using ResourceHandler
@@ -548,9 +543,7 @@ def register_vmcp_api(
 
             if skill_uuid:
                 logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid}")
-                from skillberry_store.tools.configure import get_skills_directory
-                
-                skills_handler = ResourceHandler(get_skills_directory(), "skill")
+                skills_handler = get_resource_handler("skill")
                 
                 try:
                     # Get skill by UUID using ResourceHandler

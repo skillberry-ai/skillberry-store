@@ -8,7 +8,7 @@ from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 from prometheus_client import Counter
 
-from skillberry_store.modules.resource_handler import ResourceHandler
+from skillberry_store.modules.resource_handler import get_resource_handler
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
@@ -52,8 +52,7 @@ def register_snippets_api(
         tags: FastAPI tags for grouping the endpoints in documentation.
         snippets_descriptions: Description instance for managing snippet descriptions.
     """
-    snippets_directory = get_snippets_directory()
-    snippet_handler = ResourceHandler(snippets_directory, "snippet")
+    snippet_handler = get_resource_handler("snippet")
 
     @app.post("/snippets/", tags=[tags])
     async def create_snippet(

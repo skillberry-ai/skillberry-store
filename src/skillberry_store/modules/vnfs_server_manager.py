@@ -6,13 +6,8 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from skillberry_store.modules.vnfs_server import VirtualNfsServer
-from skillberry_store.modules.resource_handler import ResourceHandler
-from skillberry_store.tools.configure import (
-    get_skills_directory,
-    get_snippets_directory,
-    get_tools_directory,
-    get_vnfs_directory,
-)
+from skillberry_store.modules.resource_handler import get_resource_handler
+from skillberry_store.tools.configure import get_vnfs_directory
 from skillberry_store.utils.utils import make_name_with_uuid
 
 logger = logging.getLogger(__name__)
@@ -32,7 +27,7 @@ class VirtualNfsServerManager:
         self._lock = threading.RLock()
 
         self.vnfs_directory = get_vnfs_directory()
-        self.vnfs_handler = ResourceHandler(self.vnfs_directory, "vnfs")
+        self.vnfs_handler = get_resource_handler("vnfs")
 
         logger.info(f"Loading vnfs_servers from {self.vnfs_directory}")
         self.load_servers()
@@ -211,9 +206,9 @@ class VirtualNfsServerManager:
 
         try:
             # Use ResourceHandler for UUID-based access
-            skills_handler = ResourceHandler(get_skills_directory(), "skill")
-            tools_handler = ResourceHandler(get_tools_directory(), "tool")
-            snippets_handler = ResourceHandler(get_snippets_directory(), "snippet")
+            skills_handler = get_resource_handler("skill")
+            tools_handler = get_resource_handler("tool")
+            snippets_handler = get_resource_handler("snippet")
             
             # Get skill by UUID
             skill_dict = skills_handler.get_resource_by_id(skill_uuid)

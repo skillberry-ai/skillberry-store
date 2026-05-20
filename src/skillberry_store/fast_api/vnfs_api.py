@@ -9,7 +9,7 @@ from typing import Annotated, Optional
 from fastapi import FastAPI, HTTPException, Query, Request
 from prometheus_client import Counter
 
-from skillberry_store.modules.resource_handler import ResourceHandler
+from skillberry_store.modules.resource_handler import get_resource_handler
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
@@ -39,8 +39,7 @@ def register_vnfs_api(
     vnfs_descriptions: Optional[Description] = None,
 ):
     """Register virtual NFS server API endpoints with the FastAPI application."""
-    vnfs_directory = get_vnfs_directory()
-    vnfs_handler = ResourceHandler(vnfs_directory, "vnfs")
+    vnfs_handler = get_resource_handler("vnfs")
 
     vnfs_server_manager = VirtualNfsServerManager(sts_url=sts_url, app=app)
     app.state.vnfs_server_manager = vnfs_server_manager

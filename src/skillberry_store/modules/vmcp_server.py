@@ -8,8 +8,7 @@ from pydantic import Field
 from typing import Annotated, Any, List, Optional
 
 from mcp.server.fastmcp import FastMCP
-from skillberry_store.modules.resource_handler import ResourceHandler
-from skillberry_store.tools.configure import get_tools_directory, get_snippets_directory
+from skillberry_store.modules.resource_handler import get_resource_handler
 
 
 class VirtualMcpServer:
@@ -59,8 +58,8 @@ class VirtualMcpServer:
         self.env_id = env_id
         
         # Initialize ResourceHandlers for resolving UUIDs to resources
-        self.tools_handler = ResourceHandler(get_tools_directory(), "tool")
-        self.snippets_handler = ResourceHandler(get_snippets_directory(), "snippet")
+        self.tools_handler = get_resource_handler("tool")
+        self.snippets_handler = get_resource_handler("snippet")
         
         if port is None:
             self.port = self._find_available_port()

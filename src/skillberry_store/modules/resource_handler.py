@@ -19,6 +19,84 @@ from skillberry_store.utils.utils import normalize_uuid
 
 logger = logging.getLogger(__name__)
 
+# Global dictionary to store singleton ResourceHandler instances
+_resource_handlers: Dict[str, "ResourceHandler"] = {}
+_initialized = False
+
+
+def initialize_resource_handlers() -> None:
+    """
+    Initialize all resource handlers. Should be called once during server startup.
+    
+    This function is idempotent - calling it multiple times is safe and will only
+    initialize once. All resource handlers are created and stored in a global
+    dictionary for reuse throughout the application lifecycle.
+    """
+    global _initialized
+    if _initialized:
+        logger.warning("Resource handlers already initialized, skipping")
+        return
+    
+    # Import here to avoid circular dependencies
+    from skillberry_store.tools.configure import (
+        get_tools_directory,
+        get_snippets_directory,
+        get_skills_directory,
+        get_vmcp_directory,
+        get_vnfs_directory,
+    )
+    
+    _resource_handlers["tool"] = ResourceHandler(get_tools_directory(), "tool")
+    _resource_handlers["snippet"] = ResourceHandler(get_snippets_directory(), "snippet")
+    _resource_handlers["skill"] = ResourceHandler(get_skills_directory(), "skill")
+    _resource_handlers["vmcp"] = ResourceHandler(get_vmcp_directory(), "vmcp")
+    _resource_handlers["vnfs"] = ResourceHandler(get_vnfs_directory(), "vnfs")
+    
+    _initialized = True
+    logger.info(f"Initialized {len(_resource_handlers)} resource handlers: {list(_resource_handlers.keys())}")
+
+
+def get_resource_handler(resource_type: str) -> "ResourceHandler":
+    """
+    Get the singleton ResourceHandler for a given resource type.
+    
+    Args:
+        resource_type: The type of resource ('tool', 'snippet', 'skill', 'vmcp', 'vnfs').
+        
+    Returns:
+        ResourceHandler: The singleton ResourceHandler instance for the specified type.
+        
+    Raises:
+        RuntimeError: If resource handlers have not been initialized.
+        ValueError: If the resource type is not recognized.
+    """
+    if not _initialized:
+        raise RuntimeError(
+            "Resource handlers not initialized. Call initialize_resource_handlers() first."
+        )
+    
+    if resource_type not in _resource_handlers:
+        raise ValueError(
+            f"Unknown resource type: '{resource_type}'. "
+            f"Valid types: {list(_resource_handlers.keys())}"
+        )
+    
+    return _resource_handlers[resource_type]
+
+
+def clear_resource_handlers() -> None:
+    """
+    Clear all resource handlers. Useful for testing.
+    
+    This function resets the global state, allowing resource handlers to be
+    reinitialized. Should primarily be used in test cleanup.
+    """
+    global _initialized
+    _resource_handlers.clear()
+    _initialized = False
+    logger.debug("Cleared all resource handlers")
+
+
 
 class ResourceHandler:
     """

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from prometheus_client import Counter, Histogram
 import time
 
-from skillberry_store.modules.resource_handler import ResourceHandler
+from skillberry_store.modules.resource_handler import ResourceHandler, get_resource_handler
 from skillberry_store.modules.file_executor import FileExecutor, detect_tool_dependencies
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
@@ -146,8 +146,7 @@ def register_tools_api(
         tags: FastAPI tags for grouping the endpoints in documentation.
         tools_descriptions: Description instance for managing tool descriptions.
     """
-    tools_directory = get_tools_directory()
-    tool_handler = ResourceHandler(tools_directory, "tool")
+    tool_handler = get_resource_handler("tool")
 
     @app.post("/tools/", tags=[tags])
     async def create_tool(

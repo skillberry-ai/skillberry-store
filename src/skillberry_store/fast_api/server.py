@@ -78,6 +78,11 @@ class SBS(FastAPI):
         self.logger = logging.getLogger(__name__)
         logger.info(f"SBSettings sbs_vdb = {self.settings.sbs_vdb}")
 
+        # Initialize resource handlers (singleton pattern)
+        from skillberry_store.modules.resource_handler import initialize_resource_handlers
+        initialize_resource_handlers()
+        logger.info("Resource handlers initialized")
+
         # Store description instances in app state for access by admin API
         self.state.tools_descriptions = tools_descriptions_api(self.settings.sbs_vdb)
         self.state.snippets_descriptions = snippets_descriptions_api(

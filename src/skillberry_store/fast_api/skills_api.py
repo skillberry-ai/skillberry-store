@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from prometheus_client import Counter
 
 from skillberry_store.tools.anthropic.importer import import_from_anthropic_skill
-from skillberry_store.modules.resource_handler import ResourceHandler
+from skillberry_store.modules.resource_handler import get_resource_handler
 from skillberry_store.modules.file_executor import detect_tool_dependencies
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
@@ -63,10 +63,9 @@ def register_skills_api(
         tags: FastAPI tags for grouping the endpoints in documentation.
         skills_descriptions: Description instance for managing skill descriptions.
     """
-    skills_directory = get_skills_directory()
-    skill_handler = ResourceHandler(skills_directory, "skill")
-    tools_handler = ResourceHandler(get_tools_directory(), "tool")
-    snippets_handler = ResourceHandler(get_snippets_directory(), "snippet")
+    skill_handler = get_resource_handler("skill")
+    tools_handler = get_resource_handler("tool")
+    snippets_handler = get_resource_handler("snippet")
     
     def populate_skill_objects(skill_dict):
         """Populate full tool and snippet objects from UUIDs."""

@@ -6,8 +6,8 @@ import threading
 from typing import Any, Dict, Optional
 
 from skillberry_store.modules.vmcp_server import VirtualMcpServer
-from skillberry_store.modules.resource_handler import ResourceHandler
-from skillberry_store.tools.configure import get_vmcp_directory, get_skills_directory, get_tools_directory, get_snippets_directory
+from skillberry_store.modules.resource_handler import get_resource_handler
+from skillberry_store.tools.configure import get_vmcp_directory
 from skillberry_store.utils.utils import make_name_with_uuid
 
 logger = logging.getLogger(__name__)
@@ -38,12 +38,12 @@ class VirtualMcpServerManager:
 
         # Use the same directory as vmcp_api for consistency
         self.vmcp_directory = get_vmcp_directory()
-        self.vmcp_handler = ResourceHandler(self.vmcp_directory, "vmcp")
+        self.vmcp_handler = get_resource_handler("vmcp")
         
         # Initialize handlers for skills, tools, and snippets
-        self.skills_handler = ResourceHandler(get_skills_directory(), "skill")
-        self.tools_handler = ResourceHandler(get_tools_directory(), "tool")
-        self.snippets_handler = ResourceHandler(get_snippets_directory(), "snippet")
+        self.skills_handler = get_resource_handler("skill")
+        self.tools_handler = get_resource_handler("tool")
+        self.snippets_handler = get_resource_handler("snippet")
 
         logger.info(f"Loading vmcp_servers from {self.vmcp_directory}")
         self.load_servers()
