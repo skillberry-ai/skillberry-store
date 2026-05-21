@@ -121,8 +121,19 @@ def register_snippets_api(
                 raise
 
         try:
+            # Look up existing HEAD for parent chain
+            if snippet.name:
+                existing_head = snippet_handler.name_cache.lookup_by_name(snippet.name)
+                snippet.parent = existing_head
+                if existing_head:
+                    logger.info(f"Setting parent for snippet '{snippet.name}' to existing HEAD: {existing_head}")
+            
             # Save snippet manifest to UUID subfolder
             snippet_handler.write_manifest(snippet_uuid_normalized, snippet.to_dict())
+            
+            # Update cache - this becomes new HEAD
+            if snippet.name:
+                snippet_handler.update_cache_after_create(snippet_uuid_normalized, snippet.name, snippet.parent)
 
             # Write description for search capability (indexed by UUID)
             if snippets_descriptions and snippet.description:
@@ -215,16 +226,24 @@ def register_snippets_api(
         delete_snippet_counter.inc()
 
         try:
-            # Read snippet to get UUID before deletion
+            # Read snippet to get UUID, name, and parent before deletion
             snippet_uuid = None
+            snippet_name = None
+            snippet_parent = None
             try:
                 snippet_dict = snippet_handler.get_resource_by_id(id)
                 snippet_uuid = snippet_dict.get("uuid")
+                snippet_name = snippet_dict.get("name")
+                snippet_parent = snippet_dict.get("parent")
             except Exception as e:
                 logger.warning(f"Could not read snippet before deletion: {e}")
 
             # Delete the snippet using ResourceHandler
             result = snippet_handler.delete_resource_by_id(id)
+            
+            # Update cache after deletion
+            if snippet_uuid and snippet_name:
+                snippet_handler.update_cache_after_delete(snippet_uuid, snippet_name, snippet_parent)
 
             # Delete the description for the snippet (indexed by UUID)
             if snippets_descriptions and snippet_uuid:
@@ -275,9 +294,19 @@ def register_snippets_api(
 
             # Read existing manifest to preserve uuid and created_at
             existing_manifest = snippet_handler.read_manifest(snippet_uuid)
+            old_name = existing_manifest.get("name")
+            old_parent = existing_manifest.get("parent")
             
             # Convert update data to dict
             update_data = snippet.to_dict()
+            
+            # Handle name change - update parent chain
+            new_name = snippet.name if snippet.name else old_name
+            if new_name and old_name and new_name != old_name:
+                # Name changed - look up new name's HEAD and set as parent
+                new_name_head = snippet_handler.name_cache.lookup_by_name(new_name)
+                update_data["parent"] = new_name_head
+                logger.info(f"Snippet name changed from '{old_name}' to '{new_name}', parent set to {new_name_head}")
             
             # Merge: preserve uuid and created_at from existing, update modified_at
             merged_manifest = {**existing_manifest, **update_data}
@@ -287,6 +316,10 @@ def register_snippets_api(
 
             # Write the merged manifest using ResourceHandler
             snippet_handler.write_manifest(snippet_uuid, merged_manifest)
+            
+            # Update cache - this becomes HEAD for its (possibly new) name
+            if new_name:
+                snippet_handler.update_cache_after_update(snippet_uuid, new_name, old_name, old_parent)
             
             # Update description for search capability (indexed by UUID)
             if snippets_descriptions and merged_manifest.get("description"):

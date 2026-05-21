@@ -121,6 +121,13 @@ def register_vmcp_api(
             raise HTTPException(
                 status_code=409, detail=f"VMCP server with UUID '{vmcp.uuid}' already exists."
             )
+        
+        # Set parent to existing HEAD for this name (git-like versioning)
+        if vmcp.name:
+            existing_head = vmcp_handler.name_cache.lookup_by_name(vmcp.name)
+            vmcp.parent = existing_head
+            if existing_head:
+                logger.info(f"Setting parent for '{vmcp.name}' to existing HEAD: {existing_head}")
 
         # Extract env_id from request headers
         headers = request.headers
@@ -181,6 +188,10 @@ def register_vmcp_api(
 
             # Save the persistent JSON representation using ResourceHandler
             vmcp_handler.write_manifest(vmcp.uuid, vmcp.to_dict())
+            
+            # Update cache after create
+            if vmcp.name:
+                vmcp_handler.update_cache_after_create(vmcp.uuid, vmcp.name, vmcp.parent)
 
             # Write description for search capability (indexed by UUID)
             if vmcp_descriptions and vmcp.description:
@@ -350,10 +361,11 @@ def register_vmcp_api(
         delete_vmcp_counter.inc()
 
         try:
-            # Get server info first to extract name and uuid
+            # Get server info first to extract name, uuid, and parent
             vmcp_dict = vmcp_handler.get_resource_by_id(id)
             server_name = vmcp_dict.get("name")
             server_uuid = vmcp_dict.get("uuid")
+            server_parent = vmcp_dict.get("parent")
             
             # Stop and remove the runtime server
             try:
@@ -367,6 +379,10 @@ def register_vmcp_api(
 
             # Delete persistent data using ResourceHandler
             vmcp_handler.delete_resource_by_id(id)
+            
+            # Update cache after delete
+            if server_name and server_uuid:
+                vmcp_handler.update_cache_after_delete(server_uuid, server_name, server_parent)
 
             # Delete the description (indexed by UUID)
             if vmcp_descriptions:
@@ -413,7 +429,7 @@ def register_vmcp_api(
         try:
             # Check if vmcp server exists and get current data
             existing_vmcp = vmcp_handler.get_resource_by_id(id)
-            server_name = existing_vmcp.get("name")
+            old_name = existing_vmcp.get("name")
             server_uuid = existing_vmcp.get("uuid")
 
             # Update modified timestamp
@@ -422,6 +438,20 @@ def register_vmcp_api(
             # Preserve UUID if not provided in update
             if not vmcp.uuid:
                 vmcp.uuid = server_uuid
+            
+            # Handle parent chain updates for name changes
+            new_name = vmcp.name
+            if new_name and old_name != new_name:
+                # Name changed: detach from old chain, attach to new chain
+                logger.info(f"VMCP server name changing from '{old_name}' to '{new_name}'")
+                # Look up new name's HEAD to set as parent
+                new_head = vmcp_handler.name_cache.lookup_by_name(new_name)
+                vmcp.parent = new_head
+                if new_head:
+                    logger.info(f"Setting parent for new name '{new_name}' to: {new_head}")
+            elif not vmcp.parent:
+                # Name not changed but parent not set: preserve existing parent
+                vmcp.parent = existing_vmcp.get("parent")
 
             # Extract env_id from request headers
             headers = request.headers
@@ -437,10 +467,10 @@ def register_vmcp_api(
             # Stop the old runtime server
             try:
                 vmcp_server_manager.remove_server(
-                    server_name or "",
+                    old_name or "",
                     server_uuid or ""
                 )
-                logger.info(f"Stopped old runtime server: {server_name}_{server_uuid}")
+                logger.info(f"Stopped old runtime server: {old_name}_{server_uuid}")
             except Exception as e:
                 logger.warning(f"Could not stop old runtime server: {e}")
 
@@ -475,6 +505,15 @@ def register_vmcp_api(
 
             # Update persistent data using ResourceHandler
             vmcp_handler.write_manifest(vmcp.uuid or "", vmcp.to_dict())
+            
+            # Update cache after update
+            if vmcp.name and old_name:
+                vmcp_handler.update_cache_after_update(
+                    vmcp.uuid or "",
+                    old_name,
+                    vmcp.name,
+                    vmcp.parent
+                )
             
             logger.info(f"VMCP server '{vmcp.name}' updated successfully on port {server.port}")
             return {

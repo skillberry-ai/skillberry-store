@@ -191,6 +191,12 @@ def register_tools_api(
             )
 
         try:
+            # Look up existing HEAD for parent chain
+            existing_head = tool_handler.name_cache.lookup_by_name(tool.name)
+            tool.parent = existing_head
+            if existing_head:
+                logger.info(f"Setting parent for tool '{tool.name}' to existing HEAD: {existing_head}")
+            
             # Save the module file to UUID sub-folder
             file_content = await module.read()
             module_filename = module.filename if module.filename else f"{tool.name}.py"
@@ -222,6 +228,9 @@ def register_tools_api(
 
             # Convert tool to JSON and save as tool.json in UUID folder
             tool_handler.write_manifest(tool_uuid_normalized, tool.to_dict())
+            
+            # Update cache - this becomes new HEAD
+            tool_handler.update_cache_after_create(tool_uuid_normalized, tool.name, existing_head)
 
             # Write description for search capability (indexed by UUID)
             if tools_descriptions and tool.description and tool.uuid:
@@ -396,16 +405,22 @@ def register_tools_api(
             # Resolve ID to UUID and read tool before deletion
             tool_uuid = None
             tool_name = None
+            tool_parent = None
             try:
                 tool_uuid = tool_handler.resolve_id(id)
                 if tool_uuid:
                     tool_dict = tool_handler.read_manifest(tool_uuid)
                     tool_name = tool_dict.get("name")
+                    tool_parent = tool_dict.get("parent")
             except Exception as e:
                 logger.warning(f"Could not read tool before deletion: {e}")
 
             # Delete the tool using ResourceHandler (deletes entire UUID subfolder)
             result = tool_handler.delete_resource_by_id(id)
+            
+            # Update cache after deletion
+            if tool_uuid and tool_name:
+                tool_handler.update_cache_after_delete(tool_uuid, tool_name, tool_parent)
 
             # Delete the description for the tool (indexed by UUID)
             if tools_descriptions and tool_uuid:
@@ -456,9 +471,19 @@ def register_tools_api(
 
             # Read existing manifest to preserve uuid and created_at
             existing_manifest = tool_handler.read_manifest(tool_uuid)
+            old_name = existing_manifest.get("name")
+            old_parent = existing_manifest.get("parent")
             
             # Convert update data to dict
             update_data = tool.to_dict()
+            
+            # Handle name change - update parent chain
+            new_name = tool.name if tool.name else old_name
+            if new_name and old_name and new_name != old_name:
+                # Name changed - look up new name's HEAD and set as parent
+                new_name_head = tool_handler.name_cache.lookup_by_name(new_name)
+                update_data["parent"] = new_name_head
+                logger.info(f"Tool name changed from '{old_name}' to '{new_name}', parent set to {new_name_head}")
             
             # Merge: preserve uuid and created_at from existing, update modified_at
             merged_manifest = {**existing_manifest, **update_data}
@@ -468,6 +493,10 @@ def register_tools_api(
 
             # Write the merged manifest using ResourceHandler
             tool_handler.write_manifest(tool_uuid, merged_manifest)
+            
+            # Update cache - this becomes HEAD for its (possibly new) name
+            if new_name:
+                tool_handler.update_cache_after_update(tool_uuid, new_name, old_name, old_parent)
             
             # Update description for search capability if description changed (indexed by UUID)
             if tools_descriptions and tool.description:

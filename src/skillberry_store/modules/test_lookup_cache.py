@@ -1,113 +1,150 @@
-import json
-
 import pytest
 
-from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.modules.lookup_cache import (
-    LookupCache,
-    build_lookup_cache,
-    build_uuid_cache,
-    load_json_objects,
-)
+from skillberry_store.modules.lookup_cache import LookupCache
 
 
 @pytest.fixture
-def root_handler(tmp_path):
-    return FileHandler(str(tmp_path))
+def cache():
+    """Create a fresh LookupCache instance for each test."""
+    return LookupCache()
 
 
-@pytest.fixture
-def skills_handler(tmp_path):
-    return FileHandler(str(tmp_path / "skills"))
+def test_lookup_by_name_returns_none_for_nonexistent_name(cache):
+    """Test that looking up a non-existent name returns None."""
+    result = cache.lookup_by_name("nonexistent")
+    assert result is None
 
 
-@pytest.fixture
-def tools_handler(tmp_path):
-    return FileHandler(str(tmp_path / "tools"))
+def test_set_head_and_lookup_by_name(cache):
+    """Test setting a HEAD and looking it up."""
+    cache.set_head("mytool", "uuid-1")
+    result = cache.lookup_by_name("mytool")
+    assert result == "uuid-1"
 
 
-@pytest.fixture
-def snippets_handler(tmp_path):
-    return FileHandler(str(tmp_path / "snippets"))
+def test_set_head_updates_existing_name(cache):
+    """Test that setting HEAD for an existing name updates it."""
+    cache.set_head("mytool", "uuid-1")
+    cache.set_head("mytool", "uuid-2")
+    result = cache.lookup_by_name("mytool")
+    assert result == "uuid-2"
 
 
-def test_load_json_objects_only_loads_valid_json_dicts(root_handler):
-    handler = root_handler
-    handler.write_file_content(
-        "tool1.json", json.dumps({"uuid": "u1", "name": "tool1"})
-    )
-    handler.write_file_content("notes.txt", "not json and should be ignored")
-    handler.write_file_content("list.json", json.dumps([1, 2, 3]))
-    handler.write_file_content("broken.json", "{not-valid-json")
-
-    objects = load_json_objects(handler, "tool")
-
-    assert objects == [{"uuid": "u1", "name": "tool1"}]
+def test_get_all_names_empty_cache(cache):
+    """Test getting all names from an empty cache."""
+    names = cache.get_all_names()
+    assert names == set()
 
 
-def test_build_uuid_cache_skips_objects_without_uuid():
-    objects = [
-        {"uuid": "s1", "name": "skill-one"},
-        {"name": "missing-uuid"},
-        {"uuid": "s2", "name": "skill-two"},
-    ]
-
-    result = build_uuid_cache(objects, "skill")
-
-    assert result == {
-        "s1": {"uuid": "s1", "name": "skill-one"},
-        "s2": {"uuid": "s2", "name": "skill-two"},
-    }
+def test_get_all_names_with_entries(cache):
+    """Test getting all names from a cache with entries."""
+    cache.set_head("tool1", "uuid-1")
+    cache.set_head("tool2", "uuid-2")
+    cache.set_head("snippet1", "uuid-3")
+    
+    names = cache.get_all_names()
+    assert names == {"tool1", "tool2", "snippet1"}
 
 
-def test_build_lookup_cache_with_partial_handlers(tools_handler, snippets_handler):
-    tools_handler.write_file_content(
-        "tool1.json",
-        json.dumps({"uuid": "tool-1", "name": "tool-one"}),
-    )
-    snippets_handler.write_file_content(
-        "snippet1.json",
-        json.dumps({"uuid": "snippet-1", "name": "snippet-one"}),
-    )
-
-    cache = build_lookup_cache(
-        tools_handler=tools_handler,
-        snippets_handler=snippets_handler,
-    )
-
-    assert isinstance(cache, LookupCache)
-    assert cache.skills_by_uuid == {}
-    assert cache.tools_by_uuid == {"tool-1": {"uuid": "tool-1", "name": "tool-one"}}
-    assert cache.snippets_by_uuid == {
-        "snippet-1": {"uuid": "snippet-1", "name": "snippet-one"}
-    }
+def test_remove_name(cache):
+    """Test removing a name from the cache."""
+    cache.set_head("mytool", "uuid-1")
+    assert cache.has_name("mytool")
+    
+    cache.remove_name("mytool")
+    assert not cache.has_name("mytool")
+    assert cache.lookup_by_name("mytool") is None
 
 
-def test_build_lookup_cache_indexes_all_requested_stores(
-    skills_handler, tools_handler, snippets_handler
-):
-    skills_handler.write_file_content(
-        "skill1.json",
-        json.dumps({"uuid": "skill-1", "name": "skill-one", "tool_uuids": ["tool-1"]}),
-    )
-    tools_handler.write_file_content(
-        "tool1.json",
-        json.dumps({"uuid": "tool-1", "name": "tool-one"}),
-    )
-    snippets_handler.write_file_content(
-        "snippet1.json",
-        json.dumps({"uuid": "snippet-1", "name": "snippet-one"}),
-    )
+def test_remove_name_nonexistent(cache):
+    """Test that removing a non-existent name doesn't raise an error."""
+    cache.remove_name("nonexistent")  # Should not raise
 
-    cache = build_lookup_cache(
-        skills_handler=skills_handler,
-        tools_handler=tools_handler,
-        snippets_handler=snippets_handler,
-    )
 
-    assert cache.skills_by_uuid["skill-1"]["name"] == "skill-one"
-    assert cache.tools_by_uuid["tool-1"]["name"] == "tool-one"
-    assert cache.snippets_by_uuid["snippet-1"]["name"] == "snippet-one"
+def test_has_name(cache):
+    """Test checking if a name exists in the cache."""
+    assert not cache.has_name("mytool")
+    
+    cache.set_head("mytool", "uuid-1")
+    assert cache.has_name("mytool")
+    
+    cache.remove_name("mytool")
+    assert not cache.has_name("mytool")
+
+
+def test_clear(cache):
+    """Test clearing all entries from the cache."""
+    cache.set_head("tool1", "uuid-1")
+    cache.set_head("tool2", "uuid-2")
+    cache.set_head("snippet1", "uuid-3")
+    
+    assert len(cache.get_all_names()) == 3
+    
+    cache.clear()
+    assert len(cache.get_all_names()) == 0
+    assert cache.lookup_by_name("tool1") is None
+
+
+def test_version_chain_scenario(cache):
+    """Test a git-like version chain scenario."""
+    # Create version 1 of "mytool"
+    cache.set_head("mytool", "uuid-v1")
+    assert cache.lookup_by_name("mytool") == "uuid-v1"
+    
+    # Create version 2 of "mytool" (becomes new HEAD)
+    cache.set_head("mytool", "uuid-v2")
+    assert cache.lookup_by_name("mytool") == "uuid-v2"
+    
+    # Create version 3 of "mytool" (becomes new HEAD)
+    cache.set_head("mytool", "uuid-v3")
+    assert cache.lookup_by_name("mytool") == "uuid-v3"
+
+
+def test_multiple_resources_different_names(cache):
+    """Test managing multiple resources with different names."""
+    cache.set_head("tool1", "tool1-uuid")
+    cache.set_head("tool2", "tool2-uuid")
+    cache.set_head("snippet1", "snippet1-uuid")
+    
+    assert cache.lookup_by_name("tool1") == "tool1-uuid"
+    assert cache.lookup_by_name("tool2") == "tool2-uuid"
+    assert cache.lookup_by_name("snippet1") == "snippet1-uuid"
+    
+    names = cache.get_all_names()
+    assert names == {"tool1", "tool2", "snippet1"}
+
+
+def test_name_change_scenario(cache):
+    """Test scenario where a resource name changes."""
+    # Original resource
+    cache.set_head("oldname", "uuid-1")
+    assert cache.lookup_by_name("oldname") == "uuid-1"
+    
+    # Resource renamed - becomes HEAD for new name
+    cache.set_head("newname", "uuid-1")
+    assert cache.lookup_by_name("newname") == "uuid-1"
+    
+    # Old name should be removed separately (done by update_cache_after_update)
+    cache.remove_name("oldname")
+    assert cache.lookup_by_name("oldname") is None
+
+
+def test_delete_head_scenario(cache):
+    """Test scenario where HEAD resource is deleted."""
+    # Create version chain: v1 -> v2 -> v3 (HEAD)
+    cache.set_head("mytool", "uuid-v3")
+    
+    # Delete v3, v2 becomes HEAD
+    cache.set_head("mytool", "uuid-v2")
+    assert cache.lookup_by_name("mytool") == "uuid-v2"
+    
+    # Delete v2, v1 becomes HEAD
+    cache.set_head("mytool", "uuid-v1")
+    assert cache.lookup_by_name("mytool") == "uuid-v1"
+    
+    # Delete v1, no more resources with this name
+    cache.remove_name("mytool")
+    assert cache.lookup_by_name("mytool") is None
 
 
 # Made with Bob

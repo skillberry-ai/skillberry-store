@@ -10,11 +10,12 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Set, Union
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 from fastapi import HTTPException
 
 from skillberry_store.modules.file_handler import FileHandler
+from skillberry_store.modules.lookup_cache import LookupCache
 from skillberry_store.utils.utils import normalize_uuid
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,165 @@ class ResourceHandler:
         self.resource_type = resource_type
         self.file_handler = FileHandler(base_directory)
         self.manifest_filename = f"{resource_type}.json"
+        
+        # Initialize name lookup cache
+        self.name_cache = LookupCache()
+        self._initialize_name_cache()
+        
         logger.info(f"Initialized ResourceHandler for {resource_type} at {base_directory}")
+    
+    # ==================== Cache Management Methods ====================
+    
+    def _initialize_name_cache(self):
+        """Load all resource names and their HEAD UUIDs into the cache.
+        
+        This scans all resources once during initialization to build the cache.
+        For each name, only the latest version (HEAD) is cached.
+        """
+        # Build a temporary map: name -> list of (uuid, parent) tuples
+        name_to_resources: Dict[str, List[Tuple[str, Optional[str]]]] = {}
+        
+        for resource_dict in self.iter_resources():
+            uuid_val = resource_dict.get("uuid")
+            name = resource_dict.get("name")
+            parent = resource_dict.get("parent")
+            
+            if uuid_val and name:
+                if name not in name_to_resources:
+                    name_to_resources[name] = []
+                name_to_resources[name].append((uuid_val, parent))
+        
+        # For each name, find the HEAD (resource with no children)
+        for name, resources in name_to_resources.items():
+            head_uuid = self._find_head_uuid(resources)
+            if head_uuid:
+                self.name_cache.set_head(name, head_uuid)
+        
+        logger.info(f"Initialized name cache for {self.resource_type} with {len(self.name_cache.get_all_names())} names")
+    
+    def _find_head_uuid(self, resources: List[Tuple[str, Optional[str]]]) -> Optional[str]:
+        """Find the HEAD UUID from a list of (uuid, parent) tuples.
+        
+        The HEAD is the resource that is not a parent of any other resource.
+        
+        Args:
+            resources: List of (uuid, parent) tuples
+            
+        Returns:
+            UUID of the HEAD resource, or None if not found
+        """
+        # Build set of all parent UUIDs
+        parent_uuids = {parent for _, parent in resources if parent}
+        
+        # Find UUID that is not anyone's parent
+        for uuid_val, _ in resources:
+            if uuid_val not in parent_uuids:
+                return uuid_val
+        
+        # Fallback: if no clear HEAD, return first UUID
+        return resources[0][0] if resources else None
+    
+    def update_cache_after_create(self, uuid_val: str, name: str, parent: Optional[str]):
+        """Update cache after creating a new resource.
+        
+        Args:
+            uuid_val: UUID of the new resource
+            name: Name of the new resource
+            parent: Parent UUID (previous HEAD for this name)
+        """
+        # New resource becomes HEAD for its name
+        self.name_cache.set_head(name, uuid_val)
+        logger.debug(f"Cache updated after create: '{name}' -> {uuid_val}")
+    
+    def update_cache_after_update(self, uuid_val: str, new_name: str, old_name: Optional[str], old_parent: Optional[str]):
+        """Update cache after updating a resource.
+        
+        Args:
+            uuid_val: UUID of the updated resource
+            new_name: New name of the resource
+            old_name: Old name (if name changed)
+            old_parent: Old parent UUID (for updating old name's HEAD if needed)
+        """
+        # Updated resource becomes HEAD for its (possibly new) name
+        self.name_cache.set_head(new_name, uuid_val)
+        
+        # If name changed and this was HEAD for old name, update old name's HEAD
+        if old_name and old_name != new_name:
+            if self.name_cache.lookup_by_name(old_name) == uuid_val:
+                # This was HEAD for old name, update to parent or remove
+                if old_parent:
+                    self.name_cache.set_head(old_name, old_parent)
+                else:
+                    self.name_cache.remove_name(old_name)
+        
+        logger.debug(f"Cache updated after update: '{new_name}' -> {uuid_val}")
+    
+    def update_cache_after_delete(self, uuid_val: str, name: str, parent: Optional[str]):
+        """Update cache after deleting a resource and fix parent chains.
+        
+        When deleting a resource, we need to:
+        1. Fix any resources that pointed to this resource as their parent
+        2. Update the cache HEAD pointer if this was HEAD
+        
+        Args:
+            uuid_val: UUID of the deleted resource
+            name: Name of the deleted resource
+            parent: Parent UUID (becomes new HEAD if this was HEAD)
+        """
+        # Fix parent chains: find the resource that points to deleted resource as parent
+        # and update it to point to the deleted resource's parent instead
+        self._fix_parent_chain_after_delete(uuid_val, parent, name)
+        
+        # If this was HEAD, update to parent or remove
+        if self.name_cache.lookup_by_name(name) == uuid_val:
+            if parent:
+                self.name_cache.set_head(name, parent)
+                logger.debug(f"Cache updated after delete: '{name}' -> {parent}")
+            else:
+                self.name_cache.remove_name(name)
+                logger.debug(f"Cache removed after delete: '{name}' (no more resources)")
+    
+    def _fix_parent_chain_after_delete(self, deleted_uuid: str, deleted_parent: Optional[str], name: str):
+        """Fix parent chain when a resource is deleted.
+        
+        Efficiently walks the chain from HEAD to find the resource that points
+        to the deleted resource as its parent, and updates it.
+        
+        Args:
+            deleted_uuid: UUID of the deleted resource
+            deleted_parent: Parent of the deleted resource
+            name: Name of the deleted resource
+        """
+        try:
+            # Start from HEAD
+            head_uuid = self.name_cache.lookup_by_name(name)
+            if not head_uuid:
+                return
+            
+            # Walk the chain from HEAD
+            current_uuid = head_uuid
+            while current_uuid:
+                # Read current resource
+                try:
+                    current_resource = self.read_manifest(current_uuid)
+                except Exception as e:
+                    logger.warning(f"Could not read resource {current_uuid} while fixing chain: {e}")
+                    break
+                
+                # Check if this resource points to the deleted resource
+                current_parent = current_resource.get("parent")
+                if current_parent == deleted_uuid:
+                    # Found it! Update this resource to point to deleted resource's parent
+                    current_resource["parent"] = deleted_parent
+                    self.write_manifest(current_uuid, current_resource)
+                    logger.info(f"Fixed parent chain: {current_uuid} now points to {deleted_parent} (was {deleted_uuid})")
+                    return  # Done, only one resource can point to deleted resource
+                
+                # Move to next in chain
+                current_uuid = current_parent
+                
+        except Exception as e:
+            logger.warning(f"Error fixing parent chain after delete: {e}")
     
     # ==================== Core ID Resolution Methods ====================
     
@@ -140,9 +299,7 @@ class ResourceHandler:
     
     def lookup_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """
-        Look up a resource by its name.
-        
-        Searches through all UUID folders and returns the first resource whose name matches.
+        Look up a resource by its name using the cache.
         
         Args:
             name: Resource name to search for.
@@ -150,35 +307,21 @@ class ResourceHandler:
         Returns:
             Optional[Dict[str, Any]]: Resource dictionary if found, None otherwise.
         """
-        base_path = Path(self.base_directory)
+        # Fast O(1) lookup in cache
+        head_uuid = self.name_cache.lookup_by_name(name)
         
-        if not base_path.exists():
+        if not head_uuid:
+            logger.debug(f"No {self.resource_type} found with name '{name}'")
             return None
         
-        for entry_path in base_path.iterdir():
-            # Skip if not a directory or not a valid UUID
-            if not entry_path.is_dir() or not self.is_valid_uuid(entry_path.name):
-                continue
-            
-            manifest_path = entry_path / self.manifest_filename
-            if not manifest_path.exists():
-                continue
-            
-            try:
-                with manifest_path.open('r') as f:
-                    resource_dict = json.load(f)
-                
-                if resource_dict.get("name") == name:
-                    logger.debug(f"Found {self.resource_type} with name '{name}' in UUID folder {entry_path.name}")
-                    return resource_dict
-                    
-            except json.JSONDecodeError:
-                logger.warning(f"Failed to parse JSON in {manifest_path}")
-            except Exception as e:
-                logger.warning(f"Error reading {manifest_path}: {e}")
-        
-        logger.debug(f"No {self.resource_type} found with name '{name}'")
-        return None
+        # Read the resource from disk
+        try:
+            resource_dict = self.read_manifest(head_uuid)
+            logger.debug(f"Found {self.resource_type} with name '{name}' (UUID: {head_uuid})")
+            return resource_dict
+        except Exception as e:
+            logger.error(f"Cache had UUID {head_uuid} for name '{name}' but failed to read: {e}")
+            raise
     
     def resolve_id(self, id_str: str) -> Optional[str]:
         """
@@ -555,41 +698,12 @@ class ResourceHandler:
     
     def get_available_resource_names(self) -> Set[str]:
         """
-        Get a set of all available resource names by scanning UUID folders.
+        Get a set of all available resource names using the cache.
         
         Returns:
             Set[str]: Set of resource names.
         """
-        available_names = set()
-        
-        if not os.path.exists(self.base_directory):
-            return available_names
-        
-        try:
-            for entry in os.listdir(self.base_directory):
-                entry_path = os.path.join(self.base_directory, entry)
-                
-                # Skip if not a directory or not a valid UUID
-                if not os.path.isdir(entry_path) or not self.is_valid_uuid(entry):
-                    continue
-                
-                try:
-                    manifest_content = self.file_handler.read_file(
-                        self.manifest_filename,
-                        raw_content=True,
-                        subdirectory=entry
-                    )
-                    if isinstance(manifest_content, str):
-                        resource_dict = json.loads(manifest_content)
-                        if resource_dict.get('name'):
-                            available_names.add(resource_dict['name'])
-                except Exception as e:
-                    logger.warning(f"Could not read {self.resource_type} name from UUID {entry}: {e}")
-                    
-        except Exception as e:
-            logger.error(f"Error getting available {self.resource_type} names: {e}")
-        
-        return available_names
+        return self.name_cache.get_all_names()
     
     # ==================== Iterator Support ====================
     

@@ -62,6 +62,13 @@ def register_vnfs_api(
             raise HTTPException(
                 status_code=409, detail=f"vNFS server with UUID '{vnfs.uuid}' already exists."
             )
+        
+        # Set parent to existing HEAD for this name (git-like versioning)
+        if vnfs.name:
+            existing_head = vnfs_handler.name_cache.lookup_by_name(vnfs.name)
+            vnfs.parent = existing_head
+            if existing_head:
+                logger.info(f"Setting parent for '{vnfs.name}' to existing HEAD: {existing_head}")
 
         try:
             server = vnfs_server_manager.add_server(vnfs)
@@ -69,6 +76,10 @@ def register_vnfs_api(
 
             # Save using ResourceHandler with UUID
             vnfs_handler.write_manifest(vnfs.uuid, vnfs.to_dict())
+            
+            # Update cache after create
+            if vnfs.name:
+                vnfs_handler.update_cache_after_create(vnfs.uuid, vnfs.name, vnfs.parent)
 
             # Write description indexed by UUID
             if vnfs_descriptions and vnfs.description:
@@ -194,10 +205,11 @@ def register_vnfs_api(
         delete_vnfs_counter.inc()
 
         try:
-            # Get server info first to extract name and uuid
+            # Get server info first to extract name, uuid, and parent
             vnfs_dict = vnfs_handler.get_resource_by_id(id)
             server_name = vnfs_dict.get("name")
             server_uuid = vnfs_dict.get("uuid")
+            server_parent = vnfs_dict.get("parent")
             
             # Stop and remove the runtime server
             try:
@@ -211,6 +223,10 @@ def register_vnfs_api(
 
             # Delete persistent data using ResourceHandler
             vnfs_handler.delete_resource_by_id(id)
+            
+            # Update cache after delete
+            if server_name and server_uuid:
+                vnfs_handler.update_cache_after_delete(server_uuid, server_name, server_parent)
 
             # Delete the description (indexed by UUID)
             if vnfs_descriptions:
@@ -245,7 +261,7 @@ def register_vnfs_api(
         try:
             # Check if vnfs server exists and get current data
             existing_vnfs = vnfs_handler.get_resource_by_id(id)
-            server_name = existing_vnfs.get("name")
+            old_name = existing_vnfs.get("name")
             server_uuid = existing_vnfs.get("uuid")
 
             # Update modified timestamp
@@ -254,14 +270,28 @@ def register_vnfs_api(
             # Preserve UUID if not provided in update
             if not vnfs.uuid:
                 vnfs.uuid = server_uuid
+            
+            # Handle parent chain updates for name changes
+            new_name = vnfs.name
+            if new_name and old_name != new_name:
+                # Name changed: detach from old chain, attach to new chain
+                logger.info(f"vNFS server name changing from '{old_name}' to '{new_name}'")
+                # Look up new name's HEAD to set as parent
+                new_head = vnfs_handler.name_cache.lookup_by_name(new_name)
+                vnfs.parent = new_head
+                if new_head:
+                    logger.info(f"Setting parent for new name '{new_name}' to: {new_head}")
+            elif not vnfs.parent:
+                # Name not changed but parent not set: preserve existing parent
+                vnfs.parent = existing_vnfs.get("parent")
 
             # Stop the old runtime server
             try:
                 vnfs_server_manager.remove_server(
-                    server_name or "",
+                    old_name or "",
                     server_uuid or ""
                 )
-                logger.info(f"Stopped old runtime server: {server_name}_{server_uuid}")
+                logger.info(f"Stopped old runtime server: {old_name}_{server_uuid}")
             except Exception as e:
                 logger.warning(f"Could not stop old runtime server: {e}")
 
@@ -271,6 +301,15 @@ def register_vnfs_api(
 
             # Update persistent data using ResourceHandler
             vnfs_handler.write_manifest(vnfs.uuid or "", vnfs.to_dict())
+            
+            # Update cache after update
+            if vnfs.name and old_name:
+                vnfs_handler.update_cache_after_update(
+                    vnfs.uuid or "",
+                    old_name,
+                    vnfs.name,
+                    vnfs.parent
+                )
             
             # Update description indexed by UUID
             if vnfs_descriptions and vnfs.description and vnfs.uuid:

@@ -146,8 +146,19 @@ def register_skills_api(
             )
 
         try:
+            # Look up existing HEAD for parent chain
+            if skill.name:
+                existing_head = skill_handler.name_cache.lookup_by_name(skill.name)
+                skill.parent = existing_head
+                if existing_head:
+                    logger.info(f"Setting parent for skill '{skill.name}' to existing HEAD: {existing_head}")
+            
             # Save skill manifest to UUID subfolder
             skill_handler.write_manifest(skill_uuid_normalized, skill.to_dict())
+            
+            # Update cache - this becomes new HEAD
+            if skill.name:
+                skill_handler.update_cache_after_create(skill_uuid_normalized, skill.name, skill.parent)
 
             # Write description for search capability (indexed by UUID)
             if skills_descriptions and skill.description:
@@ -246,7 +257,7 @@ def register_skills_api(
         delete_skill_counter.inc()
 
         try:
-            # Resolve ID to UUID first to delete description
+            # Resolve ID to UUID and read skill before deletion
             skill_uuid = skill_handler.resolve_id(id)
             if not skill_uuid:
                 raise HTTPException(
@@ -254,8 +265,22 @@ def register_skills_api(
                     detail=f"Skill with ID '{id}' not found"
                 )
             
+            # Read skill to get name and parent before deletion
+            skill_name = None
+            skill_parent = None
+            try:
+                skill_dict = skill_handler.read_manifest(skill_uuid)
+                skill_name = skill_dict.get("name")
+                skill_parent = skill_dict.get("parent")
+            except Exception as e:
+                logger.warning(f"Could not read skill before deletion: {e}")
+            
             # Delete the skill resource folder
             result = skill_handler.delete_resource_by_id(id)
+            
+            # Update cache after deletion
+            if skill_uuid and skill_name:
+                skill_handler.update_cache_after_delete(skill_uuid, skill_name, skill_parent)
 
             # Delete the description for the skill (indexed by UUID)
             if skills_descriptions:
@@ -305,9 +330,19 @@ def register_skills_api(
 
             # Read existing manifest to preserve uuid and created_at
             existing_manifest = skill_handler.read_manifest(skill_uuid)
+            old_name = existing_manifest.get("name")
+            old_parent = existing_manifest.get("parent")
             
             # Convert update data to dict
             update_data = skill.to_dict()
+            
+            # Handle name change - update parent chain
+            new_name = skill.name if skill.name else old_name
+            if new_name and old_name and new_name != old_name:
+                # Name changed - look up new name's HEAD and set as parent
+                new_name_head = skill_handler.name_cache.lookup_by_name(new_name)
+                update_data["parent"] = new_name_head
+                logger.info(f"Skill name changed from '{old_name}' to '{new_name}', parent set to {new_name_head}")
             
             # Merge: preserve uuid and created_at from existing, update modified_at
             merged_manifest = {**existing_manifest, **update_data}
@@ -320,6 +355,10 @@ def register_skills_api(
             if not skill_uuid_normalized:
                 raise HTTPException(status_code=400, detail=f"Invalid UUID format: {skill_uuid}")
             skill_handler.write_manifest(skill_uuid_normalized, merged_manifest)
+            
+            # Update cache - this becomes HEAD for its (possibly new) name
+            if new_name:
+                skill_handler.update_cache_after_update(skill_uuid_normalized, new_name, old_name, old_parent)
             
             # Update description for search capability (indexed by UUID)
             if skills_descriptions and merged_manifest.get("description"):
@@ -512,12 +551,13 @@ def register_skills_api(
                 try:
                     tool_dict = tool.to_dict()
                     tool_uuid = tool.uuid
+                    tool_name = tool_dict["name"]
 
                     # Prepare tool data
                     ext = (
                         ".py" if tool_dict["programmingLanguage"] == "python" else ".sh"
                     )
-                    module_filename = f"{tool_dict['name']}{ext}"
+                    module_filename = f"{tool_name}{ext}"
 
                     # Add additional tags to tool tags
                     tool_tags = tool_dict["tags"].copy() if tool_dict["tags"] else []
@@ -525,9 +565,15 @@ def register_skills_api(
                         if tag and tag not in tool_tags:
                             tool_tags.append(tag)
 
+                    # Set parent to existing HEAD for this tool name (git-like versioning)
+                    existing_head = tools_handler.name_cache.lookup_by_name(tool_name)
+                    tool_parent = existing_head
+                    if existing_head:
+                        logger.info(f"Setting parent for tool '{tool_name}' to existing HEAD: {existing_head}")
+
                     tool_data = {
                         "uuid": tool_uuid,
-                        "name": tool_dict["name"],
+                        "name": tool_name,
                         "version": tool_dict["version"],
                         "description": tool_dict["description"],
                         "tags": tool_tags,
@@ -537,6 +583,7 @@ def register_skills_api(
                         "state": "approved",
                         "created_at": current_time,
                         "modified_at": current_time,
+                        "parent": tool_parent,
                     }
 
                     if "params" in tool_dict and tool_dict["params"]:
@@ -553,28 +600,31 @@ def register_skills_api(
                             # Detect dependencies from code
                             detected_dep_names = detect_tool_dependencies(
                                 tool_dict["moduleContent"],
-                                tool_dict["name"],
-                                available_tools  
+                                tool_name,
+                                available_tools
                             )
                             if detected_dep_names:
                                 detected_deps = [all_tool_names.get(m) if m in all_tool_names else tools_handler.resolve_id(m) for m in detected_dep_names]
                                 tool_data["dependencies"] = detected_deps
                                 logger.info(
-                                    f"Auto-detected dependencies for '{tool_dict['name']}': {detected_deps}"
+                                    f"Auto-detected dependencies for '{tool_name}': {detected_deps}"
                                 )
                         except Exception as e:
-                            logger.warning(f"Failed to auto-detect dependencies for {tool_dict['name']}: {e}")
+                            logger.warning(f"Failed to auto-detect dependencies for {tool_name}: {e}")
                     
                     # Save tool manifest to UUID subfolder
                     tool_uuid_normalized = normalize_uuid(tool_uuid)
                     if not tool_uuid_normalized:
                         raise HTTPException(status_code=400, detail=f"Invalid UUID format: {tool_uuid}")
                     tools_handler.write_manifest(tool_uuid_normalized, tool_data)
+                    
+                    # Update cache after create
+                    tools_handler.update_cache_after_create(tool_uuid_normalized, tool_name, tool_parent)
 
                     # Save tool module to UUID subfolder
                     tools_handler.write_resource_file(tool_uuid_normalized, module_filename, tool_dict['moduleContent'])
                     
-                    logger.info(f"Created tool: {tool_dict['name']}")
+                    logger.info(f"Created tool: {tool_name}")
                 except Exception as e:
                     logger.error(f"Failed to create tool {tool.name}: {e}")
 
@@ -584,6 +634,7 @@ def register_skills_api(
                 try:
                     snippet_dict = snippet.to_dict()
                     snippet_uuid = str(uuid.uuid4())
+                    snippet_name = snippet_dict["name"]
 
                     # Add additional tags to snippet tags
                     snippet_tags = (
@@ -593,10 +644,16 @@ def register_skills_api(
                         if tag and tag not in snippet_tags:
                             snippet_tags.append(tag)
 
+                    # Set parent to existing HEAD for this snippet name (git-like versioning)
+                    existing_head = snippets_handler.name_cache.lookup_by_name(snippet_name)
+                    snippet_parent = existing_head
+                    if existing_head:
+                        logger.info(f"Setting parent for snippet '{snippet_name}' to existing HEAD: {existing_head}")
+
                     # Prepare snippet data
                     snippet_data = {
                         "uuid": snippet_uuid,
-                        "name": snippet_dict["name"],
+                        "name": snippet_name,
                         "version": snippet_dict["version"],
                         "description": snippet_dict["description"],
                         "content": snippet_dict["content"],
@@ -605,6 +662,7 @@ def register_skills_api(
                         "state": "approved",
                         "created_at": current_time,
                         "modified_at": current_time,
+                        "parent": snippet_parent,
                     }
                     
                     # Save snippet manifest to UUID subfolder
@@ -613,8 +671,11 @@ def register_skills_api(
                         raise HTTPException(status_code=400, detail=f"Invalid UUID format: {snippet_uuid}")
                     snippets_handler.write_manifest(snippet_uuid_normalized, snippet_data)
                     
+                    # Update cache after create
+                    snippets_handler.update_cache_after_create(snippet_uuid_normalized, snippet_name, snippet_parent)
+                    
                     created_snippet_uuids.append(snippet_uuid)
-                    logger.info(f"Created snippet: {snippet_dict['name']}")
+                    logger.info(f"Created snippet: {snippet_name}")
                 except Exception as e:
                     logger.error(f"Failed to create snippet {snippet.name}: {e}")
 
@@ -633,6 +694,7 @@ def register_skills_api(
                 tool_uuids=created_tool_uuids,
                 snippet_uuids=created_snippet_uuids,
                 state=ManifestState.APPROVED,
+                parent=None,  # Will be set by create_skill if name exists
             )
             
             # Create new skill
