@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 from fastapi import HTTPException
 
+from skillberry_store.modules.dict_cache import DictCache
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.lookup_cache import LookupCache
 from skillberry_store.utils.utils import normalize_uuid
@@ -111,24 +112,31 @@ class ResourceHandler:
     their UUID or their name.
     """
     
-    def __init__(self, base_directory: str, resource_type: str):
+    def __init__(self, base_directory: str, resource_type: str, use_dict_cache: bool = True):
         """
         Initialize ResourceHandler.
         
         Args:
             base_directory: Base directory for resources (e.g., /tmp/tools)
             resource_type: Type of resource ('tool', 'snippet', 'skill', 'vmcp')
+            use_dict_cache: If True, use in-memory dict cache for manifests (default: True)
         """
         self.base_directory = base_directory
         self.resource_type = resource_type
         self.file_handler = FileHandler(base_directory)
         self.manifest_filename = f"{resource_type}.json"
         
+        # If enabled, use in-memory dict cache for manifests
+        self.dict_cache = None
+        if use_dict_cache:
+            self.dict_cache = DictCache()
+            self._initialize_dict_cache()
+
         # Initialize name lookup cache
         self.name_cache = LookupCache()
         self._initialize_name_cache()
-        
-        logger.info(f"Initialized ResourceHandler for {resource_type} at {base_directory}")
+      
+        logger.info(f"Initialized ResourceHandler for {resource_type} at {base_directory} (dict_cache={'enabled' if use_dict_cache else 'disabled'})")
     
     # ==================== Cache Management Methods ====================
     
@@ -180,6 +188,46 @@ class ResourceHandler:
         
         # Fallback: if no clear HEAD, return first UUID
         return resources[0][0] if resources else None
+    
+    def _initialize_dict_cache(self):
+        """Load all resource manifests into the dict cache.
+        
+        This scans all resources once during initialization to build the cache.
+        All manifests are loaded into memory for fast access.
+        
+        Note: This uses direct disk I/O (not iter_resources) to avoid circular dependency.
+        """
+
+        assert self.dict_cache is not None
+        self.dict_cache.clear()
+
+        if not os.path.exists(self.base_directory):
+            logger.info(f"Base directory {self.base_directory} does not exist, dict cache initialized empty")
+            return
+        
+        for entry in os.listdir(self.base_directory):
+            entry_path = os.path.join(self.base_directory, entry)
+            
+            # Skip if not a directory or not a valid UUID
+            if not os.path.isdir(entry_path) or not self.is_valid_uuid(entry):
+                continue
+            
+            # Read manifest from UUID folder directly (bypass cache)
+            try:
+                manifest_content = self.file_handler.read_file(
+                    self.manifest_filename,
+                    raw_content=True,
+                    subdirectory=entry
+                )
+                if isinstance(manifest_content, str):
+                    resource_dict = json.loads(manifest_content)
+                    uuid_val = resource_dict.get("uuid")
+                    if uuid_val:
+                        self.dict_cache.set(uuid_val, resource_dict)
+            except Exception as e:
+                logger.warning(f"Could not read {self.resource_type} manifest for UUID {entry} during cache init: {e}")
+        
+        logger.info(f"Initialized dict cache for {self.resource_type} with {self.dict_cache.size()} manifests")
     
     def update_cache_after_create(self, uuid_val: str, name: str, parent: Optional[str]):
         """Update cache after creating a new resource.
@@ -440,6 +488,8 @@ class ResourceHandler:
         """
         Read a resource's manifest file.
         
+        Uses dict cache if enabled, otherwise reads from disk.
+        
         Args:
             resource_uuid: The resource's UUID.
             
@@ -449,6 +499,21 @@ class ResourceHandler:
         Raises:
             HTTPException: If manifest not found (404) or read fails (500).
         """
+        # Try cache first if enabled
+        if self.dict_cache:
+            cached_manifest = self.dict_cache.get(resource_uuid)
+            if cached_manifest is not None:
+                logger.debug(f"Cache hit for {self.resource_type} UUID {resource_uuid}")
+                return cached_manifest
+            else:
+                # Cache is authoritative - if not in cache, resource doesn't exist
+                logger.debug(f"Cache miss for {self.resource_type} UUID {resource_uuid} - resource does not exist")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"{self.resource_type.capitalize()} with UUID '{resource_uuid}' not found"
+                )
+        
+        # Cache disabled - read from disk
         try:
             normalized = normalize_uuid(resource_uuid)
             if not normalized:
@@ -477,6 +542,8 @@ class ResourceHandler:
         """
         Write a resource's manifest file.
         
+        Updates dict cache if enabled.
+        
         Args:
             resource_uuid: The resource's UUID.
             manifest_data: The manifest data to write.
@@ -492,11 +559,18 @@ class ResourceHandler:
             if not normalized:
                 raise ValueError(f"Invalid UUID: {resource_uuid}")
             manifest_json = json.dumps(manifest_data, indent=4)
-            return self.file_handler.write_file_content(
+            result = self.file_handler.write_file_content(
                 self.manifest_filename,
                 manifest_json,
                 subdirectory=normalized
             )
+            
+            # Update cache if enabled
+            if self.dict_cache:
+                self.dict_cache.set(resource_uuid, manifest_data)
+                logger.debug(f"Updated dict cache for {self.resource_type} UUID {resource_uuid}")
+            
+            return result
         except Exception as e:
             logger.error(f"Error writing manifest for {self.resource_type} UUID {resource_uuid}: {e}")
             raise HTTPException(
@@ -507,6 +581,8 @@ class ResourceHandler:
     def delete_resource_folder(self, resource_uuid: str) -> Dict:
         """
         Delete a resource's entire subfolder (including manifest and all files).
+        
+        Removes from dict cache if enabled.
         
         Args:
             resource_uuid: The resource's UUID.
@@ -522,7 +598,14 @@ class ResourceHandler:
             if not normalized:
                 raise ValueError(f"Invalid UUID: {resource_uuid}")
             # Delete the entire UUID subfolder (contains manifest and any other files)
-            return self.file_handler.delete_subdirectory(normalized)
+            result = self.file_handler.delete_subdirectory(normalized)
+            
+            # Remove from cache if enabled
+            if self.dict_cache:
+                self.dict_cache.remove(resource_uuid)
+                logger.debug(f"Removed from dict cache: {self.resource_type} UUID {resource_uuid}")
+            
+            return result
         except HTTPException:
             raise
         except Exception as e:
@@ -627,6 +710,8 @@ class ResourceHandler:
         """
         List all resources of this type.
         
+        Uses dict cache if enabled, otherwise reads from disk.
+        
         Returns:
             List[Dict[str, Any]]: List of all resource manifest dictionaries.
             
@@ -634,6 +719,11 @@ class ResourceHandler:
             HTTPException: If listing fails (500).
         """
         try:
+            # Use cache if enabled
+            if self.dict_cache:
+                return list(self.dict_cache.get_all_manifests().values())
+            
+            # Cache disabled - read from disk
             resources = []
             
             # Scan UUID folders in base directory
@@ -729,9 +819,18 @@ class ResourceHandler:
         """
         Iterate over all resources of this type, yielding manifest dictionaries.
         
+        Uses dict cache if enabled, otherwise reads from disk.
+        
         Yields:
             Dict[str, Any]: Resource manifest dictionary.
         """
+        # Use cache if enabled
+        if self.dict_cache:
+            for manifest in self.dict_cache.get_all_manifests().values():
+                yield manifest
+            return
+        
+        # Cache disabled - read from disk
         if not os.path.exists(self.base_directory):
             return
         
