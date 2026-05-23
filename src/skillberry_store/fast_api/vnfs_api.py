@@ -65,7 +65,7 @@ def register_vnfs_api(
         
         # Set parent to existing HEAD for this name (git-like versioning)
         if vnfs.name:
-            existing_head = vnfs_handler.name_cache.lookup_by_name(vnfs.name)
+            existing_head = vnfs_handler.name_to_uuid(vnfs.name)
             vnfs.parent = existing_head
             if existing_head:
                 logger.info(f"Setting parent for '{vnfs.name}' to existing HEAD: {existing_head}")
@@ -277,7 +277,7 @@ def register_vnfs_api(
                 # Name changed: detach from old chain, attach to new chain
                 logger.info(f"vNFS server name changing from '{old_name}' to '{new_name}'")
                 # Look up new name's HEAD to set as parent
-                new_head = vnfs_handler.name_cache.lookup_by_name(new_name)
+                new_head = vnfs_handler.name_to_uuid(new_name)
                 vnfs.parent = new_head
                 if new_head:
                     logger.info(f"Setting parent for new name '{new_name}' to: {new_head}")

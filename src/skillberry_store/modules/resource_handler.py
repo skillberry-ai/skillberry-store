@@ -297,6 +297,26 @@ class ResourceHandler:
         """
         return normalize_uuid(id_str) is not None
     
+    def name_to_uuid(self, name: str) -> Optional[str]:
+        """
+        Translate a resource name to its UUID using the cache.
+        
+        This is a fast O(1) lookup that returns only the UUID without loading
+        the full manifest from disk.
+        
+        Args:
+            name: Resource name to search for.
+            
+        Returns:
+            Optional[str]: The UUID of the HEAD resource with this name, or None if not found.
+        """
+        head_uuid = self.name_cache.lookup_by_name(name)
+        if head_uuid:
+            logger.debug(f"Resolved name '{name}' to UUID '{head_uuid}'")
+        else:
+            logger.debug(f"No {self.resource_type} found with name '{name}'")
+        return head_uuid
+    
     def lookup_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """
         Look up a resource by its name using the cache.
@@ -341,11 +361,9 @@ class ResourceHandler:
         if normalized:
             return normalized
         
-        # Try to resolve as a name
-        resource = self.lookup_by_name(id_str)
-        if resource and resource.get("uuid"):
-            resource_uuid = resource["uuid"]
-            logger.debug(f"Resolved name '{id_str}' to UUID '{resource_uuid}'")
+        # Try to resolve as a name using the cache (efficient, no disk I/O)
+        resource_uuid = self.name_to_uuid(id_str)
+        if resource_uuid:
             return normalize_uuid(resource_uuid)
         
         # Could not resolve

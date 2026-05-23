@@ -192,7 +192,7 @@ def register_tools_api(
 
         try:
             # Look up existing HEAD for parent chain
-            existing_head = tool_handler.name_cache.lookup_by_name(tool.name)
+            existing_head = tool_handler.name_to_uuid(tool.name)
             tool.parent = existing_head
             if existing_head:
                 logger.info(f"Setting parent for tool '{tool.name}' to existing HEAD: {existing_head}")
@@ -218,7 +218,7 @@ def register_tools_api(
                         available_tools,
                     )
                     if detected_dep_names:
-                        detected_deps = [tool_handler.resolve_id(m) for m in detected_dep_names]
+                        detected_deps = [tool_handler.name_to_uuid(m) for m in detected_dep_names]
                         tool.dependencies = detected_deps
                         logger.info(
                             f"Auto-detected dependencies for '{tool.name}': {detected_deps}"
@@ -481,7 +481,7 @@ def register_tools_api(
             new_name = tool.name if tool.name else old_name
             if new_name and old_name and new_name != old_name:
                 # Name changed - look up new name's HEAD and set as parent
-                new_name_head = tool_handler.name_cache.lookup_by_name(new_name)
+                new_name_head = tool_handler.name_to_uuid(new_name)
                 update_data["parent"] = new_name_head
                 logger.info(f"Tool name changed from '{old_name}' to '{new_name}', parent set to {new_name_head}")
             

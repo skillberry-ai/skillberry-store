@@ -148,7 +148,7 @@ def register_skills_api(
         try:
             # Look up existing HEAD for parent chain
             if skill.name:
-                existing_head = skill_handler.name_cache.lookup_by_name(skill.name)
+                existing_head = skill_handler.name_to_uuid(skill.name)
                 skill.parent = existing_head
                 if existing_head:
                     logger.info(f"Setting parent for skill '{skill.name}' to existing HEAD: {existing_head}")
@@ -340,7 +340,7 @@ def register_skills_api(
             new_name = skill.name if skill.name else old_name
             if new_name and old_name and new_name != old_name:
                 # Name changed - look up new name's HEAD and set as parent
-                new_name_head = skill_handler.name_cache.lookup_by_name(new_name)
+                new_name_head = skill_handler.name_to_uuid(new_name)
                 update_data["parent"] = new_name_head
                 logger.info(f"Skill name changed from '{old_name}' to '{new_name}', parent set to {new_name_head}")
             
@@ -566,7 +566,7 @@ def register_skills_api(
                             tool_tags.append(tag)
 
                     # Set parent to existing HEAD for this tool name (git-like versioning)
-                    existing_head = tools_handler.name_cache.lookup_by_name(tool_name)
+                    existing_head = tools_handler.name_to_uuid(tool_name)
                     tool_parent = existing_head
                     if existing_head:
                         logger.info(f"Setting parent for tool '{tool_name}' to existing HEAD: {existing_head}")
@@ -604,7 +604,7 @@ def register_skills_api(
                                 available_tools
                             )
                             if detected_dep_names:
-                                detected_deps = [all_tool_names.get(m) if m in all_tool_names else tools_handler.resolve_id(m) for m in detected_dep_names]
+                                detected_deps = [all_tool_names.get(m) if m in all_tool_names else tools_handler.name_to_uuid(m) for m in detected_dep_names]
                                 tool_data["dependencies"] = detected_deps
                                 logger.info(
                                     f"Auto-detected dependencies for '{tool_name}': {detected_deps}"
@@ -645,7 +645,7 @@ def register_skills_api(
                             snippet_tags.append(tag)
 
                     # Set parent to existing HEAD for this snippet name (git-like versioning)
-                    existing_head = snippets_handler.name_cache.lookup_by_name(snippet_name)
+                    existing_head = snippets_handler.name_to_uuid(snippet_name)
                     snippet_parent = existing_head
                     if existing_head:
                         logger.info(f"Setting parent for snippet '{snippet_name}' to existing HEAD: {existing_head}")

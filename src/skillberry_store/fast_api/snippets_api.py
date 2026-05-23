@@ -123,7 +123,7 @@ def register_snippets_api(
         try:
             # Look up existing HEAD for parent chain
             if snippet.name:
-                existing_head = snippet_handler.name_cache.lookup_by_name(snippet.name)
+                existing_head = snippet_handler.name_to_uuid(snippet.name)
                 snippet.parent = existing_head
                 if existing_head:
                     logger.info(f"Setting parent for snippet '{snippet.name}' to existing HEAD: {existing_head}")
@@ -304,7 +304,7 @@ def register_snippets_api(
             new_name = snippet.name if snippet.name else old_name
             if new_name and old_name and new_name != old_name:
                 # Name changed - look up new name's HEAD and set as parent
-                new_name_head = snippet_handler.name_cache.lookup_by_name(new_name)
+                new_name_head = snippet_handler.name_to_uuid(new_name)
                 update_data["parent"] = new_name_head
                 logger.info(f"Snippet name changed from '{old_name}' to '{new_name}', parent set to {new_name_head}")
             

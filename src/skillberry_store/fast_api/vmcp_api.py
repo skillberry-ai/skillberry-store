@@ -124,7 +124,7 @@ def register_vmcp_api(
         
         # Set parent to existing HEAD for this name (git-like versioning)
         if vmcp.name:
-            existing_head = vmcp_handler.name_cache.lookup_by_name(vmcp.name)
+            existing_head = vmcp_handler.name_to_uuid(vmcp.name)
             vmcp.parent = existing_head
             if existing_head:
                 logger.info(f"Setting parent for '{vmcp.name}' to existing HEAD: {existing_head}")
@@ -445,7 +445,7 @@ def register_vmcp_api(
                 # Name changed: detach from old chain, attach to new chain
                 logger.info(f"VMCP server name changing from '{old_name}' to '{new_name}'")
                 # Look up new name's HEAD to set as parent
-                new_head = vmcp_handler.name_cache.lookup_by_name(new_name)
+                new_head = vmcp_handler.name_to_uuid(new_name)
                 vmcp.parent = new_head
                 if new_head:
                     logger.info(f"Setting parent for new name '{new_name}' to: {new_head}")
