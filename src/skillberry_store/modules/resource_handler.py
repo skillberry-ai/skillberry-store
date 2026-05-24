@@ -229,65 +229,83 @@ class ResourceHandler:
         
         logger.info(f"Initialized dict cache for {self.resource_type} with {self.dict_cache.size()} manifests")
     
-    def update_cache_after_create(self, uuid_val: str, name: str, parent: Optional[str]):
-        """Update cache after creating a new resource.
+    def get_cache_parent_for_head(self, uuid_val: str, name: str) -> Optional[str]:
+        """Determine the correct parent for a resource that will become HEAD.
+        
+        This method looks up the current HEAD for the given name and determines
+        what the parent should be for the resource that will become the new HEAD.
         
         Args:
-            uuid_val: UUID of the new resource
-            name: Name of the new resource
-            parent: Parent UUID (previous HEAD for this name)
+            uuid_val: UUID of the resource that will become HEAD
+            name: Name of the resource
+            
+        Returns:
+            Optional[str]: The UUID that should be set as parent:
+                - If no HEAD exists: None (first resource with this name)
+                - If HEAD exists and HEAD != uuid_val: HEAD UUID (new resource replaces HEAD)
+                - If HEAD == uuid_val: HEAD's current parent (resource is already HEAD)
         """
-        # New resource becomes HEAD for its name
-        self.name_cache.set_head(name, uuid_val)
-        logger.debug(f"Cache updated after create: '{name}' -> {uuid_val}")
+        current_head = self.name_cache.lookup_by_name(name)
+        
+        if not current_head:
+            # No existing HEAD - this is the first resource with this name
+            logger.debug(f"No existing HEAD for '{name}', parent will be None")
+            return None
+        
+        if current_head != uuid_val:
+            # Different resource is HEAD - it becomes the parent
+            logger.debug(f"Current HEAD for '{name}' is {current_head}, will become parent")
+            return current_head
+        
+        # This resource is already HEAD - preserve its current parent
+        try:
+            current_manifest = self.read_manifest(uuid_val)
+            current_parent = current_manifest.get("parent")
+            logger.debug(f"Resource {uuid_val} is already HEAD for '{name}', preserving parent {current_parent}")
+            return current_parent
+        except Exception as e:
+            logger.warning(f"Could not read manifest for {uuid_val} to get parent: {e}")
+            return None
     
-    def update_cache_after_update(self, uuid_val: str, new_name: str, old_name: Optional[str], old_parent: Optional[str]):
-        """Update cache after updating a resource.
+    def update_cache(self, uuid_val: str, new_name: Optional[str] = None,
+                     old_name: Optional[str] = None, old_parent: Optional[str] = None):
+        """Update cache after any resource operation (create/update/delete).
+        
+        This unified method handles cache updates for all operations using a two-step approach:
+        1. If old_name is provided: Detach uuid from old_name chain
+        2. If new_name is provided: Attach uuid as HEAD for new_name chain
         
         Args:
-            uuid_val: UUID of the updated resource
-            new_name: New name of the resource
-            old_name: Old name (if name changed)
-            old_parent: Old parent UUID (for updating old name's HEAD if needed)
+            uuid_val: UUID of the resource (mandatory)
+            new_name: New name for the resource (None for delete operations)
+            old_name: Old name of the resource (None for create operations)
+            old_parent: Old parent UUID (used when detaching from old chain)
+            
+        Usage:
+            - CREATE: update_cache(uuid, new_name="tool1", old_name=None, old_parent=None)
+            - UPDATE (same name): update_cache(uuid, new_name="tool1", old_name="tool1", old_parent="uuid-b")
+            - UPDATE (name change): update_cache(uuid, new_name="tool2", old_name="tool1", old_parent="uuid-b")
+            - DELETE: update_cache(uuid, new_name=None, old_name="tool1", old_parent="uuid-b")
         """
-        # Updated resource becomes HEAD for its (possibly new) name
-        self.name_cache.set_head(new_name, uuid_val)
-        
-        # If name changed and this was HEAD for old name, update old name's HEAD
-        if old_name and old_name != new_name:
+        # STEP 1: Detach from old chain (if old_name provided)
+        if old_name:
+            # Fix parent chains in manifests: find resources pointing to uuid and update them
+            self._fix_parent_chain_after_delete(uuid_val, old_parent, old_name)
+            
+            # Update cache HEAD pointer for old_name
             if self.name_cache.lookup_by_name(old_name) == uuid_val:
-                # This was HEAD for old name, update to parent or remove
+                # This resource was HEAD for old_name
                 if old_parent:
                     self.name_cache.set_head(old_name, old_parent)
+                    logger.debug(f"Cache: detached {uuid_val} from '{old_name}', new HEAD is {old_parent}")
                 else:
                     self.name_cache.remove_name(old_name)
+                    logger.debug(f"Cache: removed '{old_name}' (no more resources)")
         
-        logger.debug(f"Cache updated after update: '{new_name}' -> {uuid_val}")
-    
-    def update_cache_after_delete(self, uuid_val: str, name: str, parent: Optional[str]):
-        """Update cache after deleting a resource and fix parent chains.
-        
-        When deleting a resource, we need to:
-        1. Fix any resources that pointed to this resource as their parent
-        2. Update the cache HEAD pointer if this was HEAD
-        
-        Args:
-            uuid_val: UUID of the deleted resource
-            name: Name of the deleted resource
-            parent: Parent UUID (becomes new HEAD if this was HEAD)
-        """
-        # Fix parent chains: find the resource that points to deleted resource as parent
-        # and update it to point to the deleted resource's parent instead
-        self._fix_parent_chain_after_delete(uuid_val, parent, name)
-        
-        # If this was HEAD, update to parent or remove
-        if self.name_cache.lookup_by_name(name) == uuid_val:
-            if parent:
-                self.name_cache.set_head(name, parent)
-                logger.debug(f"Cache updated after delete: '{name}' -> {parent}")
-            else:
-                self.name_cache.remove_name(name)
-                logger.debug(f"Cache removed after delete: '{name}' (no more resources)")
+        # STEP 2: Attach to new chain (if new_name provided)
+        if new_name:
+            self.name_cache.set_head(new_name, uuid_val)
+            logger.debug(f"Cache: set {uuid_val} as HEAD for '{new_name}'")
     
     def _fix_parent_chain_after_delete(self, deleted_uuid: str, deleted_parent: Optional[str], name: str):
         """Fix parent chain when a resource is deleted.

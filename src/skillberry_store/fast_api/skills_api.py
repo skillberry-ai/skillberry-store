@@ -137,19 +137,17 @@ def register_skills_api(
             )
 
         try:
-            # Look up existing HEAD for parent chain
+            # Determine correct parent for this skill becoming HEAD
             if skill.name:
-                existing_head = skill_handler.name_to_uuid(skill.name)
-                skill.parent = existing_head
-                if existing_head:
-                    logger.info(f"Setting parent for skill '{skill.name}' to existing HEAD: {existing_head}")
+                skill.parent = skill_handler.get_cache_parent_for_head(skill.uuid, skill.name)
+                logger.info(f"Setting parent for skill '{skill.name}' to {skill.parent}")
             
             # Save skill manifest to UUID subfolder
             skill_handler.write_manifest(skill.uuid, skill.to_dict())
             
             # Update cache - this becomes new HEAD
             if skill.name:
-                skill_handler.update_cache_after_create(skill.uuid, skill.name, skill.parent)
+                skill_handler.update_cache(skill.uuid, new_name=skill.name)
 
             # Write description for search capability (indexed by UUID)
             if skills_descriptions and skill.description:
@@ -268,7 +266,7 @@ def register_skills_api(
             
             # Update cache after deletion
             if skill_uuid and skill_name:
-                skill_handler.update_cache_after_delete(skill_uuid, skill_name, skill_parent)
+                skill_handler.update_cache(skill_uuid, new_name=None, old_name=skill_name, old_parent=skill_parent)
 
             # Delete the description for the skill (indexed by UUID)
             if skills_descriptions:
@@ -320,13 +318,14 @@ def register_skills_api(
             # Convert update data to dict
             update_data = skill.to_dict()
             
-            # Handle name change - update parent chain
+            # Determine new name
             new_name = skill.name if skill.name else old_name
-            if new_name and old_name and new_name != old_name:
-                # Name changed - look up new name's HEAD and set as parent
-                new_name_head = skill_handler.name_to_uuid(new_name)
-                update_data["parent"] = new_name_head
-                logger.info(f"Skill name changed from '{old_name}' to '{new_name}', parent set to {new_name_head}")
+            
+            # Determine correct parent for this skill becoming HEAD
+            if new_name:
+                new_parent = skill_handler.get_cache_parent_for_head(skill_uuid, new_name)
+                update_data["parent"] = new_parent
+                logger.info(f"Setting parent for skill '{new_name}' to {new_parent}")
             
             # Merge: preserve uuid and created_at from existing, update modified_at
             merged_manifest = {**existing_manifest, **update_data}
@@ -339,7 +338,7 @@ def register_skills_api(
             
             # Update cache - this becomes HEAD for its (possibly new) name
             if new_name:
-                skill_handler.update_cache_after_update(skill_uuid, new_name, old_name, old_parent)
+                skill_handler.update_cache(skill_uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
             
             # Update description for search capability (indexed by UUID)
             if skills_descriptions and merged_manifest.get("description"):
@@ -546,11 +545,9 @@ def register_skills_api(
                         if tag and tag not in tool_tags:
                             tool_tags.append(tag)
 
-                    # Set parent to existing HEAD for this tool name (git-like versioning)
-                    existing_head = tools_handler.name_to_uuid(tool_name)
-                    tool_parent = existing_head
-                    if existing_head:
-                        logger.info(f"Setting parent for tool '{tool_name}' to existing HEAD: {existing_head}")
+                    # Determine correct parent for this tool becoming HEAD
+                    tool_parent = tools_handler.get_cache_parent_for_head(tool_uuid, tool_name)
+                    logger.info(f"Setting parent for tool '{tool_name}' to {tool_parent}")
 
                     tool_data = {
                         "uuid": tool_uuid,
@@ -597,7 +594,7 @@ def register_skills_api(
                     tools_handler.write_manifest(tool_uuid, tool_data)
                     
                     # Update cache after create
-                    tools_handler.update_cache_after_create(tool_uuid, tool_name, tool_parent)
+                    tools_handler.update_cache(tool_uuid, new_name=tool_name)
 
                     # Save tool module to UUID subfolder
                     tools_handler.write_resource_file(tool_uuid, module_filename, tool_dict['moduleContent'])
@@ -622,11 +619,9 @@ def register_skills_api(
                         if tag and tag not in snippet_tags:
                             snippet_tags.append(tag)
 
-                    # Set parent to existing HEAD for this snippet name (git-like versioning)
-                    existing_head = snippets_handler.name_to_uuid(snippet_name)
-                    snippet_parent = existing_head
-                    if existing_head:
-                        logger.info(f"Setting parent for snippet '{snippet_name}' to existing HEAD: {existing_head}")
+                    # Determine correct parent for this snippet becoming HEAD
+                    snippet_parent = snippets_handler.get_cache_parent_for_head(snippet_uuid, snippet_name)
+                    logger.info(f"Setting parent for snippet '{snippet_name}' to {snippet_parent}")
 
                     # Prepare snippet data
                     snippet_data = {
@@ -647,7 +642,7 @@ def register_skills_api(
                     snippets_handler.write_manifest(snippet_uuid, snippet_data)
                     
                     # Update cache after create
-                    snippets_handler.update_cache_after_create(snippet_uuid, snippet_name, snippet_parent)
+                    snippets_handler.update_cache(snippet_uuid, new_name=snippet_name)
                     
                     created_snippet_uuids.append(snippet_uuid)
                     logger.info(f"Created snippet: {snippet_name}")

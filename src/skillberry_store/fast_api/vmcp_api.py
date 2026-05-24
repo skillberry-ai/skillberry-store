@@ -121,12 +121,10 @@ def register_vmcp_api(
                 status_code=409, detail=f"VMCP server with UUID '{vmcp.uuid}' already exists."
             )
         
-        # Set parent to existing HEAD for this name (git-like versioning)
+        # Determine correct parent for this VMCP server becoming HEAD
         if vmcp.name:
-            existing_head = vmcp_handler.name_to_uuid(vmcp.name)
-            vmcp.parent = existing_head
-            if existing_head:
-                logger.info(f"Setting parent for '{vmcp.name}' to existing HEAD: {existing_head}")
+            vmcp.parent = vmcp_handler.get_cache_parent_for_head(vmcp.uuid, vmcp.name)
+            logger.info(f"Setting parent for VMCP server '{vmcp.name}' to {vmcp.parent}")
 
         # Extract env_id from request headers
         headers = request.headers
@@ -190,7 +188,7 @@ def register_vmcp_api(
             
             # Update cache after create
             if vmcp.name:
-                vmcp_handler.update_cache_after_create(vmcp.uuid, vmcp.name, vmcp.parent)
+                vmcp_handler.update_cache(vmcp.uuid, new_name=vmcp.name)
 
             # Write description for search capability (indexed by UUID)
             if vmcp_descriptions and vmcp.description:
@@ -382,7 +380,7 @@ def register_vmcp_api(
             
             # Update cache after delete
             if server_name and server_uuid:
-                vmcp_handler.update_cache_after_delete(server_uuid, server_name, server_parent)
+                vmcp_handler.update_cache(server_uuid, new_name=None, old_name=server_name, old_parent=server_parent)
 
             # Delete the description (indexed by UUID)
             if vmcp_descriptions:
@@ -431,6 +429,7 @@ def register_vmcp_api(
             vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
             existing_vmcp = vmcp_handler.read_manifest(vmcp_uuid)
             old_name = existing_vmcp.get("name")
+            old_parent = existing_vmcp.get("parent")
             server_uuid = existing_vmcp.get("uuid")
 
             # Update modified timestamp
@@ -440,19 +439,12 @@ def register_vmcp_api(
             if not vmcp.uuid:
                 vmcp.uuid = server_uuid
             
-            # Handle parent chain updates for name changes
+            # Determine new name and correct parent
             new_name = vmcp.name
-            if new_name and old_name != new_name:
-                # Name changed: detach from old chain, attach to new chain
-                logger.info(f"VMCP server name changing from '{old_name}' to '{new_name}'")
-                # Look up new name's HEAD to set as parent
-                new_head = vmcp_handler.name_to_uuid(new_name)
-                vmcp.parent = new_head
-                if new_head:
-                    logger.info(f"Setting parent for new name '{new_name}' to: {new_head}")
-            elif not vmcp.parent:
-                # Name not changed but parent not set: preserve existing parent
-                vmcp.parent = existing_vmcp.get("parent")
+            if new_name:
+                # Determine correct parent for this VMCP server becoming HEAD
+                vmcp.parent = vmcp_handler.get_cache_parent_for_head(vmcp.uuid or "", new_name)
+                logger.info(f"Setting parent for VMCP server '{new_name}' to {vmcp.parent}")
 
             # Extract env_id from request headers
             headers = request.headers
@@ -509,11 +501,11 @@ def register_vmcp_api(
             
             # Update cache after update
             if vmcp.name and old_name:
-                vmcp_handler.update_cache_after_update(
+                vmcp_handler.update_cache(
                     vmcp.uuid or "",
-                    old_name,
-                    vmcp.name,
-                    vmcp.parent
+                    new_name=vmcp.name,
+                    old_name=old_name,
+                    old_parent=old_parent
                 )
             
             logger.info(f"VMCP server '{vmcp.name}' updated successfully on port {server.port}")

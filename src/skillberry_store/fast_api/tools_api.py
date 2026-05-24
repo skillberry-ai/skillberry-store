@@ -187,11 +187,9 @@ def register_tools_api(
             )
 
         try:
-            # Look up existing HEAD for parent chain
-            existing_head = tool_handler.name_to_uuid(tool.name)
-            tool.parent = existing_head
-            if existing_head:
-                logger.info(f"Setting parent for tool '{tool.name}' to existing HEAD: {existing_head}")
+            # Determine correct parent for this tool becoming HEAD
+            tool.parent = tool_handler.get_cache_parent_for_head(tool.uuid, tool.name)
+            logger.info(f"Setting parent for tool '{tool.name}' to {tool.parent}")
             
             # Save the module file to UUID sub-folder
             file_content = await module.read()
@@ -226,7 +224,7 @@ def register_tools_api(
             tool_handler.write_manifest(tool.uuid, tool.to_dict())
             
             # Update cache - this becomes new HEAD
-            tool_handler.update_cache_after_create(tool.uuid, tool.name, existing_head)
+            tool_handler.update_cache(tool.uuid, new_name=tool.name)
 
             # Write description for search capability (indexed by UUID)
             if tools_descriptions and tool.description and tool.uuid:
@@ -417,7 +415,7 @@ def register_tools_api(
             
             # Update cache after deletion
             if tool_uuid and tool_name:
-                tool_handler.update_cache_after_delete(tool_uuid, tool_name, tool_parent)
+                tool_handler.update_cache(tool_uuid, new_name=None, old_name=tool_name, old_parent=tool_parent)
 
             # Delete the description for the tool (indexed by UUID)
             if tools_descriptions and tool_uuid:
@@ -469,13 +467,14 @@ def register_tools_api(
             # Convert update data to dict
             update_data = tool.to_dict()
             
-            # Handle name change - update parent chain
+            # Determine new name
             new_name = tool.name if tool.name else old_name
-            if new_name and old_name and new_name != old_name:
-                # Name changed - look up new name's HEAD and set as parent
-                new_name_head = tool_handler.name_to_uuid(new_name)
-                update_data["parent"] = new_name_head
-                logger.info(f"Tool name changed from '{old_name}' to '{new_name}', parent set to {new_name_head}")
+            
+            # Determine correct parent for this tool becoming HEAD
+            if new_name:
+                new_parent = tool_handler.get_cache_parent_for_head(tool_uuid, new_name)
+                update_data["parent"] = new_parent
+                logger.info(f"Setting parent for tool '{new_name}' to {new_parent}")
             
             # Merge: preserve uuid and created_at from existing, update modified_at
             merged_manifest = {**existing_manifest, **update_data}
@@ -488,7 +487,7 @@ def register_tools_api(
             
             # Update cache - this becomes HEAD for its (possibly new) name
             if new_name:
-                tool_handler.update_cache_after_update(tool_uuid, new_name, old_name, old_parent)
+                tool_handler.update_cache(tool_uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
             
             # Update description for search capability if description changed (indexed by UUID)
             if tools_descriptions and tool.description:
@@ -841,7 +840,7 @@ def register_tools_api(
                 tool_handler.write_resource_file(tool_uuid, module_filename, tool_bytes)
                 logger.info(f"Updated module file in UUID sub-folder: {module_filename}")
                 
-                # Create the tool schema for update
+                # Create the tool schema for update (parent will be set by update_tool)
                 tool_schema = ToolSchema(
                     name=func_name,
                     uuid=tool_uuid,
@@ -851,6 +850,7 @@ def register_tools_api(
                     module_name=module_filename,
                     version="0.0.1",
                     state=ManifestState.APPROVED,
+                    parent=None,  # Will be set correctly by update_tool
                     params=ToolParamsSchema(
                         type="object",
                         properties=params_properties,
@@ -878,7 +878,7 @@ def register_tools_api(
                 tool_uuid = generate_or_validate_uuid(None)
                 logger.info(f"Generated UUID for tool '{func_name}': {tool_uuid}")
 
-                # Create the tool schema for new tool
+                # Create the tool schema for new tool (parent will be set by create_tool)
                 tool_schema = ToolSchema(
                     name=func_name,
                     uuid=tool_uuid,
@@ -888,6 +888,7 @@ def register_tools_api(
                     packaging_format="code",
                     version="0.0.1",
                     state=ManifestState.APPROVED,
+                    parent=None,  # Will be set correctly by create_tool
                     params=ToolParamsSchema(
                         type="object",
                         properties=params_properties,

@@ -63,12 +63,10 @@ def register_vnfs_api(
                 status_code=409, detail=f"vNFS server with UUID '{vnfs.uuid}' already exists."
             )
         
-        # Set parent to existing HEAD for this name (git-like versioning)
+        # Determine correct parent for this VNFS server becoming HEAD
         if vnfs.name:
-            existing_head = vnfs_handler.name_to_uuid(vnfs.name)
-            vnfs.parent = existing_head
-            if existing_head:
-                logger.info(f"Setting parent for '{vnfs.name}' to existing HEAD: {existing_head}")
+            vnfs.parent = vnfs_handler.get_cache_parent_for_head(vnfs.uuid, vnfs.name)
+            logger.info(f"Setting parent for VNFS server '{vnfs.name}' to {vnfs.parent}")
 
         try:
             server = vnfs_server_manager.add_server(vnfs)
@@ -79,7 +77,7 @@ def register_vnfs_api(
             
             # Update cache after create
             if vnfs.name:
-                vnfs_handler.update_cache_after_create(vnfs.uuid, vnfs.name, vnfs.parent)
+                vnfs_handler.update_cache(vnfs.uuid, new_name=vnfs.name)
 
             # Write description indexed by UUID
             if vnfs_descriptions and vnfs.description:
@@ -227,7 +225,7 @@ def register_vnfs_api(
             
             # Update cache after delete
             if server_name and server_uuid:
-                vnfs_handler.update_cache_after_delete(server_uuid, server_name, server_parent)
+                vnfs_handler.update_cache(server_uuid, new_name=None, old_name=server_name, old_parent=server_parent)
 
             # Delete the description (indexed by UUID)
             if vnfs_descriptions:
@@ -264,6 +262,7 @@ def register_vnfs_api(
             vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
             existing_vnfs = vnfs_handler.read_manifest(vnfs_uuid)
             old_name = existing_vnfs.get("name")
+            old_parent = existing_vnfs.get("parent")
             server_uuid = existing_vnfs.get("uuid")
 
             # Update modified timestamp
@@ -273,19 +272,12 @@ def register_vnfs_api(
             if not vnfs.uuid:
                 vnfs.uuid = server_uuid
             
-            # Handle parent chain updates for name changes
+            # Determine new name and correct parent
             new_name = vnfs.name
-            if new_name and old_name != new_name:
-                # Name changed: detach from old chain, attach to new chain
-                logger.info(f"vNFS server name changing from '{old_name}' to '{new_name}'")
-                # Look up new name's HEAD to set as parent
-                new_head = vnfs_handler.name_to_uuid(new_name)
-                vnfs.parent = new_head
-                if new_head:
-                    logger.info(f"Setting parent for new name '{new_name}' to: {new_head}")
-            elif not vnfs.parent:
-                # Name not changed but parent not set: preserve existing parent
-                vnfs.parent = existing_vnfs.get("parent")
+            if new_name:
+                # Determine correct parent for this VNFS server becoming HEAD
+                vnfs.parent = vnfs_handler.get_cache_parent_for_head(vnfs.uuid or "", new_name)
+                logger.info(f"Setting parent for VNFS server '{new_name}' to {vnfs.parent}")
 
             # Stop the old runtime server
             try:
@@ -306,11 +298,11 @@ def register_vnfs_api(
             
             # Update cache after update
             if vnfs.name and old_name:
-                vnfs_handler.update_cache_after_update(
+                vnfs_handler.update_cache(
                     vnfs.uuid or "",
-                    old_name,
-                    vnfs.name,
-                    vnfs.parent
+                    new_name=vnfs.name,
+                    old_name=old_name,
+                    old_parent=old_parent
                 )
             
             # Update description indexed by UUID
