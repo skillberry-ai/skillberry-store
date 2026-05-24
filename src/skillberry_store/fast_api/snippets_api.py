@@ -192,7 +192,9 @@ def register_snippets_api(
         get_snippet_counter.inc()
 
         try:
-            snippet_dict = snippet_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(id)
+            snippet_dict = snippet_handler.read_manifest(snippet_uuid)
             logger.info(f"Retrieved snippet: {id}")
             return snippet_dict
         except HTTPException:
@@ -224,16 +226,19 @@ def register_snippets_api(
             snippet_uuid = None
             snippet_name = None
             snippet_parent = None
+            # Resolve ID to UUID
+            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(id)
+            
+            # Read snippet metadata before deletion
             try:
-                snippet_dict = snippet_handler.get_resource_by_id(id)
-                snippet_uuid = snippet_dict.get("uuid")
+                snippet_dict = snippet_handler.read_manifest(snippet_uuid)
                 snippet_name = snippet_dict.get("name")
                 snippet_parent = snippet_dict.get("parent")
             except Exception as e:
                 logger.warning(f"Could not read snippet before deletion: {e}")
-
+            
             # Delete the snippet using ResourceHandler
-            result = snippet_handler.delete_resource_by_id(id)
+            result = snippet_handler.delete_resource_folder(snippet_uuid)
             
             # Update cache after deletion
             if snippet_uuid and snippet_name:
@@ -278,13 +283,8 @@ def register_snippets_api(
         update_snippet_counter.inc()
 
         try:
-            # Resolve ID to UUID and verify snippet exists
-            snippet_uuid = snippet_handler.resolve_id(id)
-            if not snippet_uuid:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Snippet with ID '{id}' not found"
-                )
+            # Resolve ID to UUID (raises 404 if not found)
+            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(id)
 
             # Read existing manifest to preserve uuid and created_at
             existing_manifest = snippet_handler.read_manifest(snippet_uuid)
@@ -383,8 +383,8 @@ def register_snippets_api(
                     logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
                     continue
                 try:
-                    # Get snippet manifest by UUID
-                    snippet_dict = snippet_handler.get_resource_by_id(snippet_uuid)
+                    # Read snippet manifest by UUID
+                    snippet_dict = snippet_handler.read_manifest(snippet_uuid)
                     snippet_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
                     snippets_to_filter.append(snippet_dict)
                 except Exception as e:

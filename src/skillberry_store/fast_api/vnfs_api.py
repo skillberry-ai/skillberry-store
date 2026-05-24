@@ -167,8 +167,9 @@ def register_vnfs_api(
         get_vnfs_counter.inc()
 
         try:
-            # Get persistent data using ResourceHandler
-            vnfs_dict = vnfs_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
+            vnfs_dict = vnfs_handler.read_manifest(vnfs_uuid)
             server_name = vnfs_dict.get("name")
             server_uuid = vnfs_dict.get("uuid")
             
@@ -205,10 +206,10 @@ def register_vnfs_api(
         delete_vnfs_counter.inc()
 
         try:
-            # Get server info first to extract name, uuid, and parent
-            vnfs_dict = vnfs_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            server_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
+            vnfs_dict = vnfs_handler.read_manifest(server_uuid)
             server_name = vnfs_dict.get("name")
-            server_uuid = vnfs_dict.get("uuid")
             server_parent = vnfs_dict.get("parent")
             
             # Stop and remove the runtime server
@@ -222,7 +223,7 @@ def register_vnfs_api(
                 logger.warning(f"Could not stop runtime server: {e}")
 
             # Delete persistent data using ResourceHandler
-            vnfs_handler.delete_resource_by_id(id)
+            vnfs_handler.delete_resource_folder(server_uuid)
             
             # Update cache after delete
             if server_name and server_uuid:
@@ -259,8 +260,9 @@ def register_vnfs_api(
         update_vnfs_counter.inc()
 
         try:
-            # Check if vnfs server exists and get current data
-            existing_vnfs = vnfs_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read current data
+            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
+            existing_vnfs = vnfs_handler.read_manifest(vnfs_uuid)
             old_name = existing_vnfs.get("name")
             server_uuid = existing_vnfs.get("uuid")
 
@@ -335,8 +337,9 @@ def register_vnfs_api(
         logger.info(f"Request to start vnfs server: {id}")
 
         try:
-            # Get persistent data using ResourceHandler
-            vnfs_data = vnfs_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
+            vnfs_data = vnfs_handler.read_manifest(vnfs_uuid)
             server_name = vnfs_data.get("name", "")
             server_uuid = vnfs_data.get("uuid", "")
             
@@ -405,8 +408,8 @@ def register_vnfs_api(
                     logger.warning(f"Matched entity missing 'filename' or 'name' field: {m}")
                     continue
                 try:
-                    # Get resource by UUID using ResourceHandler
-                    vnfs_dict = vnfs_handler.get_resource_by_id(vnfs_uuid)
+                    # Read manifest by UUID
+                    vnfs_dict = vnfs_handler.read_manifest(vnfs_uuid)
                     vnfs_dict["similarity_score"] = m.get("similarity_score", 0.0)
                     servers_to_filter.append(vnfs_dict)
                 except Exception as exc:

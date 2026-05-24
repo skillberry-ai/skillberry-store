@@ -200,8 +200,8 @@ class VirtualMcpServerManager:
                     if skill_uuid:
                         logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load")
                         try:
-                            # Get skill by UUID
-                            skill_dict = self.skills_handler.get_resource_by_id(skill_uuid)
+                            # Read skill manifest by UUID
+                            skill_dict = self.skills_handler.read_manifest(skill_uuid)
                             tool_uuids = skill_dict.get("tool_uuids", [])
                             snippet_uuids = skill_dict.get("snippet_uuids", [])
                             logger.info(f"Found skill '{skill_dict.get('name')}' with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")

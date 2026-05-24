@@ -302,8 +302,9 @@ def register_tools_api(
         get_tool_counter.inc()
 
         try:
-            # Use ResourceHandler to get tool by ID (handles ID resolution and 404 internally)
-            tool_dict = tool_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
+            tool_dict = tool_handler.read_manifest(tool_uuid)
             logger.info(f"Retrieved tool with ID '{id}'")
             return tool_dict
         except HTTPException:
@@ -335,9 +336,9 @@ def register_tools_api(
         get_tool_module_counter.inc()
 
         try:
-            # Get the tool manifest using ResourceHandler
-            tool_dict = tool_handler.get_resource_by_id(id)
-            tool_uuid = tool_dict.get("uuid")
+            # Resolve ID to UUID and read manifest
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
+            tool_dict = tool_handler.read_manifest(tool_uuid)
             
             if not tool_uuid:
                 raise HTTPException(
@@ -398,13 +399,8 @@ def register_tools_api(
         delete_tool_counter.inc()
 
         try:
-            # Resolve ID to UUID and verify tool exists
-            tool_uuid = tool_handler.resolve_id(id)
-            if not tool_uuid:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Tool with ID '{id}' not found"
-                )
+            # Resolve ID to UUID (raises 404 if not found)
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
             
             # Read tool to get name and parent before deletion
             tool_name = None
@@ -417,7 +413,7 @@ def register_tools_api(
                 logger.warning(f"Could not read tool metadata before deletion: {e}")
 
             # Delete the tool using ResourceHandler (deletes entire UUID subfolder)
-            result = tool_handler.delete_resource_by_id(id)
+            result = tool_handler.delete_resource_folder(tool_uuid)
             
             # Update cache after deletion
             if tool_uuid and tool_name:
@@ -462,13 +458,8 @@ def register_tools_api(
         update_tool_counter.inc()
 
         try:
-            # Resolve ID to UUID and verify tool exists
-            tool_uuid = tool_handler.resolve_id(id)
-            if not tool_uuid:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Tool with ID '{id}' not found"
-                )
+            # Resolve ID to UUID (raises 404 if not found)
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
 
             # Read existing manifest to preserve uuid and created_at
             existing_manifest = tool_handler.read_manifest(tool_uuid)
@@ -548,9 +539,9 @@ def register_tools_api(
         
         try:
             logger.info(f"[execute_tool] Reading tool manifest for: {id}")
-            # Get tool manifest (raises 404 if not found)
-            tool_dict = tool_handler.get_resource_by_id(id)
-            tool_uuid = tool_dict.get("uuid")
+            # Resolve ID to UUID and read manifest
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
+            tool_dict = tool_handler.read_manifest(tool_uuid)
             tool_name = tool_dict.get("name", id)
             
             execute_tool_counter.labels(name=tool_uuid).inc()
@@ -607,7 +598,7 @@ def register_tools_api(
                 tool_uuid=tool_uuid
             )
 
-            dep_manifests = tool_handler.get_resources_by_ids(list(tool_dependencies_uuids))
+            dep_manifests = tool_handler.read_manifests(list(tool_dependencies_uuids))
             dep_files = [tool_handler.read_resource_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_manifests]
 
             # Execute the tool using FileExecutor
@@ -707,8 +698,9 @@ def register_tools_api(
                     )
                     continue
                 try:
-                    # Get tool manifest by name (raises 404 if not found)
-                    tool_dict = tool_handler.get_resource_by_id(tool_name)
+                    # Resolve name to UUID and read manifest
+                    tool_uuid = tool_handler.resolve_to_uuid_or_error(tool_name)
+                    tool_dict = tool_handler.read_manifest(tool_uuid)
                     tool_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
                     tools_to_filter.append(tool_dict)
                 except Exception as e:

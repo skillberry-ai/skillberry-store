@@ -210,19 +210,16 @@ class VirtualNfsServerManager:
             tools_handler = get_resource_handler("tool")
             snippets_handler = get_resource_handler("snippet")
             
-            # Get skill by UUID
-            skill_dict = skills_handler.get_resource_by_id(skill_uuid)
-            if not skill_dict:
-                logger.warning(f"No skill found for skill_uuid: {skill_uuid}")
-                return {}, [], [], {}
+            # Read skill manifest by UUID
+            skill_dict = skills_handler.read_manifest(skill_uuid)
             
             # Get tool and snippet UUIDs from skill
             tool_uuids = skill_dict.get("tool_uuids", [])
             snippet_uuids = skill_dict.get("snippet_uuids", [])
             
             # Get tools and snippets by UUID
-            tools = tools_handler.get_resources_by_ids(tool_uuids) if tool_uuids else []
-            snippets = snippets_handler.get_resources_by_ids(snippet_uuids) if snippet_uuids else []
+            tools = tools_handler.read_manifests(tool_uuids) if tool_uuids else []
+            snippets = snippets_handler.read_manifests(snippet_uuids) if snippet_uuids else []
             
             # Read tool modules from tool's UUID subdirectory
             tool_modules = {}

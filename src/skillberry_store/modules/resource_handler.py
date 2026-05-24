@@ -149,7 +149,7 @@ class ResourceHandler:
         # Build a temporary map: name -> list of (uuid, parent) tuples
         name_to_resources: Dict[str, List[Tuple[str, Optional[str]]]] = {}
         
-        for resource_dict in self.iter_resources():
+        for resource_dict in self.iter_manifests():
             uuid_val = resource_dict.get("uuid")
             name = resource_dict.get("name")
             parent = resource_dict.get("parent")
@@ -391,7 +391,7 @@ class ResourceHandler:
             logger.error(f"Cache had UUID {head_uuid} for name '{name}' but failed to read: {e}")
             raise
     
-    def resolve_id(self, id_str: str) -> Optional[str]:
+    def resolve_to_uuid(self, uuid_or_name: str) -> Optional[str]:
         """
         Resolve an ID string to a UUID.
         
@@ -399,24 +399,76 @@ class ResourceHandler:
         If the ID is a name, look it up and return the resource's UUID.
         
         Args:
-            id_str: Either a UUID or a resource name.
+            uuid_or_name: Either a UUID or a resource name.
             
         Returns:
             Optional[str]: The resolved UUID if found, None otherwise.
         """
         # Check if it's already a valid UUID
-        normalized = normalize_uuid(id_str)
+        normalized = normalize_uuid(uuid_or_name)
         if normalized:
             return normalized
         
         # Try to resolve as a name using the cache (efficient, no disk I/O)
-        resource_uuid = self.name_to_uuid(id_str)
+        resource_uuid = self.name_to_uuid(uuid_or_name)
         if resource_uuid:
             return normalize_uuid(resource_uuid)
         
         # Could not resolve
-        logger.warning(f"Could not resolve ID '{id_str}' to a UUID")
+        logger.warning(f"Could not resolve ID '{uuid_or_name}' to a UUID")
         return None
+    
+    def resolve_to_uuid_or_error(self, uuid_or_name: str) -> str:
+        """
+        Resolve an ID string to a UUID, raising an error if not found.
+        
+        If the ID is already a valid UUID, return it as-is (lowercased).
+        If the ID is a name, look it up and return the resource's UUID.
+        If the ID cannot be resolved, raise HTTPException with 404.
+        
+        Args:
+            uuid_or_name: Either a UUID or a resource name.
+            
+        Returns:
+            str: The resolved UUID.
+            
+        Raises:
+            HTTPException: If the ID cannot be resolved (404).
+        """
+        resolved_uuid = self.resolve_to_uuid(uuid_or_name)
+        if not resolved_uuid:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{self.resource_type.capitalize()} with ID '{uuid_or_name}' not found"
+            )
+        return resolved_uuid
+    
+    def resolve_to_uuids_or_error(self, uuids_or_names: List[str]) -> List[str]:
+        """
+        Resolve a list of ID strings to UUIDs, raising an error if any cannot be resolved.
+        
+        This is a bulk version of resolve_to_uuid_or_error that fails fast if any
+        ID cannot be resolved. All IDs must be resolvable for the operation to succeed.
+        
+        Args:
+            uuids_or_names: List of UUIDs or resource names.
+            
+        Returns:
+            List[str]: List of resolved UUIDs in the same order as input.
+            
+        Raises:
+            HTTPException: If any ID cannot be resolved (404).
+        """
+        resolved_uuids = []
+        for uuid_or_name in uuids_or_names:
+            resolved_uuid = self.resolve_to_uuid(uuid_or_name)
+            if not resolved_uuid:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"{self.resource_type.capitalize()} with ID '{uuid_or_name}' not found"
+                )
+            resolved_uuids.append(resolved_uuid)
+        return resolved_uuids
     
     # ==================== Path Management Methods ====================
     
@@ -756,53 +808,6 @@ class ResourceHandler:
                 detail=f"Error listing {self.resource_type}s: {str(e)}"
             )
     
-    def get_resource_by_id(self, id_str: str) -> Dict[str, Any]:
-        """
-        Get a specific resource by ID (name or UUID).
-        
-        Args:
-            id_str: The ID of the resource (can be either name or UUID).
-            
-        Returns:
-            Dict[str, Any]: The resource manifest dictionary.
-            
-        Raises:
-            HTTPException: If resource not found (404) or retrieval fails (500).
-        """
-        # Resolve ID to UUID
-        resource_uuid = self.resolve_id(id_str)
-        if not resource_uuid:
-            raise HTTPException(
-                status_code=404,
-                detail=f"{self.resource_type.capitalize()} with ID '{id_str}' not found"
-            )
-        
-        # Read and return the manifest
-        return self.read_manifest(resource_uuid)
-    
-    def delete_resource_by_id(self, id_str: str) -> Dict:
-        """
-        Delete a resource by ID (name or UUID).
-        
-        Args:
-            id_str: The ID of the resource to delete (can be either name or UUID).
-            
-        Returns:
-            dict: Success message.
-            
-        Raises:
-            HTTPException: If resource not found (404) or deletion fails (500).
-        """
-        # Resolve ID to UUID
-        resource_uuid = self.resolve_id(id_str)
-        if not resource_uuid:
-            raise HTTPException(
-                status_code=404,
-                detail=f"{self.resource_type.capitalize()} with ID '{id_str}' not found"
-            )
-        
-        # Delete the resource folder
-        return self.delete_resource_folder(resource_uuid)
     
     def get_available_resource_names(self) -> Set[str]:
         """
@@ -815,7 +820,7 @@ class ResourceHandler:
     
     # ==================== Iterator Support ====================
     
-    def iter_resources(self) -> Iterator[Dict[str, Any]]:
+    def iter_manifests(self) -> Iterator[Dict[str, Any]]:
         """
         Iterate over all resources of this type, yielding manifest dictionaries.
         
@@ -854,32 +859,34 @@ class ResourceHandler:
             except Exception as e:
                 logger.warning(f"Could not read {self.resource_type} manifest for UUID {entry}: {e}")
     
-    def get_resources_by_ids(self, ids: List[str]) -> List[Dict[str, Any]]:
+    def read_manifests(self, uuids: List[str]) -> List[Dict[str, Any]]:
         """
-        Get multiple resources by their names or UUIDs in a single operation.
+        Read multiple resource manifests by their UUIDs in a single operation.
         
         This is useful for batch operations, such as loading all tools for a VMCP server.
-        Resources that cannot be found are skipped (not included in the result).
+        All UUIDs must be valid and exist, otherwise an HTTPException is raised.
         
         Args:
-            ids: List of resource names or UUIDs.
+            uuids: List of resource UUIDs.
             
         Returns:
             List[Dict[str, Any]]: List of resource manifest dictionaries.
+            
+        Raises:
+            HTTPException: If any UUID is invalid or resource not found (404).
         """
         resources = []
         
-        for id_str in ids:
-            try:
-                resource = self.get_resource_by_id(id_str)
-                resources.append(resource)
-            except HTTPException as e:
-                if e.status_code == 404:
-                    logger.warning(f"{self.resource_type.capitalize()} with ID '{id_str}' not found, skipping")
-                else:
-                    logger.error(f"Error loading {self.resource_type} with ID '{id_str}': {e.detail}")
-            except Exception as e:
-                logger.error(f"Unexpected error loading {self.resource_type} with ID '{id_str}': {e}")
+        for uuid_val in uuids:
+            # Validate UUID and read manifest (raises 404 if not found)
+            normalized = normalize_uuid(uuid_val)
+            if not normalized:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Invalid UUID: {uuid_val}"
+                )
+            resource = self.read_manifest(normalized)
+            resources.append(resource)
         
         return resources
     
@@ -890,7 +897,7 @@ class ResourceHandler:
         Yields:
             Dict[str, Any]: Resource manifest dictionary.
         """
-        return self.iter_resources()
+        return self.iter_manifests()
     
     # ==================== Utility Methods ====================
     
@@ -904,7 +911,7 @@ class ResourceHandler:
         Returns:
             bool: True if the resource exists, False otherwise.
         """
-        resource_uuid = self.resolve_id(id_str)
+        resource_uuid = self.resolve_to_uuid(id_str)
         if not resource_uuid:
             return False
         

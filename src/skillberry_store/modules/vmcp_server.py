@@ -158,8 +158,8 @@ class VirtualMcpServer:
 
                 # Try HTTP first if available
                 if self.app:
-                    # Get tool by UUID using ResourceHandler
-                    tool_dict = self.tools_handler.get_resource_by_id(tool_uuid)
+                    # Read tool manifest by UUID
+                    tool_dict = self.tools_handler.read_manifest(tool_uuid)
                     tool_name = tool_dict.get('name')
                     
                     # Cache the tool dict
@@ -198,8 +198,8 @@ class VirtualMcpServer:
         for snippet_uuid in self.snippet_uuids:
             try:
                 if self.app:
-                    # Get snippet by UUID using ResourceHandler
-                    snippet_dict = self.snippets_handler.get_resource_by_id(snippet_uuid)
+                    # Read snippet manifest by UUID
+                    snippet_dict = self.snippets_handler.read_manifest(snippet_uuid)
                     snippet_name = snippet_dict.get('name')
                     
                     print(f"DEBUG list_snippets: Got snippet UUID {snippet_uuid}, name: {snippet_name}")
@@ -497,7 +497,7 @@ class VirtualMcpServer:
                 tool_uuid=tool_uuid,
             )
 
-            dep_manifests = self.tools_handler.get_resources_by_ids(list(tool_dep_ids))
+            dep_manifests = self.tools_handler.read_manifests(list(tool_dep_ids))
             dep_files = [self.tools_handler.read_resource_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_manifests]
 
 

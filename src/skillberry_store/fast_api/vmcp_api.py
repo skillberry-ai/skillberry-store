@@ -153,8 +153,8 @@ def register_vmcp_api(
                 skills_handler = get_resource_handler("skill")
                 
                 try:
-                    # Get skill by UUID using ResourceHandler
-                    skill_dict = skills_handler.get_resource_by_id(vmcp.skill_uuid)
+                    # Read skill manifest by UUID
+                    skill_dict = skills_handler.read_manifest(vmcp.skill_uuid)
                     tool_uuids = skill_dict.get("tool_uuids", [])
                     snippet_uuids = skill_dict.get("snippet_uuids", [])
                     logger.info(f"Found skill '{skill_dict.get('name')}' with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
@@ -312,8 +312,9 @@ def register_vmcp_api(
         get_vmcp_counter.inc()
 
         try:
-            # Get persistent data using ResourceHandler
-            vmcp_dict = vmcp_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
+            vmcp_dict = vmcp_handler.read_manifest(vmcp_uuid)
             server_name = vmcp_dict.get("name")
             server_uuid = vmcp_dict.get("uuid")
             
@@ -360,10 +361,10 @@ def register_vmcp_api(
         delete_vmcp_counter.inc()
 
         try:
-            # Get server info first to extract name, uuid, and parent
-            vmcp_dict = vmcp_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            server_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
+            vmcp_dict = vmcp_handler.read_manifest(server_uuid)
             server_name = vmcp_dict.get("name")
-            server_uuid = vmcp_dict.get("uuid")
             server_parent = vmcp_dict.get("parent")
             
             # Stop and remove the runtime server
@@ -377,7 +378,7 @@ def register_vmcp_api(
                 logger.warning(f"Could not stop runtime server: {e}")
 
             # Delete persistent data using ResourceHandler
-            vmcp_handler.delete_resource_by_id(id)
+            vmcp_handler.delete_resource_folder(server_uuid)
             
             # Update cache after delete
             if server_name and server_uuid:
@@ -426,8 +427,9 @@ def register_vmcp_api(
         update_vmcp_counter.inc()
 
         try:
-            # Check if vmcp server exists and get current data
-            existing_vmcp = vmcp_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read current data
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
+            existing_vmcp = vmcp_handler.read_manifest(vmcp_uuid)
             old_name = existing_vmcp.get("name")
             server_uuid = existing_vmcp.get("uuid")
 
@@ -480,8 +482,8 @@ def register_vmcp_api(
                 skills_handler = get_resource_handler("skill")
                 
                 try:
-                    # Get skill by UUID using ResourceHandler
-                    skill_dict = skills_handler.get_resource_by_id(vmcp.skill_uuid)
+                    # Read skill manifest by UUID
+                    skill_dict = skills_handler.read_manifest(vmcp.skill_uuid)
                     tool_uuids = skill_dict.get("tool_uuids", [])
                     snippet_uuids = skill_dict.get("snippet_uuids", [])
                     logger.info(f"Found skill with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
@@ -547,8 +549,9 @@ def register_vmcp_api(
         logger.info(f"Request to start vmcp server: {id}")
         
         try:
-            # Get persistent data using ResourceHandler
-            vmcp_data = vmcp_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
+            vmcp_data = vmcp_handler.read_manifest(vmcp_uuid)
             server_name = vmcp_data.get("name", "")
             server_uuid = vmcp_data.get("uuid", "")
             
@@ -584,8 +587,8 @@ def register_vmcp_api(
                 skills_handler = get_resource_handler("skill")
                 
                 try:
-                    # Get skill by UUID using ResourceHandler
-                    skill_dict = skills_handler.get_resource_by_id(skill_uuid)
+                    # Read skill manifest by UUID
+                    skill_dict = skills_handler.read_manifest(skill_uuid)
                     tool_uuids = skill_dict.get("tool_uuids", [])
                     snippet_uuids = skill_dict.get("snippet_uuids", [])
                     logger.info(f"Found skill with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
@@ -671,8 +674,8 @@ def register_vmcp_api(
                     logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
                     continue
                 try:
-                    # Get resource by UUID using ResourceHandler
-                    vmcp_dict = vmcp_handler.get_resource_by_id(vmcp_uuid)
+                    # Read manifest by UUID
+                    vmcp_dict = vmcp_handler.read_manifest(vmcp_uuid)
                     vmcp_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
                     vmcp_servers_to_filter.append(vmcp_dict)
                 except Exception as e:

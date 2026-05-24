@@ -69,33 +69,33 @@ def register_skills_api(
     
     def populate_skill_objects(skill_dict):
         """Populate full tool and snippet objects from UUIDs."""
-        # Populate tools using get_resources_by_ids
+        # Populate tools - resolve and get resources (will raise 404 if any missing)
         if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
-            requested_count = len(skill_dict['tool_uuids'])
-            tools = tools_handler.get_resources_by_ids(skill_dict['tool_uuids'])
-            if len(tools) < requested_count:
-                missing = set(skill_dict['tool_uuids']) - {t['uuid'] for t in tools}
-                logger.error(f"Skill '{skill_dict['name']}' references missing tools: {missing}")
+            try:
+                # This will raise HTTPException if any UUID is invalid or not found
+                tools = tools_handler.read_manifests(skill_dict['tool_uuids'])
+                skill_dict["tools"] = tools
+            except HTTPException as e:
+                logger.error(f"Skill '{skill_dict['name']}' references missing or invalid tools")
                 raise HTTPException(
                     status_code=505,
-                    detail=f"Skill '{skill_dict['name']}' references missing tools: {missing}"
+                    detail=f"Skill '{skill_dict['name']}' references missing or invalid tools: {e.detail}"
                 )
-            skill_dict["tools"] = tools
         else:
             skill_dict["tools"] = []
             
-        # Populate snippets using get_resources_by_ids
+        # Populate snippets - resolve and get resources (will raise 404 if any missing)
         if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
-            requested_count = len(skill_dict['snippet_uuids'])
-            snippets = snippets_handler.get_resources_by_ids(skill_dict["snippet_uuids"])
-            if len(snippets) < requested_count:
-                missing = set(skill_dict['snippet_uuids']) - {s['uuid'] for s in snippets}
-                logger.error(f"Skill '{skill_dict['name']}' references missing snippets: {missing}")
+            try:
+                # This will raise HTTPException if any UUID is invalid or not found
+                snippets = snippets_handler.read_manifests(skill_dict["snippet_uuids"])
+                skill_dict["snippets"] = snippets
+            except HTTPException as e:
+                logger.error(f"Skill '{skill_dict['name']}' references missing or invalid snippets")
                 raise HTTPException(
                     status_code=505,
-                    detail=f"Skill '{skill_dict['name']}' references missing snippets: {missing}"
+                    detail=f"Skill '{skill_dict['name']}' references missing or invalid snippets: {e.detail}"
                 )
-            skill_dict["snippets"] = snippets
         else:
             skill_dict["snippets"] = []
 
@@ -217,8 +217,9 @@ def register_skills_api(
         get_skill_counter.inc()
 
         try:
-            # Get skill by ID (name or UUID)
-            skill_dict = skill_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
+            skill_dict = skill_handler.read_manifest(skill_uuid)
             # Populate full tool and snippet objects
             populate_skill_objects(skill_dict)
             logger.info(f"Retrieved skill: {id}")
@@ -248,13 +249,8 @@ def register_skills_api(
         delete_skill_counter.inc()
 
         try:
-            # Resolve ID to UUID and read skill before deletion
-            skill_uuid = skill_handler.resolve_id(id)
-            if not skill_uuid:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Skill with ID '{id}' not found"
-                )
+            # Resolve ID to UUID (raises 404 if not found)
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
             
             # Read skill to get name and parent before deletion
             skill_name = None
@@ -266,8 +262,9 @@ def register_skills_api(
             except Exception as e:
                 logger.warning(f"Could not read skill before deletion: {e}")
             
-            # Delete the skill resource folder
-            result = skill_handler.delete_resource_by_id(id)
+            # Resolve ID to UUID and delete the skill resource folder
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
+            result = skill_handler.delete_resource_folder(skill_uuid)
             
             # Update cache after deletion
             if skill_uuid and skill_name:
@@ -312,12 +309,8 @@ def register_skills_api(
         update_skill_counter.inc()
 
         try:
-            # Resolve ID to UUID
-            skill_uuid = skill_handler.resolve_id(id)
-            if not skill_uuid:
-                raise HTTPException(
-                    status_code=404, detail=f"Skill with ID '{id}' not found."
-                )
+            # Resolve ID to UUID (raises 404 if not found)
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
 
             # Read existing manifest to preserve uuid and created_at
             existing_manifest = skill_handler.read_manifest(skill_uuid)
@@ -414,8 +407,8 @@ def register_skills_api(
                     logger.warning(f"Matched entity missing 'filename' field: {matched_entity}")
                     continue
                 try:
-                    # Get skill by UUID
-                    skill_dict = skill_handler.get_resource_by_id(skill_uuid)
+                    # Read skill manifest by UUID
+                    skill_dict = skill_handler.read_manifest(skill_uuid)
                     skill_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
                     skills_to_filter.append(skill_dict)
                 except Exception as e:
@@ -722,14 +715,15 @@ def register_skills_api(
         logger.info(f"Request to export skill to Anthropic format: {id}")
         
         try:
-            # Get skill by ID (name or UUID)
-            skill_dict = skill_handler.get_resource_by_id(id)
+            # Resolve ID to UUID and read manifest
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
+            skill_dict = skill_handler.read_manifest(skill_uuid)
             
-            # Get tools using get_resources_by_ids
+            # Get tools using read_manifests
             tools = []
             tool_modules = {}
             if 'tool_uuids' in skill_dict and skill_dict['tool_uuids']:
-                tools = tools_handler.get_resources_by_ids(skill_dict['tool_uuids'])
+                tools = tools_handler.read_manifests(skill_dict['tool_uuids'])
                 # Get tool modules
                 for tool_dict in tools:
                     tool_uuid = tool_dict.get('uuid')
@@ -743,10 +737,10 @@ def register_skills_api(
                         except Exception as e:
                             logger.warning(f"Could not read module for tool {tool_name}: {e}")
             
-            # Get snippets using get_resources_by_ids
+            # Get snippets using read_manifests
             snippets = []
             if 'snippet_uuids' in skill_dict and skill_dict['snippet_uuids']:
-                snippets = snippets_handler.get_resources_by_ids(skill_dict['snippet_uuids'])
+                snippets = snippets_handler.read_manifests(skill_dict['snippet_uuids'])
             
             # Export to Anthropic format
             zip_content = export_skill_to_anthropic_format(
