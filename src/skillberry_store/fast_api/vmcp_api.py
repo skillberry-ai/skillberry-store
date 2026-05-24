@@ -19,7 +19,7 @@ from skillberry_store.tools.configure import (
     get_tools_directory,
     get_vmcp_directory,
 )
-from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys, normalize_uuid
+from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys, normalize_uuid, generate_or_validate_uuid
 from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
@@ -106,10 +106,9 @@ def register_vmcp_api(
         logger.info(f"Request to create vmcp server: {vmcp.name}")
         create_vmcp_counter.inc()
 
-        # Generate UUID if not provided
-        if not vmcp.uuid:
-            vmcp.uuid = str(uuid.uuid4())
-            logger.info(f"Generated UUID for vmcp server '{vmcp.name}': {vmcp.uuid}")
+        # Generate or validate UUID
+        vmcp.uuid = generate_or_validate_uuid(vmcp.uuid)
+        logger.info(f"UUID for vmcp server '{vmcp.name}': {vmcp.uuid}")
 
         # Set timestamps
         current_time = datetime.now(timezone.utc).isoformat()

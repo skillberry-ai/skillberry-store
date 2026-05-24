@@ -14,7 +14,7 @@ from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
 from skillberry_store.tools.configure import get_snippets_directory
 from skillberry_store.fast_api.search_filters import apply_search_filters
-from skillberry_store.utils.utils import normalize_uuid
+from skillberry_store.utils.utils import normalize_uuid, generate_or_validate_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +78,9 @@ def register_snippets_api(
         logger.info(f"Request to create snippet: {snippet.name}")
         create_snippet_counter.inc()
 
-        # Generate UUID if not provided
-        if not snippet.uuid:
-            snippet.uuid = str(uuid.uuid4())
-            logger.info(f"Generated UUID for snippet '{snippet.name}': {snippet.uuid}")
+        # Generate or validate UUID
+        snippet.uuid = generate_or_validate_uuid(snippet.uuid)
+        logger.info(f"UUID for snippet '{snippet.name}': {snippet.uuid}")
 
         # Set timestamps
         current_time = datetime.now(timezone.utc).isoformat()
@@ -102,14 +101,9 @@ def register_snippets_api(
                     status_code=400, detail=f"Error reading uploaded file: {str(e)}"
                 )
 
-        # Normalize and validate UUID
-        snippet_uuid_normalized = normalize_uuid(snippet.uuid)
-        if not snippet_uuid_normalized:
-            raise HTTPException(status_code=400, detail=f"Invalid UUID format: {snippet.uuid}")
-
         # Check if snippet with this UUID already exists
         try:
-            snippet_handler.read_manifest(snippet_uuid_normalized)
+            snippet_handler.read_manifest(snippet.uuid)
             # If we get here, the snippet exists - raise 409 Conflict
             raise HTTPException(
                 status_code=409,
@@ -129,16 +123,16 @@ def register_snippets_api(
                     logger.info(f"Setting parent for snippet '{snippet.name}' to existing HEAD: {existing_head}")
             
             # Save snippet manifest to UUID subfolder
-            snippet_handler.write_manifest(snippet_uuid_normalized, snippet.to_dict())
+            snippet_handler.write_manifest(snippet.uuid, snippet.to_dict())
             
             # Update cache - this becomes new HEAD
             if snippet.name:
-                snippet_handler.update_cache_after_create(snippet_uuid_normalized, snippet.name, snippet.parent)
+                snippet_handler.update_cache_after_create(snippet.uuid, snippet.name, snippet.parent)
 
             # Write description for search capability (indexed by UUID)
             if snippets_descriptions and snippet.description:
                 snippets_descriptions.write_description(
-                    snippet_uuid_normalized, snippet.description
+                    snippet.uuid, snippet.description
                 )
                 logger.info(f"Snippet description saved for UUID: {snippet.uuid}")
 

@@ -31,7 +31,7 @@ from skillberry_store.tools.configure import (
     get_tools_directory,
     get_files_directory_path,
 )
-from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys, normalize_uuid
+from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys, normalize_uuid, generate_or_validate_uuid
 from skillberry_store.utils.python_utils import extract_docstring
 from skillberry_store.fast_api.server_utils import (
     get_mcp_tools,
@@ -171,10 +171,9 @@ def register_tools_api(
         logger.info(f"Request to create tool: {tool.name}")
         create_tool_counter.inc()
 
-        # Generate UUID if not provided
-        if not tool.uuid:
-            tool.uuid = str(uuid.uuid4())
-            logger.info(f"Generated UUID for tool '{tool.name}': {tool.uuid}")
+        # Generate or validate UUID
+        tool.uuid = generate_or_validate_uuid(tool.uuid)
+        logger.info(f"UUID for tool '{tool.name}': {tool.uuid}")
 
         # Set timestamps
         current_time = datetime.now(timezone.utc).isoformat()
@@ -182,10 +181,7 @@ def register_tools_api(
         tool.modified_at = current_time
 
         # Check if tool with this UUID already exists
-        tool_uuid_normalized = normalize_uuid(tool.uuid)
-        if not tool_uuid_normalized:
-            raise HTTPException(status_code=400, detail=f"Invalid UUID format: {tool.uuid}")
-        if tool_handler.resource_exists(tool_uuid_normalized):
+        if tool_handler.resource_exists(tool.uuid):
             raise HTTPException(
                 status_code=409, detail=f"Tool with UUID '{tool.uuid}' already exists."
             )
@@ -202,7 +198,7 @@ def register_tools_api(
             module_filename = module.filename if module.filename else f"{tool.name}.py"
 
             # Write module file to tool's UUID sub-folder
-            tool_handler.write_resource_file(tool_uuid_normalized, module_filename, file_content)
+            tool_handler.write_resource_file(tool.uuid, module_filename, file_content)
             tool.module_name = module_filename
             logger.info(f"Saved module file to UUID sub-folder: {module_filename}")
 
@@ -227,10 +223,10 @@ def register_tools_api(
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
 
             # Convert tool to JSON and save as tool.json in UUID folder
-            tool_handler.write_manifest(tool_uuid_normalized, tool.to_dict())
+            tool_handler.write_manifest(tool.uuid, tool.to_dict())
             
             # Update cache - this becomes new HEAD
-            tool_handler.update_cache_after_create(tool_uuid_normalized, tool.name, existing_head)
+            tool_handler.update_cache_after_create(tool.uuid, tool.name, existing_head)
 
             # Write description for search capability (indexed by UUID)
             if tools_descriptions and tool.description and tool.uuid:
@@ -402,18 +398,23 @@ def register_tools_api(
         delete_tool_counter.inc()
 
         try:
-            # Resolve ID to UUID and read tool before deletion
-            tool_uuid = None
+            # Resolve ID to UUID and verify tool exists
+            tool_uuid = tool_handler.resolve_id(id)
+            if not tool_uuid:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Tool with ID '{id}' not found"
+                )
+            
+            # Read tool to get name and parent before deletion
             tool_name = None
             tool_parent = None
             try:
-                tool_uuid = tool_handler.resolve_id(id)
-                if tool_uuid:
-                    tool_dict = tool_handler.read_manifest(tool_uuid)
-                    tool_name = tool_dict.get("name")
-                    tool_parent = tool_dict.get("parent")
+                tool_dict = tool_handler.read_manifest(tool_uuid)
+                tool_name = tool_dict.get("name")
+                tool_parent = tool_dict.get("parent")
             except Exception as e:
-                logger.warning(f"Could not read tool before deletion: {e}")
+                logger.warning(f"Could not read tool metadata before deletion: {e}")
 
             # Delete the tool using ResourceHandler (deletes entire UUID subfolder)
             result = tool_handler.delete_resource_by_id(id)
@@ -840,14 +841,12 @@ def register_tools_api(
                 logger.info(f"Updating existing tool: {func_name}")
                 
                 # Use existing UUID for update
-                tool_uuid = existing_tool.get("uuid", str(uuid.uuid4()))
+                tool_uuid = existing_tool.get("uuid")
+                tool_uuid = generate_or_validate_uuid(tool_uuid)
                 
                 # Update the module file in UUID sub-folder (update_tool doesn't handle files)
-                tool_uuid_normalized = normalize_uuid(tool_uuid)
-                if not tool_uuid_normalized:
-                    raise HTTPException(status_code=400, detail=f"Invalid UUID format: {tool_uuid}")
                 module_filename = tool.filename if tool.filename else f"{func_name}.py"
-                tool_handler.write_resource_file(tool_uuid_normalized, module_filename, tool_bytes)
+                tool_handler.write_resource_file(tool_uuid, module_filename, tool_bytes)
                 logger.info(f"Updated module file in UUID sub-folder: {module_filename}")
                 
                 # Create the tool schema for update
@@ -884,7 +883,7 @@ def register_tools_api(
                 }
             else:
                 # Generate new UUID for new tool
-                tool_uuid = str(uuid.uuid4())
+                tool_uuid = generate_or_validate_uuid(None)
                 logger.info(f"Generated UUID for tool '{func_name}': {tool_uuid}")
 
                 # Create the tool schema for new tool

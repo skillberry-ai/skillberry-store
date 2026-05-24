@@ -2,11 +2,53 @@ from typing import Dict, Any, Optional
 import uuid
 
 import logging
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
 
 # TODO: common skillberry library
+
+
+def generate_or_validate_uuid(uuid_str: Optional[str]) -> str:
+    """
+    Generate a new UUID or validate an existing one.
+    
+    This function encapsulates UUID creation and validation logic:
+    - If uuid_str is None, generates a new valid UUID
+    - If uuid_str is not None, validates it and returns normalized version
+    - Raises HTTPException with 400 status if validation fails
+    
+    Args:
+        uuid_str: Optional UUID string to validate, or None to generate new UUID
+        
+    Returns:
+        str: A valid UUID string (lowercase, normalized)
+        
+    Raises:
+        HTTPException: If uuid_str is provided but invalid (status_code=400)
+        
+    Examples:
+        >>> generate_or_validate_uuid(None)  # doctest: +SKIP
+        '12345678-1234-1234-1234-123456789abc'
+        >>> generate_or_validate_uuid("12345678-1234-1234-1234-123456789ABC")
+        '12345678-1234-1234-1234-123456789abc'
+        >>> generate_or_validate_uuid("invalid-uuid")  # doctest: +SKIP
+        HTTPException(status_code=400, detail="Invalid UUID format: invalid-uuid")
+    """
+    if uuid_str is None:
+        # Generate a new valid UUID
+        return str(uuid.uuid4())
+    
+    # Validate the provided UUID
+    normalized = normalize_uuid(uuid_str)
+    if not normalized:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid UUID format: {uuid_str}"
+        )
+    
+    return normalized
 
 
 def normalize_uuid(uuid_str: Optional[str]) -> Optional[str]:

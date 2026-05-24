@@ -18,7 +18,7 @@ from skillberry_store.tools.configure import (
     get_vnfs_directory,
     get_vnfs_descriptions_directory,
 )
-from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
+from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys, generate_or_validate_uuid
 from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
@@ -50,8 +50,8 @@ def register_vnfs_api(
         logger.info(f"Request to create vnfs server: {vnfs.name}")
         create_vnfs_counter.inc()
 
-        if not vnfs.uuid:
-            vnfs.uuid = str(uuid.uuid4())
+        vnfs.uuid = generate_or_validate_uuid(vnfs.uuid)
+        logger.info(f"UUID for vNFS server '{vnfs.name}': {vnfs.uuid}")
 
         current_time = datetime.now(timezone.utc).isoformat()
         vnfs.created_at = current_time

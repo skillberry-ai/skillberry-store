@@ -25,7 +25,7 @@ from skillberry_store.tools.configure import (
     is_auto_detect_dependencies_enabled,
 )
 from skillberry_store.fast_api.search_filters import apply_search_filters
-from skillberry_store.utils.utils import normalize_uuid
+from skillberry_store.utils.utils import normalize_uuid, generate_or_validate_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -121,26 +121,17 @@ def register_skills_api(
         logger.info(f"Request to create skill: {skill.name}")
         create_skill_counter.inc()
 
-        # Generate UUID if not provided
-        if not skill.uuid:
-            skill.uuid = str(uuid.uuid4())
-            logger.info(f"Generated UUID for skill '{skill.name}': {skill.uuid}")
+        # Generate or validate UUID
+        skill.uuid = generate_or_validate_uuid(skill.uuid)
+        logger.info(f"UUID for skill '{skill.name}': {skill.uuid}")
 
         # Set timestamps
         current_time = datetime.now(timezone.utc).isoformat()
         skill.created_at = current_time
         skill.modified_at = current_time
-
-        # Generate UUID if not provided
-        if not skill.uuid:
-            skill.uuid = str(uuid.uuid4())
-            logger.info(f"Generated UUID for skill '{skill.name}': {skill.uuid}")
         
         # Check if skill with this UUID already exists
-        skill_uuid_normalized = normalize_uuid(skill.uuid)
-        if not skill_uuid_normalized:
-            raise HTTPException(status_code=400, detail=f"Invalid UUID format: {skill.uuid}")
-        if skill_handler.resource_exists(skill_uuid_normalized):
+        if skill_handler.resource_exists(skill.uuid):
             raise HTTPException(
                 status_code=409, detail=f"Skill with UUID '{skill.uuid}' already exists."
             )
@@ -154,15 +145,15 @@ def register_skills_api(
                     logger.info(f"Setting parent for skill '{skill.name}' to existing HEAD: {existing_head}")
             
             # Save skill manifest to UUID subfolder
-            skill_handler.write_manifest(skill_uuid_normalized, skill.to_dict())
+            skill_handler.write_manifest(skill.uuid, skill.to_dict())
             
             # Update cache - this becomes new HEAD
             if skill.name:
-                skill_handler.update_cache_after_create(skill_uuid_normalized, skill.name, skill.parent)
+                skill_handler.update_cache_after_create(skill.uuid, skill.name, skill.parent)
 
             # Write description for search capability (indexed by UUID)
             if skills_descriptions and skill.description:
-                skills_descriptions.write_description(skill_uuid_normalized, skill.description)
+                skills_descriptions.write_description(skill.uuid, skill.description)
                 logger.info(f"Skill description saved for UUID: {skill.uuid}")
 
             logger.info(f"Skill '{skill.name}' (UUID: {skill.uuid}) created successfully")
@@ -351,14 +342,11 @@ def register_skills_api(
             merged_manifest["modified_at"] = datetime.now(timezone.utc).isoformat()
 
             # Write the merged manifest using ResourceHandler
-            skill_uuid_normalized = normalize_uuid(skill_uuid)
-            if not skill_uuid_normalized:
-                raise HTTPException(status_code=400, detail=f"Invalid UUID format: {skill_uuid}")
-            skill_handler.write_manifest(skill_uuid_normalized, merged_manifest)
+            skill_handler.write_manifest(skill_uuid, merged_manifest)
             
             # Update cache - this becomes HEAD for its (possibly new) name
             if new_name:
-                skill_handler.update_cache_after_update(skill_uuid_normalized, new_name, old_name, old_parent)
+                skill_handler.update_cache_after_update(skill_uuid, new_name, old_name, old_parent)
             
             # Update description for search capability (indexed by UUID)
             if skills_descriptions and merged_manifest.get("description"):
@@ -536,7 +524,7 @@ def register_skills_api(
 
             # Set tool UUIDs prior to creation to avoid failed lookups on tool name
             for tool in tools:
-                tool.uuid = str(uuid.uuid4())
+                tool.uuid = generate_or_validate_uuid(None)
                 created_tool_uuids.append(tool.uuid)
                 all_tool_names[tool.name] = tool.uuid
 
@@ -613,16 +601,13 @@ def register_skills_api(
                             logger.warning(f"Failed to auto-detect dependencies for {tool_name}: {e}")
                     
                     # Save tool manifest to UUID subfolder
-                    tool_uuid_normalized = normalize_uuid(tool_uuid)
-                    if not tool_uuid_normalized:
-                        raise HTTPException(status_code=400, detail=f"Invalid UUID format: {tool_uuid}")
-                    tools_handler.write_manifest(tool_uuid_normalized, tool_data)
+                    tools_handler.write_manifest(tool_uuid, tool_data)
                     
                     # Update cache after create
-                    tools_handler.update_cache_after_create(tool_uuid_normalized, tool_name, tool_parent)
+                    tools_handler.update_cache_after_create(tool_uuid, tool_name, tool_parent)
 
                     # Save tool module to UUID subfolder
-                    tools_handler.write_resource_file(tool_uuid_normalized, module_filename, tool_dict['moduleContent'])
+                    tools_handler.write_resource_file(tool_uuid, module_filename, tool_dict['moduleContent'])
                     
                     logger.info(f"Created tool: {tool_name}")
                 except Exception as e:
@@ -633,7 +618,7 @@ def register_skills_api(
             for snippet in snippets:
                 try:
                     snippet_dict = snippet.to_dict()
-                    snippet_uuid = str(uuid.uuid4())
+                    snippet_uuid = generate_or_validate_uuid(None)
                     snippet_name = snippet_dict["name"]
 
                     # Add additional tags to snippet tags
@@ -666,13 +651,10 @@ def register_skills_api(
                     }
                     
                     # Save snippet manifest to UUID subfolder
-                    snippet_uuid_normalized = normalize_uuid(snippet_uuid)
-                    if not snippet_uuid_normalized:
-                        raise HTTPException(status_code=400, detail=f"Invalid UUID format: {snippet_uuid}")
-                    snippets_handler.write_manifest(snippet_uuid_normalized, snippet_data)
+                    snippets_handler.write_manifest(snippet_uuid, snippet_data)
                     
                     # Update cache after create
-                    snippets_handler.update_cache_after_create(snippet_uuid_normalized, snippet_name, snippet_parent)
+                    snippets_handler.update_cache_after_create(snippet_uuid, snippet_name, snippet_parent)
                     
                     created_snippet_uuids.append(snippet_uuid)
                     logger.info(f"Created snippet: {snippet_name}")
