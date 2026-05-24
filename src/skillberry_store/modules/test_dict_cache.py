@@ -104,17 +104,17 @@ def test_get_all_manifests(cache, sample_manifest, another_manifest):
     cache.set("uuid-123", sample_manifest)
     cache.set("uuid-456", another_manifest)
     
-    manifests = cache.get_all_manifests()
+    manifests = cache.get_all_dicts()
     assert len(manifests) == 2
     assert manifests["uuid-123"] == sample_manifest
     assert manifests["uuid-456"] == another_manifest
 
 
 def test_get_all_manifests_returns_copy(cache, sample_manifest):
-    """Test that get_all_manifests returns a copy, not the original dict."""
+    """Test that get_all_dicts returns a copy, not the original dict."""
     cache.set("uuid-123", sample_manifest)
     
-    manifests = cache.get_all_manifests()
+    manifests = cache.get_all_dicts()
     manifests["uuid-999"] = {"uuid": "uuid-999", "name": "new"}
     
     # Original cache should not be affected
@@ -172,7 +172,7 @@ def test_multiple_resources_scenario(cache):
 
 
 def test_version_chain_scenario(cache):
-    """Test caching multiple versions of the same resource."""
+    """Test caching multiple versions of the same object."""
     v1_manifest = {"uuid": "uuid-v1", "name": "mytool", "version": "1.0.0", "parent": None}
     v2_manifest = {"uuid": "uuid-v2", "name": "mytool", "version": "2.0.0", "parent": "uuid-v1"}
     v3_manifest = {"uuid": "uuid-v3", "name": "mytool", "version": "3.0.0", "parent": "uuid-v2"}

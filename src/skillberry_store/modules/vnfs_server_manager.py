@@ -6,7 +6,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from skillberry_store.modules.vnfs_server import VirtualNfsServer
-from skillberry_store.modules.resource_handler import get_resource_handler
+from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.tools.configure import get_vnfs_directory
 from skillberry_store.utils.utils import make_name_with_uuid
 
@@ -27,7 +27,7 @@ class VirtualNfsServerManager:
         self._lock = threading.RLock()
 
         self.vnfs_directory = get_vnfs_directory()
-        self.vnfs_handler = get_resource_handler("vnfs")
+        self.vnfs_handler = get_object_handler("vnfs")
 
         logger.info(f"Loading vnfs_servers from {self.vnfs_directory}")
         self.load_servers()
@@ -144,7 +144,7 @@ class VirtualNfsServerManager:
         """Read persisted JSON files and start a runtime server for each."""
         try:
             # Get all VNFS server resources
-            vnfs_resources = self.vnfs_handler.list_all_resources()
+            vnfs_resources = self.vnfs_handler.list_all_dicts()
             
             for data in vnfs_resources:
                 name = data.get("name")
@@ -199,27 +199,27 @@ class VirtualNfsServerManager:
     def _resolve_skill(self, skill_uuid: Optional[str]):
         """Return (skill_dict, tools_list, snippets_list, tool_modules) for a skill UUID.
         
-        Uses ResourceHandler for UUID-based resource access, consistent with VMCP implementation.
+        Uses ObjectHandler for UUID-based object access, consistent with VMCP implementation.
         """
         if not skill_uuid:
             return {}, [], [], {}
 
         try:
-            # Use ResourceHandler for UUID-based access
-            skills_handler = get_resource_handler("skill")
-            tools_handler = get_resource_handler("tool")
-            snippets_handler = get_resource_handler("snippet")
-            
-            # Read skill manifest by UUID
-            skill_dict = skills_handler.read_manifest(skill_uuid)
+            # Use ObjectHandler for UUID-based access
+            skills_handler = get_object_handler("skill")
+            tools_handler = get_object_handler("tool")
+            snippets_handler = get_object_handler("snippet")
+
+            # Read skill dict by UUID
+            skill_dict = skills_handler.read_dict(skill_uuid)
             
             # Get tool and snippet UUIDs from skill
             tool_uuids = skill_dict.get("tool_uuids", [])
             snippet_uuids = skill_dict.get("snippet_uuids", [])
             
             # Get tools and snippets by UUID
-            tools = tools_handler.read_manifests(tool_uuids) if tool_uuids else []
-            snippets = snippets_handler.read_manifests(snippet_uuids) if snippet_uuids else []
+            tools = tools_handler.read_dicts(tool_uuids) if tool_uuids else []
+            snippets = snippets_handler.read_dicts(snippet_uuids) if snippet_uuids else []
             
             # Read tool modules from tool's UUID subdirectory
             tool_modules = {}
@@ -233,7 +233,7 @@ class VirtualNfsServerManager:
                     continue
                 
                 try:
-                    content = tools_handler.read_resource_file(
+                    content = tools_handler.read_file(
                         tool_uuid, module_name, raw_content=True
                     )
                     if isinstance(content, str):

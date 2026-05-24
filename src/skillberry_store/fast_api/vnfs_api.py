@@ -9,7 +9,7 @@ from typing import Annotated, Optional
 from fastapi import FastAPI, HTTPException, Query, Request
 from prometheus_client import Counter
 
-from skillberry_store.modules.resource_handler import get_resource_handler
+from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
@@ -39,7 +39,7 @@ def register_vnfs_api(
     vnfs_descriptions: Optional[Description] = None,
 ):
     """Register virtual NFS server API endpoints with the FastAPI application."""
-    vnfs_handler = get_resource_handler("vnfs")
+    vnfs_handler = get_object_handler("vnfs")
 
     vnfs_server_manager = VirtualNfsServerManager(sts_url=sts_url, app=app)
     app.state.vnfs_server_manager = vnfs_server_manager
@@ -58,7 +58,7 @@ def register_vnfs_api(
         vnfs.modified_at = current_time
 
         # Check if vnfs server with this UUID already exists
-        if vnfs_handler.resource_exists(vnfs.uuid):
+        if vnfs_handler.object_exists(vnfs.uuid):
             raise HTTPException(
                 status_code=409, detail=f"vNFS server with UUID '{vnfs.uuid}' already exists."
             )
@@ -72,8 +72,8 @@ def register_vnfs_api(
             server = vnfs_server_manager.add_server(vnfs)
             vnfs.port = server.port
 
-            # Save using ResourceHandler with UUID
-            vnfs_handler.write_manifest(vnfs.uuid, vnfs.to_dict())
+            # Save using ObjectHandler with UUID
+            vnfs_handler.write_dict(vnfs.uuid, vnfs.to_dict())
             
             # Update cache after create
             if vnfs.name:
@@ -110,8 +110,8 @@ def register_vnfs_api(
         list_vnfs_counter.inc()
 
         try:
-            # Get all VNFS resources using ResourceHandler
-            vnfs_resources = vnfs_handler.list_all_resources()
+            # Get all VNFS objects using ObjectHandler
+            vnfs_resources = vnfs_handler.list_all_dicts()
             
             servers_list = []
             for vnfs_data in vnfs_resources:
@@ -167,7 +167,7 @@ def register_vnfs_api(
         try:
             # Resolve ID to UUID and read manifest
             vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
-            vnfs_dict = vnfs_handler.read_manifest(vnfs_uuid)
+            vnfs_dict = vnfs_handler.read_dict(vnfs_uuid)
             server_name = vnfs_dict.get("name")
             server_uuid = vnfs_dict.get("uuid")
             
@@ -206,7 +206,7 @@ def register_vnfs_api(
         try:
             # Resolve ID to UUID and read manifest
             server_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
-            vnfs_dict = vnfs_handler.read_manifest(server_uuid)
+            vnfs_dict = vnfs_handler.read_dict(server_uuid)
             server_name = vnfs_dict.get("name")
             server_parent = vnfs_dict.get("parent")
             
@@ -220,8 +220,8 @@ def register_vnfs_api(
             except Exception as e:
                 logger.warning(f"Could not stop runtime server: {e}")
 
-            # Delete persistent data using ResourceHandler
-            vnfs_handler.delete_resource_folder(server_uuid)
+            # Delete persistent data using ObjectHandler
+            vnfs_handler.delete_object(server_uuid)
             
             # Update cache after delete
             if server_name and server_uuid:
@@ -260,7 +260,7 @@ def register_vnfs_api(
         try:
             # Resolve ID to UUID and read current data
             vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
-            existing_vnfs = vnfs_handler.read_manifest(vnfs_uuid)
+            existing_vnfs = vnfs_handler.read_dict(vnfs_uuid)
             old_name = existing_vnfs.get("name")
             old_parent = existing_vnfs.get("parent")
             server_uuid = existing_vnfs.get("uuid")
@@ -293,8 +293,8 @@ def register_vnfs_api(
             server = vnfs_server_manager.add_server(vnfs)
             vnfs.port = server.port
 
-            # Update persistent data using ResourceHandler
-            vnfs_handler.write_manifest(vnfs.uuid or "", vnfs.to_dict())
+            # Update persistent data using ObjectHandler
+            vnfs_handler.write_dict(vnfs.uuid or "", vnfs.to_dict())
             
             # Update cache after update
             if vnfs.name and old_name:
@@ -331,7 +331,7 @@ def register_vnfs_api(
         try:
             # Resolve ID to UUID and read manifest
             vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
-            vnfs_data = vnfs_handler.read_manifest(vnfs_uuid)
+            vnfs_data = vnfs_handler.read_dict(vnfs_uuid)
             server_name = vnfs_data.get("name", "")
             server_uuid = vnfs_data.get("uuid", "")
             
@@ -400,8 +400,8 @@ def register_vnfs_api(
                     logger.warning(f"Matched entity missing 'filename' or 'name' field: {m}")
                     continue
                 try:
-                    # Read manifest by UUID
-                    vnfs_dict = vnfs_handler.read_manifest(vnfs_uuid)
+                    # Read dict by UUID
+                    vnfs_dict = vnfs_handler.read_dict(vnfs_uuid)
                     vnfs_dict["similarity_score"] = m.get("similarity_score", 0.0)
                     servers_to_filter.append(vnfs_dict)
                 except Exception as exc:

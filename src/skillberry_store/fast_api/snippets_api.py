@@ -8,7 +8,7 @@ from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 from prometheus_client import Counter
 
-from skillberry_store.modules.resource_handler import get_resource_handler
+from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
@@ -52,7 +52,7 @@ def register_snippets_api(
         tags: FastAPI tags for grouping the endpoints in documentation.
         snippets_descriptions: Description instance for managing snippet descriptions.
     """
-    snippet_handler = get_resource_handler("snippet")
+    snippet_handler = get_object_handler("snippet")
 
     @app.post("/snippets/", tags=[tags])
     async def create_snippet(
@@ -103,7 +103,7 @@ def register_snippets_api(
 
         # Check if snippet with this UUID already exists
         try:
-            snippet_handler.read_manifest(snippet.uuid)
+            snippet_handler.read_dict(snippet.uuid)
             # If we get here, the snippet exists - raise 409 Conflict
             raise HTTPException(
                 status_code=409,
@@ -120,8 +120,8 @@ def register_snippets_api(
                 snippet.parent = snippet_handler.get_cache_parent_for_head(snippet.uuid, snippet.name)
                 logger.info(f"Setting parent for snippet '{snippet.name}' to {snippet.parent}")
             
-            # Save snippet manifest to UUID subfolder
-            snippet_handler.write_manifest(snippet.uuid, snippet.to_dict())
+            # Save snippet dict to UUID subfolder
+            snippet_handler.write_dict(snippet.uuid, snippet.to_dict())
             
             # Update cache - this becomes new HEAD
             if snippet.name:
@@ -160,7 +160,7 @@ def register_snippets_api(
         list_snippets_counter.inc()
 
         try:
-            snippets = snippet_handler.list_all_resources()
+            snippets = snippet_handler.list_all_dicts()
 
             # Sort by modified_at in descending order (most recent first)
             snippets.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
@@ -192,7 +192,7 @@ def register_snippets_api(
         try:
             # Resolve ID to UUID and read manifest
             snippet_uuid = snippet_handler.resolve_to_uuid_or_error(id)
-            snippet_dict = snippet_handler.read_manifest(snippet_uuid)
+            snippet_dict = snippet_handler.read_dict(snippet_uuid)
             logger.info(f"Retrieved snippet: {id}")
             return snippet_dict
         except HTTPException:
@@ -229,14 +229,14 @@ def register_snippets_api(
             
             # Read snippet metadata before deletion
             try:
-                snippet_dict = snippet_handler.read_manifest(snippet_uuid)
+                snippet_dict = snippet_handler.read_dict(snippet_uuid)
                 snippet_name = snippet_dict.get("name")
                 snippet_parent = snippet_dict.get("parent")
             except Exception as e:
                 logger.warning(f"Could not read snippet before deletion: {e}")
             
-            # Delete the snippet using ResourceHandler
-            result = snippet_handler.delete_resource_folder(snippet_uuid)
+            # Delete the snippet using ObjectHandler
+            result = snippet_handler.delete_object(snippet_uuid)
             
             # Update cache after deletion
             if snippet_uuid and snippet_name:
@@ -284,10 +284,10 @@ def register_snippets_api(
             # Resolve ID to UUID (raises 404 if not found)
             snippet_uuid = snippet_handler.resolve_to_uuid_or_error(id)
 
-            # Read existing manifest to preserve uuid and created_at
-            existing_manifest = snippet_handler.read_manifest(snippet_uuid)
-            old_name = existing_manifest.get("name")
-            old_parent = existing_manifest.get("parent")
+            # Read existing dict to preserve uuid and created_at
+            existing_dict = snippet_handler.read_dict(snippet_uuid)
+            old_name = existing_dict.get("name")
+            old_parent = existing_dict.get("parent")
             
             # Convert update data to dict
             update_data = snippet.to_dict()
@@ -302,22 +302,22 @@ def register_snippets_api(
                 logger.info(f"Setting parent for snippet '{new_name}' to {new_parent}")
             
             # Merge: preserve uuid and created_at from existing, update modified_at
-            merged_manifest = {**existing_manifest, **update_data}
-            merged_manifest["uuid"] = existing_manifest.get("uuid", snippet_uuid)
-            merged_manifest["created_at"] = existing_manifest.get("created_at")
-            merged_manifest["modified_at"] = datetime.now(timezone.utc).isoformat()
+            merged_dict = {**existing_dict, **update_data}
+            merged_dict["uuid"] = existing_dict.get("uuid", snippet_uuid)
+            merged_dict["created_at"] = existing_dict.get("created_at")
+            merged_dict["modified_at"] = datetime.now(timezone.utc).isoformat()
 
-            # Write the merged manifest using ResourceHandler
-            snippet_handler.write_manifest(snippet_uuid, merged_manifest)
+            # Write the merged dict using ObjectHandler
+            snippet_handler.write_dict(snippet_uuid, merged_dict)
             
             # Update cache - this becomes HEAD for its (possibly new) name
             if new_name:
                 snippet_handler.update_cache(snippet_uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
             
             # Update description for search capability (indexed by UUID)
-            if snippets_descriptions and merged_manifest.get("description"):
+            if snippets_descriptions and merged_dict.get("description"):
                 snippets_descriptions.write_description(
-                    snippet_uuid, merged_manifest["description"]
+                    snippet_uuid, merged_dict["description"]
                 )
                 logger.info(f"Snippet description updated for UUID: {snippet_uuid}")
             
@@ -383,7 +383,7 @@ def register_snippets_api(
                     continue
                 try:
                     # Read snippet manifest by UUID
-                    snippet_dict = snippet_handler.read_manifest(snippet_uuid)
+                    snippet_dict = snippet_handler.read_dict(snippet_uuid)
                     snippet_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
                     snippets_to_filter.append(snippet_dict)
                 except Exception as e:

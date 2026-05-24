@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from prometheus_client import Counter, Histogram
 import time
 
-from skillberry_store.modules.resource_handler import ResourceHandler, get_resource_handler
+from skillberry_store.modules.object_handler import ObjectHandler, get_object_handler
 from skillberry_store.modules.file_executor import FileExecutor, detect_tool_dependencies
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 def find_tool_dependencies(
     dependencies: List[str],
-    tool_handler: ResourceHandler,
+    tool_handler: ObjectHandler,
     tool_uuid: str
 ) -> Set[str]:
     """
@@ -54,7 +54,7 @@ def find_tool_dependencies(
     
     Args:
         dependencies: List of current dependency tool UUIDs
-        tool_handler: ResourceHandler for tools
+        tool_handler: ObjectHandler for tools
         tool_uuid: UUID of the tool whose dependencies are found (for logging)
     
     Returns:
@@ -75,7 +75,7 @@ def find_tool_dependencies(
 
         dependencies_uuids.add(dep_uuid)
 
-        dep_dict = tool_handler.read_manifest(dep_uuid)
+        dep_dict = tool_handler.read_dict(dep_uuid)
             
         # Recursively load nested dependencies first
         nested_dependencies = dep_dict.get("dependencies", [])
@@ -146,7 +146,7 @@ def register_tools_api(
         tags: FastAPI tags for grouping the endpoints in documentation.
         tools_descriptions: Description instance for managing tool descriptions.
     """
-    tool_handler = get_resource_handler("tool")
+    tool_handler = get_object_handler("tool")
 
     @app.post("/tools/", tags=[tags])
     async def create_tool(
@@ -181,7 +181,7 @@ def register_tools_api(
         tool.modified_at = current_time
 
         # Check if tool with this UUID already exists
-        if tool_handler.resource_exists(tool.uuid):
+        if tool_handler.object_exists(tool.uuid):
             raise HTTPException(
                 status_code=409, detail=f"Tool with UUID '{tool.uuid}' already exists."
             )
@@ -196,7 +196,7 @@ def register_tools_api(
             module_filename = module.filename if module.filename else f"{tool.name}.py"
 
             # Write module file to tool's UUID sub-folder
-            tool_handler.write_resource_file(tool.uuid, module_filename, file_content)
+            tool_handler.write_file(tool.uuid, module_filename, file_content)
             tool.module_name = module_filename
             logger.info(f"Saved module file to UUID sub-folder: {module_filename}")
 
@@ -204,7 +204,7 @@ def register_tools_api(
             if not tool.dependencies and is_auto_detect_dependencies_enabled():
                 try:
                     # Get list of available tools
-                    available_tools = tool_handler.get_available_resource_names()
+                    available_tools = tool_handler.get_existing_names()
                     # Detect dependencies from code
                     detected_dep_names = detect_tool_dependencies(
                         file_content.decode('utf-8') if isinstance(file_content, bytes) else file_content,
@@ -221,7 +221,7 @@ def register_tools_api(
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
 
             # Convert tool to JSON and save as tool.json in UUID folder
-            tool_handler.write_manifest(tool.uuid, tool.to_dict())
+            tool_handler.write_dict(tool.uuid, tool.to_dict())
             
             # Update cache - this becomes new HEAD
             tool_handler.update_cache(tool.uuid, new_name=tool.name)
@@ -258,8 +258,8 @@ def register_tools_api(
         list_tools_counter.inc()
 
         try:
-            # Use ResourceHandler to list all tools
-            tools = tool_handler.list_all_resources()
+            # Use ObjectHandler to list all tools
+            tools = tool_handler.list_all_dicts()
             # Log all tools with their details
             logger.info(f"Listing {len(tools)} unordered tools")
             for tool in tools:
@@ -302,7 +302,7 @@ def register_tools_api(
         try:
             # Resolve ID to UUID and read manifest
             tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
-            tool_dict = tool_handler.read_manifest(tool_uuid)
+            tool_dict = tool_handler.read_dict(tool_uuid)
             logger.info(f"Retrieved tool with ID '{id}'")
             return tool_dict
         except HTTPException:
@@ -336,7 +336,7 @@ def register_tools_api(
         try:
             # Resolve ID to UUID and read manifest
             tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
-            tool_dict = tool_handler.read_manifest(tool_uuid)
+            tool_dict = tool_handler.read_dict(tool_uuid)
             
             if not tool_uuid:
                 raise HTTPException(
@@ -368,7 +368,7 @@ def register_tools_api(
 
             # Return the module file content from UUID sub-folder
             logger.info(f"Retrieving module file: {module_name}")
-            module_content = tool_handler.read_resource_file(tool_uuid, module_name, raw_content=True)
+            module_content = tool_handler.read_file(tool_uuid, module_name, raw_content=True)
             return PlainTextResponse(content=module_content, media_type="text/plain")
 
         except HTTPException:
@@ -404,14 +404,14 @@ def register_tools_api(
             tool_name = None
             tool_parent = None
             try:
-                tool_dict = tool_handler.read_manifest(tool_uuid)
+                tool_dict = tool_handler.read_dict(tool_uuid)
                 tool_name = tool_dict.get("name")
                 tool_parent = tool_dict.get("parent")
             except Exception as e:
                 logger.warning(f"Could not read tool metadata before deletion: {e}")
 
-            # Delete the tool using ResourceHandler (deletes entire UUID subfolder)
-            result = tool_handler.delete_resource_folder(tool_uuid)
+            # Delete the tool using ObjectHandler (deletes entire UUID subfolder)
+            result = tool_handler.delete_object(tool_uuid)
             
             # Update cache after deletion
             if tool_uuid and tool_name:
@@ -459,10 +459,10 @@ def register_tools_api(
             # Resolve ID to UUID (raises 404 if not found)
             tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
 
-            # Read existing manifest to preserve uuid and created_at
-            existing_manifest = tool_handler.read_manifest(tool_uuid)
-            old_name = existing_manifest.get("name")
-            old_parent = existing_manifest.get("parent")
+            # Read existing dict to preserve uuid and created_at
+            existing_dict = tool_handler.read_dict(tool_uuid)
+            old_name = existing_dict.get("name")
+            old_parent = existing_dict.get("parent")
             
             # Convert update data to dict
             update_data = tool.to_dict()
@@ -477,13 +477,13 @@ def register_tools_api(
                 logger.info(f"Setting parent for tool '{new_name}' to {new_parent}")
             
             # Merge: preserve uuid and created_at from existing, update modified_at
-            merged_manifest = {**existing_manifest, **update_data}
-            merged_manifest["uuid"] = existing_manifest.get("uuid", tool_uuid)
-            merged_manifest["created_at"] = existing_manifest.get("created_at")
-            merged_manifest["modified_at"] = datetime.now(timezone.utc).isoformat()
+            merged_dict = {**existing_dict, **update_data}
+            merged_dict["uuid"] = existing_dict.get("uuid", tool_uuid)
+            merged_dict["created_at"] = existing_dict.get("created_at")
+            merged_dict["modified_at"] = datetime.now(timezone.utc).isoformat()
 
-            # Write the merged manifest using ResourceHandler
-            tool_handler.write_manifest(tool_uuid, merged_manifest)
+            # Write the merged dict using ObjectHandler
+            tool_handler.write_dict(tool_uuid, merged_dict)
             
             # Update cache - this becomes HEAD for its (possibly new) name
             if new_name:
@@ -491,7 +491,7 @@ def register_tools_api(
             
             # Update description for search capability if description changed (indexed by UUID)
             if tools_descriptions and tool.description:
-                old_description = existing_manifest.get("description")
+                old_description = existing_dict.get("description")
                 if old_description != tool.description:
                     try:
                         # Delete old description
@@ -540,7 +540,7 @@ def register_tools_api(
             logger.info(f"[execute_tool] Reading tool manifest for: {id}")
             # Resolve ID to UUID and read manifest
             tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
-            tool_dict = tool_handler.read_manifest(tool_uuid)
+            tool_dict = tool_handler.read_dict(tool_uuid)
             tool_name = tool_dict.get("name", id)
             
             execute_tool_counter.labels(name=tool_uuid).inc()
@@ -583,10 +583,10 @@ def register_tools_api(
                         detail=f"Tool with ID '{id}' does not have a module file specified",
                     )
 
-                # Get the module file content from resource folder
+                # Get the module file content from object folder
                 if not tool_uuid:
-                    raise HTTPException(status_code=500, detail="Tool UUID not found in manifest")
-                module_content = tool_handler.read_resource_file(tool_uuid, module_name, raw_content=True)
+                    raise HTTPException(status_code=500, detail="Tool UUID not found in dict")
+                module_content = tool_handler.read_file(tool_uuid, module_name, raw_content=True)
                 if not isinstance(module_content, str):
                     raise HTTPException(status_code=500, detail=f"Invalid module content type for tool with ID '{id}'")
 
@@ -597,8 +597,8 @@ def register_tools_api(
                 tool_uuid=tool_uuid
             )
 
-            dep_manifests = tool_handler.read_manifests(list(tool_dependencies_uuids))
-            dep_files = [tool_handler.read_resource_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_manifests]
+            dep_dicts = tool_handler.read_dicts(list(tool_dependencies_uuids))
+            dep_files = [tool_handler.read_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_dicts]
 
             # Execute the tool using FileExecutor
             file_executor = FileExecutor(
@@ -606,7 +606,7 @@ def register_tools_api(
                 file_content=module_content,
                 file_manifest=tool_dict,
                 dependent_file_contents=dep_files,
-                dependent_tools_as_dict=dep_manifests,
+                dependent_tools_as_dict=dep_dicts,
             )
 
             # Ensure parameters is not None
@@ -699,7 +699,7 @@ def register_tools_api(
                 try:
                     # Resolve name to UUID and read manifest
                     tool_uuid = tool_handler.resolve_to_uuid_or_error(tool_name)
-                    tool_dict = tool_handler.read_manifest(tool_uuid)
+                    tool_dict = tool_handler.read_dict(tool_uuid)
                     tool_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
                     tools_to_filter.append(tool_dict)
                 except Exception as e:
@@ -815,7 +815,7 @@ def register_tools_api(
             dependencies = None
             if is_auto_detect_dependencies_enabled():
                 try:
-                    available_tools = tool_handler.get_available_resource_names()
+                    available_tools = tool_handler.get_existing_names()
                     detected_deps = detect_tool_dependencies(
                         tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
                         func_name,
@@ -837,7 +837,7 @@ def register_tools_api(
                 
                 # Update the module file in UUID sub-folder (update_tool doesn't handle files)
                 module_filename = tool.filename if tool.filename else f"{func_name}.py"
-                tool_handler.write_resource_file(tool_uuid, module_filename, tool_bytes)
+                tool_handler.write_file(tool_uuid, module_filename, tool_bytes)
                 logger.info(f"Updated module file in UUID sub-folder: {module_filename}")
                 
                 # Create the tool schema for update (parent will be set by update_tool)

@@ -6,7 +6,7 @@ import threading
 from typing import Any, Dict, Optional
 
 from skillberry_store.modules.vmcp_server import VirtualMcpServer
-from skillberry_store.modules.resource_handler import get_resource_handler
+from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.tools.configure import get_vmcp_directory
 from skillberry_store.utils.utils import make_name_with_uuid
 
@@ -38,12 +38,12 @@ class VirtualMcpServerManager:
 
         # Use the same directory as vmcp_api for consistency
         self.vmcp_directory = get_vmcp_directory()
-        self.vmcp_handler = get_resource_handler("vmcp")
-        
+        self.vmcp_handler = get_object_handler("vmcp")
+
         # Initialize handlers for skills, tools, and snippets
-        self.skills_handler = get_resource_handler("skill")
-        self.tools_handler = get_resource_handler("tool")
-        self.snippets_handler = get_resource_handler("snippet")
+        self.skills_handler = get_object_handler("skill")
+        self.tools_handler = get_object_handler("tool")
+        self.snippets_handler = get_object_handler("snippet")
 
         logger.info(f"Loading vmcp_servers from {self.vmcp_directory}")
         self.load_servers()
@@ -183,7 +183,7 @@ class VirtualMcpServerManager:
         """
         try:
             # Get all VMCP server resources
-            vmcp_resources = self.vmcp_handler.list_all_resources()
+            vmcp_resources = self.vmcp_handler.list_all_dicts()
             
             for vmcp_data in vmcp_resources:
                 name = vmcp_data.get("name", "unknown")
@@ -200,8 +200,8 @@ class VirtualMcpServerManager:
                     if skill_uuid:
                         logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load")
                         try:
-                            # Read skill manifest by UUID
-                            skill_dict = self.skills_handler.read_manifest(skill_uuid)
+                            # Read skill dict by UUID
+                            skill_dict = self.skills_handler.read_dict(skill_uuid)
                             tool_uuids = skill_dict.get("tool_uuids", [])
                             snippet_uuids = skill_dict.get("snippet_uuids", [])
                             logger.info(f"Found skill '{skill_dict.get('name')}' with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")

@@ -8,7 +8,7 @@ from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, Request
 from prometheus_client import Counter, Histogram
 
-from skillberry_store.modules.resource_handler import get_resource_handler
+from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
@@ -79,7 +79,7 @@ def register_vmcp_api(
         tags: FastAPI tags for grouping the endpoints in documentation.
         vmcp_descriptions: Description instance for managing vmcp descriptions.
     """
-    vmcp_handler = get_resource_handler("vmcp")
+    vmcp_handler = get_object_handler("vmcp")
     
     # Initialize the server manager for runtime management
     vmcp_server_manager = VirtualMcpServerManager(sts_url=sts_url, app=app)
@@ -116,7 +116,7 @@ def register_vmcp_api(
         vmcp.modified_at = current_time
 
         # Check if vmcp server with this UUID already exists
-        if vmcp_handler.resource_exists(vmcp.uuid):
+        if vmcp_handler.object_exists(vmcp.uuid):
             raise HTTPException(
                 status_code=409, detail=f"VMCP server with UUID '{vmcp.uuid}' already exists."
             )
@@ -148,11 +148,11 @@ def register_vmcp_api(
                     f"Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}"
                 )
                 # Load the skill to get tool UUIDs and snippet UUIDs
-                skills_handler = get_resource_handler("skill")
+                skills_handler = get_object_handler("skill")
                 
                 try:
-                    # Read skill manifest by UUID
-                    skill_dict = skills_handler.read_manifest(vmcp.skill_uuid)
+                    # Read skill dict by UUID
+                    skill_dict = skills_handler.read_dict(vmcp.skill_uuid)
                     tool_uuids = skill_dict.get("tool_uuids", [])
                     snippet_uuids = skill_dict.get("snippet_uuids", [])
                     logger.info(f"Found skill '{skill_dict.get('name')}' with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
@@ -183,8 +183,8 @@ def register_vmcp_api(
             # Update the schema with the actual port assigned
             vmcp.port = server.port
 
-            # Save the persistent JSON representation using ResourceHandler
-            vmcp_handler.write_manifest(vmcp.uuid, vmcp.to_dict())
+            # Save the persistent JSON representation using ObjectHandler
+            vmcp_handler.write_dict(vmcp.uuid, vmcp.to_dict())
             
             # Update cache after create
             if vmcp.name:
@@ -234,8 +234,8 @@ def register_vmcp_api(
         list_vmcp_counter.inc()
 
         try:
-            # Get all VMCP resources using ResourceHandler
-            vmcp_resources = vmcp_handler.list_all_resources()
+            # Get all VMCP objects using ObjectHandler
+            vmcp_resources = vmcp_handler.list_all_dicts()
             
             # Build full server objects by combining persistent and runtime data
             servers_list = []
@@ -312,7 +312,7 @@ def register_vmcp_api(
         try:
             # Resolve ID to UUID and read manifest
             vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
-            vmcp_dict = vmcp_handler.read_manifest(vmcp_uuid)
+            vmcp_dict = vmcp_handler.read_dict(vmcp_uuid)
             server_name = vmcp_dict.get("name")
             server_uuid = vmcp_dict.get("uuid")
             
@@ -361,7 +361,7 @@ def register_vmcp_api(
         try:
             # Resolve ID to UUID and read manifest
             server_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
-            vmcp_dict = vmcp_handler.read_manifest(server_uuid)
+            vmcp_dict = vmcp_handler.read_dict(server_uuid)
             server_name = vmcp_dict.get("name")
             server_parent = vmcp_dict.get("parent")
             
@@ -375,8 +375,8 @@ def register_vmcp_api(
             except Exception as e:
                 logger.warning(f"Could not stop runtime server: {e}")
 
-            # Delete persistent data using ResourceHandler
-            vmcp_handler.delete_resource_folder(server_uuid)
+            # Delete persistent data using ObjectHandler
+            vmcp_handler.delete_object(server_uuid)
             
             # Update cache after delete
             if server_name and server_uuid:
@@ -427,7 +427,7 @@ def register_vmcp_api(
         try:
             # Resolve ID to UUID and read current data
             vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
-            existing_vmcp = vmcp_handler.read_manifest(vmcp_uuid)
+            existing_vmcp = vmcp_handler.read_dict(vmcp_uuid)
             old_name = existing_vmcp.get("name")
             old_parent = existing_vmcp.get("parent")
             server_uuid = existing_vmcp.get("uuid")
@@ -471,11 +471,11 @@ def register_vmcp_api(
             tool_uuids = []
             snippet_uuids = []
             if vmcp.skill_uuid:
-                skills_handler = get_resource_handler("skill")
+                skills_handler = get_object_handler("skill")
                 
                 try:
-                    # Read skill manifest by UUID
-                    skill_dict = skills_handler.read_manifest(vmcp.skill_uuid)
+                    # Read skill dict by UUID
+                    skill_dict = skills_handler.read_dict(vmcp.skill_uuid)
                     tool_uuids = skill_dict.get("tool_uuids", [])
                     snippet_uuids = skill_dict.get("snippet_uuids", [])
                     logger.info(f"Found skill with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
@@ -496,8 +496,8 @@ def register_vmcp_api(
             # Update the schema with the actual port
             vmcp.port = server.port
 
-            # Update persistent data using ResourceHandler
-            vmcp_handler.write_manifest(vmcp.uuid or "", vmcp.to_dict())
+            # Update persistent data using ObjectHandler
+            vmcp_handler.write_dict(vmcp.uuid or "", vmcp.to_dict())
             
             # Update cache after update
             if vmcp.name and old_name:
@@ -543,7 +543,7 @@ def register_vmcp_api(
         try:
             # Resolve ID to UUID and read manifest
             vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
-            vmcp_data = vmcp_handler.read_manifest(vmcp_uuid)
+            vmcp_data = vmcp_handler.read_dict(vmcp_uuid)
             server_name = vmcp_data.get("name", "")
             server_uuid = vmcp_data.get("uuid", "")
             
@@ -576,11 +576,11 @@ def register_vmcp_api(
 
             if skill_uuid:
                 logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid}")
-                skills_handler = get_resource_handler("skill")
+                skills_handler = get_object_handler("skill")
                 
                 try:
-                    # Read skill manifest by UUID
-                    skill_dict = skills_handler.read_manifest(skill_uuid)
+                    # Read skill dict by UUID
+                    skill_dict = skills_handler.read_dict(skill_uuid)
                     tool_uuids = skill_dict.get("tool_uuids", [])
                     snippet_uuids = skill_dict.get("snippet_uuids", [])
                     logger.info(f"Found skill with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
@@ -666,8 +666,8 @@ def register_vmcp_api(
                     logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
                     continue
                 try:
-                    # Read manifest by UUID
-                    vmcp_dict = vmcp_handler.read_manifest(vmcp_uuid)
+                    # Read dict by UUID
+                    vmcp_dict = vmcp_handler.read_dict(vmcp_uuid)
                     vmcp_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
                     vmcp_servers_to_filter.append(vmcp_dict)
                 except Exception as e:

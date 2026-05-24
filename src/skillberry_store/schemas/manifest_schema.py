@@ -54,7 +54,7 @@ class ManifestSchema(BaseModel):
     )
     parent: Optional[str] = Field(
         None,
-        description="UUID of the parent resource (previous version with same name)"
+        description="UUID of the parent object (previous version with same name)"
     )
     created_at: Optional[str] = Field(
         default=None,

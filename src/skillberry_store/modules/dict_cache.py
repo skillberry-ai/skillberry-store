@@ -7,44 +7,44 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DictCache:
-    """In-memory cache for resource manifests (dicts).
+    """In-memory cache for object dicts.
     
-    This cache stores complete resource manifests in memory, mapping UUID to dict.
-    It provides fast access to resource data without disk I/O.
+    This cache stores complete object dicts in memory, mapping UUID to dict.
+    It provides fast access to object data without disk I/O.
     
-    Memory cost: Significantly higher than LookupCache as it stores full manifest
-    dictionaries (~2-10 KB per resource) instead of just name-UUID mappings.
+    Memory cost: Significantly higher than LookupCache as it stores full dict
+    dictionaries (~2-10 KB per object) instead of just name-UUID mappings.
     """
     
-    # UUID to manifest dict mapping (e.g., "uuid-123" -> {"uuid": "uuid-123", "name": "mytool", ...})
+    # UUID to dict mapping (e.g., "uuid-123" -> {"uuid": "uuid-123", "name": "mytool", ...})
     uuid_to_dict: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     
     def get(self, uuid: str) -> Optional[Dict[str, Any]]:
-        """Get a resource manifest by UUID.
+        """Get an object dict by UUID.
         
         Args:
-            uuid: Resource UUID to look up
+            uuid: Object UUID to look up
             
         Returns:
-            Resource manifest dict if found, None if not in cache
+            Object dict if found, None if not in cache
         """
         return self.uuid_to_dict.get(uuid)
     
-    def set(self, uuid: str, manifest: Dict[str, Any]):
-        """Store a resource manifest in the cache.
+    def set(self, uuid: str, dict_data: Dict[str, Any]):
+        """Store an object dict in the cache.
         
         Args:
-            uuid: Resource UUID
-            manifest: Complete resource manifest dictionary
+            uuid: Object UUID
+            dict_data: Complete object dict dictionary
         """
-        self.uuid_to_dict[uuid] = manifest
-        logger.debug(f"DictCache: cached manifest for UUID {uuid}")
+        self.uuid_to_dict[uuid] = dict_data
+        logger.debug(f"DictCache: cached dict for UUID {uuid}")
     
     def remove(self, uuid: str):
-        """Remove a resource manifest from the cache.
+        """Remove an object dict from the cache.
         
         Args:
-            uuid: Resource UUID to remove
+            uuid: Object UUID to remove
         """
         if uuid in self.uuid_to_dict:
             self.uuid_to_dict.pop(uuid)
@@ -54,7 +54,7 @@ class DictCache:
         """Check if a UUID exists in the cache.
         
         Args:
-            uuid: Resource UUID to check
+            uuid: Object UUID to check
             
         Returns:
             True if UUID exists in cache, False otherwise
@@ -69,24 +69,24 @@ class DictCache:
         """
         return set(self.uuid_to_dict.keys())
     
-    def get_all_manifests(self) -> Dict[str, Dict[str, Any]]:
-        """Get all cached manifests.
+    def get_all_dicts(self) -> Dict[str, Dict[str, Any]]:
+        """Get all cached dicts.
         
         Returns:
-            Dictionary mapping UUID to manifest dict
+            Dictionary mapping UUID to dict
         """
         return self.uuid_to_dict.copy()
     
     def clear(self):
-        """Clear all cached manifests."""
+        """Clear all cached dicts."""
         self.uuid_to_dict.clear()
-        logger.debug("DictCache: cleared all manifests")
+        logger.debug("DictCache: cleared all dicts")
     
     def size(self) -> int:
-        """Get the number of cached manifests.
+        """Get the number of cached dicts.
         
         Returns:
-            Number of manifests in cache
+            Number of dicts in cache
         """
         return len(self.uuid_to_dict)
 

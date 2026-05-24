@@ -8,7 +8,7 @@ from pydantic import Field
 from typing import Annotated, Any, List, Optional
 
 from mcp.server.fastmcp import FastMCP
-from skillberry_store.modules.resource_handler import get_resource_handler
+from skillberry_store.modules.object_handler import get_object_handler
 
 
 class VirtualMcpServer:
@@ -57,9 +57,9 @@ class VirtualMcpServer:
         self.app = app
         self.env_id = env_id
         
-        # Initialize ResourceHandlers for resolving UUIDs to resources
-        self.tools_handler = get_resource_handler("tool")
-        self.snippets_handler = get_resource_handler("snippet")
+        # Initialize ObjectHandlers for resolving UUIDs to objects
+        self.tools_handler = get_object_handler("tool")
+        self.snippets_handler = get_object_handler("snippet")
         
         if port is None:
             self.port = self._find_available_port()
@@ -158,8 +158,8 @@ class VirtualMcpServer:
 
                 # Try HTTP first if available
                 if self.app:
-                    # Read tool manifest by UUID
-                    tool_dict = self.tools_handler.read_manifest(tool_uuid)
+                    # Read tool dict by UUID
+                    tool_dict = self.tools_handler.read_dict(tool_uuid)
                     tool_name = tool_dict.get('name')
                     
                     # Cache the tool dict
@@ -198,8 +198,8 @@ class VirtualMcpServer:
         for snippet_uuid in self.snippet_uuids:
             try:
                 if self.app:
-                    # Read snippet manifest by UUID
-                    snippet_dict = self.snippets_handler.read_manifest(snippet_uuid)
+                    # Read snippet dict by UUID
+                    snippet_dict = self.snippets_handler.read_dict(snippet_uuid)
                     snippet_name = snippet_dict.get('name')
                     
                     print(f"DEBUG list_snippets: Got snippet UUID {snippet_uuid}, name: {snippet_name}")
@@ -481,8 +481,8 @@ class VirtualMcpServer:
                     f"Tool '{tool_name}' has no uuid in cached manifest"
                 )
 
-            # Use the resource handler to read the module file from the tool's UUID subdirectory
-            module_content = self.tools_handler.read_resource_file(
+            # Use the object handler to read the module file from the tool's UUID subdirectory
+            module_content = self.tools_handler.read_file(
                 tool_uuid, module_name, raw_content=True
             )
             if not isinstance(module_content, str):
@@ -497,8 +497,8 @@ class VirtualMcpServer:
                 tool_uuid=tool_uuid,
             )
 
-            dep_manifests = self.tools_handler.read_manifests(list(tool_dep_ids))
-            dep_files = [self.tools_handler.read_resource_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_manifests]
+            dep_dicts = self.tools_handler.read_dicts(list(tool_dep_ids))
+            dep_files = [self.tools_handler.read_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_dicts]
 
 
             executor = FileExecutor(
@@ -506,7 +506,7 @@ class VirtualMcpServer:
                 file_content=module_content,
                 file_manifest=tool_dict,
                 dependent_file_contents=dep_files,
-                dependent_tools_as_dict=dep_manifests,
+                dependent_tools_as_dict=dep_dicts,
             )
             result = await executor.execute_file(parameters=parameters, env_id=env_id)
 
