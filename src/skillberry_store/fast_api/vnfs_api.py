@@ -158,15 +158,15 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error listing vNFS servers: {exc}"
             )
 
-    @app.get("/vnfs_servers/{id}", tags=[tags])
-    def get_vnfs_server(id: str):
-        """Get a specific vNFS endpoint by id (name or UUID)."""
-        logger.info(f"Request to get vnfs server: {id}")
+    @app.get("/vnfs_servers/{uuid_or_name}", tags=[tags])
+    def get_vnfs_server(uuid_or_name: str):
+        """Get a specific vNFS endpoint by UUID or name."""
+        logger.info(f"Request to get vnfs server: {uuid_or_name}")
         get_vnfs_counter.inc()
 
         try:
-            # Resolve ID to UUID and read manifest
-            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read dict
+            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(uuid_or_name)
             vnfs_dict = vnfs_handler.read_dict(vnfs_uuid)
             server_name = vnfs_dict.get("name")
             server_uuid = vnfs_dict.get("uuid")
@@ -185,27 +185,27 @@ def register_vnfs_api(
                 vnfs_dict["running"] = False
                 vnfs_dict["export_path"] = None
             
-            logger.info(f"Retrieved vnfs server: {id}")
+            logger.info(f"Retrieved vnfs server: {uuid_or_name}")
             return vnfs_dict
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error(f"Error retrieving vnfs server '{id}': {exc}")
+            logger.error(f"Error retrieving vnfs server '{uuid_or_name}': {exc}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving vNFS server: {exc}"
             )
 
-    @app.delete("/vnfs_servers/{id}", tags=[tags])
-    def delete_vnfs_server(id: str):
-        """Stop and delete a vNFS endpoint by id (name or UUID)."""
-        logger.info(f"Request to delete vnfs server: {id}")
+    @app.delete("/vnfs_servers/{uuid_or_name}", tags=[tags])
+    def delete_vnfs_server(uuid_or_name: str):
+        """Stop and delete a vNFS endpoint by UUID or name."""
+        logger.info(f"Request to delete vnfs server: {uuid_or_name}")
         delete_vnfs_counter.inc()
 
         try:
-            # Resolve ID to UUID and read manifest
-            server_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read manifest
+            server_uuid = vnfs_handler.resolve_to_uuid_or_error(uuid_or_name)
             vnfs_dict = vnfs_handler.read_dict(server_uuid)
             server_name = vnfs_dict.get("name")
             server_parent = vnfs_dict.get("parent")
@@ -249,17 +249,17 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error deleting vNFS server: {exc}"
             )
 
-    @app.put("/vnfs_servers/{id}", tags=[tags])
+    @app.put("/vnfs_servers/{uuid_or_name}", tags=[tags])
     def update_vnfs_server(
-        id: str, vnfs: Annotated[VnfsSchema, Query()], request: Request
+        uuid_or_name: str, vnfs: Annotated[VnfsSchema, Query()], request: Request
     ):
         """Update metadata and restart a vNFS endpoint."""
-        logger.info(f"Request to update vnfs server: {id}")
+        logger.info(f"Request to update vnfs server: {uuid_or_name}")
         update_vnfs_counter.inc()
 
         try:
-            # Resolve ID to UUID and read current data
-            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read current data
+            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(uuid_or_name)
             existing_vnfs = vnfs_handler.read_dict(vnfs_uuid)
             old_name = existing_vnfs.get("name")
             old_parent = existing_vnfs.get("parent")
@@ -323,14 +323,14 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error updating vNFS server: {exc}"
             )
 
-    @app.post("/vnfs_servers/{id}/start", tags=[tags])
-    def start_vnfs_server(id: str, request: Request):
+    @app.post("/vnfs_servers/{uuid_or_name}/start", tags=[tags])
+    def start_vnfs_server(uuid_or_name: str, request: Request):
         """Start or restart a vNFS endpoint."""
-        logger.info(f"Request to start vnfs server: {id}")
+        logger.info(f"Request to start vnfs server: {uuid_or_name}")
 
         try:
-            # Resolve ID to UUID and read manifest
-            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read dict
+            vnfs_uuid = vnfs_handler.resolve_to_uuid_or_error(uuid_or_name)
             vnfs_data = vnfs_handler.read_dict(vnfs_uuid)
             server_name = vnfs_data.get("name", "")
             server_uuid = vnfs_data.get("uuid", "")

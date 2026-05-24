@@ -198,12 +198,12 @@ def register_skills_api(
                 status_code=500, detail=f"Error listing skills: {str(e)}"
             )
 
-    @app.get("/skills/{id}", tags=[tags])
-    def get_skill(id: str):
-        """Get a specific skill by ID (name or UUID) with populated tool and snippet objects.
+    @app.get("/skills/{uuid_or_name}", tags=[tags])
+    def get_skill(uuid_or_name: str):
+        """Get a specific skill by UUID or name with populated tool and snippet objects.
 
         Args:
-            id: The ID of the skill (can be either name or UUID).
+            uuid_or_name: The UUID or name of the skill.
 
         Returns:
             dict: The skill object with full tool and snippet details.
@@ -211,31 +211,31 @@ def register_skills_api(
         Raises:
             HTTPException: If skill not found (404) or retrieval fails (500).
         """
-        logger.info(f"Request to get skill: {id}")
+        logger.info(f"Request to get skill: {uuid_or_name}")
         get_skill_counter.inc()
 
         try:
-            # Resolve ID to UUID and read manifest
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read manifest
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
             skill_dict = skill_handler.read_dict(skill_uuid)
             # Populate full tool and snippet objects
             populate_skill_objects(skill_dict)
-            logger.info(f"Retrieved skill: {id}")
+            logger.info(f"Retrieved skill: {uuid_or_name}")
             return skill_dict
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving skill '{id}': {e}")
+            logger.error(f"Error retrieving skill '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving skill: {str(e)}"
             )
 
-    @app.delete("/skills/{id}", tags=[tags])
-    def delete_skill(id: str):
-        """Delete a skill by ID (name or UUID).
+    @app.delete("/skills/{uuid_or_name}", tags=[tags])
+    def delete_skill(uuid_or_name: str):
+        """Delete a skill by UUID or name.
 
         Args:
-            id: The ID of the skill to delete (can be either name or UUID).
+            uuid_or_name: The UUID or name of the skill to delete.
 
         Returns:
             dict: Success message.
@@ -243,12 +243,12 @@ def register_skills_api(
         Raises:
             HTTPException: If skill not found (404) or deletion fails (500).
         """
-        logger.info(f"Request to delete skill: {id}")
+        logger.info(f"Request to delete skill: {uuid_or_name}")
         delete_skill_counter.inc()
 
         try:
-            # Resolve ID to UUID (raises 404 if not found)
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID (raises 404 if not found)
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
             
             # Read skill to get name and parent before deletion
             skill_name = None
@@ -260,8 +260,8 @@ def register_skills_api(
             except Exception as e:
                 logger.warning(f"Could not read skill before deletion: {e}")
             
-            # Resolve ID to UUID and delete the skill object folder
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and delete the skill object folder
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
             result = skill_handler.delete_object(skill_uuid)
             
             # Update cache after deletion
@@ -278,23 +278,23 @@ def register_skills_api(
                         f"Could not delete skill description for UUID '{skill_uuid}': {e}"
                     )
 
-            logger.info(f"Skill with ID '{id}' deleted successfully")
-            return {"message": f"Skill with ID '{id}' deleted successfully."}
+            logger.info(f"Skill with UUID or name '{uuid_or_name}' deleted successfully")
+            return {"message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."}
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
             raise
         except Exception as e:
-            logger.error(f"Error deleting skill '{id}': {e}")
+            logger.error(f"Error deleting skill '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting skill: {str(e)}"
             )
 
-    @app.put("/skills/{id}", tags=[tags])
-    def update_skill(id: str, skill: SkillSchema):
-        """Update an existing skill by ID (name or UUID).
+    @app.put("/skills/{uuid_or_name}", tags=[tags])
+    def update_skill(uuid_or_name: str, skill: SkillSchema):
+        """Update an existing skill by UUID or name.
 
         Args:
-            id: The ID of the skill to update (can be either name or UUID).
+            uuid_or_name: The UUID or name of the skill to update.
             skill: The updated skill schema.
 
         Returns:
@@ -303,12 +303,12 @@ def register_skills_api(
         Raises:
             HTTPException: If skill not found (404) or update fails (500).
         """
-        logger.info(f"Request to update skill: {id}")
+        logger.info(f"Request to update skill: {uuid_or_name}")
         update_skill_counter.inc()
 
         try:
-            # Resolve ID to UUID (raises 404 if not found)
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID (raises 404 if not found)
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
 
             # Read existing dict to preserve uuid and created_at
             existing_dict = skill_handler.read_dict(skill_uuid)
@@ -345,12 +345,12 @@ def register_skills_api(
                 skills_descriptions.write_description(skill_uuid, merged_dict["description"])
                 logger.info(f"Skill description updated for UUID: {skill_uuid}")
             
-            logger.info(f"Skill with ID '{id}' (UUID: {skill_uuid}) updated successfully")
-            return {"message": f"Skill with ID '{id}' updated successfully."}
+            logger.info(f"Skill with UUID or name '{uuid_or_name}' (UUID: {skill_uuid}) updated successfully")
+            return {"message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error updating skill '{id}': {e}")
+            logger.error(f"Error updating skill '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating skill: {str(e)}"
             )
@@ -694,12 +694,12 @@ def register_skills_api(
                 status_code=500, detail=f"Error importing Anthropic skill: {str(e)}"
             )
 
-    @app.get("/skills/{id}/export-anthropic", tags=[tags])
-    async def export_anthropic_skill(id: str):
+    @app.get("/skills/{uuid_or_name}/export-anthropic", tags=[tags])
+    async def export_anthropic_skill(uuid_or_name: str):
         """Export a skill to Anthropic format as a ZIP file.
 
         Args:
-            id: The ID of the skill to export (can be either name or UUID)
+            uuid_or_name: The UUID or name of the skill to export
             
         Returns:
             ZIP file with the skill in Anthropic format
@@ -707,11 +707,11 @@ def register_skills_api(
         Raises:
             HTTPException: If skill not found or export fails
         """
-        logger.info(f"Request to export skill to Anthropic format: {id}")
+        logger.info(f"Request to export skill to Anthropic format: {uuid_or_name}")
         
         try:
-            # Resolve ID to UUID and read manifest
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read manifest
+            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
             skill_dict = skill_handler.read_dict(skill_uuid)
             
             # Get tools using read_manifests
@@ -745,21 +745,21 @@ def register_skills_api(
                 tool_modules=tool_modules,
             )
             
-            logger.info(f"Successfully exported skill '{id}' to Anthropic format")
+            logger.info(f"Successfully exported skill '{uuid_or_name}' to Anthropic format")
             
             # Return as downloadable ZIP file
             return Response(
                 content=zip_content,
                 media_type='application/zip',
                 headers={
-                    'Content-Disposition': f'attachment; filename="{id}.zip"'
+                    'Content-Disposition': f'attachment; filename="{uuid_or_name}.zip"'
                 }
             )
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error exporting skill '{id}' to Anthropic format: {e}")
+            logger.error(f"Error exporting skill '{uuid_or_name}' to Anthropic format: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error exporting skill: {str(e)}"
             )

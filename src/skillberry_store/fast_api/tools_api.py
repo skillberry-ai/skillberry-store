@@ -283,12 +283,12 @@ def register_tools_api(
                 status_code=500, detail=f"Error listing tools: {str(e)}\n{error_traceback}"
             )
 
-    @app.get("/tools/{id}", tags=[tags])
-    def get_tool(id: str) -> Dict[str, Any]:
-        """Get a specific tool by ID (name or UUID).
+    @app.get("/tools/{uuid_or_name}", tags=[tags])
+    def get_tool(uuid_or_name: str) -> Dict[str, Any]:
+        """Get a specific tool by UUID or name.
 
         Args:
-            id: The ID of the tool (can be either name or UUID).
+            uuid_or_name: The UUID or name of the tool.
 
         Returns:
             dict: The tool object.
@@ -296,32 +296,32 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or retrieval fails (500).
         """
-        logger.info(f"Request to get tool: {id}")
+        logger.info(f"Request to get tool: {uuid_or_name}")
         get_tool_counter.inc()
 
         try:
-            # Resolve ID to UUID and read manifest
-            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read manifest
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(uuid_or_name)
             tool_dict = tool_handler.read_dict(tool_uuid)
-            logger.info(f"Retrieved tool with ID '{id}'")
+            logger.info(f"Retrieved tool with UUID or name '{uuid_or_name}'")
             return tool_dict
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving tool with ID '{id}': {e}")
+            logger.error(f"Error retrieving tool with UUID or name '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving tool: {str(e)}"
             )
 
-    @app.get("/tools/{id}/module", tags=[tags], response_class=PlainTextResponse)
-    async def get_tool_module(id: str) -> PlainTextResponse:
+    @app.get("/tools/{uuid_or_name}/module", tags=[tags], response_class=PlainTextResponse)
+    async def get_tool_module(uuid_or_name: str) -> PlainTextResponse:
         """Get the module file content for a specific tool.
 
         Note: For MCP tools, this returns the generated function signature.
         For code tools, this returns the actual module file content.
 
         Args:
-            id: The ID of the tool (can be either name or UUID).
+            uuid_or_name: The UUID or name of the tool.
 
         Returns:
             PlainTextResponse: The module file content as plain text.
@@ -330,17 +330,17 @@ def register_tools_api(
             HTTPException: If tool not found (404), module not specified (404),
                           module file not found (404), or retrieval fails (500).
         """
-        logger.info(f"Request to get module file for tool: {id}")
+        logger.info(f"Request to get module file for tool: {uuid_or_name}")
         get_tool_module_counter.inc()
 
         try:
-            # Resolve ID to UUID and read manifest
-            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read manifest
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(uuid_or_name)
             tool_dict = tool_handler.read_dict(tool_uuid)
             
             if not tool_uuid:
                 raise HTTPException(
-                    status_code=500, detail=f"Tool with ID '{id}' has no UUID in manifest"
+                    status_code=500, detail=f"Tool with UUID or name '{uuid_or_name}' has no UUID in manifest"
                 )
 
             # Handle MCP packaging format
@@ -349,7 +349,7 @@ def register_tools_api(
                 tools = await get_mcp_tools(tool_dict)
                 if not tools:
                     raise HTTPException(
-                        status_code=404, detail=f"MCP tool with ID '{id}' not found."
+                        status_code=404, detail=f"MCP tool with UUID or name '{uuid_or_name}' not found."
                     )
                 tool_mcp_dict = vars(tools[0])
                 module_content = mcp_content(tool_mcp_dict)
@@ -363,7 +363,7 @@ def register_tools_api(
             if not module_name:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Tool with ID '{id}' does not have a module file specified",
+                    detail=f"Tool with UUID or name '{uuid_or_name}' does not have a module file specified",
                 )
 
             # Return the module file content from UUID sub-folder
@@ -374,17 +374,17 @@ def register_tools_api(
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving module file for tool with ID '{id}': {e}")
+            logger.error(f"Error retrieving module file for tool with UUID or name '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving module file: {str(e)}"
             )
 
-    @app.delete("/tools/{id}", tags=[tags])
-    def delete_tool(id: str) -> Dict:
-        """Delete a tool by ID (name or UUID).
+    @app.delete("/tools/{uuid_or_name}", tags=[tags])
+    def delete_tool(uuid_or_name: str) -> Dict:
+        """Delete a tool by UUID or name.
 
         Args:
-            id: The ID of the tool to delete (can be either name or UUID).
+            uuid_or_name: The UUID or name of the tool to delete.
                 Also deletes the associated module file if it exists.
 
         Returns:
@@ -393,12 +393,12 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or deletion fails (500).
         """
-        logger.info(f"Request to delete tool: {id}")
+        logger.info(f"Request to delete tool: {uuid_or_name}")
         delete_tool_counter.inc()
 
         try:
-            # Resolve ID to UUID (raises 404 if not found)
-            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID (raises 404 if not found)
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(uuid_or_name)
             
             # Read tool to get name and parent before deletion
             tool_name = None
@@ -427,23 +427,23 @@ def register_tools_api(
                         f"Could not delete tool description for UUID '{tool_uuid}': {e}"
                     )
 
-            logger.info(f"Tool with ID '{id}' deleted successfully")
-            return {"message": f"Tool with ID '{id}' deleted successfully."}
+            logger.info(f"Tool with UUID or name '{uuid_or_name}' deleted successfully")
+            return {"message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."}
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
             raise
         except Exception as e:
-            logger.error(f"Error deleting tool with ID '{id}': {e}")
+            logger.error(f"Error deleting tool with UUID or name '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting tool: {str(e)}"
             )
 
-    @app.put("/tools/{id}", tags=[tags])
-    def update_tool(id: str, tool: ToolSchema) -> Dict:
+    @app.put("/tools/{uuid_or_name}", tags=[tags])
+    def update_tool(uuid_or_name: str, tool: ToolSchema) -> Dict:
         """Update an existing tool.
 
         Args:
-            id: The ID of the tool to update (can be either name or UUID).
+            uuid_or_name: The UUID or name of the tool to update.
             tool: The updated tool schema.
 
         Returns:
@@ -452,12 +452,12 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or update fails (500).
         """
-        logger.info(f"Request to update tool: {id}")
+        logger.info(f"Request to update tool: {uuid_or_name}")
         update_tool_counter.inc()
 
         try:
-            # Resolve ID to UUID (raises 404 if not found)
-            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID (raises 404 if not found)
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(uuid_or_name)
 
             # Read existing dict to preserve uuid and created_at
             existing_dict = tool_handler.read_dict(tool_uuid)
@@ -503,27 +503,27 @@ def register_tools_api(
                     tools_descriptions.write_description(tool_uuid, tool.description)
                     logger.info(f"Tool description updated for: {tool.name} (UUID: {tool_uuid})")
             
-            logger.info(f"Tool with ID '{id}' (UUID: {tool_uuid}) updated successfully")
-            return {"message": f"Tool with ID '{id}' updated successfully."}
+            logger.info(f"Tool with UUID or name '{uuid_or_name}' (UUID: {tool_uuid}) updated successfully")
+            return {"message": f"Tool with UUID or name '{uuid_or_name}' updated successfully."}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error updating tool with ID '{id}': {e}")
+            logger.error(f"Error updating tool with UUID or name '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating tool: {str(e)}"
             )
 
-    @app.post("/tools/{id}/execute", tags=[tags])
+    @app.post("/tools/{uuid_or_name}/execute", tags=[tags])
     async def execute_tool(
-        id: str, request: Request, parameters: Optional[Dict[str, Any]] = None
+        uuid_or_name: str, request: Request, parameters: Optional[Dict[str, Any]] = None
     ) -> Dict:
-        """Execute a tool by ID (name or UUID) with the provided parameters.
+        """Execute a tool by UUID or name with the provided parameters.
 
         This endpoint mirrors the functionality of /manifests/execute/{uid} but works
-        with tool IDs instead of manifest UIDs.
+        with tool UUIDs or names instead of manifest UIDs.
 
         Args:
-            id: The ID of the tool to execute (can be either name or UUID).
+            uuid_or_name: The UUID or name of the tool to execute.
             request: Represents an incoming fast api request object.
             parameters: Dictionary of key/value pairs to be passed to the tool execution (Optional).
 
@@ -537,11 +537,11 @@ def register_tools_api(
         
         
         try:
-            logger.info(f"[execute_tool] Reading tool manifest for: {id}")
-            # Resolve ID to UUID and read manifest
-            tool_uuid = tool_handler.resolve_to_uuid_or_error(id)
+            logger.info(f"[execute_tool] Reading tool manifest for: {uuid_or_name}")
+            # Resolve UUID or name to UUID and read dict
+            tool_uuid = tool_handler.resolve_to_uuid_or_error(uuid_or_name)
             tool_dict = tool_handler.read_dict(tool_uuid)
-            tool_name = tool_dict.get("name", id)
+            tool_name = tool_dict.get("name", uuid_or_name)
             
             execute_tool_counter.labels(name=tool_uuid).inc()
             start_time = time.time()
@@ -580,7 +580,7 @@ def register_tools_api(
                 if not module_name:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Tool with ID '{id}' does not have a module file specified",
+                        detail=f"Tool with UUID or name '{uuid_or_name}' does not have a module file specified",
                     )
 
                 # Get the module file content from object folder
@@ -588,7 +588,7 @@ def register_tools_api(
                     raise HTTPException(status_code=500, detail="Tool UUID not found in dict")
                 module_content = tool_handler.read_file(tool_uuid, module_name, raw_content=True)
                 if not isinstance(module_content, str):
-                    raise HTTPException(status_code=500, detail=f"Invalid module content type for tool with ID '{id}'")
+                    raise HTTPException(status_code=500, detail=f"Invalid module content type for tool with UUID or name '{uuid_or_name}'")
 
             # Find tool dependencies if they exist
             tool_dependencies_uuids = find_tool_dependencies(
@@ -640,7 +640,7 @@ def register_tools_api(
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error executing tool with ID '{id}': {e}")
+            logger.error(f"Error executing tool with UUID or name '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error executing tool: {str(e)}"
             )

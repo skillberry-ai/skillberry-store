@@ -173,12 +173,12 @@ def register_snippets_api(
                 status_code=500, detail=f"Error listing snippets: {str(e)}"
             )
 
-    @app.get("/snippets/{id}", tags=[tags])
-    def get_snippet(id: str):
-        """Get a specific snippet by ID (name or UUID).
+    @app.get("/snippets/{uuid_or_name}", tags=[tags])
+    def get_snippet(uuid_or_name: str):
+        """Get a specific snippet by UUID or name.
 
         Args:
-            id: The ID of the snippet (can be either name or UUID).
+            uuid_or_name: The UUID or name of the snippet.
 
         Returns:
             dict: The snippet object.
@@ -186,29 +186,29 @@ def register_snippets_api(
         Raises:
             HTTPException: If snippet not found (404) or retrieval fails (500).
         """
-        logger.info(f"Request to get snippet: {id}")
+        logger.info(f"Request to get snippet: {uuid_or_name}")
         get_snippet_counter.inc()
 
         try:
-            # Resolve ID to UUID and read manifest
-            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read manifest
+            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(uuid_or_name)
             snippet_dict = snippet_handler.read_dict(snippet_uuid)
-            logger.info(f"Retrieved snippet: {id}")
+            logger.info(f"Retrieved snippet: {uuid_or_name}")
             return snippet_dict
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving snippet '{id}': {e}")
+            logger.error(f"Error retrieving snippet '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving snippet: {str(e)}"
             )
 
-    @app.delete("/snippets/{id}", tags=[tags])
-    def delete_snippet(id: str):
-        """Delete a snippet by ID (name or UUID).
+    @app.delete("/snippets/{uuid_or_name}", tags=[tags])
+    def delete_snippet(uuid_or_name: str):
+        """Delete a snippet by UUID or name.
 
         Args:
-            id: The ID of the snippet to delete (can be either name or UUID).
+            uuid_or_name: The UUID or name of the snippet to delete.
 
         Returns:
             dict: Success message.
@@ -216,7 +216,7 @@ def register_snippets_api(
         Raises:
             HTTPException: If snippet not found (404) or deletion fails (500).
         """
-        logger.info(f"Request to delete snippet: {id}")
+        logger.info(f"Request to delete snippet: {uuid_or_name}")
         delete_snippet_counter.inc()
 
         try:
@@ -224,8 +224,8 @@ def register_snippets_api(
             snippet_uuid = None
             snippet_name = None
             snippet_parent = None
-            # Resolve ID to UUID
-            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID
+            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(uuid_or_name)
             
             # Read snippet metadata before deletion
             try:
@@ -252,23 +252,23 @@ def register_snippets_api(
                         f"Could not delete snippet description for UUID '{snippet_uuid}': {e}"
                     )
 
-            logger.info(f"Snippet with ID '{id}' deleted successfully")
-            return {"message": f"Snippet with ID '{id}' deleted successfully."}
+            logger.info(f"Snippet with UUID or name '{uuid_or_name}' deleted successfully")
+            return {"message": f"Snippet with UUID or name '{uuid_or_name}' deleted successfully."}
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
             raise
         except Exception as e:
-            logger.exception(f"Error deleting snippet '{id}': {e}")
+            logger.exception(f"Error deleting snippet '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting snippet: {str(e)}"
             )
 
-    @app.put("/snippets/{id}", tags=[tags])
-    def update_snippet(id: str, snippet: SnippetSchema):
-        """Update an existing snippet by ID (name or UUID).
+    @app.put("/snippets/{uuid_or_name}", tags=[tags])
+    def update_snippet(uuid_or_name: str, snippet: SnippetSchema):
+        """Update an existing snippet by UUID or name.
 
         Args:
-            id: The ID of the snippet to update (can be either name or UUID).
+            uuid_or_name: The UUID or name of the snippet to update.
             snippet: The updated snippet schema.
 
         Returns:
@@ -277,12 +277,12 @@ def register_snippets_api(
         Raises:
             HTTPException: If snippet not found (404) or update fails (500).
         """
-        logger.info(f"Request to update snippet: {id}")
+        logger.info(f"Request to update snippet: {uuid_or_name}")
         update_snippet_counter.inc()
 
         try:
-            # Resolve ID to UUID (raises 404 if not found)
-            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID (raises 404 if not found)
+            snippet_uuid = snippet_handler.resolve_to_uuid_or_error(uuid_or_name)
 
             # Read existing dict to preserve uuid and created_at
             existing_dict = snippet_handler.read_dict(snippet_uuid)
@@ -321,12 +321,12 @@ def register_snippets_api(
                 )
                 logger.info(f"Snippet description updated for UUID: {snippet_uuid}")
             
-            logger.info(f"Snippet with ID '{id}' (UUID: {snippet_uuid}) updated successfully")
-            return {"message": f"Snippet with ID '{id}' updated successfully."}
+            logger.info(f"Snippet with UUID or name '{uuid_or_name}' (UUID: {snippet_uuid}) updated successfully")
+            return {"message": f"Snippet with UUID or name '{uuid_or_name}' updated successfully."}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error updating snippet '{id}': {e}")
+            logger.error(f"Error updating snippet '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating snippet: {str(e)}"
             )

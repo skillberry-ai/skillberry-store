@@ -291,14 +291,14 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error listing vmcp servers: {str(e)}"
             )
 
-    @app.get("/vmcp_servers/{id}", tags=[tags])
-    def get_vmcp_server(id: str):
-        """Get a specific virtual MCP server by id (name or UUID).
+    @app.get("/vmcp_servers/{uuid_or_name}", tags=[tags])
+    def get_vmcp_server(uuid_or_name: str):
+        """Get a specific virtual MCP server by UUID or name.
 
         Returns both persistent and runtime information.
 
         Args:
-            id: The id (name or UUID) of the vmcp server.
+            uuid_or_name: The UUID or name of the vmcp server.
 
         Returns:
             dict: The vmcp server object with runtime details.
@@ -306,12 +306,12 @@ def register_vmcp_api(
         Raises:
             HTTPException: If vmcp server not found (404) or retrieval fails (500).
         """
-        logger.info(f"Request to get vmcp server: {id}")
+        logger.info(f"Request to get vmcp server: {uuid_or_name}")
         get_vmcp_counter.inc()
 
         try:
-            # Resolve ID to UUID and read manifest
-            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read manifest
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(uuid_or_name)
             vmcp_dict = vmcp_handler.read_dict(vmcp_uuid)
             server_name = vmcp_dict.get("name")
             server_uuid = vmcp_dict.get("uuid")
@@ -328,26 +328,26 @@ def register_vmcp_api(
                 vmcp_dict["running"] = False
                 vmcp_dict["runtime"] = None
             
-            logger.info(f"Retrieved vmcp server: {id}")
+            logger.info(f"Retrieved vmcp server: {uuid_or_name}")
             return vmcp_dict
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving vmcp server '{id}': {e}")
+            logger.error(f"Error retrieving vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving vmcp server: {str(e)}"
             )
 
-    @app.delete("/vmcp_servers/{id}", tags=[tags])
-    def delete_vmcp_server(id: str):
-        """Delete a virtual MCP server by id (name or UUID).
+    @app.delete("/vmcp_servers/{uuid_or_name}", tags=[tags])
+    def delete_vmcp_server(uuid_or_name: str):
+        """Delete a virtual MCP server by UUID or name.
 
         Stops the runtime server and removes persistent data.
 
         Args:
-            id: The id (name or UUID) of the vmcp server to delete.
+            uuid_or_name: The UUID or name of the vmcp server to delete.
 
         Returns:
             dict: Success message.
@@ -355,12 +355,12 @@ def register_vmcp_api(
         Raises:
             HTTPException: If vmcp server not found (404) or deletion fails (500).
         """
-        logger.info(f"Request to delete vmcp server: {id}")
+        logger.info(f"Request to delete vmcp server: {uuid_or_name}")
         delete_vmcp_counter.inc()
 
         try:
-            # Resolve ID to UUID and read manifest
-            server_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read dict
+            server_uuid = vmcp_handler.resolve_to_uuid_or_error(uuid_or_name)
             vmcp_dict = vmcp_handler.read_dict(server_uuid)
             server_name = vmcp_dict.get("name")
             server_parent = vmcp_dict.get("parent")
@@ -392,26 +392,26 @@ def register_vmcp_api(
                         f"Could not delete vmcp server description for UUID '{server_uuid}': {e}"
                     )
 
-            logger.info(f"VMCP server '{id}' deleted successfully")
-            return {"message": f"VMCP server '{id}' deleted successfully."}
+            logger.info(f"VMCP server '{uuid_or_name}' deleted successfully")
+            return {"message": f"VMCP server '{uuid_or_name}' deleted successfully."}
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except HTTPException as e:
             raise
         except Exception as e:
-            logger.error(f"Error deleting vmcp server '{id}': {e}")
+            logger.error(f"Error deleting vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting vmcp server: {str(e)}"
             )
 
-    @app.put("/vmcp_servers/{id}", tags=[tags])
-    def update_vmcp_server(id: str, vmcp: Annotated[VmcpSchema, Query()], request: Request):
+    @app.put("/vmcp_servers/{uuid_or_name}", tags=[tags])
+    def update_vmcp_server(uuid_or_name: str, vmcp: Annotated[VmcpSchema, Query()], request: Request):
         """Update an existing virtual MCP server.
 
         Updates both persistent data and restarts the runtime server.
 
         Args:
-            id: The id (name or UUID) of the vmcp server to update.
+            uuid_or_name: The UUID or name of the vmcp server to update.
             vmcp: The updated vmcp schema.
             request: The incoming request object for context extraction.
 
@@ -421,12 +421,12 @@ def register_vmcp_api(
         Raises:
             HTTPException: If vmcp server not found (404) or update fails (500).
         """
-        logger.info(f"Request to update vmcp server: {id}")
+        logger.info(f"Request to update vmcp server: {uuid_or_name}")
         update_vmcp_counter.inc()
 
         try:
-            # Resolve ID to UUID and read current data
-            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read current data
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(uuid_or_name)
             existing_vmcp = vmcp_handler.read_dict(vmcp_uuid)
             old_name = existing_vmcp.get("name")
             old_parent = existing_vmcp.get("parent")
@@ -521,15 +521,15 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error updating vmcp server: {str(e)}"
             )
 
-    @app.post("/vmcp_servers/{id}/start", tags=[tags])
-    def start_vmcp_server(id: str, request: Request):
+    @app.post("/vmcp_servers/{uuid_or_name}/start", tags=[tags])
+    def start_vmcp_server(uuid_or_name: str, request: Request):
         """Start or restart a virtual MCP server.
 
         This endpoint allows starting a server that exists in persistent storage
         but is not currently running in the runtime manager.
 
         Args:
-            id: The id (name or UUID) of the vmcp server to start.
+            uuid_or_name: The UUID or name of the vmcp server to start.
             request: The incoming request object for context extraction.
 
         Returns:
@@ -538,11 +538,11 @@ def register_vmcp_api(
         Raises:
             HTTPException: If vmcp server not found (404) or start fails (500).
         """
-        logger.info(f"Request to start vmcp server: {id}")
+        logger.info(f"Request to start vmcp server: {uuid_or_name}")
         
         try:
-            # Resolve ID to UUID and read manifest
-            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(id)
+            # Resolve UUID or name to UUID and read manifest
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(uuid_or_name)
             vmcp_data = vmcp_handler.read_dict(vmcp_uuid)
             server_name = vmcp_data.get("name", "")
             server_uuid = vmcp_data.get("uuid", "")
