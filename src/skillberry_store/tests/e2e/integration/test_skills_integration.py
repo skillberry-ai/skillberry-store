@@ -24,7 +24,7 @@ class TestSkillsAPI:
 
     def test_01_create_skill(self, skills_api):
         """Test creating a new skill."""
-        skill_name = "test_integration_skill"
+        skill_name = "test-integration-skill"
         
         response = skills_api.create_skill_skills_post(
             name=skill_name,
@@ -141,7 +141,7 @@ def test_create_skill_with_tools(skills_api, tools_api, test_tool_file):
         if tool_uuid:
             # Now create a skill with this tool
             skill_response = skills_api.create_skill_skills_post(
-                name="test_skill_with_tools",
+                name="test-skill-with-tools",
                 description="A skill that includes tools",
                 state=ManifestState.APPROVED,
                 tool_uuids=[tool_uuid],
@@ -165,7 +165,7 @@ def test_create_skill_with_tools(skills_api, tools_api, test_tool_file):
 @pytest.mark.integration
 def test_skill_lifecycle_states(skills_api):
     """Test skill lifecycle state transitions."""
-    skill_name = "test_lifecycle_skill"
+    skill_name = "test-lifecycle-skill"
     
     try:
         # Create skill in draft state

@@ -122,7 +122,10 @@ async def test_import_anthropic_skill_from_zip(run_sbs):
         result = response.json()
         
         assert result['success'] is True
-        assert 'test_anthropic_skill' in result['skill_name']
+        # Importer slugifies the upstream SKILL.md `name` field so the
+        # resulting skill is addressable under the Anthropic Agent Skills
+        # name rules (lowercase, hyphens-only).
+        assert result['skill_name'] == 'test-anthropic-skill'
         assert result['tools_created'] >= 2  # add_numbers, multiply_numbers, greet_user, sum_args
         assert result['snippets_created'] >= 1  # SKILL.md, README.md
         

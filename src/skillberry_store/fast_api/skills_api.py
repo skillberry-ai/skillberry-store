@@ -24,6 +24,10 @@ from skillberry_store.tools.configure import (
     is_auto_detect_dependencies_enabled,
 )
 from skillberry_store.fast_api.search_filters import apply_search_filters
+from skillberry_store.schemas.name_validation import (
+    slugify_store_name,
+    validate_store_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +107,10 @@ def register_skills_api(
         """
         logger.info(f"Request to create skill: {skill.name}")
         create_skill_counter.inc()
+
+        # Skill names must be Anthropic-slug compatible — they become
+        # `claude mcp add <name>` args and URL segments.
+        validate_store_name(skill.name, kind="skill")
 
         # Generate UUID if not provided
         if not skill.uuid:
@@ -295,6 +303,14 @@ def register_skills_api(
         update_skill_counter.inc()
 
         try:
+            # Skill names are immutable post-creation: they are the on-disk
+            # filename, the URL segment, and the MCP server ident. Reject
+            # attempts to rename via the body, and re-validate the path `name`
+            # so we never persist an invalid slug even if one slipped in
+            # before this check existed.
+            validate_store_name(name, kind="skill")
+            skill.name = name
+
             skill_filename = f"{name}.json"
 
             # Check if skill exists
@@ -484,6 +500,29 @@ def register_skills_api(
                     treat_all_as_documents=treat_all_as_documents,
                 )
             )
+
+            # Upstream Anthropic skills commonly use underscore names (e.g.
+            # `anthropic_skill`, `pptx_editor`). Slugify to the Anthropic Agent
+            # Skills format so the imported skill is addressable as a
+            # `claude mcp add <name>` target and URL segment. Reject if even
+            # slugification cannot produce a valid name (e.g. empty string).
+            slug = slugify_store_name(skill_name)
+            if slug is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_name",
+                        "kind": "imported skill",
+                        "name": skill_name,
+                        "hint": (
+                            "Could not derive a valid Anthropic Agent Skills "
+                            "slug from the imported name."
+                        ),
+                    },
+                )
+            if slug != skill_name:
+                logger.info(f"Slugified imported skill name '{skill_name}' -> '{slug}'")
+            skill_name = slug
 
             # Create tools
             created_tool_uuids = []
