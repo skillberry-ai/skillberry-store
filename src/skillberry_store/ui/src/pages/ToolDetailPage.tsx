@@ -1,7 +1,7 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
@@ -36,6 +36,7 @@ import {
   FormSelect,
   FormSelectOption,
 } from '@patternfly/react-core';
+import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
 import { PlayIcon, TrashIcon, EditIcon } from '@patternfly/react-icons';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -73,6 +74,18 @@ export function ToolDetailPage() {
     queryFn: () => toolsApi.get(uuid!),
     enabled: !!uuid,
   });
+
+  // Fetch all tools for dependency lookup
+  const { data: allTools } = useQuery({
+    queryKey: ['tools'],
+    queryFn: toolsApi.list,
+  });
+
+  // Create a map from UUID to tool for quick lookup
+  const toolsByUuid = useMemo(() => {
+    if (!allTools) return new Map<string, Tool>();
+    return new Map(allTools.map(t => [t.uuid, t]));
+  }, [allTools]);
 
   // Fetch module code
   const { data: moduleCode, isLoading: isModuleLoading, error: moduleError } = useQuery({
@@ -322,11 +335,92 @@ export function ToolDetailPage() {
                     <DescriptionListGroup>
                       <DescriptionListTerm>Dependencies</DescriptionListTerm>
                       <DescriptionListDescription>
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          {tool.dependencies.map((dep) => (
-                            <Label key={dep} color="blue">{dep}</Label>
-                          ))}
-                        </div>
+                        <Table aria-label="Dependencies table" variant="compact">
+                          <Thead>
+                            <Tr>
+                              <Th>Name</Th>
+                              <Th>Description</Th>
+                              <Th>State</Th>
+                              <Th>Tags</Th>
+                              <Th>Module Name</Th>
+                              <Th>Version</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {tool.dependencies.map((depUuid) => {
+                              const depTool = toolsByUuid.get(depUuid);
+                              
+                              if (!depTool) {
+                                return (
+                                  <Tr key={depUuid}>
+                                    <Td colSpan={6} style={{ fontStyle: 'italic', color: '#6a6e73' }}>
+                                      Tool not found (UUID: {depUuid})
+                                    </Td>
+                                  </Tr>
+                                );
+                              }
+                              
+                              return (
+                                <Tr key={depUuid}>
+                                  <Td
+                                    dataLabel="Name"
+                                    onClick={() => navigate(`/tools/${depUuid}`)}
+                                    style={{ cursor: 'pointer' }}
+                                  >
+                                    {depTool.name}
+                                  </Td>
+                                  <Td
+                                    dataLabel="Description"
+                                    onClick={() => navigate(`/tools/${depUuid}`)}
+                                    style={{ cursor: 'pointer' }}
+                                  >
+                                    {depTool.description || 'No description'}
+                                  </Td>
+                                  <Td
+                                    dataLabel="State"
+                                    onClick={() => navigate(`/tools/${depUuid}`)}
+                                    style={{ cursor: 'pointer' }}
+                                  >
+                                    {depTool.state || '-'}
+                                  </Td>
+                                  <Td
+                                    dataLabel="Tags"
+                                    onClick={() => navigate(`/tools/${depUuid}`)}
+                                    style={{ cursor: 'pointer' }}
+                                  >
+                                    {depTool.tags && depTool.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (
+                                      <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                                        {depTool.tags
+                                          .filter(tag => !tag.startsWith('namespace:'))
+                                          .map((tag) => (
+                                            <Label key={tag} color={getTagColor(tag)} isCompact>
+                                              {tag}
+                                            </Label>
+                                          ))}
+                                      </div>
+                                    ) : (
+                                      '-'
+                                    )}
+                                  </Td>
+                                  <Td
+                                    dataLabel="Module Name"
+                                    onClick={() => navigate(`/tools/${depUuid}`)}
+                                    style={{ cursor: 'pointer' }}
+                                  >
+                                    {depTool.module_name || '-'}
+                                  </Td>
+                                  <Td
+                                    dataLabel="Version"
+                                    onClick={() => navigate(`/tools/${depUuid}`)}
+                                    style={{ cursor: 'pointer' }}
+                                  >
+                                    {depTool.version || '-'}
+                                  </Td>
+                                </Tr>
+                              );
+                            })}
+                          </Tbody>
+                        </Table>
                       </DescriptionListDescription>
                     </DescriptionListGroup>
                   )}
