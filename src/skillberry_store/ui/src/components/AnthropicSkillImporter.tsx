@@ -57,6 +57,8 @@ export function AnthropicSkillImporter({
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchResults, setBatchResults] = useState<Array<ImportResult & { skillPath?: string }>>([]);
   
   // Namespace selection state
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
@@ -100,6 +102,8 @@ export function AnthropicSkillImporter({
     setResult(null);
     setSelectedNamespaces([]);
     setNamespaceInput('');
+    setBatchMode(false);
+    setBatchResults([]);
   };
 
   const handleClose = () => {
@@ -133,13 +137,18 @@ export function AnthropicSkillImporter({
   const handleImport = async () => {
     setIsImporting(true);
     setResult(null);
+    setBatchResults([]);
     setProgress(10);
 
     try {
       const namespacesToUse = selectedNamespaces.length > 0 ? selectedNamespaces : ['default'];
       const tags = namespacesToUse.map((namespace) => `namespace:${namespace}`);
 
-      await handleSingleImport(tags);
+      if (batchMode) {
+        await handleBatchImport(tags);
+      } else {
+        await handleSingleImport(tags);
+      }
       onImportComplete();
     } catch (error) {
       setResult({
@@ -149,6 +158,122 @@ export function AnthropicSkillImporter({
     } finally {
       setIsImporting(false);
     }
+  };
+
+  const handleBatchImport = async (tags: string[]) => {
+    let sourcePath = '';
+    
+    if (importSource === 'url') {
+      if (!githubUrl) {
+        throw new Error('Please provide a GitHub URL');
+      }
+      sourcePath = githubUrl;
+    } else if (importSource === 'folder') {
+      if (!folderPath) {
+        throw new Error('Please provide a folder path');
+      }
+      sourcePath = folderPath;
+    } else {
+      throw new Error('Batch import is only supported for GitHub URLs and local folders');
+    }
+
+    setProgress(20);
+
+    // Detect subdirectories with SKILL.md files
+    let subdirectories: Array<{ name: string; path: string; has_skill_md: boolean }> = [];
+
+    if (importSource === 'folder') {
+      // For local folders, use the backend endpoint to list subdirectories
+      const response = await fetch('/api/admin/list-subdirectories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: sourcePath }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to list subdirectories: ${errorText}`);
+      }
+
+      const data = await response.json();
+      subdirectories = data.subdirectories.filter((dir: any) => dir.has_skill_md);
+    } else if (importSource === 'url') {
+      // For GitHub URLs, we need to detect subdirectories from the URL
+      // This is a simplified approach - in production, you'd want to use GitHub API
+      throw new Error('Batch import from GitHub URLs is not yet implemented. Please use local folder for batch import.');
+    }
+
+    if (subdirectories.length === 0) {
+      throw new Error('No subdirectories with SKILL.md files found');
+    }
+
+    setProgress(30);
+
+    // Import each skill sequentially
+    const results: Array<ImportResult & { skillPath?: string }> = [];
+    const progressIncrement = 60 / subdirectories.length;
+
+    for (let i = 0; i < subdirectories.length; i++) {
+      const subdir = subdirectories[i];
+      
+      try {
+        const formData = new FormData();
+        formData.append('source_type', 'folder');
+        formData.append('folder_path', subdir.path);
+        formData.append('snippet_mode', snippetMode);
+        formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
+        
+        tags.forEach(tag => {
+          formData.append('tags', tag);
+        });
+
+        const response = await fetch('/api/skills/import-anthropic', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          results.push({
+            success: false,
+            message: `Failed to import ${subdir.name}: ${errorText}`,
+            skillPath: subdir.path,
+          });
+        } else {
+          const data = await response.json();
+          results.push({
+            success: true,
+            message: data.message || 'Import successful',
+            skill_name: data.skill_name,
+            tools_created: data.tools_created,
+            snippets_created: data.snippets_created,
+            ignored_files: data.ignored_files || [],
+            skillPath: subdir.path,
+          });
+        }
+      } catch (error) {
+        results.push({
+          success: false,
+          message: `Error importing ${subdir.name}: ${(error as Error).message}`,
+          skillPath: subdir.path,
+        });
+      }
+
+      setProgress(30 + (i + 1) * progressIncrement);
+    }
+
+    setBatchResults(results);
+    setProgress(100);
+
+    // Set overall result
+    const successCount = results.filter(r => r.success).length;
+    const totalTools = results.reduce((sum, r) => sum + (r.tools_created || 0), 0);
+    const totalSnippets = results.reduce((sum, r) => sum + (r.snippets_created || 0), 0);
+
+    setResult({
+      success: successCount > 0,
+      message: `Batch import completed: ${successCount}/${results.length} skills imported successfully. Total: ${totalTools} tools, ${totalSnippets} snippets.`,
+    });
   };
 
   const handleSingleImport = async (tags: string[]) => {
@@ -302,6 +427,31 @@ export function AnthropicSkillImporter({
           </div>
           <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
             When enabled, code files (e.g., .py, .sh) will be imported as document snippets instead of being parsed as tools. This preserves the original file structure without code analysis.
+          </div>
+        </FormGroup>
+
+        <FormGroup label="Batch Import Mode">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <input
+              type="checkbox"
+              id="batch-mode"
+              checked={batchMode}
+              onChange={(e) => setBatchMode(e.target.checked)}
+              disabled={isImporting || importSource === 'zip'}
+              style={{ cursor: (isImporting || importSource === 'zip') ? 'not-allowed' : 'pointer' }}
+            />
+            <label 
+              htmlFor="batch-mode" 
+              style={{ 
+                cursor: (isImporting || importSource === 'zip') ? 'not-allowed' : 'pointer',
+                userSelect: 'none'
+              }}
+            >
+              Import multiple skills from subdirectories
+            </label>
+          </div>
+          <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
+            When enabled, the importer will scan for subdirectories containing SKILL.md files and import all skills in a single operation. Supported for GitHub URLs and local folders only.
           </div>
         </FormGroup>
 
@@ -479,7 +629,7 @@ export function AnthropicSkillImporter({
             isInline
           >
             <p>{result.message}</p>
-            {result.success && result.tools_created !== undefined && (
+            {result.success && !batchMode && result.tools_created !== undefined && (
               <List>
                 <ListItem>Skill: {result.skill_name}</ListItem>
                 <ListItem>Tools created: {result.tools_created}</ListItem>
@@ -491,6 +641,33 @@ export function AnthropicSkillImporter({
                   </ListItem>
                 )}
               </List>
+            )}
+            {batchMode && batchResults.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <h4 style={{ marginBottom: '0.5rem' }}>Detailed Results:</h4>
+                <List>
+                  {batchResults.map((batchResult, index) => (
+                    <ListItem key={index}>
+                      <span style={{ color: batchResult.success ? 'green' : 'red' }}>
+                        {batchResult.success ? '✓' : '✗'}
+                      </span>{' '}
+                      <strong>{batchResult.skill_name || `Skill ${index + 1}`}</strong>
+                      {batchResult.success && (
+                        <>
+                          {' - '}
+                          {batchResult.tools_created || 0} tool(s), {batchResult.snippets_created || 0} snippet(s)
+                        </>
+                      )}
+                      {!batchResult.success && (
+                        <>
+                          {' - '}
+                          <span style={{ color: 'red' }}>{batchResult.message}</span>
+                        </>
+                      )}
+                    </ListItem>
+                  ))}
+                </List>
+              </div>
             )}
           </Alert>
         )}

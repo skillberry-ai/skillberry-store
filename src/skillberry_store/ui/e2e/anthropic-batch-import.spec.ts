@@ -58,7 +58,7 @@ test.describe('Anthropic Skill Batch Import', () => {
 
     // Take screenshot of the dialog with batch mode option
     await page.screenshot({
-      path: path.join(process.cwd(), 'test-results', 'batch-import-dialog.png'),
+      path: test.info().outputPath('batch-import-dialog.png'),
       fullPage: false
     });
   });
@@ -79,7 +79,7 @@ test.describe('Anthropic Skill Batch Import', () => {
 
     // Take screenshot showing batch mode enabled
     await page.screenshot({
-      path: path.join(process.cwd(), 'test-results', 'batch-mode-enabled.png'),
+      path: test.info().outputPath('batch-mode-enabled.png'),
       fullPage: false
     });
   });
@@ -148,7 +148,7 @@ test.describe('Anthropic Skill Batch Import', () => {
 
     // Take screenshot before import
     await page.screenshot({
-      path: path.join(process.cwd(), 'test-results', 'batch-import-before.png'),
+      path: test.info().outputPath('batch-import-before.png'),
       fullPage: false
     });
 
@@ -175,7 +175,7 @@ test.describe('Anthropic Skill Batch Import', () => {
 
     // Take screenshot of successful batch import results
     await page.screenshot({
-      path: path.join(process.cwd(), 'test-results', 'batch-import-success.png'),
+      path: test.info().outputPath('batch-import-success.png'),
       fullPage: true
     });
 
@@ -287,7 +287,7 @@ test.describe('Anthropic Skill Batch Import', () => {
 
     // Take screenshot of mixed results
     await page.screenshot({
-      path: path.join(process.cwd(), 'test-results', 'batch-import-mixed-results.png'),
+      path: test.info().outputPath('batch-import-mixed-results.png'),
       fullPage: true
     });
 
@@ -471,7 +471,7 @@ test.describe('Anthropic Skill Batch Import', () => {
 
     // Take screenshot of detailed results
     await page.screenshot({
-      path: path.join(process.cwd(), 'test-results', 'batch-import-detailed-results.png'),
+      path: test.info().outputPath('batch-import-detailed-results.png'),
       fullPage: true
     });
   });
