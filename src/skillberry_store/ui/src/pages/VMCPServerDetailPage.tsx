@@ -47,7 +47,7 @@ import { vmcpApi, skillsApi } from '@/services/api';
 import type { VMCPServer } from '@/types';
 
 export function VMCPServerDetailPage() {
-  const { name } = useParams<{ name: string }>();
+  const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -76,9 +76,9 @@ export function VMCPServerDetailPage() {
   const [loadingPrompts, setLoadingPrompts] = useState<Record<string, boolean>>({});
 
   const { data: server, isLoading, error } = useQuery({
-    queryKey: ['vmcp-servers', name],
-    queryFn: () => vmcpApi.get(name!),
-    enabled: !!name,
+    queryKey: ['vmcp-servers', uuid],
+    queryFn: () => vmcpApi.get(uuid!),
+    enabled: !!uuid,
   });
 
   // MCP Client connection
@@ -93,9 +93,9 @@ export function VMCPServerDetailPage() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (updatedServer: Omit<VMCPServer, 'uuid' | 'runtime' | 'running'>) =>
-      vmcpApi.update(name!, updatedServer),
+      vmcpApi.update(server?.name!, updatedServer),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vmcp-servers', name] });
+      queryClient.invalidateQueries({ queryKey: ['vmcp-servers', uuid] });
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
       setIsEditModalOpen(false);
       setEditError('');
@@ -107,7 +107,7 @@ export function VMCPServerDetailPage() {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: () => vmcpApi.delete(name!),
+    mutationFn: () => vmcpApi.delete(server?.name!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
       navigate('/vmcp-servers');

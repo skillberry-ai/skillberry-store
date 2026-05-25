@@ -40,8 +40,8 @@ export const toolsApi = {
     return handleResponse<Tool[]>(response);
   },
 
-  get: async (name: string): Promise<Tool> => {
-    const response = await fetch(`${API_BASE}/tools/${name}`);
+  get: async (uuid: string): Promise<Tool> => {
+    const response = await fetch(`${API_BASE}/tools/${uuid}`);
     return handleResponse<Tool>(response);
   },
 
@@ -121,8 +121,8 @@ export const skillsApi = {
     return handleResponse<Skill[]>(response);
   },
 
-  get: async (name: string): Promise<Skill> => {
-    const response = await fetch(`${API_BASE}/skills/${name}`);
+  get: async (uuid: string): Promise<Skill> => {
+    const response = await fetch(`${API_BASE}/skills/${uuid}`);
     return handleResponse<Skill>(response);
   },
 
@@ -173,8 +173,8 @@ export const snippetsApi = {
     return handleResponse<Snippet[]>(response);
   },
 
-  get: async (name: string): Promise<Snippet> => {
-    const response = await fetch(`${API_BASE}/snippets/${name}`);
+  get: async (uuid: string): Promise<Snippet> => {
+    const response = await fetch(`${API_BASE}/snippets/${uuid}`);
     return handleResponse<Snippet>(response);
   },
 
@@ -248,8 +248,8 @@ export const vmcpApi = {
     return Object.values(data.virtual_mcp_servers);
   },
 
-  get: async (name: string): Promise<VMCPServer> => {
-    const response = await fetch(`${API_BASE}/vmcp_servers/${name}`);
+  get: async (uuid: string): Promise<VMCPServer> => {
+    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}`);
     return handleResponse<VMCPServer>(response);
   },
 
@@ -334,8 +334,8 @@ export const vnfsApi = {
     return Object.values(data.virtual_nfs_servers);
   },
 
-  get: async (name: string): Promise<VNFSServer> => {
-    const response = await fetch(`${API_BASE}/vnfs_servers/${name}`);
+  get: async (uuid: string): Promise<VNFSServer> => {
+    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}`);
     return handleResponse<VNFSServer>(response);
   },
 

@@ -45,7 +45,7 @@ import { vnfsApi, skillsApi } from '@/services/api';
 import type { VNFSServer } from '@/types';
 
 export function VNFSServerDetailPage() {
-  const { name } = useParams<{ name: string }>();
+  const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -70,9 +70,9 @@ export function VNFSServerDetailPage() {
   const [skillSearchTerm, setSkillSearchTerm] = useState('');
 
   const { data: server, isLoading, error } = useQuery({
-    queryKey: ['vnfs-servers', name],
-    queryFn: () => vnfsApi.get(name!),
-    enabled: !!name,
+    queryKey: ['vnfs-servers', uuid],
+    queryFn: () => vnfsApi.get(uuid!),
+    enabled: !!uuid,
   });
 
   const { data: allSkills } = useQuery({
@@ -82,9 +82,9 @@ export function VNFSServerDetailPage() {
 
   const updateMutation = useMutation({
     mutationFn: (updatedServer: Omit<VNFSServer, 'uuid' | 'running' | 'export_path'>) =>
-      vnfsApi.update(name!, updatedServer),
+      vnfsApi.update(server?.name!, updatedServer),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vnfs-servers', name] });
+      queryClient.invalidateQueries({ queryKey: ['vnfs-servers', uuid] });
       queryClient.invalidateQueries({ queryKey: ['vnfs-servers'] });
       setIsEditModalOpen(false);
       setEditError('');
@@ -95,7 +95,7 @@ export function VNFSServerDetailPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => vnfsApi.delete(name!),
+    mutationFn: () => vnfsApi.delete(server?.name!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vnfs-servers'] });
       navigate('/vnfs-servers');

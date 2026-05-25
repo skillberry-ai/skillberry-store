@@ -431,21 +431,21 @@ export function ToolsPage() {
                   />
                   <Td
                     dataLabel="Name"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.name}
                   </Td>
                   <Td
                     dataLabel="Description"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.description || 'No description'}
                   </Td>
                   <Td
                     dataLabel="State"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.state || '-'}

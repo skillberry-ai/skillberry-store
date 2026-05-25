@@ -463,28 +463,28 @@ export function SnippetsPage() {
                   />
                   <Td
                     dataLabel="Name"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.name}
                   </Td>
                   <Td
                     dataLabel="Description"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.description || 'No description'}
                   </Td>
                   <Td
                     dataLabel="State"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.state || '-'}
                   </Td>
                   <Td
                     dataLabel="Tags"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.tags && snippet.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (

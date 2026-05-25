@@ -41,7 +41,7 @@ import { snippetsApi } from '@/services/api';
 import type { Snippet } from '@/types';
 
 export function SnippetDetailPage() {
-  const { name } = useParams<{ name: string }>();
+  const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -62,17 +62,17 @@ export function SnippetDetailPage() {
   const [editError, setEditError] = useState('');
 
   const { data: snippet, isLoading, error } = useQuery({
-    queryKey: ['snippets', name],
-    queryFn: () => snippetsApi.get(name!),
-    enabled: !!name,
+    queryKey: ['snippets', uuid],
+    queryFn: () => snippetsApi.get(uuid!),
+    enabled: !!uuid,
   });
 
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (updatedSnippet: Snippet) =>
-      snippetsApi.update(name!, updatedSnippet),
+      snippetsApi.update(snippet?.name!, updatedSnippet),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['snippets', name] });
+      queryClient.invalidateQueries({ queryKey: ['snippets', uuid] });
       queryClient.invalidateQueries({ queryKey: ['snippets'] });
       setIsEditModalOpen(false);
       setEditError('');
@@ -84,7 +84,7 @@ export function SnippetDetailPage() {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: () => snippetsApi.delete(name!),
+    mutationFn: () => snippetsApi.delete(snippet?.name!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['snippets'] });
       navigate('/snippets');

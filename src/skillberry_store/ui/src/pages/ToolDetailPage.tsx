@@ -43,7 +43,7 @@ import { toolsApi } from '@/services/api';
 import type { ExecutionResult, Tool } from '@/types';
 
 export function ToolDetailPage() {
-  const { name } = useParams<{ name: string }>();
+  const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTabKey, setActiveTabKey] = useState(0);
@@ -69,21 +69,21 @@ export function ToolDetailPage() {
 
   // Fetch tool details
   const { data: tool, isLoading, error } = useQuery({
-    queryKey: ['tools', name],
-    queryFn: () => toolsApi.get(name!),
-    enabled: !!name,
+    queryKey: ['tools', uuid],
+    queryFn: () => toolsApi.get(uuid!),
+    enabled: !!uuid,
   });
 
   // Fetch module code
   const { data: moduleCode, isLoading: isModuleLoading, error: moduleError } = useQuery({
-    queryKey: ['tools', name, 'module'],
-    queryFn: () => toolsApi.getModule(name!),
-    enabled: !!name && !!tool?.module_name,
+    queryKey: ['tools', uuid, 'module'],
+    queryFn: () => toolsApi.getModule(tool?.name!),
+    enabled: !!uuid && !!tool?.module_name,
   });
 
   // Execute tool mutation
   const executeMutation = useMutation({
-    mutationFn: (params: Record<string, any>) => toolsApi.execute(name!, params),
+    mutationFn: (params: Record<string, any>) => toolsApi.execute(tool?.name!, params),
     onSuccess: (result) => {
       setExecutionResult(result);
     },
@@ -95,9 +95,9 @@ export function ToolDetailPage() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (updatedTool: Tool) =>
-      toolsApi.update(name!, updatedTool),
+      toolsApi.update(tool?.name!, updatedTool),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tools', name] });
+      queryClient.invalidateQueries({ queryKey: ['tools', uuid] });
       queryClient.invalidateQueries({ queryKey: ['tools'] });
       setIsEditModalOpen(false);
       setEditError('');
@@ -109,7 +109,7 @@ export function ToolDetailPage() {
 
   // Delete tool mutation
   const deleteMutation = useMutation({
-    mutationFn: () => toolsApi.delete(name!),
+    mutationFn: () => toolsApi.delete(tool?.name!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tools'] });
       navigate('/tools');

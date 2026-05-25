@@ -38,7 +38,7 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
         display: 'flex',
         flexDirection: 'column',
       }}
-      onClick={() => navigate(`/skills/${skill.name}`)}
+      onClick={() => navigate(`/skills/${skill.uuid}`)}
     >
       {/* Header */}
       <div
