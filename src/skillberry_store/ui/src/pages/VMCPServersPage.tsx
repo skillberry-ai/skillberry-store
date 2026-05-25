@@ -42,8 +42,6 @@ import { PlusIcon, ServerIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon } f
 import { vmcpApi, skillsApi } from '@/services/api';
 import type { VMCPServer } from '@/types';
 
-type SortableColumn = 'name' | 'description' | 'state' | 'port' | 'version';
-
 export function VMCPServersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();

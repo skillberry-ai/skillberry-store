@@ -300,9 +300,6 @@ describe('openApiGenerator - Error Handling and Edge Cases', () => {
 
   describe('downloadOpenAPISpec - Error Scenarios', () => {
     let mockLink: HTMLAnchorElement;
-    let createElementSpy: any;
-    let appendChildSpy: any;
-    let removeChildSpy: any;
 
     beforeEach(() => {
       mockLink = {
@@ -311,14 +308,11 @@ describe('openApiGenerator - Error Handling and Edge Cases', () => {
         click: vi.fn(),
       } as any;
 
-      createElementSpy = vi
-        .spyOn(document, 'createElement')
+      vi.spyOn(document, 'createElement')
         .mockReturnValue(mockLink);
-      appendChildSpy = vi
-        .spyOn(document.body, 'appendChild')
+      vi.spyOn(document.body, 'appendChild')
         .mockReturnValue(mockLink);
-      removeChildSpy = vi
-        .spyOn(document.body, 'removeChild')
+      vi.spyOn(document.body, 'removeChild')
         .mockReturnValue(mockLink);
     });
 

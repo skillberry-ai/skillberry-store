@@ -313,8 +313,6 @@ describe('VMCPServerDetailPage - OpenAPI Download Feature', () => {
     });
 
     it('should not call download functions when button is clicked while disconnected', async () => {
-      const user = userEvent.setup();
-      
       vi.mocked(useMCPClient).mockReturnValue({
         isConnected: false,
         isConnecting: false,

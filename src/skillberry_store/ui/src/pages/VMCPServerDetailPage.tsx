@@ -505,7 +505,7 @@ export function VMCPServerDetailPage() {
                     <Title headingLevel="h3" size="md" style={{ marginBottom: '1rem' }}>
                       Tools
                     </Title>
-                    {mcpClient.tools.map((tool, index) => (
+                    {mcpClient.tools.map((tool) => (
                       <ExpandableSection
                         key={tool.name}
                         toggleText={tool.name}
@@ -558,7 +558,7 @@ export function VMCPServerDetailPage() {
                     <Title headingLevel="h3" size="md" style={{ marginBottom: '1rem' }}>
                       Prompts
                     </Title>
-                    {mcpClient.prompts.map((prompt, index) => (
+                    {mcpClient.prompts.map((prompt) => (
                       <ExpandableSection
                         key={prompt.name}
                         toggleText={prompt.name}

@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import { toolsApi, snippetsApi, vmcpApi, vnfsApi } from '@/services/api';
-import type { Tool, Snippet, Skill, VMCPServer, VNFSServer } from '@/types';
+import type { Tool, Snippet, VMCPServer, VNFSServer } from '@/types';
 
 /**
  * Export tools with their module content
@@ -44,6 +44,7 @@ export async function importTools(tools: (Tool & { module_content?: string })[])
         
         // Update the tool with all the original metadata to preserve description, tags, params, returns, etc.
         // Remove module_content from the update payload as it's not part of the Tool schema
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { module_content, ...toolMetadata } = tool;
         await toolsApi.update(tool.name, toolMetadata as Tool);
         

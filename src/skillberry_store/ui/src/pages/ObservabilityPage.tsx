@@ -37,12 +37,6 @@ interface TimeSeriesData {
   [key: string]: number;
 }
 
-interface ChartData {
-  x: number;
-  y: number;
-  name: string;
-}
-
 export function ObservabilityPage() {
   const [activeTabKey, setActiveTabKey] = useState<string | number>(0);
   const [metrics, setMetrics] = useState<MetricGroup>({});
@@ -51,7 +45,6 @@ export function ObservabilityPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
   const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData[]>([]);
-  const [isMetricSelectOpen, setIsMetricSelectOpen] = useState(false);
   const [showRate, setShowRate] = useState(false); // Toggle between raw values and rate of change
   const maxDataPoints = 60; // Keep last 60 data points (5 minutes at 5s intervals)
   
@@ -178,19 +171,16 @@ export function ObservabilityPage() {
 
     let currentHelp = '';
     let currentType = '';
-    let currentMetricName = '';
 
     for (const line of lines) {
       if (line.startsWith('#')) {
         if (line.includes('# HELP')) {
           // Format: # HELP metric_name description
           const parts = line.substring(7).trim().split(' ');
-          currentMetricName = parts[0];
           currentHelp = parts.slice(1).join(' ');
         } else if (line.includes('# TYPE')) {
           // Format: # TYPE metric_name type
           const parts = line.substring(7).trim().split(' ');
-          currentMetricName = parts[0];
           currentType = parts[1] || '';
         }
         continue;
@@ -199,7 +189,6 @@ export function ObservabilityPage() {
       if (line.trim() === '') {
         currentHelp = '';
         currentType = '';
-        currentMetricName = '';
         continue;
       }
 

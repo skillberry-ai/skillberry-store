@@ -32,9 +32,6 @@ import {
   TextArea,
   FormSelect,
   FormSelectOption,
-  Toolbar,
-  ToolbarContent,
-  ToolbarItem,
 } from '@patternfly/react-core';
 import { EditIcon, TrashIcon } from '@patternfly/react-icons';
 import { snippetsApi } from '@/services/api';
