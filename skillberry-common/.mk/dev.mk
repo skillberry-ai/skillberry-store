@@ -117,7 +117,7 @@ update-git-version:
 	    echo "Skipping update-git-version: not inside a Git repository."; \
 	fi
 
-release: check-git-main check-git-clean install-requirements  ## Release a new version
+release: check-git-main check-git-clean install-requirements  ## Release a new version (REDO=1 to cleanup existing artifacts)
 	@if [ -z "$(RELEASE_VERSION)" ]; then \
 		echo "++++++++++++++++++++++++++++++++++++++++++++"; \
   		echo "RELEASE_VERSION is not set. It is required for the release"; \
@@ -128,12 +128,33 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@command -v sed >/dev/null 2>&1 || { echo "❌ 'sed' is not installed. Aborting."; exit 1; }
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "=> Creating release with version: $(RELEASE_VERSION)"
+	@if [ "$(REDO)" = "1" ]; then \
+		echo "=> REDO mode enabled - cleaning up existing artifacts"; \
+	fi
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 	@sleep 10
+
+	# REDO: Clean up existing artifacts if REDO=1
+	@if [ "$(REDO)" = "1" ]; then \
+		echo "===> REDO: Cleaning up existing local branch branch-$(RELEASE_VERSION)"; \
+		git branch -D branch-$(RELEASE_VERSION) 2>/dev/null || echo "Local branch does not exist"; \
+		echo "===> REDO: Cleaning up existing remote branch branch-$(RELEASE_VERSION)"; \
+		git push origin --delete branch-$(RELEASE_VERSION) 2>/dev/null || echo "Remote branch does not exist"; \
+		echo "===> REDO: Cleaning up existing local tag $(RELEASE_VERSION)"; \
+		git tag -d $(RELEASE_VERSION) 2>/dev/null || echo "Local tag does not exist"; \
+		echo "===> REDO: Cleaning up existing remote tag $(RELEASE_VERSION)"; \
+		git push origin --delete $(RELEASE_VERSION) 2>/dev/null || echo "Remote tag does not exist"; \
+		echo "===> REDO: Cleaning up existing GitHub release $(RELEASE_VERSION)"; \
+		gh release delete $(RELEASE_VERSION) --yes 2>/dev/null || echo "GitHub release does not exist"; \
+		echo "===> REDO: Cleaning up existing Docker images"; \
+		$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(RELEASE_VERSION) 2>/dev/null || echo "Docker image with version tag does not exist"; \
+		echo "===> REDO: Cleanup completed"; \
+	fi
+
 	@echo "===> Generating git tag $(RELEASE_VERSION) and creating GitHub release"
 	@git checkout -b branch-$(RELEASE_VERSION)
 	@echo "===> Generated release branch $(RELEASE_VERSION)"
-	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)" 
+	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)"
 	@git push origin $(RELEASE_VERSION)
 
 	#
@@ -168,7 +189,7 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@git checkout branch-$(RELEASE_VERSION)
 
 	@echo "===> Building and pushing new docker image"
-	@make docker-push
+	@DBT=registry make docker-build
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
 	@echo "=> Release $(RELEASE_VERSION) created successfully"
 	@echo "++++++++++++++++++++++++++++++++++++++++++++"
