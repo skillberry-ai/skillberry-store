@@ -78,7 +78,7 @@ class VirtualMcpServerManager:
         # Generate unique runtime server name
         runtime_server_name = make_name_with_uuid(name, uuid)
         logger.info(f"Adding vmcp_server: {runtime_server_name}")
-        
+
         with self._lock:
             server = VirtualMcpServer(
                 name=runtime_server_name,
@@ -105,7 +105,7 @@ class VirtualMcpServerManager:
             uuid: The UUID of the VMCP object.
         """
         runtime_server_name = make_name_with_uuid(name, uuid)
-            
+
         with self._lock:
             if runtime_server_name in self.servers:
                 logger.info(f"Removing vmcp_server: {runtime_server_name}")
@@ -115,7 +115,9 @@ class VirtualMcpServerManager:
                     server.stop()
                     logger.info(f"Stopped vmcp_server: {runtime_server_name}")
                 except Exception as e:
-                    logger.warning(f"Failed to stop vmcp_server {runtime_server_name}: {str(e)}")
+                    logger.warning(
+                        f"Failed to stop vmcp_server {runtime_server_name}: {str(e)}"
+                    )
 
                 del self.servers[runtime_server_name]
             else:
@@ -143,7 +145,7 @@ class VirtualMcpServerManager:
         """
         runtime_server_name = make_name_with_uuid(name, uuid)
         logger.debug(f"Getting vmcp_server with composite name: {runtime_server_name}")
-        
+
         with self._lock:
             return self.servers.get(runtime_server_name)
 
@@ -184,7 +186,7 @@ class VirtualMcpServerManager:
         try:
             # Get all VMCP server resources
             vmcp_resources = self.vmcp_handler.list_all_dicts()
-            
+
             for vmcp_data in vmcp_resources:
                 name = vmcp_data.get("name", "unknown")
                 uuid = vmcp_data.get("uuid", "")
@@ -193,21 +195,27 @@ class VirtualMcpServerManager:
                     description = vmcp_data.get("description", "")
                     port = vmcp_data.get("port")
                     skill_uuid = vmcp_data.get("skill_uuid")
-                    
+
                     # Get tool and snippet UUIDs from skill_uuid
                     tool_uuids = []
                     snippet_uuids = []
                     if skill_uuid:
-                        logger.info(f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load")
+                        logger.info(
+                            f"Resolving tools and snippets for skill_uuid: {skill_uuid} during server load"
+                        )
                         try:
                             # Read skill dict by UUID
                             skill_dict = self.skills_handler.read_dict(skill_uuid)
                             tool_uuids = skill_dict.get("tool_uuids", [])
                             snippet_uuids = skill_dict.get("snippet_uuids", [])
-                            logger.info(f"Found skill '{skill_dict.get('name')}' with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
+                            logger.info(
+                                f"Found skill '{skill_dict.get('name')}' with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs"
+                            )
                         except Exception as e:
-                            logger.error(f"Error resolving tools and snippets for skill_uuid {skill_uuid}: {e}")
-                    
+                            logger.error(
+                                f"Error resolving tools and snippets for skill_uuid {skill_uuid}: {e}"
+                            )
+
                     # Start the runtime server with UUIDs (not names)
                     # Use composite name for uniqueness
                     if name and uuid:
@@ -223,11 +231,15 @@ class VirtualMcpServerManager:
                             env_id="",
                         )
                         self.servers[server.name] = server
-                        logger.info(f"Loaded and started vmcp_server: {server.name} on port {server.port} with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs")
+                        logger.info(
+                            f"Loaded and started vmcp_server: {server.name} on port {server.port} with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs"
+                        )
                 except Exception as e:
                     logger.error(f"Failed to load vmcp_server '{name}': {str(e)}")
-            
-            logger.info(f"Loaded {len(self.servers)} vmcp servers from {self.vmcp_directory}")
+
+            logger.info(
+                f"Loaded {len(self.servers)} vmcp servers from {self.vmcp_directory}"
+            )
         except Exception as e:
             logger.error(f"Failed to load vmcp_servers from directory. Error: {str(e)}")
 

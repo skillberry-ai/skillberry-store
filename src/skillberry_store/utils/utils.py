@@ -13,21 +13,21 @@ logger = logging.getLogger(__name__)
 def generate_or_validate_uuid(uuid_str: Optional[str]) -> str:
     """
     Generate a new UUID or validate an existing one.
-    
+
     This function encapsulates UUID creation and validation logic:
     - If uuid_str is None, generates a new valid UUID
     - If uuid_str is not None, validates it and returns normalized version
     - Raises HTTPException with 400 status if validation fails
-    
+
     Args:
         uuid_str: Optional UUID string to validate, or None to generate new UUID
-        
+
     Returns:
         str: A valid UUID string (lowercase, normalized)
-        
+
     Raises:
         HTTPException: If uuid_str is provided but invalid (status_code=400)
-        
+
     Examples:
         >>> generate_or_validate_uuid(None)  # doctest: +SKIP
         '12345678-1234-1234-1234-123456789abc'
@@ -39,33 +39,30 @@ def generate_or_validate_uuid(uuid_str: Optional[str]) -> str:
     if uuid_str is None:
         # Generate a new valid UUID
         return str(uuid.uuid4())
-    
+
     # Validate the provided UUID
     normalized = normalize_uuid(uuid_str)
     if not normalized:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid UUID format: {uuid_str}"
-        )
-    
+        raise HTTPException(status_code=400, detail=f"Invalid UUID format: {uuid_str}")
+
     return normalized
 
 
 def normalize_uuid(uuid_str: Optional[str]) -> Optional[str]:
     """
     Normalize a UUID string to lowercase format.
-    
+
     This function ensures consistent UUID handling across the codebase by:
     - Converting UUIDs to lowercase
     - Validating UUID format
     - Returning None for invalid or None inputs
-    
+
     Args:
         uuid_str: A UUID string (can be uppercase, lowercase, or mixed case)
-        
+
     Returns:
         Lowercase UUID string if valid, None otherwise
-        
+
     Examples:
         >>> normalize_uuid("12345678-1234-1234-1234-123456789ABC")
         '12345678-1234-1234-1234-123456789abc'
@@ -78,7 +75,7 @@ def normalize_uuid(uuid_str: Optional[str]) -> Optional[str]:
     """
     if not uuid_str:
         return None
-    
+
     try:
         # Validate and normalize the UUID
         # uuid.UUID() will raise ValueError if the string is not a valid UUID
@@ -88,16 +85,17 @@ def normalize_uuid(uuid_str: Optional[str]) -> Optional[str]:
         logger.debug(f"Invalid UUID format: {uuid_str}")
         return None
 
+
 def make_name_with_uuid(name: str, uuid_str: str) -> str:
     """Generate unique name by combining a name with a UUID.
-    
+
     This ensures each object gets a unique identifier, even if
     multiple objects share the same name.
-    
+
     Args:
         name: The human-readable name
         uuid_str: The unique UUID
-        
+
     Returns:
         Composite name: "{name}_{uuid}"
     """

@@ -48,7 +48,9 @@ def get_function_node(tool_bytes: bytes, tool_name: str):
         raise Exception(f"Failed to parse Python code: {str(e)}")
 
 
-def extract_docstring(tool_bytes: bytes, selected_func: Optional[str] = None) -> Tuple[str, Docstring]:
+def extract_docstring(
+    tool_bytes: bytes, selected_func: Optional[str] = None
+) -> Tuple[str, Docstring]:
     """
     Extracts the docstring of a function from a Python module code.
 
@@ -75,7 +77,9 @@ def extract_docstring(tool_bytes: bytes, selected_func: Optional[str] = None) ->
                 if not selected_func or selected_func == node.name:
                     docstring = ast.get_docstring(node)
                     if not docstring:
-                        raise Exception(f"Docstring is missing for tool: {selected_func}")
+                        raise Exception(
+                            f"Docstring is missing for tool: {selected_func}"
+                        )
                     try:
                         docstring_obj = parse(docstring)
                         assert (

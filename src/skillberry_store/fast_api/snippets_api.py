@@ -107,7 +107,7 @@ def register_snippets_api(
             # If we get here, the snippet exists - raise 409 Conflict
             raise HTTPException(
                 status_code=409,
-                detail=f"Snippet with UUID '{snippet.uuid}' already exists"
+                detail=f"Snippet with UUID '{snippet.uuid}' already exists",
             )
         except HTTPException as e:
             # If it's a 404, that's good - snippet doesn't exist yet
@@ -117,12 +117,16 @@ def register_snippets_api(
         try:
             # Determine correct parent for this snippet becoming HEAD
             if snippet.name:
-                snippet.parent = snippet_handler.get_cache_parent_for_head(snippet.uuid, snippet.name)
-                logger.info(f"Setting parent for snippet '{snippet.name}' to {snippet.parent}")
-            
+                snippet.parent = snippet_handler.get_cache_parent_for_head(
+                    snippet.uuid, snippet.name
+                )
+                logger.info(
+                    f"Setting parent for snippet '{snippet.name}' to {snippet.parent}"
+                )
+
             # Save snippet dict to UUID subfolder
             snippet_handler.write_dict(snippet.uuid, snippet.to_dict())
-            
+
             # Update cache - this becomes new HEAD
             if snippet.name:
                 snippet_handler.update_cache(snippet.uuid, new_name=snippet.name)
@@ -226,7 +230,7 @@ def register_snippets_api(
             snippet_parent = None
             # Resolve UUID or name to UUID
             snippet_uuid = snippet_handler.resolve_to_uuid_or_error(uuid_or_name)
-            
+
             # Read snippet metadata before deletion
             try:
                 snippet_dict = snippet_handler.read_dict(snippet_uuid)
@@ -234,13 +238,18 @@ def register_snippets_api(
                 snippet_parent = snippet_dict.get("parent")
             except Exception as e:
                 logger.warning(f"Could not read snippet before deletion: {e}")
-            
+
             # Delete the snippet using ObjectHandler
             result = snippet_handler.delete_object(snippet_uuid)
-            
+
             # Update cache after deletion
             if snippet_uuid and snippet_name:
-                snippet_handler.update_cache(snippet_uuid, new_name=None, old_name=snippet_name, old_parent=snippet_parent)
+                snippet_handler.update_cache(
+                    snippet_uuid,
+                    new_name=None,
+                    old_name=snippet_name,
+                    old_parent=snippet_parent,
+                )
 
             # Delete the description for the snippet (indexed by UUID)
             if snippets_descriptions and snippet_uuid:
@@ -252,8 +261,12 @@ def register_snippets_api(
                         f"Could not delete snippet description for UUID '{snippet_uuid}': {e}"
                     )
 
-            logger.info(f"Snippet with UUID or name '{uuid_or_name}' deleted successfully")
-            return {"message": f"Snippet with UUID or name '{uuid_or_name}' deleted successfully."}
+            logger.info(
+                f"Snippet with UUID or name '{uuid_or_name}' deleted successfully"
+            )
+            return {
+                "message": f"Snippet with UUID or name '{uuid_or_name}' deleted successfully."
+            }
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
             raise
@@ -288,19 +301,21 @@ def register_snippets_api(
             existing_dict = snippet_handler.read_dict(snippet_uuid)
             old_name = existing_dict.get("name")
             old_parent = existing_dict.get("parent")
-            
+
             # Convert update data to dict
             update_data = snippet.to_dict()
-            
+
             # Determine new name
             new_name = snippet.name if snippet.name else old_name
-            
+
             # Determine correct parent for this snippet becoming HEAD
             if new_name:
-                new_parent = snippet_handler.get_cache_parent_for_head(snippet_uuid, new_name)
+                new_parent = snippet_handler.get_cache_parent_for_head(
+                    snippet_uuid, new_name
+                )
                 update_data["parent"] = new_parent
                 logger.info(f"Setting parent for snippet '{new_name}' to {new_parent}")
-            
+
             # Merge: preserve uuid and created_at from existing, update modified_at
             merged_dict = {**existing_dict, **update_data}
             merged_dict["uuid"] = existing_dict.get("uuid", snippet_uuid)
@@ -309,20 +324,29 @@ def register_snippets_api(
 
             # Write the merged dict using ObjectHandler
             snippet_handler.write_dict(snippet_uuid, merged_dict)
-            
+
             # Update cache - this becomes HEAD for its (possibly new) name
             if new_name:
-                snippet_handler.update_cache(snippet_uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
-            
+                snippet_handler.update_cache(
+                    snippet_uuid,
+                    new_name=new_name,
+                    old_name=old_name,
+                    old_parent=old_parent,
+                )
+
             # Update description for search capability (indexed by UUID)
             if snippets_descriptions and merged_dict.get("description"):
                 snippets_descriptions.write_description(
                     snippet_uuid, merged_dict["description"]
                 )
                 logger.info(f"Snippet description updated for UUID: {snippet_uuid}")
-            
-            logger.info(f"Snippet with UUID or name '{uuid_or_name}' (UUID: {snippet_uuid}) updated successfully")
-            return {"message": f"Snippet with UUID or name '{uuid_or_name}' updated successfully."}
+
+            logger.info(
+                f"Snippet with UUID or name '{uuid_or_name}' (UUID: {snippet_uuid}) updated successfully"
+            )
+            return {
+                "message": f"Snippet with UUID or name '{uuid_or_name}' updated successfully."
+            }
         except HTTPException:
             raise
         except Exception as e:
@@ -377,17 +401,25 @@ def register_snippets_api(
             snippets_to_filter = []
             for matched_entity in filtered_matched_entities:
                 # The matched entity filename is actually the UUID (since descriptions are indexed by UUID)
-                snippet_uuid = matched_entity.get("filename") or matched_entity.get("name")
+                snippet_uuid = matched_entity.get("filename") or matched_entity.get(
+                    "name"
+                )
                 if not snippet_uuid:
-                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {matched_entity}")
+                    logger.warning(
+                        f"Matched entity missing 'filename' or 'name' field: {matched_entity}"
+                    )
                     continue
                 try:
                     # Read snippet manifest by UUID
                     snippet_dict = snippet_handler.read_dict(snippet_uuid)
-                    snippet_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                    snippet_dict["similarity_score"] = matched_entity.get(
+                        "similarity_score", 0.0
+                    )
                     snippets_to_filter.append(snippet_dict)
                 except Exception as e:
-                    logger.warning(f"Could not load snippet {snippet_uuid} for filtering: {e}")
+                    logger.warning(
+                        f"Could not load snippet {snippet_uuid} for filtering: {e}"
+                    )
 
             # Apply manifest and lifecycle filters
             filtered_snippets = apply_search_filters(

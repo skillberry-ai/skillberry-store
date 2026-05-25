@@ -56,11 +56,11 @@ class VirtualMcpServer:
         self.sts_url = sts_url or "http://localhost:8000"
         self.app = app
         self.env_id = env_id
-        
+
         # Initialize ObjectHandlers for resolving UUIDs to objects
         self.tools_handler = get_object_handler("tool")
         self.snippets_handler = get_object_handler("snippet")
-        
+
         if port is None:
             self.port = self._find_available_port()
         else:
@@ -160,24 +160,27 @@ class VirtualMcpServer:
                 if self.app:
                     # Read tool dict by UUID
                     tool_dict = self.tools_handler.read_dict(tool_uuid)
-                    tool_name = tool_dict.get('name')
-                    
+                    tool_name = tool_dict.get("name")
+
                     # Cache the tool dict
                     if tool_name:
                         self._tool_manifests[tool_name] = tool_dict
-                    
-                    print(f"DEBUG list_tools: Got tool UUID {tool_uuid}, name: {tool_name}")
+
+                    print(
+                        f"DEBUG list_tools: Got tool UUID {tool_uuid}, name: {tool_name}"
+                    )
                     tools.append(self.tool_dict_to_mcp_tool(tool_dict))
                 else:
                     # Fallback to HTTP when app is not available
                     response = requests.get(f"{self.sts_url}/tools/{tool_uuid}")
                     response.raise_for_status()
                     tool_dict = response.json()
-                    tool_name = tool_dict.get('name')
-                    print(f"DEBUG list_tools: Got tool {tool_uuid} from HTTP: {tool_name}")
+                    tool_name = tool_dict.get("name")
+                    print(
+                        f"DEBUG list_tools: Got tool {tool_uuid} from HTTP: {tool_name}"
+                    )
                     self._tool_manifests[tool_name] = tool_dict
                     tools.append(self.tool_dict_to_mcp_tool(tool_dict))
-
 
             except Exception as e:
                 logging.warning(f"Failed to get tool UUID {tool_uuid}: {e}")
@@ -200,9 +203,11 @@ class VirtualMcpServer:
                 if self.app:
                     # Read snippet dict by UUID
                     snippet_dict = self.snippets_handler.read_dict(snippet_uuid)
-                    snippet_name = snippet_dict.get('name')
-                    
-                    print(f"DEBUG list_snippets: Got snippet UUID {snippet_uuid}, name: {snippet_name}")
+                    snippet_name = snippet_dict.get("name")
+
+                    print(
+                        f"DEBUG list_snippets: Got snippet UUID {snippet_uuid}, name: {snippet_name}"
+                    )
                     snippets.append(snippet_dict)
                 else:
                     # Fallback to HTTP when app is not available
@@ -215,7 +220,9 @@ class VirtualMcpServer:
                     snippets.append(snippet_dict)
             except Exception as e:
                 logging.warning(f"Failed to get snippet UUID {snippet_uuid}: {e}")
-                print(f"DEBUG list_snippets: Failed to get snippet UUID {snippet_uuid}: {e}")
+                print(
+                    f"DEBUG list_snippets: Failed to get snippet UUID {snippet_uuid}: {e}"
+                )
         print(f"DEBUG list_snippets: Returning {len(snippets)} snippets")
         return snippets
 
@@ -448,7 +455,7 @@ class VirtualMcpServer:
             server_name=self.name, tool_name=tool_name
         ).inc()
         start_time = time.time()
-        
+
         # Check if tool_name is in our cached tool names
         if tool_name not in self._tool_manifests:
             raise ValueError(f"Tool {tool_name} not found")
@@ -477,9 +484,7 @@ class VirtualMcpServer:
 
             tool_uuid = tool_dict.get("uuid")
             if not tool_uuid:
-                raise ValueError(
-                    f"Tool '{tool_name}' has no uuid in cached manifest"
-                )
+                raise ValueError(f"Tool '{tool_name}' has no uuid in cached manifest")
 
             # Use the object handler to read the module file from the tool's UUID subdirectory
             module_content = self.tools_handler.read_file(
@@ -498,8 +503,12 @@ class VirtualMcpServer:
             )
 
             dep_dicts = self.tools_handler.read_dicts(list(tool_dep_ids))
-            dep_files = [self.tools_handler.read_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_dicts]
-
+            dep_files = [
+                self.tools_handler.read_file(
+                    m["uuid"], m["module_name"], raw_content=True
+                )
+                for m in dep_dicts
+            ]
 
             executor = FileExecutor(
                 name=tool_name,

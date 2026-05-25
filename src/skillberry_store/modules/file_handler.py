@@ -27,7 +27,7 @@ class FileHandler:
     def _validate_path(self, path: str) -> str:
         """
         Validate that a path stays within the base directory boundaries.
-        
+
         This prevents path traversal attacks by ensuring the resolved path
         is within the allowed directory.
 
@@ -43,16 +43,20 @@ class FileHandler:
         # Resolve to absolute path to handle symbolic links and relative paths
         resolved_path = os.path.realpath(path)
         base_path = os.path.realpath(self.directory_path)
-        
+
         # Ensure the resolved path starts with the base path
         # Add os.sep to prevent partial directory name matches
-        if not resolved_path.startswith(base_path + os.sep) and resolved_path != base_path:
-            logger.warning(f"Path traversal attempt detected: {path} -> {resolved_path}")
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid path: Path traversal detected"
+        if (
+            not resolved_path.startswith(base_path + os.sep)
+            and resolved_path != base_path
+        ):
+            logger.warning(
+                f"Path traversal attempt detected: {path} -> {resolved_path}"
             )
-        
+            raise HTTPException(
+                status_code=400, detail="Invalid path: Path traversal detected"
+            )
+
         return resolved_path
 
     def _get_full_path(self, filename: str, subdirectory: Optional[str] = None) -> str:
@@ -65,7 +69,7 @@ class FileHandler:
 
         Returns:
             str: The full file path.
-            
+
         Raises:
             HTTPException: If path traversal is detected.
         """
@@ -79,7 +83,7 @@ class FileHandler:
             # Build and validate the full file path
             full_path = os.path.join(validated_subdir, filename)
             return self._validate_path(full_path)
-        
+
         full_path = os.path.join(self.directory_path, filename)
         return self._validate_path(full_path)
 
@@ -116,7 +120,12 @@ class FileHandler:
                 directory_path=self.directory_path,
             )
 
-    def read_file(self, filename: str, raw_content: bool = False, subdirectory: Optional[str] = None):
+    def read_file(
+        self,
+        filename: str,
+        raw_content: bool = False,
+        subdirectory: Optional[str] = None,
+    ):
         """
         Read and return the contents of a file.
 
@@ -139,7 +148,7 @@ class FileHandler:
         )
         # Get full path (creates subdirectory if needed)
         file_path = self._get_full_path(filename, subdirectory)
-        
+
         if not os.path.exists(file_path):
             ShellHook().execute(
                 "post_fail_" + inspect.stack()[0].function,
@@ -178,7 +187,9 @@ class FileHandler:
             )
             return FileResponse(file_path)
 
-    def write_file(self, file_bytes: bytes, filename: str, subdirectory: Optional[str] = None) -> Dict:
+    def write_file(
+        self, file_bytes: bytes, filename: str, subdirectory: Optional[str] = None
+    ) -> Dict:
         """
         Write a file to the directory.
 
@@ -200,7 +211,7 @@ class FileHandler:
         )
         # Get full path (creates subdirectory if needed)
         file_path = self._get_full_path(filename, subdirectory)
-        
+
         try:
             with open(file_path, "wb") as f:
                 f.write(file_bytes)
@@ -220,7 +231,9 @@ class FileHandler:
             logger.error(f"Error saving file '{filename}': {e}")
             raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-    def write_file_content(self, filename: str, file_content: str, subdirectory: Optional[str] = None) -> dict:
+    def write_file_content(
+        self, filename: str, file_content: str, subdirectory: Optional[str] = None
+    ) -> dict:
         """
         Write a file to the directory by content.
 
@@ -242,7 +255,7 @@ class FileHandler:
         )
         # Get full path (creates subdirectory if needed)
         file_path = self._get_full_path(filename, subdirectory)
-        
+
         try:
             with open(file_path, "wb") as f:
                 binary_file_content = file_content.encode("utf-8")
@@ -284,7 +297,7 @@ class FileHandler:
         )
         # Get full path
         file_path = self._get_full_path(filename, subdirectory)
-        
+
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -331,11 +344,11 @@ class FileHandler:
             directory_path=self.directory_path,
             subdirectory=subdirectory,
         )
-        
+
         # Build and validate the subdirectory path to prevent path traversal
         subdir_path = os.path.join(self.directory_path, subdirectory)
         validated_path = self._validate_path(subdir_path)
-        
+
         try:
             if os.path.exists(validated_path):
                 shutil.rmtree(validated_path)
@@ -345,7 +358,9 @@ class FileHandler:
                     directory_path=self.directory_path,
                     subdirectory=subdirectory,
                 )
-                return {"message": f"Subdirectory '{subdirectory}' deleted successfully."}
+                return {
+                    "message": f"Subdirectory '{subdirectory}' deleted successfully."
+                }
             else:
                 raise HTTPException(
                     status_code=404, detail=f"Subdirectory '{subdirectory}' not found."

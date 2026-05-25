@@ -173,7 +173,11 @@ def detect_tool_dependencies(
 
                         # Check if this function name matches any available tool
                         # EXCLUDE the function's own name to prevent self-dependency
-                        if func_name and func_name in available_tools and func_name != function_name:
+                        if (
+                            func_name
+                            and func_name in available_tools
+                            and func_name != function_name
+                        ):
                             if func_name not in dependencies:
                                 dependencies.append(func_name)
                                 logger.info(f"Detected dependency: {func_name}")

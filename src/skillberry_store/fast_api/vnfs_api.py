@@ -18,7 +18,11 @@ from skillberry_store.tools.configure import (
     get_vnfs_directory,
     get_vnfs_descriptions_directory,
 )
-from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys, generate_or_validate_uuid
+from skillberry_store.utils.utils import (
+    SKILLBERRY_CONTEXT,
+    unflatten_keys,
+    generate_or_validate_uuid,
+)
 from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
@@ -60,13 +64,16 @@ def register_vnfs_api(
         # Check if vnfs server with this UUID already exists
         if vnfs_handler.object_exists(vnfs.uuid):
             raise HTTPException(
-                status_code=409, detail=f"vNFS server with UUID '{vnfs.uuid}' already exists."
+                status_code=409,
+                detail=f"vNFS server with UUID '{vnfs.uuid}' already exists.",
             )
-        
+
         # Determine correct parent for this VNFS server becoming HEAD
         if vnfs.name:
             vnfs.parent = vnfs_handler.get_cache_parent_for_head(vnfs.uuid, vnfs.name)
-            logger.info(f"Setting parent for VNFS server '{vnfs.name}' to {vnfs.parent}")
+            logger.info(
+                f"Setting parent for VNFS server '{vnfs.name}' to {vnfs.parent}"
+            )
 
         try:
             server = vnfs_server_manager.add_server(vnfs)
@@ -74,7 +81,7 @@ def register_vnfs_api(
 
             # Save using ObjectHandler with UUID
             vnfs_handler.write_dict(vnfs.uuid, vnfs.to_dict())
-            
+
             # Update cache after create
             if vnfs.name:
                 vnfs_handler.update_cache(vnfs.uuid, new_name=vnfs.name)
@@ -112,7 +119,7 @@ def register_vnfs_api(
         try:
             # Get all VNFS objects using ObjectHandler
             vnfs_resources = vnfs_handler.list_all_dicts()
-            
+
             servers_list = []
             for vnfs_data in vnfs_resources:
                 server_name = vnfs_data.get("name")
@@ -122,8 +129,7 @@ def register_vnfs_api(
                     runtime_server = None
                     try:
                         runtime_server = vnfs_server_manager.get_server(
-                            server_name or "",
-                            server_uuid or ""
+                            server_name or "", server_uuid or ""
                         )
                     except Exception:
                         pass  # Server not running, which is fine
@@ -139,7 +145,8 @@ def register_vnfs_api(
                         "skill_uuid": vnfs_data.get("skill_uuid"),
                         "protocol": vnfs_data.get("protocol", "webdav"),
                         "modified_at": vnfs_data.get("modified_at", ""),
-                        "running": runtime_server is not None and runtime_server.running,
+                        "running": runtime_server is not None
+                        and runtime_server.running,
                         "export_path": (
                             str(runtime_server.export_path) if runtime_server else None
                         ),
@@ -170,21 +177,22 @@ def register_vnfs_api(
             vnfs_dict = vnfs_handler.read_dict(vnfs_uuid)
             server_name = vnfs_dict.get("name")
             server_uuid = vnfs_dict.get("uuid")
-            
+
             # Get runtime details from manager
             try:
                 runtime_server = vnfs_server_manager.get_server(
-                    server_name or "",
-                    server_uuid or ""
+                    server_name or "", server_uuid or ""
                 )
-                vnfs_dict["running"] = runtime_server is not None and runtime_server.running
+                vnfs_dict["running"] = (
+                    runtime_server is not None and runtime_server.running
+                )
                 vnfs_dict["export_path"] = (
                     str(runtime_server.export_path) if runtime_server else None
                 )
             except Exception:
                 vnfs_dict["running"] = False
                 vnfs_dict["export_path"] = None
-            
+
             logger.info(f"Retrieved vnfs server: {uuid_or_name}")
             return vnfs_dict
         except ValueError as e:
@@ -209,29 +217,33 @@ def register_vnfs_api(
             vnfs_dict = vnfs_handler.read_dict(server_uuid)
             server_name = vnfs_dict.get("name")
             server_parent = vnfs_dict.get("parent")
-            
+
             # Stop and remove the runtime server
             try:
-                vnfs_server_manager.remove_server(
-                    server_name or "",
-                    server_uuid or ""
-                )
+                vnfs_server_manager.remove_server(server_name or "", server_uuid or "")
                 logger.info(f"Stopped runtime server: {server_name}_{server_uuid}")
             except Exception as e:
                 logger.warning(f"Could not stop runtime server: {e}")
 
             # Delete persistent data using ObjectHandler
             vnfs_handler.delete_object(server_uuid)
-            
+
             # Update cache after delete
             if server_name and server_uuid:
-                vnfs_handler.update_cache(server_uuid, new_name=None, old_name=server_name, old_parent=server_parent)
+                vnfs_handler.update_cache(
+                    server_uuid,
+                    new_name=None,
+                    old_name=server_name,
+                    old_parent=server_parent,
+                )
 
             # Delete the description (indexed by UUID)
             if vnfs_descriptions:
                 try:
                     vnfs_descriptions.delete_description(server_uuid or "")
-                    logger.info(f"vNFS server description deleted for UUID: {server_uuid}")
+                    logger.info(
+                        f"vNFS server description deleted for UUID: {server_uuid}"
+                    )
                 except Exception as exc:
                     logger.warning(
                         f"Could not delete vnfs description for UUID '{server_uuid}': {exc}"
@@ -267,24 +279,25 @@ def register_vnfs_api(
 
             # Update modified timestamp
             vnfs.modified_at = datetime.now(timezone.utc).isoformat()
-            
+
             # Preserve UUID if not provided in update
             if not vnfs.uuid:
                 vnfs.uuid = server_uuid
-            
+
             # Determine new name and correct parent
             new_name = vnfs.name
             if new_name:
                 # Determine correct parent for this VNFS server becoming HEAD
-                vnfs.parent = vnfs_handler.get_cache_parent_for_head(vnfs.uuid or "", new_name)
-                logger.info(f"Setting parent for VNFS server '{new_name}' to {vnfs.parent}")
+                vnfs.parent = vnfs_handler.get_cache_parent_for_head(
+                    vnfs.uuid or "", new_name
+                )
+                logger.info(
+                    f"Setting parent for VNFS server '{new_name}' to {vnfs.parent}"
+                )
 
             # Stop the old runtime server
             try:
-                vnfs_server_manager.remove_server(
-                    old_name or "",
-                    server_uuid or ""
-                )
+                vnfs_server_manager.remove_server(old_name or "", server_uuid or "")
                 logger.info(f"Stopped old runtime server: {old_name}_{server_uuid}")
             except Exception as e:
                 logger.warning(f"Could not stop old runtime server: {e}")
@@ -295,22 +308,24 @@ def register_vnfs_api(
 
             # Update persistent data using ObjectHandler
             vnfs_handler.write_dict(vnfs.uuid or "", vnfs.to_dict())
-            
+
             # Update cache after update
             if vnfs.name and old_name:
                 vnfs_handler.update_cache(
                     vnfs.uuid or "",
                     new_name=vnfs.name,
                     old_name=old_name,
-                    old_parent=old_parent
+                    old_parent=old_parent,
                 )
-            
+
             # Update description indexed by UUID
             if vnfs_descriptions and vnfs.description and vnfs.uuid:
                 vnfs_descriptions.write_description(vnfs.uuid, vnfs.description)
                 logger.info(f"vNFS server description updated for UUID: {vnfs.uuid}")
-            
-            logger.info(f"vNFS server '{vnfs.name}' updated successfully on port {server.port}")
+
+            logger.info(
+                f"vNFS server '{vnfs.name}' updated successfully on port {server.port}"
+            )
             return {
                 "message": f"vNFS server '{vnfs.name}' updated successfully.",
                 "port": server.port,
@@ -334,10 +349,12 @@ def register_vnfs_api(
             vnfs_data = vnfs_handler.read_dict(vnfs_uuid)
             server_name = vnfs_data.get("name", "")
             server_uuid = vnfs_data.get("uuid", "")
-            
+
             # Check if server already running
             try:
-                existing_server = vnfs_server_manager.get_server(server_name, server_uuid)
+                existing_server = vnfs_server_manager.get_server(
+                    server_name, server_uuid
+                )
                 if existing_server and existing_server.running:
                     return {
                         "message": f"vNFS server '{server_name}' is already running.",
@@ -351,7 +368,9 @@ def register_vnfs_api(
             schema = _VnfsSchema.from_dict(vnfs_data)
             server = vnfs_server_manager.add_server(schema)
 
-            logger.info(f"vNFS server '{server_name}' started successfully on port {server.port}")
+            logger.info(
+                f"vNFS server '{server_name}' started successfully on port {server.port}"
+            )
             return {
                 "message": f"vNFS server '{server_name}' started successfully.",
                 "port": server.port,
@@ -397,7 +416,9 @@ def register_vnfs_api(
                 # The filename in matched entity is the UUID (since we index by UUID)
                 vnfs_uuid = m.get("filename") or m.get("name")
                 if not vnfs_uuid:
-                    logger.warning(f"Matched entity missing 'filename' or 'name' field: {m}")
+                    logger.warning(
+                        f"Matched entity missing 'filename' or 'name' field: {m}"
+                    )
                     continue
                 try:
                     # Read dict by UUID
@@ -405,7 +426,9 @@ def register_vnfs_api(
                     vnfs_dict["similarity_score"] = m.get("similarity_score", 0.0)
                     servers_to_filter.append(vnfs_dict)
                 except Exception as exc:
-                    logger.warning(f"Could not load vnfs server with UUID '{vnfs_uuid}': {exc}")
+                    logger.warning(
+                        f"Could not load vnfs server with UUID '{vnfs_uuid}': {exc}"
+                    )
 
             filtered_servers = apply_search_filters(
                 servers_to_filter,

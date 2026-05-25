@@ -66,24 +66,26 @@ def register_skills_api(
     skill_handler = get_object_handler("skill")
     tools_handler = get_object_handler("tool")
     snippets_handler = get_object_handler("snippet")
-    
+
     def populate_skill_objects(skill_dict):
         """Populate full tool and snippet objects from UUIDs."""
         # Populate tools - resolve and get resources (will raise 404 if any missing)
         if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
             try:
                 # This will raise HTTPException if any UUID is invalid or not found
-                tools = tools_handler.read_dicts(skill_dict['tool_uuids'])
+                tools = tools_handler.read_dicts(skill_dict["tool_uuids"])
                 skill_dict["tools"] = tools
             except HTTPException as e:
-                logger.error(f"Skill '{skill_dict['name']}' references missing or invalid tools")
+                logger.error(
+                    f"Skill '{skill_dict['name']}' references missing or invalid tools"
+                )
                 raise HTTPException(
                     status_code=505,
-                    detail=f"Skill '{skill_dict['name']}' references missing or invalid tools: {e.detail}"
+                    detail=f"Skill '{skill_dict['name']}' references missing or invalid tools: {e.detail}",
                 )
         else:
             skill_dict["tools"] = []
-            
+
         # Populate snippets - resolve and get resources (will raise 404 if any missing)
         if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
             try:
@@ -91,10 +93,12 @@ def register_skills_api(
                 snippets = snippets_handler.read_dicts(skill_dict["snippet_uuids"])
                 skill_dict["snippets"] = snippets
             except HTTPException as e:
-                logger.error(f"Skill '{skill_dict['name']}' references missing or invalid snippets")
+                logger.error(
+                    f"Skill '{skill_dict['name']}' references missing or invalid snippets"
+                )
                 raise HTTPException(
                     status_code=505,
-                    detail=f"Skill '{skill_dict['name']}' references missing or invalid snippets: {e.detail}"
+                    detail=f"Skill '{skill_dict['name']}' references missing or invalid snippets: {e.detail}",
                 )
         else:
             skill_dict["snippets"] = []
@@ -129,22 +133,27 @@ def register_skills_api(
         current_time = datetime.now(timezone.utc).isoformat()
         skill.created_at = current_time
         skill.modified_at = current_time
-        
+
         # Check if skill with this UUID already exists
         if skill_handler.object_exists(skill.uuid):
             raise HTTPException(
-                status_code=409, detail=f"Skill with UUID '{skill.uuid}' already exists."
+                status_code=409,
+                detail=f"Skill with UUID '{skill.uuid}' already exists.",
             )
 
         try:
             # Determine correct parent for this skill becoming HEAD
             if skill.name:
-                skill.parent = skill_handler.get_cache_parent_for_head(skill.uuid, skill.name)
-                logger.info(f"Setting parent for skill '{skill.name}' to {skill.parent}")
-            
+                skill.parent = skill_handler.get_cache_parent_for_head(
+                    skill.uuid, skill.name
+                )
+                logger.info(
+                    f"Setting parent for skill '{skill.name}' to {skill.parent}"
+                )
+
             # Save skill dict to UUID subfolder
             skill_handler.write_dict(skill.uuid, skill.to_dict())
-            
+
             # Update cache - this becomes new HEAD
             if skill.name:
                 skill_handler.update_cache(skill.uuid, new_name=skill.name)
@@ -154,7 +163,9 @@ def register_skills_api(
                 skills_descriptions.write_description(skill.uuid, skill.description)
                 logger.info(f"Skill description saved for UUID: {skill.uuid}")
 
-            logger.info(f"Skill '{skill.name}' (UUID: {skill.uuid}) created successfully")
+            logger.info(
+                f"Skill '{skill.name}' (UUID: {skill.uuid}) created successfully"
+            )
             return {
                 "message": f"Skill '{skill.name}' created successfully.",
                 "name": skill.name,
@@ -182,7 +193,7 @@ def register_skills_api(
         try:
             # Get all skills using list_all_dicts
             skills = skill_handler.list_all_dicts()
-            
+
             # Populate full tool and snippet objects for each skill
             for skill_dict in skills:
                 populate_skill_objects(skill_dict)
@@ -249,7 +260,7 @@ def register_skills_api(
         try:
             # Resolve UUID or name to UUID (raises 404 if not found)
             skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
-            
+
             # Read skill to get name and parent before deletion
             skill_name = None
             skill_parent = None
@@ -259,14 +270,19 @@ def register_skills_api(
                 skill_parent = skill_dict.get("parent")
             except Exception as e:
                 logger.warning(f"Could not read skill before deletion: {e}")
-            
+
             # Resolve UUID or name to UUID and delete the skill object folder
             skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
             result = skill_handler.delete_object(skill_uuid)
-            
+
             # Update cache after deletion
             if skill_uuid and skill_name:
-                skill_handler.update_cache(skill_uuid, new_name=None, old_name=skill_name, old_parent=skill_parent)
+                skill_handler.update_cache(
+                    skill_uuid,
+                    new_name=None,
+                    old_name=skill_name,
+                    old_parent=skill_parent,
+                )
 
             # Delete the description for the skill (indexed by UUID)
             if skills_descriptions:
@@ -278,8 +294,12 @@ def register_skills_api(
                         f"Could not delete skill description for UUID '{skill_uuid}': {e}"
                     )
 
-            logger.info(f"Skill with UUID or name '{uuid_or_name}' deleted successfully")
-            return {"message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."}
+            logger.info(
+                f"Skill with UUID or name '{uuid_or_name}' deleted successfully"
+            )
+            return {
+                "message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."
+            }
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
             raise
@@ -314,19 +334,21 @@ def register_skills_api(
             existing_dict = skill_handler.read_dict(skill_uuid)
             old_name = existing_dict.get("name")
             old_parent = existing_dict.get("parent")
-            
+
             # Convert update data to dict
             update_data = skill.to_dict()
-            
+
             # Determine new name
             new_name = skill.name if skill.name else old_name
-            
+
             # Determine correct parent for this skill becoming HEAD
             if new_name:
-                new_parent = skill_handler.get_cache_parent_for_head(skill_uuid, new_name)
+                new_parent = skill_handler.get_cache_parent_for_head(
+                    skill_uuid, new_name
+                )
                 update_data["parent"] = new_parent
                 logger.info(f"Setting parent for skill '{new_name}' to {new_parent}")
-            
+
             # Merge: preserve uuid and created_at from existing, update modified_at
             merged_dict = {**existing_dict, **update_data}
             merged_dict["uuid"] = existing_dict.get("uuid", skill_uuid)
@@ -335,18 +357,29 @@ def register_skills_api(
 
             # Write the merged dict using ObjectHandler
             skill_handler.write_dict(skill_uuid, merged_dict)
-            
+
             # Update cache - this becomes HEAD for its (possibly new) name
             if new_name:
-                skill_handler.update_cache(skill_uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
-            
+                skill_handler.update_cache(
+                    skill_uuid,
+                    new_name=new_name,
+                    old_name=old_name,
+                    old_parent=old_parent,
+                )
+
             # Update description for search capability (indexed by UUID)
             if skills_descriptions and merged_dict.get("description"):
-                skills_descriptions.write_description(skill_uuid, merged_dict["description"])
+                skills_descriptions.write_description(
+                    skill_uuid, merged_dict["description"]
+                )
                 logger.info(f"Skill description updated for UUID: {skill_uuid}")
-            
-            logger.info(f"Skill with UUID or name '{uuid_or_name}' (UUID: {skill_uuid}) updated successfully")
-            return {"message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."}
+
+            logger.info(
+                f"Skill with UUID or name '{uuid_or_name}' (UUID: {skill_uuid}) updated successfully"
+            )
+            return {
+                "message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."
+            }
         except HTTPException:
             raise
         except Exception as e:
@@ -403,15 +436,21 @@ def register_skills_api(
             for matched_entity in filtered_matched_entities:
                 skill_uuid = matched_entity.get("filename")
                 if not skill_uuid:
-                    logger.warning(f"Matched entity missing 'filename' field: {matched_entity}")
+                    logger.warning(
+                        f"Matched entity missing 'filename' field: {matched_entity}"
+                    )
                     continue
                 try:
                     # Read skill manifest by UUID
                     skill_dict = skill_handler.read_dict(skill_uuid)
-                    skill_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                    skill_dict["similarity_score"] = matched_entity.get(
+                        "similarity_score", 0.0
+                    )
                     skills_to_filter.append(skill_dict)
                 except Exception as e:
-                    logger.warning(f"Could not load skill with UUID {skill_uuid} for filtering: {e}")
+                    logger.warning(
+                        f"Could not load skill with UUID {skill_uuid} for filtering: {e}"
+                    )
 
             # Apply manifest and lifecycle filters
             filtered_skills = apply_search_filters(
@@ -546,8 +585,12 @@ def register_skills_api(
                             tool_tags.append(tag)
 
                     # Determine correct parent for this tool becoming HEAD
-                    tool_parent = tools_handler.get_cache_parent_for_head(tool_uuid, tool_name)
-                    logger.info(f"Setting parent for tool '{tool_name}' to {tool_parent}")
+                    tool_parent = tools_handler.get_cache_parent_for_head(
+                        tool_uuid, tool_name
+                    )
+                    logger.info(
+                        f"Setting parent for tool '{tool_name}' to {tool_parent}"
+                    )
 
                     tool_data = {
                         "uuid": tool_uuid,
@@ -577,28 +620,37 @@ def register_skills_api(
                         try:
                             # Detect dependencies from code
                             detected_dep_names = detect_tool_dependencies(
-                                tool_dict["moduleContent"],
-                                tool_name,
-                                available_tools
+                                tool_dict["moduleContent"], tool_name, available_tools
                             )
                             if detected_dep_names:
-                                detected_deps = [all_tool_names.get(m) if m in all_tool_names else tools_handler.name_to_uuid(m) for m in detected_dep_names]
+                                detected_deps = [
+                                    (
+                                        all_tool_names.get(m)
+                                        if m in all_tool_names
+                                        else tools_handler.name_to_uuid(m)
+                                    )
+                                    for m in detected_dep_names
+                                ]
                                 tool_data["dependencies"] = detected_deps
                                 logger.info(
                                     f"Auto-detected dependencies for '{tool_name}': {detected_deps}"
                                 )
                         except Exception as e:
-                            logger.warning(f"Failed to auto-detect dependencies for {tool_name}: {e}")
-                    
+                            logger.warning(
+                                f"Failed to auto-detect dependencies for {tool_name}: {e}"
+                            )
+
                     # Save tool dict to UUID subfolder
                     tools_handler.write_dict(tool_uuid, tool_data)
-                    
+
                     # Update cache after create
                     tools_handler.update_cache(tool_uuid, new_name=tool_name)
 
                     # Save tool module to UUID subfolder
-                    tools_handler.write_file(tool_uuid, module_filename, tool_dict['moduleContent'])
-                    
+                    tools_handler.write_file(
+                        tool_uuid, module_filename, tool_dict["moduleContent"]
+                    )
+
                     logger.info(f"Created tool: {tool_name}")
                 except Exception as e:
                     logger.error(f"Failed to create tool {tool.name}: {e}")
@@ -620,8 +672,12 @@ def register_skills_api(
                             snippet_tags.append(tag)
 
                     # Determine correct parent for this snippet becoming HEAD
-                    snippet_parent = snippets_handler.get_cache_parent_for_head(snippet_uuid, snippet_name)
-                    logger.info(f"Setting parent for snippet '{snippet_name}' to {snippet_parent}")
+                    snippet_parent = snippets_handler.get_cache_parent_for_head(
+                        snippet_uuid, snippet_name
+                    )
+                    logger.info(
+                        f"Setting parent for snippet '{snippet_name}' to {snippet_parent}"
+                    )
 
                     # Prepare snippet data
                     snippet_data = {
@@ -637,13 +693,13 @@ def register_skills_api(
                         "modified_at": current_time,
                         "parent": snippet_parent,
                     }
-                    
+
                     # Save snippet dict to UUID subfolder
                     snippets_handler.write_dict(snippet_uuid, snippet_data)
-                    
+
                     # Update cache after create
                     snippets_handler.update_cache(snippet_uuid, new_name=snippet_name)
-                    
+
                     created_snippet_uuids.append(snippet_uuid)
                     logger.info(f"Created snippet: {snippet_name}")
                 except Exception as e:
@@ -666,14 +722,16 @@ def register_skills_api(
                 state=ManifestState.APPROVED,
                 parent=None,  # Will be set by create_skill if name exists
             )
-            
+
             # Create new skill
             logger.info(f"Creating new skill '{skill_name}'...")
             result = create_skill(skill_schema)
             skill_uuid = result.get("uuid")
             action = "created"
-            
-            logger.info(f"Successfully imported Anthropic skill: {skill_name} ({action})")
+
+            logger.info(
+                f"Successfully imported Anthropic skill: {skill_name} ({action})"
+            )
 
             return {
                 "success": True,
@@ -700,7 +758,7 @@ def register_skills_api(
 
         Args:
             uuid_or_name: The UUID or name of the skill to export
-            
+
         Returns:
             ZIP file with the skill in Anthropic format
 
@@ -708,35 +766,39 @@ def register_skills_api(
             HTTPException: If skill not found or export fails
         """
         logger.info(f"Request to export skill to Anthropic format: {uuid_or_name}")
-        
+
         try:
             # Resolve UUID or name to UUID and read manifest
             skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
             skill_dict = skill_handler.read_dict(skill_uuid)
-            
+
             # Get tools using read_manifests
             tools = []
             tool_modules = {}
-            if 'tool_uuids' in skill_dict and skill_dict['tool_uuids']:
-                tools = tools_handler.read_dicts(skill_dict['tool_uuids'])
+            if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
+                tools = tools_handler.read_dicts(skill_dict["tool_uuids"])
                 # Get tool modules
                 for tool_dict in tools:
-                    tool_uuid = tool_dict.get('uuid')
-                    tool_name = tool_dict['name']
-                    module_name = tool_dict.get('module_name')
+                    tool_uuid = tool_dict.get("uuid")
+                    tool_name = tool_dict["name"]
+                    module_name = tool_dict.get("module_name")
                     if tool_uuid and module_name:
                         try:
-                            module_content = tools_handler.read_file(tool_uuid, module_name, raw_content=True)
+                            module_content = tools_handler.read_file(
+                                tool_uuid, module_name, raw_content=True
+                            )
                             if isinstance(module_content, str):
                                 tool_modules[tool_name] = module_content
                         except Exception as e:
-                            logger.warning(f"Could not read module for tool {tool_name}: {e}")
-            
+                            logger.warning(
+                                f"Could not read module for tool {tool_name}: {e}"
+                            )
+
             # Get snippets using read_manifests
             snippets = []
-            if 'snippet_uuids' in skill_dict and skill_dict['snippet_uuids']:
-                snippets = snippets_handler.read_dicts(skill_dict['snippet_uuids'])
-            
+            if "snippet_uuids" in skill_dict and skill_dict["snippet_uuids"]:
+                snippets = snippets_handler.read_dicts(skill_dict["snippet_uuids"])
+
             # Export to Anthropic format
             zip_content = export_skill_to_anthropic_format(
                 skill=skill_dict,
@@ -744,22 +806,26 @@ def register_skills_api(
                 snippets=snippets,
                 tool_modules=tool_modules,
             )
-            
-            logger.info(f"Successfully exported skill '{uuid_or_name}' to Anthropic format")
-            
+
+            logger.info(
+                f"Successfully exported skill '{uuid_or_name}' to Anthropic format"
+            )
+
             # Return as downloadable ZIP file
             return Response(
                 content=zip_content,
-                media_type='application/zip',
+                media_type="application/zip",
                 headers={
-                    'Content-Disposition': f'attachment; filename="{uuid_or_name}.zip"'
-                }
+                    "Content-Disposition": f'attachment; filename="{uuid_or_name}.zip"'
+                },
             )
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error exporting skill '{uuid_or_name}' to Anthropic format: {e}")
+            logger.error(
+                f"Error exporting skill '{uuid_or_name}' to Anthropic format: {e}"
+            )
             raise HTTPException(
                 status_code=500, detail=f"Error exporting skill: {str(e)}"
             )

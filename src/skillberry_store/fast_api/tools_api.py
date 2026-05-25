@@ -17,7 +17,10 @@ from prometheus_client import Counter, Histogram
 import time
 
 from skillberry_store.modules.object_handler import ObjectHandler, get_object_handler
-from skillberry_store.modules.file_executor import FileExecutor, detect_tool_dependencies
+from skillberry_store.modules.file_executor import (
+    FileExecutor,
+    detect_tool_dependencies,
+)
 from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import (
@@ -31,7 +34,12 @@ from skillberry_store.tools.configure import (
     get_tools_directory,
     get_files_directory_path,
 )
-from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys, normalize_uuid, generate_or_validate_uuid
+from skillberry_store.utils.utils import (
+    SKILLBERRY_CONTEXT,
+    unflatten_keys,
+    normalize_uuid,
+    generate_or_validate_uuid,
+)
 from skillberry_store.utils.python_utils import extract_docstring
 from skillberry_store.fast_api.server_utils import (
     get_mcp_tools,
@@ -45,18 +53,16 @@ logger = logging.getLogger(__name__)
 
 
 def find_tool_dependencies(
-    dependencies: List[str],
-    tool_handler: ObjectHandler,
-    tool_uuid: str
+    dependencies: List[str], tool_handler: ObjectHandler, tool_uuid: str
 ) -> Set[str]:
     """
     Recursively locate UUIDs of all dependencies of a given tool.
-    
+
     Args:
         dependencies: List of current dependency tool UUIDs
         tool_handler: ObjectHandler for tools
         tool_uuid: UUID of the tool whose dependencies are found (for logging)
-    
+
     Returns:
         - Set of UUIDs of all dependencies (transitive closure) of the given tool.
     """
@@ -66,7 +72,7 @@ def find_tool_dependencies(
         return dependencies_uuids
 
     logger.info(f"Scanning {len(dependencies)} dependencies for tool '{tool_uuid}'")
-    
+
     for dep_uuid in dependencies:
         # Skip if already visited (avoid circular dependencies)
         if dep_uuid in dependencies_uuids:
@@ -76,7 +82,7 @@ def find_tool_dependencies(
         dependencies_uuids.add(dep_uuid)
 
         dep_dict = tool_handler.read_dict(dep_uuid)
-            
+
         # Recursively load nested dependencies first
         nested_dependencies = dep_dict.get("dependencies", [])
         if nested_dependencies:
@@ -84,7 +90,7 @@ def find_tool_dependencies(
             nested_deps = find_tool_dependencies(
                 dependencies=nested_dependencies,
                 tool_handler=tool_handler,
-                tool_uuid=dep_uuid
+                tool_uuid=dep_uuid,
             )
             dependencies_uuids.update(nested_deps)
 
@@ -190,7 +196,7 @@ def register_tools_api(
             # Determine correct parent for this tool becoming HEAD
             tool.parent = tool_handler.get_cache_parent_for_head(tool.uuid, tool.name)
             logger.info(f"Setting parent for tool '{tool.name}' to {tool.parent}")
-            
+
             # Save the module file to UUID sub-folder
             file_content = await module.read()
             module_filename = module.filename if module.filename else f"{tool.name}.py"
@@ -207,12 +213,18 @@ def register_tools_api(
                     available_tools = tool_handler.get_existing_names()
                     # Detect dependencies from code
                     detected_dep_names = detect_tool_dependencies(
-                        file_content.decode('utf-8') if isinstance(file_content, bytes) else file_content,
+                        (
+                            file_content.decode("utf-8")
+                            if isinstance(file_content, bytes)
+                            else file_content
+                        ),
                         tool.name,
                         available_tools,
                     )
                     if detected_dep_names:
-                        detected_deps = [tool_handler.name_to_uuid(m) for m in detected_dep_names]
+                        detected_deps = [
+                            tool_handler.name_to_uuid(m) for m in detected_dep_names
+                        ]
                         tool.dependencies = detected_deps
                         logger.info(
                             f"Auto-detected dependencies for '{tool.name}': {detected_deps}"
@@ -222,16 +234,20 @@ def register_tools_api(
 
             # Convert tool to JSON and save as tool.json in UUID folder
             tool_handler.write_dict(tool.uuid, tool.to_dict())
-            
+
             # Update cache - this becomes new HEAD
             tool_handler.update_cache(tool.uuid, new_name=tool.name)
 
             # Write description for search capability (indexed by UUID)
             if tools_descriptions and tool.description and tool.uuid:
                 tools_descriptions.write_description(tool.uuid, tool.description)
-                logger.info(f"Tool description saved for: {tool.name} (UUID: {tool.uuid})")
+                logger.info(
+                    f"Tool description saved for: {tool.name} (UUID: {tool.uuid})"
+                )
 
-            logger.info(f"Tool '{tool.name}' created successfully with UUID {tool.uuid}")
+            logger.info(
+                f"Tool '{tool.name}' created successfully with UUID {tool.uuid}"
+            )
             return {
                 "message": f"Tool '{tool.name}' created successfully.",
                 "name": tool.name,
@@ -269,8 +285,7 @@ def register_tools_api(
                     f"created_at={tool.get('created_at')}, "
                     f"modified_at={tool.get('modified_at')}"
                 )
-            
-            
+
             # Sort by modified_at in descending order (most recent first)
             tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
@@ -280,7 +295,8 @@ def register_tools_api(
             error_traceback = traceback.format_exc()
             logger.error(f"Error listing tools: {e}\n{error_traceback}")
             raise HTTPException(
-                status_code=500, detail=f"Error listing tools: {str(e)}\n{error_traceback}"
+                status_code=500,
+                detail=f"Error listing tools: {str(e)}\n{error_traceback}",
             )
 
     @app.get("/tools/{uuid_or_name}", tags=[tags])
@@ -308,12 +324,16 @@ def register_tools_api(
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving tool with UUID or name '{uuid_or_name}': {e}")
+            logger.error(
+                f"Error retrieving tool with UUID or name '{uuid_or_name}': {e}"
+            )
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving tool: {str(e)}"
             )
 
-    @app.get("/tools/{uuid_or_name}/module", tags=[tags], response_class=PlainTextResponse)
+    @app.get(
+        "/tools/{uuid_or_name}/module", tags=[tags], response_class=PlainTextResponse
+    )
     async def get_tool_module(uuid_or_name: str) -> PlainTextResponse:
         """Get the module file content for a specific tool.
 
@@ -337,10 +357,11 @@ def register_tools_api(
             # Resolve UUID or name to UUID and read manifest
             tool_uuid = tool_handler.resolve_to_uuid_or_error(uuid_or_name)
             tool_dict = tool_handler.read_dict(tool_uuid)
-            
+
             if not tool_uuid:
                 raise HTTPException(
-                    status_code=500, detail=f"Tool with UUID or name '{uuid_or_name}' has no UUID in manifest"
+                    status_code=500,
+                    detail=f"Tool with UUID or name '{uuid_or_name}' has no UUID in manifest",
                 )
 
             # Handle MCP packaging format
@@ -349,7 +370,8 @@ def register_tools_api(
                 tools = await get_mcp_tools(tool_dict)
                 if not tools:
                     raise HTTPException(
-                        status_code=404, detail=f"MCP tool with UUID or name '{uuid_or_name}' not found."
+                        status_code=404,
+                        detail=f"MCP tool with UUID or name '{uuid_or_name}' not found.",
                     )
                 tool_mcp_dict = vars(tools[0])
                 module_content = mcp_content(tool_mcp_dict)
@@ -368,13 +390,17 @@ def register_tools_api(
 
             # Return the module file content from UUID sub-folder
             logger.info(f"Retrieving module file: {module_name}")
-            module_content = tool_handler.read_file(tool_uuid, module_name, raw_content=True)
+            module_content = tool_handler.read_file(
+                tool_uuid, module_name, raw_content=True
+            )
             return PlainTextResponse(content=module_content, media_type="text/plain")
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving module file for tool with UUID or name '{uuid_or_name}': {e}")
+            logger.error(
+                f"Error retrieving module file for tool with UUID or name '{uuid_or_name}': {e}"
+            )
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving module file: {str(e)}"
             )
@@ -399,7 +425,7 @@ def register_tools_api(
         try:
             # Resolve UUID or name to UUID (raises 404 if not found)
             tool_uuid = tool_handler.resolve_to_uuid_or_error(uuid_or_name)
-            
+
             # Read tool to get name and parent before deletion
             tool_name = None
             tool_parent = None
@@ -412,23 +438,29 @@ def register_tools_api(
 
             # Delete the tool using ObjectHandler (deletes entire UUID subfolder)
             result = tool_handler.delete_object(tool_uuid)
-            
+
             # Update cache after deletion
             if tool_uuid and tool_name:
-                tool_handler.update_cache(tool_uuid, new_name=None, old_name=tool_name, old_parent=tool_parent)
+                tool_handler.update_cache(
+                    tool_uuid, new_name=None, old_name=tool_name, old_parent=tool_parent
+                )
 
             # Delete the description for the tool (indexed by UUID)
             if tools_descriptions and tool_uuid:
                 try:
                     tools_descriptions.delete_description(tool_uuid)
-                    logger.info(f"Tool description deleted for: {tool_name} (UUID: {tool_uuid})")
+                    logger.info(
+                        f"Tool description deleted for: {tool_name} (UUID: {tool_uuid})"
+                    )
                 except Exception as e:
                     logger.warning(
                         f"Could not delete tool description for UUID '{tool_uuid}': {e}"
                     )
 
             logger.info(f"Tool with UUID or name '{uuid_or_name}' deleted successfully")
-            return {"message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."}
+            return {
+                "message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."
+            }
         except HTTPException as e:
             # Re-raise HTTPException (like 404) without modification
             raise
@@ -463,19 +495,19 @@ def register_tools_api(
             existing_dict = tool_handler.read_dict(tool_uuid)
             old_name = existing_dict.get("name")
             old_parent = existing_dict.get("parent")
-            
+
             # Convert update data to dict
             update_data = tool.to_dict()
-            
+
             # Determine new name
             new_name = tool.name if tool.name else old_name
-            
+
             # Determine correct parent for this tool becoming HEAD
             if new_name:
                 new_parent = tool_handler.get_cache_parent_for_head(tool_uuid, new_name)
                 update_data["parent"] = new_parent
                 logger.info(f"Setting parent for tool '{new_name}' to {new_parent}")
-            
+
             # Merge: preserve uuid and created_at from existing, update modified_at
             merged_dict = {**existing_dict, **update_data}
             merged_dict["uuid"] = existing_dict.get("uuid", tool_uuid)
@@ -484,11 +516,16 @@ def register_tools_api(
 
             # Write the merged dict using ObjectHandler
             tool_handler.write_dict(tool_uuid, merged_dict)
-            
+
             # Update cache - this becomes HEAD for its (possibly new) name
             if new_name:
-                tool_handler.update_cache(tool_uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
-            
+                tool_handler.update_cache(
+                    tool_uuid,
+                    new_name=new_name,
+                    old_name=old_name,
+                    old_parent=old_parent,
+                )
+
             # Update description for search capability if description changed (indexed by UUID)
             if tools_descriptions and tool.description:
                 old_description = existing_dict.get("description")
@@ -498,13 +535,19 @@ def register_tools_api(
                         tools_descriptions.delete_description(tool_uuid)
                     except Exception as e:
                         logger.warning(f"Failed to delete old description: {e}")
-                    
+
                     # Write new description
                     tools_descriptions.write_description(tool_uuid, tool.description)
-                    logger.info(f"Tool description updated for: {tool.name} (UUID: {tool_uuid})")
-            
-            logger.info(f"Tool with UUID or name '{uuid_or_name}' (UUID: {tool_uuid}) updated successfully")
-            return {"message": f"Tool with UUID or name '{uuid_or_name}' updated successfully."}
+                    logger.info(
+                        f"Tool description updated for: {tool.name} (UUID: {tool_uuid})"
+                    )
+
+            logger.info(
+                f"Tool with UUID or name '{uuid_or_name}' (UUID: {tool_uuid}) updated successfully"
+            )
+            return {
+                "message": f"Tool with UUID or name '{uuid_or_name}' updated successfully."
+            }
         except HTTPException:
             raise
         except Exception as e:
@@ -533,20 +576,23 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or execution fails (500).
         """
-        logger.info(f"[execute_tool] Received execute tool: {id} with parameters: {parameters}")
-        
-        
+        logger.info(
+            f"[execute_tool] Received execute tool: {id} with parameters: {parameters}"
+        )
+
         try:
             logger.info(f"[execute_tool] Reading tool manifest for: {uuid_or_name}")
             # Resolve UUID or name to UUID and read dict
             tool_uuid = tool_handler.resolve_to_uuid_or_error(uuid_or_name)
             tool_dict = tool_handler.read_dict(tool_uuid)
             tool_name = tool_dict.get("name", uuid_or_name)
-            
+
             execute_tool_counter.labels(name=tool_uuid).inc()
             start_time = time.time()
 
-            logger.info(f"[execute_tool] START - Request to execute tool: {tool_uuid} with parameters: {parameters}")
+            logger.info(
+                f"[execute_tool] START - Request to execute tool: {tool_uuid} with parameters: {parameters}"
+            )
             execute_tool_counter.labels(name=tool_uuid).inc()
             start_time = time.time()
 
@@ -585,20 +631,30 @@ def register_tools_api(
 
                 # Get the module file content from object folder
                 if not tool_uuid:
-                    raise HTTPException(status_code=500, detail="Tool UUID not found in dict")
-                module_content = tool_handler.read_file(tool_uuid, module_name, raw_content=True)
+                    raise HTTPException(
+                        status_code=500, detail="Tool UUID not found in dict"
+                    )
+                module_content = tool_handler.read_file(
+                    tool_uuid, module_name, raw_content=True
+                )
                 if not isinstance(module_content, str):
-                    raise HTTPException(status_code=500, detail=f"Invalid module content type for tool with UUID or name '{uuid_or_name}'")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Invalid module content type for tool with UUID or name '{uuid_or_name}'",
+                    )
 
             # Find tool dependencies if they exist
             tool_dependencies_uuids = find_tool_dependencies(
                 dependencies=tool_dict.get("dependencies", []),
                 tool_handler=tool_handler,
-                tool_uuid=tool_uuid
+                tool_uuid=tool_uuid,
             )
 
             dep_dicts = tool_handler.read_dicts(list(tool_dependencies_uuids))
-            dep_files = [tool_handler.read_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_dicts]
+            dep_files = [
+                tool_handler.read_file(m["uuid"], m["module_name"], raw_content=True)
+                for m in dep_dicts
+            ]
 
             # Execute the tool using FileExecutor
             file_executor = FileExecutor(
@@ -614,16 +670,22 @@ def register_tools_api(
             result = await file_executor.execute_file(
                 parameters=exec_parameters, env_id=env_id
             )
-            
+
             # Record successful execution metrics only if no error
             if not (isinstance(result, dict) and "error" in result):
                 duration = time.time() - start_time
                 execute_successfully_tool_counter.labels(name=tool_uuid).inc()
-                execute_successfully_tool_latency.labels(name=tool_uuid).observe(duration)
-                logger.info(f"Tool '{tool_name}' (UUID: {tool_uuid}) executed successfully with result: {result}")
+                execute_successfully_tool_latency.labels(name=tool_uuid).observe(
+                    duration
+                )
+                logger.info(
+                    f"Tool '{tool_name}' (UUID: {tool_uuid}) executed successfully with result: {result}"
+                )
             else:
-                error_message = result.get('error', 'Unknown Error')
-                logger.error(f"Tool '{tool_name}' (UUID: {tool_uuid}) execution failed with error: {error_message}")
+                error_message = result.get("error", "Unknown Error")
+                logger.error(
+                    f"Tool '{tool_name}' (UUID: {tool_uuid}) execution failed with error: {error_message}"
+                )
 
                 # Determine appropriate HTTP status code based on error message
                 # Tool not found on MCP server -> 404
@@ -640,7 +702,9 @@ def register_tools_api(
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error executing tool with UUID or name '{uuid_or_name}': {e}")
+            logger.error(
+                f"Error executing tool with UUID or name '{uuid_or_name}': {e}"
+            )
             raise HTTPException(
                 status_code=500, detail=f"Error executing tool: {str(e)}"
             )
@@ -700,7 +764,9 @@ def register_tools_api(
                     # Resolve name to UUID and read manifest
                     tool_uuid = tool_handler.resolve_to_uuid_or_error(tool_name)
                     tool_dict = tool_handler.read_dict(tool_uuid)
-                    tool_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                    tool_dict["similarity_score"] = matched_entity.get(
+                        "similarity_score", 0.0
+                    )
                     tools_to_filter.append(tool_dict)
                 except Exception as e:
                     logger.warning(
@@ -810,36 +876,44 @@ def register_tools_api(
 
             # Check if tool with this name already exists
             existing_tool = tool_handler.lookup_by_name(func_name)
-            
+
             # Auto-detect dependencies if enabled
             dependencies = None
             if is_auto_detect_dependencies_enabled():
                 try:
                     available_tools = tool_handler.get_existing_names()
                     detected_deps = detect_tool_dependencies(
-                        tool_bytes.decode('utf-8') if isinstance(tool_bytes, bytes) else tool_bytes,
+                        (
+                            tool_bytes.decode("utf-8")
+                            if isinstance(tool_bytes, bytes)
+                            else tool_bytes
+                        ),
                         func_name,
-                        available_tools
+                        available_tools,
                     )
                     if detected_deps:
                         dependencies = detected_deps
-                        logger.info(f"Auto-detected dependencies for '{func_name}': {detected_deps}")
+                        logger.info(
+                            f"Auto-detected dependencies for '{func_name}': {detected_deps}"
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
-            
+
             if update and existing_tool:
 
                 logger.info(f"Updating existing tool: {func_name}")
-                
+
                 # Use existing UUID for update
                 tool_uuid = existing_tool.get("uuid")
                 tool_uuid = generate_or_validate_uuid(tool_uuid)
-                
+
                 # Update the module file in UUID sub-folder (update_tool doesn't handle files)
                 module_filename = tool.filename if tool.filename else f"{func_name}.py"
                 tool_handler.write_file(tool_uuid, module_filename, tool_bytes)
-                logger.info(f"Updated module file in UUID sub-folder: {module_filename}")
-                
+                logger.info(
+                    f"Updated module file in UUID sub-folder: {module_filename}"
+                )
+
                 # Create the tool schema for update (parent will be set by update_tool)
                 tool_schema = ToolSchema(
                     name=func_name,
@@ -860,11 +934,11 @@ def register_tools_api(
                     returns=returns_schema,
                     dependencies=dependencies,
                 )
-                
+
                 # Delegate to update_tool to handle manifest merge and description update
                 update_result = update_tool(tool_uuid, tool_schema)
                 logger.info(f"Tool '{func_name}' updated successfully")
-                
+
                 return {
                     "message": f"Tool '{func_name}' created successfully.",
                     "name": func_name,
@@ -905,7 +979,9 @@ def register_tools_api(
                     module=UploadFile(filename=tool.filename, file=BytesIO(tool_bytes)),
                 )
 
-                logger.info(f"Tool '{func_name}' added successfully with UUID {tool_uuid}")
+                logger.info(
+                    f"Tool '{func_name}' added successfully with UUID {tool_uuid}"
+                )
                 return {
                     **create_response,
                     "parameters": params_properties,

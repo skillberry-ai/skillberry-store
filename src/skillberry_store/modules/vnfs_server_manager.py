@@ -75,14 +75,16 @@ class VirtualNfsServerManager:
             uuid: The UUID of the VNFS object.
         """
         runtime_server_name = make_name_with_uuid(name, uuid)
-        
+
         with self._lock:
             if runtime_server_name in self.servers:
                 logger.info(f"Removing vnfs_server: {runtime_server_name}")
                 try:
                     self.servers[runtime_server_name].stop()
                 except Exception as exc:
-                    logger.warning(f"Failed to stop vnfs_server '{runtime_server_name}': {exc}")
+                    logger.warning(
+                        f"Failed to stop vnfs_server '{runtime_server_name}': {exc}"
+                    )
                 del self.servers[runtime_server_name]
             else:
                 logger.debug(f"vnfs_server '{runtime_server_name}' not found")
@@ -99,7 +101,7 @@ class VirtualNfsServerManager:
         """
         runtime_server_name = make_name_with_uuid(name, uuid)
         logger.debug(f"Getting vnfs_server with composite name: {runtime_server_name}")
-        
+
         with self._lock:
             return self.servers.get(runtime_server_name)
 
@@ -122,7 +124,7 @@ class VirtualNfsServerManager:
         """
         runtime_server_name = make_name_with_uuid(name, uuid)
         logger.debug(f"Getting details of vnfs_server: {runtime_server_name}")
-        
+
         with self._lock:
             server = self.get_server(name, uuid)
             if server is None:
@@ -145,13 +147,13 @@ class VirtualNfsServerManager:
         try:
             # Get all VNFS server resources
             vnfs_resources = self.vnfs_handler.list_all_dicts()
-            
+
             for data in vnfs_resources:
                 name = data.get("name")
                 uuid = data.get("uuid")
                 if not name or not uuid:
                     continue
-                
+
                 try:
                     skill_uuid = data.get("skill_uuid")
                     skill, tools, snippets, tool_modules = self._resolve_skill(
@@ -170,7 +172,9 @@ class VirtualNfsServerManager:
                     )
                     server.start(skill, tools, snippets, tool_modules)
                     self.servers[runtime_server_name] = server
-                    logger.info(f"Loaded vnfs_server '{runtime_server_name}' on port {server.port}")
+                    logger.info(
+                        f"Loaded vnfs_server '{runtime_server_name}' on port {server.port}"
+                    )
                 except Exception as exc:
                     logger.error(f"Failed to load vnfs_server '{name}': {exc}")
 
@@ -198,7 +202,7 @@ class VirtualNfsServerManager:
 
     def _resolve_skill(self, skill_uuid: Optional[str]):
         """Return (skill_dict, tools_list, snippets_list, tool_modules) for a skill UUID.
-        
+
         Uses ObjectHandler for UUID-based object access, consistent with VMCP implementation.
         """
         if not skill_uuid:
@@ -212,26 +216,30 @@ class VirtualNfsServerManager:
 
             # Read skill dict by UUID
             skill_dict = skills_handler.read_dict(skill_uuid)
-            
+
             # Get tool and snippet UUIDs from skill
             tool_uuids = skill_dict.get("tool_uuids", [])
             snippet_uuids = skill_dict.get("snippet_uuids", [])
-            
+
             # Get tools and snippets by UUID
             tools = tools_handler.read_dicts(tool_uuids) if tool_uuids else []
-            snippets = snippets_handler.read_dicts(snippet_uuids) if snippet_uuids else []
-            
+            snippets = (
+                snippets_handler.read_dicts(snippet_uuids) if snippet_uuids else []
+            )
+
             # Read tool modules from tool's UUID subdirectory
             tool_modules = {}
             for tool in tools:
                 tool_uuid = tool.get("uuid")
                 module_name = tool.get("module_name")
                 tool_name = tool.get("name")
-                
+
                 if not tool_uuid or not module_name or not tool_name:
-                    logger.warning(f"Tool missing required fields: uuid={tool_uuid}, module_name={module_name}, name={tool_name}")
+                    logger.warning(
+                        f"Tool missing required fields: uuid={tool_uuid}, module_name={module_name}, name={tool_name}"
+                    )
                     continue
-                
+
                 try:
                     content = tools_handler.read_file(
                         tool_uuid, module_name, raw_content=True
@@ -239,13 +247,19 @@ class VirtualNfsServerManager:
                     if isinstance(content, str):
                         tool_modules[tool_name] = content
                     else:
-                        logger.warning(f"Could not read module for tool '{tool_name}': content is not a string")
+                        logger.warning(
+                            f"Could not read module for tool '{tool_name}': content is not a string"
+                        )
                 except Exception as exc:
-                    logger.warning(f"Could not read module for tool '{tool_name}': {exc}")
+                    logger.warning(
+                        f"Could not read module for tool '{tool_name}': {exc}"
+                    )
 
-            logger.info(f"Resolved skill '{skill_dict.get('name')}' with {len(tools)} tools and {len(snippets)} snippets")
+            logger.info(
+                f"Resolved skill '{skill_dict.get('name')}' with {len(tools)} tools and {len(snippets)} snippets"
+            )
             return skill_dict, tools, snippets, tool_modules
-            
+
         except Exception as exc:
             logger.error(f"Error resolving skill_uuid '{skill_uuid}': {exc}")
             return {}, [], [], {}

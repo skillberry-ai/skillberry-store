@@ -80,6 +80,7 @@ class SBS(FastAPI):
 
         # Initialize object handlers (singleton pattern)
         from skillberry_store.modules.object_handler import initialize_object_handlers
+
         initialize_object_handlers()
         logger.info("Object handlers initialized")
 
