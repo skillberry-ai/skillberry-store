@@ -247,8 +247,8 @@ def import_anthropic_skill(
     """Import Anthropic skill from various sources.
 
     Args:
-        source_type: 'url', 'zip', or 'folder'
-        source_data: URL string, ZIP bytes, or list of file dicts
+        source_type: 'url', 'zip', 'folder', or 'files' (internal use only)
+        source_data: URL string, ZIP bytes, folder path string, or list of file dicts
         snippet_mode: 'file' or 'paragraph'
         treat_all_as_documents: If True, treat all files (including code) as document snippets
 
@@ -294,6 +294,20 @@ def import_anthropic_skill(
         # Extract skill name from folder name
         folder_name = os.path.basename(os.path.normpath(source_data))
         skill_name = extract_skill_name("", folder_name)
+    elif source_type == "files":
+        # Internal use only - for batch import
+        if not isinstance(source_data, list):
+            raise ValueError("source_data must be a list of file dicts for 'files' source_type")
+        files = source_data
+        # Extract skill name from first file's path or use default
+        if files:
+            first_path = files[0]["path"]
+            folder_name = (
+                first_path.split("/")[0] if "/" in first_path else "anthropic_skill"
+            )
+            skill_name = extract_skill_name("", folder_name)
+        else:
+            skill_name = "anthropic_skill"
     else:
         raise ValueError(f"Invalid source_type: {source_type}")
 

@@ -52,9 +52,11 @@ export function AnthropicSkillImporter({
   const [folderPath, setFolderPath] = useState('');
   const [snippetMode, setSnippetMode] = useState<'file' | 'paragraph'>('file');
   const [treatAllAsDocuments, setTreatAllAsDocuments] = useState(false);
+  const [batchMode, setBatchMode] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [batchResults, setBatchResults] = useState<any[] | null>(null);
   
   // Namespace selection state
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
@@ -96,6 +98,7 @@ export function AnthropicSkillImporter({
     setFolderPath('');
     setProgress(0);
     setResult(null);
+    setBatchResults(null);
     setSelectedNamespaces([]);
     setNamespaceInput('');
   };
@@ -131,6 +134,7 @@ export function AnthropicSkillImporter({
   const handleImport = async () => {
     setIsImporting(true);
     setResult(null);
+    setBatchResults(null);
     setProgress(10);
 
     try {
@@ -139,6 +143,7 @@ export function AnthropicSkillImporter({
       formData.append('source_type', importSource);
       formData.append('snippet_mode', snippetMode);
       formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
+      formData.append('batch_mode', batchMode.toString());
       
       // Add namespaces as additional tags with namespace: prefix
       // If no namespaces are selected, use "default" namespace
@@ -182,14 +187,27 @@ export function AnthropicSkillImporter({
       const data = await response.json();
       setProgress(100);
 
-      setResult({
-        success: true,
-        message: data.message || 'Import successful',
-        skill_name: data.skill_name,
-        tools_created: data.tools_created,
-        snippets_created: data.snippets_created,
-        ignored_files: data.ignored_files || [],
-      });
+      // Handle batch mode response
+      if (batchMode && data.batch_mode) {
+        setBatchResults(data.results || []);
+        setResult({
+          success: true,
+          message: data.message || `Successfully imported ${data.total_skills} skill(s)`,
+          skill_name: `${data.total_skills} skills`,
+          tools_created: data.total_tools,
+          snippets_created: data.total_snippets,
+        });
+      } else {
+        // Single skill import
+        setResult({
+          success: true,
+          message: data.message || 'Import successful',
+          skill_name: data.skill_name,
+          tools_created: data.tools_created,
+          snippets_created: data.snippets_created,
+          ignored_files: data.ignored_files || [],
+        });
+      }
 
       onImportComplete();
     } catch (error) {
@@ -295,6 +313,31 @@ export function AnthropicSkillImporter({
           </div>
           <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
             When enabled, code files (e.g., .py, .sh) will be imported as document snippets instead of being parsed as tools. This preserves the original file structure without code analysis.
+          </div>
+        </FormGroup>
+
+        <FormGroup label="Batch Import Mode">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <input
+              type="checkbox"
+              id="batch-mode"
+              checked={batchMode}
+              onChange={(e) => setBatchMode(e.target.checked)}
+              disabled={isImporting}
+              style={{ cursor: isImporting ? 'not-allowed' : 'pointer' }}
+            />
+            <label 
+              htmlFor="batch-mode" 
+              style={{ 
+                cursor: isImporting ? 'not-allowed' : 'pointer',
+                userSelect: 'none'
+              }}
+            >
+              Import multiple skills from subdirectories
+            </label>
+          </div>
+          <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
+            When enabled, the importer will scan for subdirectories containing SKILL.md files and import each as a separate skill. For GitHub URLs, provide a parent repository URL (e.g., https://github.com/anthropics/skills/tree/main/skills). For local folders, provide the parent directory path containing skill subdirectories.
           </div>
         </FormGroup>
 
@@ -473,7 +516,8 @@ export function AnthropicSkillImporter({
             <p>{result.message}</p>
             {result.success && result.tools_created !== undefined && (
               <List>
-                <ListItem>Skill: {result.skill_name}</ListItem>
+                {!batchMode && <ListItem>Skill: {result.skill_name}</ListItem>}
+                {batchMode && <ListItem>Skills imported: {result.skill_name}</ListItem>}
                 <ListItem>Tools created: {result.tools_created}</ListItem>
                 <ListItem>Snippets created: {result.snippets_created}</ListItem>
                 {result.ignored_files && result.ignored_files.length > 0 && (
@@ -483,6 +527,28 @@ export function AnthropicSkillImporter({
                   </ListItem>
                 )}
               </List>
+            )}
+            {batchMode && batchResults && batchResults.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <p style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                  Detailed Results:
+                </p>
+                <List>
+                  {batchResults.map((batchResult, index) => (
+                    <ListItem key={index}>
+                      {batchResult.success ? (
+                        <span style={{ color: '#3e8635' }}>
+                          ✓ {batchResult.skill_name}: {batchResult.tools_created} tools, {batchResult.snippets_created} snippets
+                        </span>
+                      ) : (
+                        <span style={{ color: '#c9190b' }}>
+                          ✗ {batchResult.skill_name}: {batchResult.error}
+                        </span>
+                      )}
+                    </ListItem>
+                  ))}
+                </List>
+              </div>
             )}
           </Alert>
         )}
