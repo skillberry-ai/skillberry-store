@@ -394,6 +394,12 @@ export function SkillsPage() {
           skill.name.toLowerCase().includes(lowerSearch) ||
           skill.description?.toLowerCase().includes(lowerSearch)
         );
+      } else if (searchMode === 'uuid') {
+        // UUID search: filter by matching UUID (partial match)
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((skill) =>
+          skill.uuid?.toLowerCase().includes(lowerSearch)
+        );
       }
     }
 

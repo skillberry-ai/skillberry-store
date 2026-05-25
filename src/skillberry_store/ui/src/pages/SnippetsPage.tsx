@@ -261,6 +261,12 @@ export function SnippetsPage() {
           snippet.name.toLowerCase().includes(lowerSearch) ||
           snippet.description?.toLowerCase().includes(lowerSearch)
         );
+      } else if (searchMode === 'uuid') {
+        // UUID search: filter by matching UUID (partial match)
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((snippet) =>
+          snippet.uuid?.toLowerCase().includes(lowerSearch)
+        );
       }
     }
 

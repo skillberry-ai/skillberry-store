@@ -221,6 +221,12 @@ export function VNFSServersPage() {
         filtered = filtered.filter(s =>
           s.name.toLowerCase().includes(lower) || s.description?.toLowerCase().includes(lower)
         );
+      } else if (searchMode === 'uuid') {
+        // UUID search: filter by matching UUID (partial match)
+        const lower = searchTerm.toLowerCase();
+        filtered = filtered.filter(s =>
+          s.uuid?.toLowerCase().includes(lower)
+        );
       }
     }
     if (filtered && selectedTags.length > 0) {

@@ -229,6 +229,12 @@ export function ToolsPage() {
           tool.name.toLowerCase().includes(lowerSearch) ||
           tool.description?.toLowerCase().includes(lowerSearch)
         );
+      } else if (searchMode === 'uuid') {
+        // UUID search: filter by matching UUID (partial match)
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((tool) =>
+          tool.uuid?.toLowerCase().includes(lowerSearch)
+        );
       }
     }
 

@@ -291,6 +291,12 @@ export function VMCPServersPage() {
           server.name.toLowerCase().includes(lowerSearch) ||
           server.description?.toLowerCase().includes(lowerSearch)
         );
+      } else if (searchMode === 'uuid') {
+        // UUID search: filter by matching UUID (partial match)
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((server) =>
+          server.uuid?.toLowerCase().includes(lowerSearch)
+        );
       }
     }
 
