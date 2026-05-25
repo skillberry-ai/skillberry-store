@@ -12,15 +12,32 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  /* Override PatternFly's default text colors for better contrast */
+  --pf-v5-global--Color--100: #151515;
+  --pf-v5-global--Color--200: #3c3f42;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  color: var(--pf-v5-global--Color--100);
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* Force all text elements to use dark color for better contrast */
+p, span, div, li, td, th, label, .pf-v5-c-content {
+  color: var(--pf-v5-global--Color--100);
+}
+
+/* Ensure PatternFly Text component uses dark color */
+.pf-v5-c-content p,
+.pf-v5-c-content span,
+.pf-v5-c-content div {
+  color: var(--pf-v5-global--Color--100);
 }
 
 /* Custom scrollbar styles */
@@ -57,7 +74,7 @@ code {
 
 /* Utility classes */
 .text-muted {
-  color: var(--pf-v5-global--Color--200);
+  color: var(--pf-v5-global--Color--100);
 }
 
 .text-small {
@@ -82,11 +99,23 @@ code {
 .empty-state {
   text-align: center;
   padding: 3rem 1rem;
-  color: var(--pf-v5-global--Color--200);
+  color: var(--pf-v5-global--Color--100);
 }
 
 /* Card hover effect */
 .pf-v5-c-card:hover {
   box-shadow: var(--pf-v5-global--BoxShadow--md);
   transition: box-shadow 0.2s ease-in-out;
+}
+
+/* Fix text contrast in light page sections */
+.pf-v5-c-page__main-section.pf-m-light .pf-v5-c-content,
+.pf-v5-c-page__main-section.pf-m-light p,
+.pf-v5-c-page__main-section.pf-m-light .pf-v5-c-content p {
+  color: var(--pf-v5-global--Color--100);
+}
+
+/* Ensure titles remain dark in light sections */
+.pf-v5-c-page__main-section.pf-m-light .pf-v5-c-title {
+  color: var(--pf-v5-global--Color--100);
 }

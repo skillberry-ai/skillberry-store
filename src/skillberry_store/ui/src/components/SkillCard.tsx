@@ -73,7 +73,7 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
 
         {/* Description — 3-line clamp */}
         <p style={{
-          color: '#444',
+          color: '#151515',
           margin: '0 0 10px',
           lineHeight: '1.5',
           fontSize: '13px',
@@ -92,7 +92,7 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
             ? visibleTags.map(tag => (
                 <Label key={tag} color={getTagColor(tag)} isCompact>{tag}</Label>
               ))
-            : <span style={{ fontSize: '12px', color: '#aaa' }}>no tags</span>
+            : <span style={{ fontSize: '12px', color: '#6a6e73' }}>no tags</span>
           }
         </div>
       </div>
@@ -104,7 +104,7 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
         padding: '8px 14px',
         display: 'flex',
         gap: '12px',
-        color: '#555',
+        color: '#3c3f42',
         fontSize: '12px',
         alignItems: 'center',
         marginTop: 'auto',
