@@ -16,13 +16,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from skillberry_store.fast_api.server import create_app
+from skillberry_store.fast_api.server import SBS
 
 
 @pytest.fixture
 def client():
     """Create a test client for the FastAPI app."""
-    app = create_app()
+    app = SBS()
     return TestClient(app)
 
 
@@ -68,7 +68,7 @@ def temp_skill_dir():
 def test_list_subdirectories_success(client, temp_skill_dir):
     """Test successful listing of subdirectories with SKILL.md detection."""
     response = client.post(
-        "/api/admin/list-subdirectories",
+        "/admin/list-subdirectories",
         json={"path": temp_skill_dir}
     )
     
@@ -98,7 +98,7 @@ def test_list_subdirectories_success(client, temp_skill_dir):
 def test_list_subdirectories_nonexistent_path(client):
     """Test error handling for non-existent path."""
     response = client.post(
-        "/api/admin/list-subdirectories",
+        "/admin/list-subdirectories",
         json={"path": "/nonexistent/path/that/does/not/exist"}
     )
     
@@ -111,7 +111,7 @@ def test_list_subdirectories_file_not_directory(client, temp_skill_dir):
     file_path = os.path.join(temp_skill_dir, "readme.txt")
     
     response = client.post(
-        "/api/admin/list-subdirectories",
+        "/admin/list-subdirectories",
         json={"path": file_path}
     )
     
@@ -122,7 +122,7 @@ def test_list_subdirectories_file_not_directory(client, temp_skill_dir):
 def test_list_subdirectories_missing_path_parameter(client):
     """Test error handling for missing path parameter."""
     response = client.post(
-        "/api/admin/list-subdirectories",
+        "/admin/list-subdirectories",
         json={}
     )
     
@@ -133,7 +133,7 @@ def test_list_subdirectories_missing_path_parameter(client):
 def test_list_subdirectories_invalid_json(client):
     """Test error handling for invalid JSON payload."""
     response = client.post(
-        "/api/admin/list-subdirectories",
+        "/admin/list-subdirectories",
         data="not valid json",
         headers={"Content-Type": "application/json"}
     )
@@ -145,7 +145,7 @@ def test_list_subdirectories_empty_directory(client):
     """Test listing subdirectories in an empty directory."""
     with tempfile.TemporaryDirectory() as temp_dir:
         response = client.post(
-            "/api/admin/list-subdirectories",
+            "/admin/list-subdirectories",
             json={"path": temp_dir}
         )
         
@@ -168,7 +168,7 @@ def test_list_subdirectories_case_insensitive_skill_md(client):
         (lower_dir / "skill.md").write_text("# Lower")
         
         response = client.post(
-            "/api/admin/list-subdirectories",
+            "/admin/list-subdirectories",
             json={"path": temp_dir}
         )
         
@@ -194,7 +194,7 @@ def test_list_subdirectories_nested_structure(client):
         (child_dir / "SKILL.md").write_text("# Child")
         
         response = client.post(
-            "/api/admin/list-subdirectories",
+            "/admin/list-subdirectories",
             json={"path": temp_dir}
         )
         
@@ -215,7 +215,7 @@ def test_list_subdirectories_special_characters_in_path(client):
         (special_dir / "SKILL.md").write_text("# Special")
         
         response = client.post(
-            "/api/admin/list-subdirectories",
+            "/admin/list-subdirectories",
             json={"path": temp_dir}
         )
         
@@ -236,7 +236,7 @@ def test_list_subdirectories_permission_error(client, monkeypatch):
     
     with tempfile.TemporaryDirectory() as temp_dir:
         response = client.post(
-            "/api/admin/list-subdirectories",
+            "/admin/list-subdirectories",
             json={"path": temp_dir}
         )
         
