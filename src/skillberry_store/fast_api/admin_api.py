@@ -307,3 +307,75 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             )
 
         return {"status": "ready", "checks": checks}
+
+    @app.post("/admin/list-subdirectories", tags=[tags])
+    async def list_subdirectories(request: dict):
+        """List subdirectories in a given path and check for SKILL.md files.
+
+        This endpoint is used by the frontend batch import feature to detect
+        skill directories in a local folder.
+
+        Args:
+            request: Dictionary with 'path' key containing the parent directory path
+
+        Returns:
+            dict: List of subdirectories with 'name', 'path', and 'has_skill_md' fields
+
+        Raises:
+            HTTPException: If path doesn't exist (404) or is not a directory (400)
+        """
+        from pydantic import BaseModel
+
+        class ListSubdirectoriesRequest(BaseModel):
+            path: str
+
+        try:
+            req = ListSubdirectoriesRequest(**request)
+            parent_path = req.path
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid request: {str(e)}"
+            )
+
+        if not os.path.exists(parent_path):
+            raise HTTPException(
+                status_code=404, detail=f"Path does not exist: {parent_path}"
+            )
+
+        if not os.path.isdir(parent_path):
+            raise HTTPException(
+                status_code=400, detail=f"Path is not a directory: {parent_path}"
+            )
+
+        subdirectories = []
+
+        try:
+            for entry in os.listdir(parent_path):
+                entry_path = os.path.join(parent_path, entry)
+
+                if os.path.isdir(entry_path):
+                    # Check if this directory contains SKILL.md (case-insensitive)
+                    skill_md_path = os.path.join(entry_path, "SKILL.md")
+                    skill_md_lower_path = os.path.join(entry_path, "skill.md")
+                    has_skill_md = os.path.exists(skill_md_path) or os.path.exists(
+                        skill_md_lower_path
+                    )
+
+                    subdirectories.append(
+                        {
+                            "name": entry,
+                            "path": entry_path,
+                            "has_skill_md": has_skill_md,
+                        }
+                    )
+
+            logger.info(
+                f"Listed {len(subdirectories)} subdirectories in {parent_path}"
+            )
+            return {"subdirectories": subdirectories}
+
+        except Exception as e:
+            logger.error(f"Error listing subdirectories in {parent_path}: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error listing subdirectories: {str(e)}"
+            )

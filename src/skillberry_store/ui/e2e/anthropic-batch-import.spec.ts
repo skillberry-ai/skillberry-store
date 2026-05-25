@@ -7,7 +7,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 
 /**
- * E2E tests for the Anthropic Skill Batch Import feature
+ * E2E tests for the Anthropic Skill Batch Import feature (Frontend-Only)
+ * 
+ * This feature is implemented entirely in the frontend. The frontend detects
+ * subdirectories containing SKILL.md files and imports each skill separately
+ * by making multiple API calls to the single-skill import endpoint.
  * 
  * These tests verify:
  * 1. The batch mode toggle is present and functional

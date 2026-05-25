@@ -423,10 +423,9 @@ def register_skills_api(
         folder_path: Optional[str] = Form(None),
         snippet_mode: str = Form("file"),
         treat_all_as_documents: bool = Form(False),
-        batch_mode: bool = Form(False),
         tags: List[str] = Form([]),
     ):
-        """Import Anthropic skill(s) from GitHub URL, ZIP file, or local folder.
+        """Import Anthropic skill from GitHub URL, ZIP file, or local folder.
 
         Args:
             source_type: 'url', 'zip', or 'folder'
@@ -435,17 +434,15 @@ def register_skills_api(
             folder_path: Local folder path (required if source_type='folder')
             snippet_mode: 'file' or 'paragraph' - how to import text files
             treat_all_as_documents: If True, treat all files (including code) as document snippets
-            batch_mode: If True, import multiple skills from subdirectories
             tags: List of additional tags to add to all imported objects (skills, tools, snippets)
 
         Returns:
             dict: Import result with created tools, snippets, and skill info
-                  For batch mode, returns list of results for each skill
 
         Raises:
             HTTPException: If import fails
         """
-        logger.info(f"Request to import Anthropic skill(s) from {source_type} (batch_mode={batch_mode})")
+        logger.info(f"Request to import Anthropic skill from {source_type}")
 
         try:
             # Prepare source data based on type
@@ -477,202 +474,7 @@ def register_skills_api(
                     detail=f"Invalid source_type: {source_type}. Must be 'url', 'zip', or 'folder'",
                 )
 
-            # Handle batch mode
-            if batch_mode:
-                from skillberry_store.tools.anthropic.batch_importer import batch_import_anthropic_skills
-
-                # Import multiple skills
-                batch_results = batch_import_anthropic_skills(
-                    source_type=source_type,
-                    source_data=source_data,
-                    snippet_mode=snippet_mode,
-                    treat_all_as_documents=treat_all_as_documents,
-                )
-
-                # Process each skill result
-                all_results = []
-                total_tools = 0
-                total_snippets = 0
-                total_skills = 0
-
-                for result in batch_results:
-                    if not result["success"]:
-                        all_results.append({
-                            "skill_name": result["skill_name"],
-                            "success": False,
-                            "error": result.get("error", "Unknown error"),
-                        })
-                        continue
-
-                    # Create tools for this skill
-                    created_tool_uuids = []
-                    tools = result["tools"]
-                    all_tool_names = [t.name for t in tools]
-
-                    for tool in tools:
-                        try:
-                            tool_dict = tool.to_dict()
-                            tool_uuid = str(uuid.uuid4())
-
-                            ext = ".py" if tool_dict["programmingLanguage"] == "python" else ".sh"
-                            module_filename = f"{tool_dict['name']}{ext}"
-
-                            tool_tags = tool_dict["tags"].copy() if tool_dict["tags"] else []
-                            for tag in tags:
-                                if tag and tag not in tool_tags:
-                                    tool_tags.append(tag)
-
-                            tool_data = {
-                                "uuid": tool_uuid,
-                                "name": tool_dict["name"],
-                                "version": tool_dict["version"],
-                                "description": tool_dict["description"],
-                                "tags": tool_tags,
-                                "programming_language": tool_dict["programmingLanguage"],
-                                "module_name": module_filename,
-                                "packaging_format": "code",
-                                "state": "approved",
-                            }
-
-                            if "params" in tool_dict and tool_dict["params"]:
-                                tool_data["params"] = tool_dict["params"]
-                            if "returns" in tool_dict and tool_dict["returns"]:
-                                tool_data["returns"] = tool_dict["returns"]
-
-                            # Auto-detect dependencies for Python tools if enabled
-                            if (
-                                tool_dict["programmingLanguage"] == "python"
-                                and is_auto_detect_dependencies_enabled()
-                            ):
-                                try:
-                                    existing_tools = [
-                                        f.replace(".json", "")
-                                        for f in tools_handler.list_files()
-                                    ]
-                                    available_tools = list(set(existing_tools + all_tool_names))
-                                    detected_deps = detect_tool_dependencies(
-                                        tool_dict["moduleContent"],
-                                        tool_dict["name"],
-                                        available_tools,
-                                    )
-                                    if detected_deps:
-                                        tool_data["dependencies"] = detected_deps
-                                        logger.info(
-                                            f"Auto-detected dependencies for '{tool_dict['name']}': {detected_deps}"
-                                        )
-                                except Exception as e:
-                                    logger.warning(
-                                        f"Failed to auto-detect dependencies for {tool_dict['name']}: {e}"
-                                    )
-
-                            # Save tool JSON
-                            tool_filename = f"{tool_dict['name']}.json"
-                            tool_json = json.dumps(tool_data, indent=4)
-                            tools_handler.write_file_content(tool_filename, tool_json)
-
-                            # Save tool module
-                            files_handler = FileHandler(get_files_directory_path())
-                            files_handler.write_file_content(
-                                module_filename, tool_dict["moduleContent"]
-                            )
-
-                            created_tool_uuids.append(tool_uuid)
-                            logger.info(f"Created tool: {tool_dict['name']}")
-                        except Exception as e:
-                            logger.error(f"Failed to create tool {tool.name}: {e}")
-
-                    # Create snippets for this skill
-                    created_snippet_uuids = []
-                    snippets = result["snippets"]
-
-                    for snippet in snippets:
-                        try:
-                            snippet_dict = snippet.to_dict()
-                            snippet_uuid = str(uuid.uuid4())
-
-                            snippet_tags = (
-                                snippet_dict["tags"].copy() if snippet_dict["tags"] else []
-                            )
-                            for tag in tags:
-                                if tag and tag not in snippet_tags:
-                                    snippet_tags.append(tag)
-
-                            snippet_data = {
-                                "uuid": snippet_uuid,
-                                "name": snippet_dict["name"],
-                                "version": snippet_dict["version"],
-                                "description": snippet_dict["description"],
-                                "content": snippet_dict["content"],
-                                "tags": snippet_tags,
-                                "content_type": "text/plain",
-                                "state": "approved",
-                            }
-
-                            snippet_filename = f"{snippet_dict['name']}.json"
-                            snippet_json = json.dumps(snippet_data, indent=4)
-                            snippets_handler.write_file_content(snippet_filename, snippet_json)
-
-                            created_snippet_uuids.append(snippet_uuid)
-                            logger.info(f"Created snippet: {snippet_dict['name']}")
-                        except Exception as e:
-                            logger.error(f"Failed to create snippet {snippet.name}: {e}")
-
-                    # Create skill
-                    skill_name = result["skill_name"]
-                    skill_description = result["skill_description"]
-                    skill_tags = ["anthropic", "imported"]
-                    for tag in tags:
-                        if tag and tag not in skill_tags:
-                            skill_tags.append(tag)
-
-                    skill_uuid = str(uuid.uuid4())
-                    skill_data = {
-                        "uuid": skill_uuid,
-                        "name": skill_name,
-                        "version": "1.0.0",
-                        "description": skill_description,
-                        "tags": skill_tags,
-                        "tool_uuids": created_tool_uuids,
-                        "snippet_uuids": created_snippet_uuids,
-                        "state": "approved",
-                    }
-
-                    skill_filename = f"{skill_name}.json"
-                    skill_json = json.dumps(skill_data, indent=4)
-                    skill_handler.write_file_content(skill_filename, skill_json)
-
-                    # Write description for search capability
-                    if skills_descriptions and skill_description:
-                        skills_descriptions.write_description(skill_name, skill_description)
-
-                    all_results.append({
-                        "skill_name": skill_name,
-                        "skill_uuid": skill_uuid,
-                        "success": True,
-                        "tools_created": len(created_tool_uuids),
-                        "snippets_created": len(created_snippet_uuids),
-                        "ignored_files": result.get("ignored_files", []),
-                    })
-
-                    total_tools += len(created_tool_uuids)
-                    total_snippets += len(created_snippet_uuids)
-                    total_skills += 1
-
-                logger.info(
-                    f"Batch import completed: {total_skills} skills, {total_tools} tools, {total_snippets} snippets"
-                )
-
-                return {
-                    "success": True,
-                    "message": f"Successfully imported {total_skills} Anthropic skill(s)",
-                    "batch_mode": True,
-                    "total_skills": total_skills,
-                    "total_tools": total_tools,
-                    "total_snippets": total_snippets,
-                    "results": all_results,
-                }
-
-            # Single skill import (original behavior)
+            # Single skill import
             from skillberry_store.tools.anthropic.importer import import_anthropic_skill
 
             skill_name, skill_description, tools, snippets, ignored_files = (
