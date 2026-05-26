@@ -299,16 +299,12 @@ class FileExecutor:
             if self.execute_python_locally:
                 # execute_python_file_locally is blocking, run in thread pool
                 return_value = await asyncio.to_thread(
-                    self.execute_python_file_locally,
-                    parameters,
-                    env_id=env_id
+                    self.execute_python_file_locally, parameters, env_id=env_id
                 )
             else:
                 # execute_python_file_using_docker is blocking (detach=False), run in thread pool
                 return_value = await asyncio.to_thread(
-                    self.execute_python_file_using_docker,
-                    parameters,
-                    env_id=env_id
+                    self.execute_python_file_using_docker, parameters, env_id=env_id
                 )
         elif self.manifest.get("packaging_format") == "mcp":
             return_value = await self.execute_python_file_in_mcp_server(parameters)
