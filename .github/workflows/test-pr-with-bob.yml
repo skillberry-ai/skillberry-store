@@ -1205,6 +1205,16 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      - name: Stop system
+        if: steps.pr.outputs.should_run == 'true' && always()
+        run: |
+          set +e
+          if [ -f .venv/bin/activate ]; then
+            source .venv/bin/activate
+            make stop >> "${ARTIFACT_DIR}/logs/make-run.log" 2>&1 || true
+          fi
+          exit 0
+
       - name: Comment report on PR
         if: steps.pr.outputs.should_run == 'true' && always()
         env:
