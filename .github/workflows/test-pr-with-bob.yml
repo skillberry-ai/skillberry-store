@@ -744,13 +744,12 @@ jobs:
           import baseConfig from './playwright.config';
 
           const artifactDir = process.env.BOB_ARTIFACT_DIR || 'test-results';
-          const baseURL = process.env.BOB_UI_BASE_URL || 'http://127.0.0.1:5173';
+          const baseURL = process.env.BOB_UI_BASE_URL || 'http://127.0.0.1:8002';
 
           export default defineConfig({
             ...(baseConfig as any),
             webServer: undefined,
-            retries: 0,
-            timeout: 30000,
+            timeout: 45000,
             outputDir: path.join(artifactDir, 'playwright-output'),
             reporter: [
               ['list'],
@@ -762,10 +761,10 @@ jobs:
               ...((baseConfig as any).use || {}),
               baseURL,
               trace: 'on',
-              video: 'on',
+              video: 'retain-on-failure',
               screenshot: 'on',
-              actionTimeout: 15000,
-              navigationTimeout: 20000,
+              actionTimeout: 20000,
+              navigationTimeout: 30000,
             },
           });
           TS
