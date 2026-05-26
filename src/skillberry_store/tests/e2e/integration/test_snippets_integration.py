@@ -60,7 +60,7 @@ class TestSnippetsAPI:
         if not test_state["snippet_name"]:
             pytest.skip("Snippet name not available from previous test")
         
-        response = snippets_api.get_snippet_snippets_name_get(name=test_state["snippet_name"])
+        response = snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=test_state["snippet_name"])
         
         assert response is not None
         assert response.get("name") == test_state["snippet_name"]
@@ -74,7 +74,7 @@ class TestSnippetsAPI:
             pytest.skip("Snippet name not available from previous test")
         
         # Get current snippet to create updated schema
-        current_snippet = snippets_api.get_snippet_snippets_name_get(name=test_state["snippet_name"])
+        current_snippet = snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=test_state["snippet_name"])
         
         updated_content = "This is updated content for integration testing."
         
@@ -89,8 +89,8 @@ class TestSnippetsAPI:
             content_type=ContentType.TEXT_SLASH_PLAIN
         )
         
-        response = snippets_api.update_snippet_snippets_name_put(
-            name=test_state["snippet_name"],
+        response = snippets_api.update_snippet_snippets_uuid_or_name_put(
+            uuid_or_name=test_state["snippet_name"],
             snippet_schema=updated_snippet
         )
         
@@ -98,7 +98,7 @@ class TestSnippetsAPI:
         assert "message" in response or "updated" in str(response).lower()
         
         # Verify the update
-        snippet = snippets_api.get_snippet_snippets_name_get(name=test_state["snippet_name"])
+        snippet = snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=test_state["snippet_name"])
         assert snippet.get("content") == updated_content
 
     def test_05_search_snippets(self, snippets_api):
@@ -117,14 +117,14 @@ class TestSnippetsAPI:
         if not test_state["snippet_name"]:
             pytest.skip("Snippet name not available from previous test")
         
-        response = snippets_api.delete_snippet_snippets_name_delete(name=test_state["snippet_name"])
+        response = snippets_api.delete_snippet_snippets_uuid_or_name_delete(uuid_or_name=test_state["snippet_name"])
         
         assert response is not None
         assert "message" in response or "deleted" in str(response).lower()
         
         # Verify snippet is deleted
         try:
-            snippets_api.get_snippet_snippets_name_get(name=test_state["snippet_name"])
+            snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=test_state["snippet_name"])
             # If we get here, the snippet still exists (might be expected in some cases)
         except Exception:
             # Expected - snippet should not be found
@@ -150,7 +150,7 @@ def test_create_snippet_with_file(snippets_api):
         
         # Clean up
         if "name" in response:
-            snippets_api.delete_snippet_snippets_name_delete(name=response["name"])
+            snippets_api.delete_snippet_snippets_uuid_or_name_delete(uuid_or_name=response["name"])
             
     except Exception as e:
         # File upload might not be supported or have different signature
@@ -182,18 +182,18 @@ def test_snippet_content_types(snippets_api):
             created_snippets.append(name)
             
             # Verify content type is preserved
-            snippet = snippets_api.get_snippet_snippets_name_get(name=name)
+            snippet = snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=name)
             assert snippet.get("content_type") == content_type
         
         # Clean up
         for name in created_snippets:
-            snippets_api.delete_snippet_snippets_name_delete(name=name)
+            snippets_api.delete_snippet_snippets_uuid_or_name_delete(uuid_or_name=name)
             
     except Exception as e:
         # Clean up on error
         for name in created_snippets:
             try:
-                snippets_api.delete_snippet_snippets_name_delete(name=name)
+                snippets_api.delete_snippet_snippets_uuid_or_name_delete(uuid_or_name=name)
             except:
                 pass
         pytest.skip(f"Content type test not fully supported: {e}")
@@ -216,24 +216,24 @@ def test_snippet_lifecycle_states(snippets_api):
         assert response is not None
         
         # Update to approved state
-        update_response = snippets_api.update_snippet_snippets_name_put(
-            name=snippet_name,
+        update_response = snippets_api.update_snippet_snippets_uuid_or_name_put(
+            uuid_or_name=snippet_name,
             state=ManifestState.APPROVED
         )
         
         assert update_response is not None
         
         # Verify state change
-        snippet = snippets_api.get_snippet_snippets_name_get(name=snippet_name)
+        snippet = snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=snippet_name)
         assert snippet.get("state") == ManifestState.APPROVED or snippet.get("state") == "approved"
         
         # Clean up
-        snippets_api.delete_snippet_snippets_name_delete(name=snippet_name)
+        snippets_api.delete_snippet_snippets_uuid_or_name_delete(uuid_or_name=snippet_name)
         
     except Exception as e:
         # Clean up on error
         try:
-            snippets_api.delete_snippet_snippets_name_delete(name=snippet_name)
+            snippets_api.delete_snippet_snippets_uuid_or_name_delete(uuid_or_name=snippet_name)
         except:
             pass
         pytest.skip(f"Lifecycle state test not fully supported: {e}")
