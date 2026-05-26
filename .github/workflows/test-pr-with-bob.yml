@@ -68,8 +68,10 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       CI: true
       BOB_UI_HOST: 127.0.0.1
-      BOB_UI_PORT: 5173
-      BOB_UI_BASE_URL: http://127.0.0.1:5173
+      BOB_UI_PORT: 8002
+      BOB_UI_BASE_URL: http://127.0.0.1:8002
+      BOB_BACKEND_PORT: 8000
+      BOB_BACKEND_URL: http://127.0.0.1:8000
 
     steps:
       - name: Set artifact directory
