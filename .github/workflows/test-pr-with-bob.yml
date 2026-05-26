@@ -353,6 +353,32 @@ jobs:
           echo "ui_ready=${UI_READY}" >> "$GITHUB_OUTPUT"
           exit 0
 
+      - name: Seed test data
+        if: steps.pr.outputs.should_run == 'true' && steps.system_start.outputs.backend_ready == 'true'
+        run: |
+          set +e
+          BASE="http://127.0.0.1:${BOB_BACKEND_PORT}"
+          echo "Seeding test data at ${BASE}..."
+
+          # Seed 2 skills
+          curl -s -X POST "${BASE}/skills/" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"example-summarizer","description":"Summarizes text using an LLM","version":"1.0.0","state":"approved","tags":["nlp","summarization"]}' > /dev/null && echo "Seeded skill: example-summarizer"
+          curl -s -X POST "${BASE}/skills/" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"example-code-reviewer","description":"Reviews code for quality and bugs","version":"1.0.0","state":"approved","tags":["dev","code"]}' > /dev/null && echo "Seeded skill: example-code-reviewer"
+
+          # Seed 2 snippets
+          curl -s -X POST \
+            "${BASE}/snippets/?name=hello-world&description=Simple+hello+world+snippet&content=print%28%27hello%27%29&version=1.0.0&content_type=text%2Fx-python&state=approved" \
+            > /dev/null && echo "Seeded snippet: hello-world"
+          curl -s -X POST \
+            "${BASE}/snippets/?name=curl-example&description=Example+curl+command&content=curl+https%3A%2F%2Fexample.com&version=1.0.0&content_type=text%2Fx-sh&state=approved" \
+            > /dev/null && echo "Seeded snippet: curl-example"
+
+          echo "Seeding complete"
+          exit 0
+
       - name: Configure Playwright MCP for Bob
         if: steps.pr.outputs.should_run == 'true'
         run: |
