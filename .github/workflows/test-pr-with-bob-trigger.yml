@@ -33,6 +33,10 @@ permissions:
   pull-requests: read
   actions: read
 
+concurrency:
+  group: test-pr-with-bob-trigger-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   collect-pr-context:
     if: >-
