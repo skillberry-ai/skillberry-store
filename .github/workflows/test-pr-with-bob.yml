@@ -676,12 +676,20 @@ jobs:
             "${ARTIFACT_DIR}/videos" \
             "${ARTIFACT_DIR}/traces"
 
-          if [ -z "${PROJECT_DIR}" ] || [ ! -f "${PROJECT_DIR}/package.json" ] || [ "${PACKAGE_MANAGER}" = "none" ]; then
-            echo "No detected Node project. Skipping Playwright tests." | tee "${ARTIFACT_DIR}/logs/playwright.stdout.log"
-            echo "playwright_command=${PW_COMMAND}" >> "$GITHUB_OUTPUT"
-            echo "playwright_exit_code=0" >> "$GITHUB_OUTPUT"
-            echo "server_ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          # If no Node project was detected but the full system is running via make run,
+          # fall back to the known UI directory so backend-only PRs still get Playwright proof.
+          if [ -z "${PROJECT_DIR}" ] || [ "${PACKAGE_MANAGER}" = "none" ]; then
+            if [ -f "src/skillberry_store/ui/package.json" ] && [ -f "src/skillberry_store/ui/playwright.config.ts" ]; then
+              echo "No UI changes detected but backend is running — using src/skillberry_store/ui for Playwright proof."
+              PROJECT_DIR="src/skillberry_store/ui"
+              PACKAGE_MANAGER="npm"
+            else
+              echo "No detected Node project. Skipping Playwright tests." | tee "${ARTIFACT_DIR}/logs/playwright.stdout.log"
+              echo "playwright_command=${PW_COMMAND}" >> "$GITHUB_OUTPUT"
+              echo "playwright_exit_code=0" >> "$GITHUB_OUTPUT"
+              echo "server_ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
 
           pushd "${PROJECT_DIR}" > /dev/null
@@ -806,26 +814,34 @@ jobs:
             SERVER_COMMAND="${PM_RUN} preview -- --host ${BOB_UI_HOST} --port ${BOB_UI_PORT}"
           fi
 
-          if [ "${SERVER_COMMAND}" = "skip" ]; then
-            echo "No dev or preview script found; cannot start UI server." | tee "${ARTIFACT_DIR}/logs/ui-server.log"
+          if [ "${SERVER_COMMAND}" = "skip" ] && ! curl -fsS "${BASE_URL}" > /dev/null 2>&1; then
+            echo "No dev or preview script found and server not already running; cannot proceed." | tee "${ARTIFACT_DIR}/logs/ui-server.log"
             PW_EXIT=1
           else
-            echo "Starting UI server in ${PROJECT_DIR}: ${SERVER_COMMAND}" | tee "${ARTIFACT_DIR}/logs/ui-server-command.log"
-            bash -lc "${SERVER_COMMAND}" > "${ARTIFACT_DIR}/logs/ui-server.log" 2>&1 &
-            SERVER_PID=$!
-            echo "${SERVER_PID}" > "${ARTIFACT_DIR}/ui-server.pid"
+            # Check if server is already running (e.g. started by make run). If so, skip
+            # starting a second server which would fail with EADDRINUSE.
+            if curl -fsS "${BASE_URL}" > /dev/null 2>&1; then
+              echo "Server already running at ${BASE_URL} (started by make run)" | tee "${ARTIFACT_DIR}/logs/ui-server-command.log"
+              SERVER_READY="true"
+              SERVER_PID=""
+            else
+              echo "Starting UI server in ${PROJECT_DIR}: ${SERVER_COMMAND}" | tee "${ARTIFACT_DIR}/logs/ui-server-command.log"
+              bash -lc "${SERVER_COMMAND}" > "${ARTIFACT_DIR}/logs/ui-server.log" 2>&1 &
+              SERVER_PID=$!
+              echo "${SERVER_PID}" > "${ARTIFACT_DIR}/ui-server.pid"
 
-            for attempt in $(seq 1 90); do
-              if curl -fsS "${BASE_URL}" > /dev/null 2>&1; then
-                SERVER_READY="true"
-                break
-              fi
-              if ! kill -0 "${SERVER_PID}" > /dev/null 2>&1; then
-                echo "UI server process exited before becoming ready." >> "${ARTIFACT_DIR}/logs/ui-server.log"
-                break
-              fi
-              sleep 2
-            done
+              for attempt in $(seq 1 90); do
+                if curl -fsS "${BASE_URL}" > /dev/null 2>&1; then
+                  SERVER_READY="true"
+                  break
+                fi
+                if ! kill -0 "${SERVER_PID}" > /dev/null 2>&1; then
+                  echo "UI server process exited before becoming ready." >> "${ARTIFACT_DIR}/logs/ui-server.log"
+                  break
+                fi
+                sleep 2
+              done
+            fi
 
             if [ "${SERVER_READY}" != "true" ]; then
               echo "Timed out waiting for UI server at ${BASE_URL}" | tee "${ARTIFACT_DIR}/logs/playwright.stderr.log"
@@ -841,7 +857,7 @@ jobs:
               PW_EXIT=$?
             fi
 
-            if kill -0 "${SERVER_PID}" > /dev/null 2>&1; then
+            if [ -n "${SERVER_PID:-}" ] && kill -0 "${SERVER_PID}" > /dev/null 2>&1; then
               kill "${SERVER_PID}" > /dev/null 2>&1 || true
             fi
           fi
