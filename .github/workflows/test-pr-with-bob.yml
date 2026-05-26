@@ -284,6 +284,75 @@ jobs:
           fi
           echo "Bob Shell authentication configured successfully"
 
+      - name: Setup Python 3.11
+        if: steps.pr.outputs.should_run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache Python venv
+        if: steps.pr.outputs.should_run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            .stamps
+          key: python-venv-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            python-venv-${{ runner.os }}-
+
+      - name: Start full system via make run
+        if: steps.pr.outputs.should_run == 'true'
+        id: system_start
+        run: |
+          set +e
+          mkdir -p "${ARTIFACT_DIR}/logs"
+
+          echo "Creating Python virtual environment..."
+          python -m venv .venv
+          source .venv/bin/activate
+
+          echo "Starting full system via make run (backend port ${BOB_BACKEND_PORT}, UI port ${BOB_UI_PORT})..."
+          make run > "${ARTIFACT_DIR}/logs/make-run.log" 2>&1 &
+
+          # Wait up to 3 minutes for backend health check
+          BACKEND_READY="false"
+          for attempt in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:${BOB_BACKEND_PORT}/health" > /dev/null 2>&1; then
+              BACKEND_READY="true"
+              echo "Backend ready after ${attempt} attempts ($(( attempt * 3 ))s)"
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "${BACKEND_READY}" != "true" ]; then
+            echo "Backend did not become ready within 3 minutes. Last 40 log lines:"
+            tail -40 "${ARTIFACT_DIR}/logs/make-run.log" | tee "${ARTIFACT_DIR}/logs/make-run-startup-failure.log"
+          fi
+
+          # Wait up to 2 additional minutes for the Vite UI server
+          UI_READY="false"
+          if [ "${BACKEND_READY}" = "true" ]; then
+            for attempt in $(seq 1 60); do
+              if curl -fsS "http://127.0.0.1:${BOB_UI_PORT}" > /dev/null 2>&1; then
+                UI_READY="true"
+                echo "UI ready after ${attempt} attempts ($(( attempt * 2 ))s)"
+                break
+              fi
+              sleep 2
+            done
+          fi
+
+          if [ "${UI_READY}" != "true" ]; then
+            echo "UI did not become ready within 2 minutes. Last 40 log lines:"
+            tail -40 "${ARTIFACT_DIR}/logs/make-run.log"
+          fi
+
+          echo "backend_ready=${BACKEND_READY}" >> "$GITHUB_OUTPUT"
+          echo "ui_ready=${UI_READY}" >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Configure Playwright MCP for Bob
         if: steps.pr.outputs.should_run == 'true'
         run: |
