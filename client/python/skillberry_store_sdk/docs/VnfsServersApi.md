@@ -1,36 +1,24 @@
-# skillberry_store_sdk.VmcpServersApi
+# skillberry_store_sdk.VnfsServersApi
 
 All URIs are relative to *http://localhost*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
-[**create_vmcp_server_vmcp_servers_post**](VmcpServersApi.md#create_vmcp_server_vmcp_servers_post) | **POST** /vmcp_servers/ | Create Vmcp Server
-[**delete_vmcp_server_vmcp_servers_uuid_or_name_delete**](VmcpServersApi.md#delete_vmcp_server_vmcp_servers_uuid_or_name_delete) | **DELETE** /vmcp_servers/{uuid_or_name} | Delete Vmcp Server
-[**get_vmcp_server_vmcp_servers_uuid_or_name_get**](VmcpServersApi.md#get_vmcp_server_vmcp_servers_uuid_or_name_get) | **GET** /vmcp_servers/{uuid_or_name} | Get Vmcp Server
-[**list_vmcp_servers_vmcp_servers_get**](VmcpServersApi.md#list_vmcp_servers_vmcp_servers_get) | **GET** /vmcp_servers/ | List Vmcp Servers
-[**search_vmcp_servers_search_vmcp_servers_get**](VmcpServersApi.md#search_vmcp_servers_search_vmcp_servers_get) | **GET** /search/vmcp_servers | Search Vmcp Servers
-[**start_vmcp_server_vmcp_servers_uuid_or_name_start_post**](VmcpServersApi.md#start_vmcp_server_vmcp_servers_uuid_or_name_start_post) | **POST** /vmcp_servers/{uuid_or_name}/start | Start Vmcp Server
-[**update_vmcp_server_vmcp_servers_uuid_or_name_put**](VmcpServersApi.md#update_vmcp_server_vmcp_servers_uuid_or_name_put) | **PUT** /vmcp_servers/{uuid_or_name} | Update Vmcp Server
+[**create_vnfs_server_vnfs_servers_post**](VnfsServersApi.md#create_vnfs_server_vnfs_servers_post) | **POST** /vnfs_servers/ | Create Vnfs Server
+[**delete_vnfs_server_vnfs_servers_uuid_or_name_delete**](VnfsServersApi.md#delete_vnfs_server_vnfs_servers_uuid_or_name_delete) | **DELETE** /vnfs_servers/{uuid_or_name} | Delete Vnfs Server
+[**get_vnfs_server_vnfs_servers_uuid_or_name_get**](VnfsServersApi.md#get_vnfs_server_vnfs_servers_uuid_or_name_get) | **GET** /vnfs_servers/{uuid_or_name} | Get Vnfs Server
+[**list_vnfs_servers_vnfs_servers_get**](VnfsServersApi.md#list_vnfs_servers_vnfs_servers_get) | **GET** /vnfs_servers/ | List Vnfs Servers
+[**search_vnfs_servers_search_vnfs_servers_get**](VnfsServersApi.md#search_vnfs_servers_search_vnfs_servers_get) | **GET** /search/vnfs_servers | Search Vnfs Servers
+[**start_vnfs_server_vnfs_servers_uuid_or_name_start_post**](VnfsServersApi.md#start_vnfs_server_vnfs_servers_uuid_or_name_start_post) | **POST** /vnfs_servers/{uuid_or_name}/start | Start Vnfs Server
+[**update_vnfs_server_vnfs_servers_uuid_or_name_put**](VnfsServersApi.md#update_vnfs_server_vnfs_servers_uuid_or_name_put) | **PUT** /vnfs_servers/{uuid_or_name} | Update Vnfs Server
 
 
-# **create_vmcp_server_vmcp_servers_post**
-> object create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+# **create_vnfs_server_vnfs_servers_post**
+> object create_vnfs_server_vnfs_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid, protocol=protocol)
 
-Create Vmcp Server
+Create Vnfs Server
 
-Create a new virtual MCP server.
-
-Creates both the persistent JSON representation and starts the runtime server.
-
-Args:
-    vmcp: The vmcp schema (auto-generated from VmcpSchema).
-    request: The incoming request object for context extraction.
-
-Returns:
-    dict: Success message with the vmcp server name, uuid, and port.
-
-Raises:
-    HTTPException: If vmcp server already exists (409) or creation fails (500).
+Create and start a new vNFS endpoint.
 
 ### Example
 
@@ -50,27 +38,28 @@ configuration = skillberry_store_sdk.Configuration(
 # Enter a context with an instance of the API client
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
+    api_instance = skillberry_store_sdk.VnfsServersApi(api_client)
     name = 'name_example' # str | Name (optional)
     uuid = 'uuid_example' # str | A UUID. If not provided, a UUID will be automatically generated. (optional)
     version = 'version_example' # str | Version (optional)
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
-    tags = ['tags_example'] # List[Optional[str]] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra() # Extra | Optional dictionary for additional flexible information (optional)
+    tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
+    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
-    port = 56 # int | Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. (optional)
-    skill_uuid = 'skill_uuid_example' # str | UUID of the skill registered with the virtual MCP server (optional)
+    port = 56 # int | Port for the vNFS server. Auto-assigned if None. (optional)
+    skill_uuid = 'skill_uuid_example' # str | UUID of the skill to expose as a filesystem (optional)
+    protocol = 'webdav' # str | Network filesystem protocol: 'webdav' or 'nfs' (optional) (default to 'webdav')
 
     try:
-        # Create Vmcp Server
-        api_response = api_instance.create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
-        print("The response of VmcpServersApi->create_vmcp_server_vmcp_servers_post:\n")
+        # Create Vnfs Server
+        api_response = api_instance.create_vnfs_server_vnfs_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid, protocol=protocol)
+        print("The response of VnfsServersApi->create_vnfs_server_vnfs_servers_post:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->create_vmcp_server_vmcp_servers_post: %s\n" % e)
+        print("Exception when calling VnfsServersApi->create_vnfs_server_vnfs_servers_post: %s\n" % e)
 ```
 
 
@@ -85,13 +74,14 @@ Name | Type | Description  | Notes
  **version** | **str**| Version | [optional] 
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
- **tags** | [**List[Optional[str]]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
+ **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
- **port** | **int**| Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. | [optional] 
- **skill_uuid** | **str**| UUID of the skill registered with the virtual MCP server | [optional] 
+ **port** | **int**| Port for the vNFS server. Auto-assigned if None. | [optional] 
+ **skill_uuid** | **str**| UUID of the skill to expose as a filesystem | [optional] 
+ **protocol** | **str**| Network filesystem protocol: &#39;webdav&#39; or &#39;nfs&#39; | [optional] [default to &#39;webdav&#39;]
 
 ### Return type
 
@@ -115,23 +105,12 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **delete_vmcp_server_vmcp_servers_uuid_or_name_delete**
-> object delete_vmcp_server_vmcp_servers_uuid_or_name_delete(uuid_or_name)
+# **delete_vnfs_server_vnfs_servers_uuid_or_name_delete**
+> object delete_vnfs_server_vnfs_servers_uuid_or_name_delete(uuid_or_name)
 
-Delete Vmcp Server
+Delete Vnfs Server
 
-Delete a virtual MCP server by UUID or name.
-
-Stops the runtime server and removes persistent data.
-
-Args:
-    uuid_or_name: The UUID or name of the vmcp server to delete.
-
-Returns:
-    dict: Success message.
-
-Raises:
-    HTTPException: If vmcp server not found (404) or deletion fails (500).
+Stop and delete a vNFS endpoint by UUID or name.
 
 ### Example
 
@@ -151,16 +130,16 @@ configuration = skillberry_store_sdk.Configuration(
 # Enter a context with an instance of the API client
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
+    api_instance = skillberry_store_sdk.VnfsServersApi(api_client)
     uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
-        # Delete Vmcp Server
-        api_response = api_instance.delete_vmcp_server_vmcp_servers_uuid_or_name_delete(uuid_or_name)
-        print("The response of VmcpServersApi->delete_vmcp_server_vmcp_servers_uuid_or_name_delete:\n")
+        # Delete Vnfs Server
+        api_response = api_instance.delete_vnfs_server_vnfs_servers_uuid_or_name_delete(uuid_or_name)
+        print("The response of VnfsServersApi->delete_vnfs_server_vnfs_servers_uuid_or_name_delete:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->delete_vmcp_server_vmcp_servers_uuid_or_name_delete: %s\n" % e)
+        print("Exception when calling VnfsServersApi->delete_vnfs_server_vnfs_servers_uuid_or_name_delete: %s\n" % e)
 ```
 
 
@@ -194,23 +173,12 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **get_vmcp_server_vmcp_servers_uuid_or_name_get**
-> object get_vmcp_server_vmcp_servers_uuid_or_name_get(uuid_or_name)
+# **get_vnfs_server_vnfs_servers_uuid_or_name_get**
+> object get_vnfs_server_vnfs_servers_uuid_or_name_get(uuid_or_name)
 
-Get Vmcp Server
+Get Vnfs Server
 
-Get a specific virtual MCP server by UUID or name.
-
-Returns both persistent and runtime information.
-
-Args:
-    uuid_or_name: The UUID or name of the vmcp server.
-
-Returns:
-    dict: The vmcp server object with runtime details.
-
-Raises:
-    HTTPException: If vmcp server not found (404) or retrieval fails (500).
+Get a specific vNFS endpoint by UUID or name.
 
 ### Example
 
@@ -230,16 +198,16 @@ configuration = skillberry_store_sdk.Configuration(
 # Enter a context with an instance of the API client
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
+    api_instance = skillberry_store_sdk.VnfsServersApi(api_client)
     uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
-        # Get Vmcp Server
-        api_response = api_instance.get_vmcp_server_vmcp_servers_uuid_or_name_get(uuid_or_name)
-        print("The response of VmcpServersApi->get_vmcp_server_vmcp_servers_uuid_or_name_get:\n")
+        # Get Vnfs Server
+        api_response = api_instance.get_vnfs_server_vnfs_servers_uuid_or_name_get(uuid_or_name)
+        print("The response of VnfsServersApi->get_vnfs_server_vnfs_servers_uuid_or_name_get:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->get_vmcp_server_vmcp_servers_uuid_or_name_get: %s\n" % e)
+        print("Exception when calling VnfsServersApi->get_vnfs_server_vnfs_servers_uuid_or_name_get: %s\n" % e)
 ```
 
 
@@ -273,20 +241,12 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **list_vmcp_servers_vmcp_servers_get**
-> object list_vmcp_servers_vmcp_servers_get()
+# **list_vnfs_servers_vnfs_servers_get**
+> object list_vnfs_servers_vnfs_servers_get()
 
-List Vmcp Servers
+List Vnfs Servers
 
-List all virtual MCP servers.
-
-Returns both persistent and runtime information.
-
-Returns:
-    dict: Dictionary containing a dict of virtual MCP servers with full details.
-
-Raises:
-    HTTPException: If listing fails (500).
+List all vNFS endpoints.
 
 ### Example
 
@@ -306,15 +266,15 @@ configuration = skillberry_store_sdk.Configuration(
 # Enter a context with an instance of the API client
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
+    api_instance = skillberry_store_sdk.VnfsServersApi(api_client)
 
     try:
-        # List Vmcp Servers
-        api_response = api_instance.list_vmcp_servers_vmcp_servers_get()
-        print("The response of VmcpServersApi->list_vmcp_servers_vmcp_servers_get:\n")
+        # List Vnfs Servers
+        api_response = api_instance.list_vnfs_servers_vnfs_servers_get()
+        print("The response of VnfsServersApi->list_vnfs_servers_vnfs_servers_get:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->list_vmcp_servers_vmcp_servers_get: %s\n" % e)
+        print("Exception when calling VnfsServersApi->list_vnfs_servers_vnfs_servers_get: %s\n" % e)
 ```
 
 
@@ -344,24 +304,12 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **search_vmcp_servers_search_vmcp_servers_get**
-> object search_vmcp_servers_search_vmcp_servers_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
+# **search_vnfs_servers_search_vnfs_servers_get**
+> object search_vnfs_servers_search_vnfs_servers_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
 
-Search Vmcp Servers
+Search Vnfs Servers
 
-Search for vmcp servers by description.
-
-Returns vmcp servers that are below the similarity threshold and match the filters.
-
-Args:
-    search_term: Search term.
-    max_number_of_results: Number of results to return.
-    similarity_threshold: Threshold to be used.
-    manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
-    lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
-
-Returns:
-    list: A list of matched vmcp server names and similarity scores.
+Semantic search for vNFS endpoints by description.
 
 ### Example
 
@@ -381,7 +329,7 @@ configuration = skillberry_store_sdk.Configuration(
 # Enter a context with an instance of the API client
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
+    api_instance = skillberry_store_sdk.VnfsServersApi(api_client)
     search_term = 'search_term_example' # str | 
     max_number_of_results = 5 # int |  (optional) (default to 5)
     similarity_threshold = 1 # float |  (optional) (default to 1)
@@ -389,12 +337,12 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     lifecycle_state = skillberry_store_sdk.LifecycleState() # LifecycleState |  (optional)
 
     try:
-        # Search Vmcp Servers
-        api_response = api_instance.search_vmcp_servers_search_vmcp_servers_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
-        print("The response of VmcpServersApi->search_vmcp_servers_search_vmcp_servers_get:\n")
+        # Search Vnfs Servers
+        api_response = api_instance.search_vnfs_servers_search_vnfs_servers_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
+        print("The response of VnfsServersApi->search_vnfs_servers_search_vnfs_servers_get:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->search_vmcp_servers_search_vmcp_servers_get: %s\n" % e)
+        print("Exception when calling VnfsServersApi->search_vnfs_servers_search_vnfs_servers_get: %s\n" % e)
 ```
 
 
@@ -432,25 +380,12 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **start_vmcp_server_vmcp_servers_uuid_or_name_start_post**
-> object start_vmcp_server_vmcp_servers_uuid_or_name_start_post(uuid_or_name)
+# **start_vnfs_server_vnfs_servers_uuid_or_name_start_post**
+> object start_vnfs_server_vnfs_servers_uuid_or_name_start_post(uuid_or_name)
 
-Start Vmcp Server
+Start Vnfs Server
 
-Start or restart a virtual MCP server.
-
-This endpoint allows starting a server that exists in persistent storage
-but is not currently running in the runtime manager.
-
-Args:
-    uuid_or_name: The UUID or name of the vmcp server to start.
-    request: The incoming request object for context extraction.
-
-Returns:
-    dict: Success message with the server port.
-
-Raises:
-    HTTPException: If vmcp server not found (404) or start fails (500).
+Start or restart a vNFS endpoint.
 
 ### Example
 
@@ -470,16 +405,16 @@ configuration = skillberry_store_sdk.Configuration(
 # Enter a context with an instance of the API client
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
+    api_instance = skillberry_store_sdk.VnfsServersApi(api_client)
     uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
-        # Start Vmcp Server
-        api_response = api_instance.start_vmcp_server_vmcp_servers_uuid_or_name_start_post(uuid_or_name)
-        print("The response of VmcpServersApi->start_vmcp_server_vmcp_servers_uuid_or_name_start_post:\n")
+        # Start Vnfs Server
+        api_response = api_instance.start_vnfs_server_vnfs_servers_uuid_or_name_start_post(uuid_or_name)
+        print("The response of VnfsServersApi->start_vnfs_server_vnfs_servers_uuid_or_name_start_post:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->start_vmcp_server_vmcp_servers_uuid_or_name_start_post: %s\n" % e)
+        print("Exception when calling VnfsServersApi->start_vnfs_server_vnfs_servers_uuid_or_name_start_post: %s\n" % e)
 ```
 
 
@@ -513,25 +448,12 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **update_vmcp_server_vmcp_servers_uuid_or_name_put**
-> object update_vmcp_server_vmcp_servers_uuid_or_name_put(uuid_or_name, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+# **update_vnfs_server_vnfs_servers_uuid_or_name_put**
+> object update_vnfs_server_vnfs_servers_uuid_or_name_put(uuid_or_name, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid, protocol=protocol)
 
-Update Vmcp Server
+Update Vnfs Server
 
-Update an existing virtual MCP server.
-
-Updates both persistent data and restarts the runtime server.
-
-Args:
-    uuid_or_name: The UUID or name of the vmcp server to update.
-    vmcp: The updated vmcp schema.
-    request: The incoming request object for context extraction.
-
-Returns:
-    dict: Success message with new port.
-
-Raises:
-    HTTPException: If vmcp server not found (404) or update fails (500).
+Update metadata and restart a vNFS endpoint.
 
 ### Example
 
@@ -551,7 +473,7 @@ configuration = skillberry_store_sdk.Configuration(
 # Enter a context with an instance of the API client
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
-    api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
+    api_instance = skillberry_store_sdk.VnfsServersApi(api_client)
     uuid_or_name = 'uuid_or_name_example' # str | 
     name = 'name_example' # str | Name (optional)
     uuid = 'uuid_example' # str | A UUID. If not provided, a UUID will be automatically generated. (optional)
@@ -559,20 +481,21 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra1() # Extra1 | Optional dictionary for additional flexible information (optional)
+    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
-    port = 56 # int | Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. (optional)
-    skill_uuid = 'skill_uuid_example' # str | UUID of the skill registered with the virtual MCP server (optional)
+    port = 56 # int | Port for the vNFS server. Auto-assigned if None. (optional)
+    skill_uuid = 'skill_uuid_example' # str | UUID of the skill to expose as a filesystem (optional)
+    protocol = 'webdav' # str | Network filesystem protocol: 'webdav' or 'nfs' (optional) (default to 'webdav')
 
     try:
-        # Update Vmcp Server
-        api_response = api_instance.update_vmcp_server_vmcp_servers_uuid_or_name_put(uuid_or_name, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
-        print("The response of VmcpServersApi->update_vmcp_server_vmcp_servers_uuid_or_name_put:\n")
+        # Update Vnfs Server
+        api_response = api_instance.update_vnfs_server_vnfs_servers_uuid_or_name_put(uuid_or_name, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid, protocol=protocol)
+        print("The response of VnfsServersApi->update_vnfs_server_vnfs_servers_uuid_or_name_put:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->update_vmcp_server_vmcp_servers_uuid_or_name_put: %s\n" % e)
+        print("Exception when calling VnfsServersApi->update_vnfs_server_vnfs_servers_uuid_or_name_put: %s\n" % e)
 ```
 
 
@@ -589,12 +512,13 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra1**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
- **port** | **int**| Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. | [optional] 
- **skill_uuid** | **str**| UUID of the skill registered with the virtual MCP server | [optional] 
+ **port** | **int**| Port for the vNFS server. Auto-assigned if None. | [optional] 
+ **skill_uuid** | **str**| UUID of the skill to expose as a filesystem | [optional] 
+ **protocol** | **str**| Network filesystem protocol: &#39;webdav&#39; or &#39;nfs&#39; | [optional] [default to &#39;webdav&#39;]
 
 ### Return type
 

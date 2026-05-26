@@ -15,10 +15,10 @@
 
 import unittest
 
-from skillberry_store_sdk.models.location_inner import LocationInner
+from skillberry_store_sdk.models.extra1 import Extra1
 
-class TestLocationInner(unittest.TestCase):
-    """LocationInner unit test stubs"""
+class TestExtra1(unittest.TestCase):
+    """Extra1 unit test stubs"""
 
     def setUp(self):
         pass
@@ -26,24 +26,24 @@ class TestLocationInner(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def make_instance(self, include_optional) -> LocationInner:
-        """Test LocationInner
+    def make_instance(self, include_optional) -> Extra1:
+        """Test Extra1
             include_optional is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # uncomment below to create an instance of `LocationInner`
+        # uncomment below to create an instance of `Extra1`
         """
-        model = LocationInner()
+        model = Extra1()
         if include_optional:
-            return LocationInner(
+            return Extra1(
             )
         else:
-            return LocationInner(
+            return Extra1(
         )
         """
 
-    def testLocationInner(self):
-        """Test LocationInner"""
+    def testExtra1(self):
+        """Test Extra1"""
         # inst_req_only = self.make_instance(include_optional=False)
         # inst_req_and_optional = self.make_instance(include_optional=True)
 

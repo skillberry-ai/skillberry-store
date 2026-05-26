@@ -18,28 +18,28 @@ from inspect import getfullargspec
 import json
 import pprint
 import re  # noqa: F401
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, ValidationError, field_validator
-from typing import Optional
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError, field_validator
+from typing import Any, Dict, Optional
 from typing import Union, Any, List, Set, TYPE_CHECKING, Optional, Dict
 from typing_extensions import Literal, Self
 from pydantic import Field
 
-LOCATIONINNER_ANY_OF_SCHEMAS = ["int", "str"]
+EXTRA_ANY_OF_SCHEMAS = ["Dict[str, object]", "str"]
 
-class LocationInner(BaseModel):
+class Extra(BaseModel):
     """
-    LocationInner
+    Optional dictionary for additional flexible information
     """
 
+    # data type: Dict[str, object]
+    anyof_schema_1_validator: Optional[Dict[str, Any]] = None
     # data type: str
-    anyof_schema_1_validator: Optional[StrictStr] = None
-    # data type: int
-    anyof_schema_2_validator: Optional[StrictInt] = None
+    anyof_schema_2_validator: Optional[StrictStr] = None
     if TYPE_CHECKING:
-        actual_instance: Optional[Union[int, str]] = None
+        actual_instance: Optional[Union[Dict[str, object], str]] = None
     else:
         actual_instance: Any = None
-    any_of_schemas: Set[str] = { "int", "str" }
+    any_of_schemas: Set[str] = { "Dict[str, object]", "str" }
 
     model_config = {
         "validate_assignment": True,
@@ -58,15 +58,15 @@ class LocationInner(BaseModel):
 
     @field_validator('actual_instance')
     def actual_instance_must_validate_anyof(cls, v):
-        instance = LocationInner.model_construct()
+        instance = Extra.model_construct()
         error_messages = []
-        # validate data type: str
+        # validate data type: Dict[str, object]
         try:
             instance.anyof_schema_1_validator = v
             return v
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # validate data type: int
+        # validate data type: str
         try:
             instance.anyof_schema_2_validator = v
             return v
@@ -74,7 +74,7 @@ class LocationInner(BaseModel):
             error_messages.append(str(e))
         if error_messages:
             # no match
-            raise ValueError("No match found when setting the actual_instance in LocationInner with anyOf schemas: int, str. Details: " + ", ".join(error_messages))
+            raise ValueError("No match found when setting the actual_instance in Extra with anyOf schemas: Dict[str, object], str. Details: " + ", ".join(error_messages))
         else:
             return v
 
@@ -87,7 +87,7 @@ class LocationInner(BaseModel):
         """Returns the object represented by the json string"""
         instance = cls.model_construct()
         error_messages = []
-        # deserialize data into str
+        # deserialize data into Dict[str, object]
         try:
             # validation
             instance.anyof_schema_1_validator = json.loads(json_str)
@@ -96,7 +96,7 @@ class LocationInner(BaseModel):
             return instance
         except (ValidationError, ValueError) as e:
             error_messages.append(str(e))
-        # deserialize data into int
+        # deserialize data into str
         try:
             # validation
             instance.anyof_schema_2_validator = json.loads(json_str)
@@ -108,7 +108,7 @@ class LocationInner(BaseModel):
 
         if error_messages:
             # no match
-            raise ValueError("No match found when deserializing the JSON string into LocationInner with anyOf schemas: int, str. Details: " + ", ".join(error_messages))
+            raise ValueError("No match found when deserializing the JSON string into Extra with anyOf schemas: Dict[str, object], str. Details: " + ", ".join(error_messages))
         else:
             return instance
 
@@ -122,7 +122,7 @@ class LocationInner(BaseModel):
         else:
             return json.dumps(self.actual_instance)
 
-    def to_dict(self) -> Optional[Union[Dict[str, Any], int, str]]:
+    def to_dict(self) -> Optional[Union[Dict[str, Any], Dict[str, object], str]]:
         """Returns the dict representation of the actual instance"""
         if self.actual_instance is None:
             return None

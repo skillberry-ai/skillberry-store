@@ -6,4 +6,5 @@ from skillberry_store_sdk.api.skills_api import SkillsApi
 from skillberry_store_sdk.api.snippets_api import SnippetsApi
 from skillberry_store_sdk.api.tools_api import ToolsApi
 from skillberry_store_sdk.api.vmcp_servers_api import VmcpServersApi
+from skillberry_store_sdk.api.vnfs_servers_api import VnfsServersApi
 

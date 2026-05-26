@@ -5,6 +5,9 @@
 README.md
 docs/AdminApi.md
 docs/ContentType.md
+docs/Extra.md
+docs/Extra1.md
+docs/Extra2.md
 docs/HTTPValidationError.md
 docs/LifecycleState.md
 docs/LocationInner.md
@@ -19,6 +22,7 @@ docs/ToolSchema.md
 docs/ToolsApi.md
 docs/ValidationError.md
 docs/VmcpServersApi.md
+docs/VnfsServersApi.md
 git_push.sh
 pyproject.toml
 requirements.txt
@@ -31,12 +35,16 @@ skillberry_store_sdk/api/skills_api.py
 skillberry_store_sdk/api/snippets_api.py
 skillberry_store_sdk/api/tools_api.py
 skillberry_store_sdk/api/vmcp_servers_api.py
+skillberry_store_sdk/api/vnfs_servers_api.py
 skillberry_store_sdk/api_client.py
 skillberry_store_sdk/api_response.py
 skillberry_store_sdk/configuration.py
 skillberry_store_sdk/exceptions.py
 skillberry_store_sdk/models/__init__.py
 skillberry_store_sdk/models/content_type.py
+skillberry_store_sdk/models/extra.py
+skillberry_store_sdk/models/extra1.py
+skillberry_store_sdk/models/extra2.py
 skillberry_store_sdk/models/http_validation_error.py
 skillberry_store_sdk/models/lifecycle_state.py
 skillberry_store_sdk/models/location_inner.py
@@ -53,6 +61,9 @@ test-requirements.txt
 test/__init__.py
 test/test_admin_api.py
 test/test_content_type.py
+test/test_extra.py
+test/test_extra1.py
+test/test_extra2.py
 test/test_http_validation_error.py
 test/test_lifecycle_state.py
 test/test_location_inner.py
@@ -67,4 +78,5 @@ test/test_tool_schema.py
 test/test_tools_api.py
 test/test_validation_error.py
 test/test_vmcp_servers_api.py
+test/test_vnfs_servers_api.py
 tox.ini

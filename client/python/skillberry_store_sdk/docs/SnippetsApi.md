@@ -5,15 +5,15 @@ All URIs are relative to *http://localhost*
 Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**create_snippet_snippets_post**](SnippetsApi.md#create_snippet_snippets_post) | **POST** /snippets/ | Create Snippet
-[**delete_snippet_snippets_name_delete**](SnippetsApi.md#delete_snippet_snippets_name_delete) | **DELETE** /snippets/{name} | Delete Snippet
-[**get_snippet_snippets_name_get**](SnippetsApi.md#get_snippet_snippets_name_get) | **GET** /snippets/{name} | Get Snippet
+[**delete_snippet_snippets_uuid_or_name_delete**](SnippetsApi.md#delete_snippet_snippets_uuid_or_name_delete) | **DELETE** /snippets/{uuid_or_name} | Delete Snippet
+[**get_snippet_snippets_uuid_or_name_get**](SnippetsApi.md#get_snippet_snippets_uuid_or_name_get) | **GET** /snippets/{uuid_or_name} | Get Snippet
 [**list_snippets_snippets_get**](SnippetsApi.md#list_snippets_snippets_get) | **GET** /snippets/ | List Snippets
 [**search_snippets_search_snippets_get**](SnippetsApi.md#search_snippets_search_snippets_get) | **GET** /search/snippets | Search Snippets
-[**update_snippet_snippets_name_put**](SnippetsApi.md#update_snippet_snippets_name_put) | **PUT** /snippets/{name} | Update Snippet
+[**update_snippet_snippets_uuid_or_name_put**](SnippetsApi.md#update_snippet_snippets_uuid_or_name_put) | **PUT** /snippets/{uuid_or_name} | Update Snippet
 
 
 # **create_snippet_snippets_post**
-> object create_snippet_snippets_post(content, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, content_type=content_type, file=file)
+> object create_snippet_snippets_post(content, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, content_type=content_type, file=file)
 
 Create Snippet
 
@@ -59,7 +59,8 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
+    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
+    parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     content_type = skillberry_store_sdk.ContentType() # ContentType | MIME type of the snippet content (optional)
@@ -67,7 +68,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Create Snippet
-        api_response = api_instance.create_snippet_snippets_post(content, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, content_type=content_type, file=file)
+        api_response = api_instance.create_snippet_snippets_post(content, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, content_type=content_type, file=file)
         print("The response of SnippetsApi->create_snippet_snippets_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -88,7 +89,8 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **content_type** | [**ContentType**](.md)| MIME type of the snippet content | [optional] 
@@ -116,15 +118,15 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **delete_snippet_snippets_name_delete**
-> object delete_snippet_snippets_name_delete(name)
+# **delete_snippet_snippets_uuid_or_name_delete**
+> object delete_snippet_snippets_uuid_or_name_delete(uuid_or_name)
 
 Delete Snippet
 
-Delete a snippet by name.
+Delete a snippet by UUID or name.
 
 Args:
-    name: The name of the snippet to delete.
+    uuid_or_name: The UUID or name of the snippet to delete.
 
 Returns:
     dict: Success message.
@@ -151,15 +153,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.SnippetsApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
         # Delete Snippet
-        api_response = api_instance.delete_snippet_snippets_name_delete(name)
-        print("The response of SnippetsApi->delete_snippet_snippets_name_delete:\n")
+        api_response = api_instance.delete_snippet_snippets_uuid_or_name_delete(uuid_or_name)
+        print("The response of SnippetsApi->delete_snippet_snippets_uuid_or_name_delete:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling SnippetsApi->delete_snippet_snippets_name_delete: %s\n" % e)
+        print("Exception when calling SnippetsApi->delete_snippet_snippets_uuid_or_name_delete: %s\n" % e)
 ```
 
 
@@ -169,7 +171,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
 
 ### Return type
 
@@ -193,15 +195,15 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **get_snippet_snippets_name_get**
-> object get_snippet_snippets_name_get(name)
+# **get_snippet_snippets_uuid_or_name_get**
+> object get_snippet_snippets_uuid_or_name_get(uuid_or_name)
 
 Get Snippet
 
-Get a specific snippet by name.
+Get a specific snippet by UUID or name.
 
 Args:
-    name: The name of the snippet.
+    uuid_or_name: The UUID or name of the snippet.
 
 Returns:
     dict: The snippet object.
@@ -228,15 +230,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.SnippetsApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
         # Get Snippet
-        api_response = api_instance.get_snippet_snippets_name_get(name)
-        print("The response of SnippetsApi->get_snippet_snippets_name_get:\n")
+        api_response = api_instance.get_snippet_snippets_uuid_or_name_get(uuid_or_name)
+        print("The response of SnippetsApi->get_snippet_snippets_uuid_or_name_get:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling SnippetsApi->get_snippet_snippets_name_get: %s\n" % e)
+        print("Exception when calling SnippetsApi->get_snippet_snippets_uuid_or_name_get: %s\n" % e)
 ```
 
 
@@ -246,7 +248,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
 
 ### Return type
 
@@ -427,15 +429,15 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **update_snippet_snippets_name_put**
-> object update_snippet_snippets_name_put(name, snippet_schema)
+# **update_snippet_snippets_uuid_or_name_put**
+> object update_snippet_snippets_uuid_or_name_put(uuid_or_name, snippet_schema)
 
 Update Snippet
 
-Update an existing snippet.
+Update an existing snippet by UUID or name.
 
 Args:
-    name: The name of the snippet to update.
+    uuid_or_name: The UUID or name of the snippet to update.
     snippet: The updated snippet schema.
 
 Returns:
@@ -464,16 +466,16 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.SnippetsApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
     snippet_schema = skillberry_store_sdk.SnippetSchema() # SnippetSchema | 
 
     try:
         # Update Snippet
-        api_response = api_instance.update_snippet_snippets_name_put(name, snippet_schema)
-        print("The response of SnippetsApi->update_snippet_snippets_name_put:\n")
+        api_response = api_instance.update_snippet_snippets_uuid_or_name_put(uuid_or_name, snippet_schema)
+        print("The response of SnippetsApi->update_snippet_snippets_uuid_or_name_put:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling SnippetsApi->update_snippet_snippets_name_put: %s\n" % e)
+        print("Exception when calling SnippetsApi->update_snippet_snippets_uuid_or_name_put: %s\n" % e)
 ```
 
 
@@ -483,7 +485,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
  **snippet_schema** | [**SnippetSchema**](SnippetSchema.md)|  | 
 
 ### Return type
