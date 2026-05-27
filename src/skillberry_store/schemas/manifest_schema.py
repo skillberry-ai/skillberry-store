@@ -52,6 +52,10 @@ class ManifestSchema(BaseModel):
         default_factory=dict,
         description="Optional dictionary for additional flexible information"
     )
+    parent: Optional[str] = Field(
+        None,
+        description="UUID of the parent object (previous version with same name)"
+    )
     created_at: Optional[str] = Field(
         default=None,
         description="ISO 8601 timestamp when created"

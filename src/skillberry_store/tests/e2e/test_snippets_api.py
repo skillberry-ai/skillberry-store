@@ -60,8 +60,12 @@ async def test_create_duplicate_snippet(run_sbs):
         # First, create the snippet
         response = await client.post(f"{BASE_URL}/snippets/", params=snippet_data, files=files)
         assert response.status_code == 200
+        data = response.json()
+        created_uuid = data.get("uuid")
+        assert created_uuid is not None
         
-        # Now try to create a duplicate - should fail with 409 Conflict
+        # Now try to create a duplicate with the same UUID - should fail with 409 Conflict
+        snippet_data["uuid"] = created_uuid
         response = await client.post(f"{BASE_URL}/snippets/", params=snippet_data, files=files)
         assert response.status_code == 409
         assert "already exists" in response.json().get("detail", "")

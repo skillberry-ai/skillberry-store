@@ -1,11 +1,106 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+import uuid
 
 import logging
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
 
 # TODO: common skillberry library
+
+
+def generate_or_validate_uuid(uuid_str: Optional[str]) -> str:
+    """
+    Generate a new UUID or validate an existing one.
+
+    This function encapsulates UUID creation and validation logic:
+    - If uuid_str is None, generates a new valid UUID
+    - If uuid_str is not None, validates it and returns normalized version
+    - Raises HTTPException with 400 status if validation fails
+
+    Args:
+        uuid_str: Optional UUID string to validate, or None to generate new UUID
+
+    Returns:
+        str: A valid UUID string (lowercase, normalized)
+
+    Raises:
+        HTTPException: If uuid_str is provided but invalid (status_code=400)
+
+    Examples:
+        >>> generate_or_validate_uuid(None)  # doctest: +SKIP
+        '12345678-1234-1234-1234-123456789abc'
+        >>> generate_or_validate_uuid("12345678-1234-1234-1234-123456789ABC")
+        '12345678-1234-1234-1234-123456789abc'
+        >>> generate_or_validate_uuid("invalid-uuid")  # doctest: +SKIP
+        HTTPException(status_code=400, detail="Invalid UUID format: invalid-uuid")
+    """
+    if uuid_str is None:
+        # Generate a new valid UUID
+        return str(uuid.uuid4())
+
+    # Validate the provided UUID
+    normalized = normalize_uuid(uuid_str)
+    if not normalized:
+        raise HTTPException(status_code=400, detail=f"Invalid UUID format: {uuid_str}")
+
+    return normalized
+
+
+def normalize_uuid(uuid_str: Optional[str]) -> Optional[str]:
+    """
+    Normalize a UUID string to lowercase format.
+
+    This function ensures consistent UUID handling across the codebase by:
+    - Converting UUIDs to lowercase
+    - Validating UUID format
+    - Returning None for invalid or None inputs
+
+    Args:
+        uuid_str: A UUID string (can be uppercase, lowercase, or mixed case)
+
+    Returns:
+        Lowercase UUID string if valid, None otherwise
+
+    Examples:
+        >>> normalize_uuid("12345678-1234-1234-1234-123456789ABC")
+        '12345678-1234-1234-1234-123456789abc'
+        >>> normalize_uuid("ABCDEF12-3456-7890-ABCD-EF1234567890")
+        'abcdef12-3456-7890-abcd-ef1234567890'
+        >>> normalize_uuid("invalid-uuid")
+        None
+        >>> normalize_uuid(None)
+        None
+    """
+    if not uuid_str:
+        return None
+
+    try:
+        # Validate and normalize the UUID
+        # uuid.UUID() will raise ValueError if the string is not a valid UUID
+        validated_uuid = uuid.UUID(uuid_str)
+        return str(validated_uuid).lower()
+    except (ValueError, AttributeError, TypeError):
+        logger.debug(f"Invalid UUID format: {uuid_str}")
+        return None
+
+
+def make_name_with_uuid(name: str, uuid_str: str) -> str:
+    """Generate unique name by combining a name with a UUID.
+
+    This ensures each object gets a unique identifier, even if
+    multiple objects share the same name.
+
+    Args:
+        name: The human-readable name
+        uuid_str: The unique UUID
+
+    Returns:
+        Composite name: "{name}_{uuid}"
+    """
+    return f"{name}_{uuid_str}"
+
 
 SKILLBERRY_CONTEXT = "skillberry-context"
 

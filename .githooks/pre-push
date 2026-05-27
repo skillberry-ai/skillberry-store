@@ -18,3 +18,5 @@ fi
 echo "========> ENABLE_QC is not set. Skipping quality check."
 
 exit 0
+
+# Made with Bob

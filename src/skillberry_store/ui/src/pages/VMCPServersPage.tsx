@@ -291,6 +291,12 @@ export function VMCPServersPage() {
           server.name.toLowerCase().includes(lowerSearch) ||
           server.description?.toLowerCase().includes(lowerSearch)
         );
+      } else if (searchMode === 'uuid') {
+        // UUID search: filter by matching UUID (partial match)
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((server) =>
+          server.uuid?.toLowerCase().includes(lowerSearch)
+        );
       }
     }
 
@@ -482,28 +488,28 @@ export function VMCPServersPage() {
                   />
                   <Td
                     dataLabel="Name"
-                    onClick={() => navigate(`/vmcp-servers/${server.name}`)}
+                    onClick={() => navigate(`/vmcp-servers/${server.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {server.name}
                   </Td>
                   <Td
                     dataLabel="Description"
-                    onClick={() => navigate(`/vmcp-servers/${server.name}`)}
+                    onClick={() => navigate(`/vmcp-servers/${server.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {server.description || 'No description'}
                   </Td>
                   <Td
                     dataLabel="State"
-                    onClick={() => navigate(`/vmcp-servers/${server.name}`)}
+                    onClick={() => navigate(`/vmcp-servers/${server.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {server.state || '-'}
                   </Td>
                   <Td
                     dataLabel="Tags"
-                    onClick={() => navigate(`/vmcp-servers/${server.name}`)}
+                    onClick={() => navigate(`/vmcp-servers/${server.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {server.tags && server.tags.length > 0 ? (
@@ -538,7 +544,7 @@ export function VMCPServersPage() {
                   </Td>
                   <Td
                     dataLabel="Version"
-                    onClick={() => navigate(`/vmcp-servers/${server.name}`)}
+                    onClick={() => navigate(`/vmcp-servers/${server.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {server.version || '-'}

@@ -238,7 +238,7 @@ def read_from_folder(folder_path: str) -> List[Dict[str, str]]:
     return files
 
 
-def import_anthropic_skill(
+def import_from_anthropic_skill(
     source_type: str,
     source_data: Any,
     snippet_mode: str = "file",

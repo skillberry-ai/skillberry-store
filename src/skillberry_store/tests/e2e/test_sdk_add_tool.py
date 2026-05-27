@@ -19,9 +19,7 @@ import pytest
 
 # Check if SDK is installed
 try:
-    from skillberry_store_sdk.api_client import ApiClient
-    from skillberry_store_sdk.configuration import Configuration
-    from skillberry_store_sdk.api.tools_api import ToolsApi
+    from skillberry_store_sdk import ApiClient, Configuration, ToolsApi
 except ImportError as e:
     pytest.skip(
         f"skillberry_store_sdk is not installed. "
@@ -95,17 +93,17 @@ async def test_sdk_add_tool(run_sbs, sdk_client):
         assert module_name is not None and module_name == os.path.basename(temp_path)
         
         # Verify the tool was actually created by retrieving it
-        tool = sdk_client.get_tool_tools_name_get(name="calculate_sum")
+        tool = sdk_client.get_tool_tools_uuid_or_name_get(uuid_or_name="calculate_sum")
         assert tool is not None
         assert tool.get("name") == "calculate_sum"
         
         # Cleanup
-        sdk_client.delete_tool_tools_name_delete(name="calculate_sum")
+        sdk_client.delete_tool_tools_uuid_or_name_delete(uuid_or_name="calculate_sum")
         
     except Exception as e:
         # If test fails, try to cleanup anyway
         try:
-            sdk_client.delete_tool_tools_name_delete(name="calculate_sum")
+            sdk_client.delete_tool_tools_uuid_or_name_delete(uuid_or_name="calculate_sum")
         except:
             pass
         raise e

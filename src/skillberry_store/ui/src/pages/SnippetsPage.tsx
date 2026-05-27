@@ -261,6 +261,12 @@ export function SnippetsPage() {
           snippet.name.toLowerCase().includes(lowerSearch) ||
           snippet.description?.toLowerCase().includes(lowerSearch)
         );
+      } else if (searchMode === 'uuid') {
+        // UUID search: filter by matching UUID (partial match)
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((snippet) =>
+          snippet.uuid?.toLowerCase().includes(lowerSearch)
+        );
       }
     }
 
@@ -463,28 +469,28 @@ export function SnippetsPage() {
                   />
                   <Td
                     dataLabel="Name"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.name}
                   </Td>
                   <Td
                     dataLabel="Description"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.description || 'No description'}
                   </Td>
                   <Td
                     dataLabel="State"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.state || '-'}
                   </Td>
                   <Td
                     dataLabel="Tags"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.tags && snippet.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (

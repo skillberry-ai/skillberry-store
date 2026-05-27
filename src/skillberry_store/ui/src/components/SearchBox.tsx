@@ -16,7 +16,7 @@ import {
 } from '@patternfly/react-core';
 import { CogIcon } from '@patternfly/react-icons';
 
-export type SearchMode = 'text' | 'semantic';
+export type SearchMode = 'text' | 'semantic' | 'uuid';
 
 interface SearchBoxProps {
   value: string;
@@ -69,6 +69,12 @@ export function SearchBox({
           buttonId="semantic-search"
           isSelected={mode === 'semantic'}
           onChange={() => onModeChange('semantic')}
+        />
+        <ToggleGroupItem
+          text="UUID"
+          buttonId="uuid-search"
+          isSelected={mode === 'uuid'}
+          onChange={() => onModeChange('uuid')}
         />
       </ToggleGroup>
 

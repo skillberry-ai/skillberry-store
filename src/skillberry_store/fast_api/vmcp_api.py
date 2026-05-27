@@ -8,9 +8,8 @@ from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, Request
 from prometheus_client import Counter, Histogram
 
-from skillberry_store.modules.file_handler import FileHandler
+from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.modules.description import Description
-from skillberry_store.modules.lookup_cache import build_lookup_cache
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
 from skillberry_store.schemas.vmcp_schema import VmcpSchema
@@ -20,7 +19,12 @@ from skillberry_store.tools.configure import (
     get_tools_directory,
     get_vmcp_directory,
 )
-from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
+from skillberry_store.utils.utils import (
+    SKILLBERRY_CONTEXT,
+    unflatten_keys,
+    normalize_uuid,
+    generate_or_validate_uuid,
+)
 from skillberry_store.fast_api.search_filters import apply_search_filters
 
 logger = logging.getLogger(__name__)
@@ -80,8 +84,7 @@ def register_vmcp_api(
         tags: FastAPI tags for grouping the endpoints in documentation.
         vmcp_descriptions: Description instance for managing vmcp descriptions.
     """
-    vmcp_directory = get_vmcp_directory()
-    vmcp_handler = FileHandler(vmcp_directory)
+    vmcp_handler = get_object_handler("vmcp")
 
     # Initialize the server manager for runtime management
     vmcp_server_manager = VirtualMcpServerManager(sts_url=sts_url, app=app)
@@ -108,23 +111,27 @@ def register_vmcp_api(
         logger.info(f"Request to create vmcp server: {vmcp.name}")
         create_vmcp_counter.inc()
 
-        # Generate UUID if not provided
-        if not vmcp.uuid:
-            vmcp.uuid = str(uuid.uuid4())
-            logger.info(f"Generated UUID for vmcp server '{vmcp.name}': {vmcp.uuid}")
+        # Generate or validate UUID
+        vmcp.uuid = generate_or_validate_uuid(vmcp.uuid)
+        logger.info(f"UUID for vmcp server '{vmcp.name}': {vmcp.uuid}")
 
         # Set timestamps
         current_time = datetime.now(timezone.utc).isoformat()
         vmcp.created_at = current_time
         vmcp.modified_at = current_time
 
-        # Check if vmcp server already exists
-        existing_vmcp = vmcp_handler.list_files()
-        vmcp_filename = f"{vmcp.name}.json"
-
-        if vmcp_filename in existing_vmcp:
+        # Check if vmcp server with this UUID already exists
+        if vmcp_handler.object_exists(vmcp.uuid):
             raise HTTPException(
-                status_code=409, detail=f"VMCP server '{vmcp.name}' already exists."
+                status_code=409,
+                detail=f"VMCP server with UUID '{vmcp.uuid}' already exists.",
+            )
+
+        # Determine correct parent for this VMCP server becoming HEAD
+        if vmcp.name:
+            vmcp.parent = vmcp_handler.get_cache_parent_for_head(vmcp.uuid, vmcp.name)
+            logger.info(
+                f"Setting parent for VMCP server '{vmcp.name}' to {vmcp.parent}"
             )
 
         # Extract env_id from request headers
@@ -137,9 +144,9 @@ def register_vmcp_api(
         )
 
         try:
-            # Extract tool names and snippet names from the skill by resolving skill_uuid
-            tool_names = []
-            snippet_names = []
+            # Get tool and snippet UUIDs from the skill
+            tool_uuids = []
+            snippet_uuids = []
             print(f"DEBUG: vmcp.skill_uuid = {vmcp.skill_uuid}")
             if vmcp.skill_uuid:
                 print(
@@ -149,74 +156,58 @@ def register_vmcp_api(
                     f"Resolving tools and snippets for skill_uuid: {vmcp.skill_uuid}"
                 )
                 # Load the skill to get tool UUIDs and snippet UUIDs
-                skills_handler = FileHandler(get_skills_directory())
-                tools_handler = FileHandler(get_tools_directory())
-                snippets_handler = FileHandler(get_snippets_directory())
-                lookup_cache = build_lookup_cache(
-                    skills_handler=skills_handler,
-                    tools_handler=tools_handler,
-                    snippets_handler=snippets_handler,
-                )
+                skills_handler = get_object_handler("skill")
 
-                skill_dict = lookup_cache.skills_by_uuid.get(vmcp.skill_uuid)
-                if not skill_dict:
-                    logger.warning(f"No skill found for skill_uuid: {vmcp.skill_uuid}")
-                else:
-                    skill_tool_uuids = skill_dict.get("tool_uuids", [])
-                    skill_snippet_uuids = skill_dict.get("snippet_uuids", [])
+                try:
+                    # Read skill dict by UUID
+                    skill_dict = skills_handler.read_dict(vmcp.skill_uuid)
+                    tool_uuids = skill_dict.get("tool_uuids", [])
+                    snippet_uuids = skill_dict.get("snippet_uuids", [])
                     logger.info(
-                        f"Found skill '{skill_dict.get('name')}' with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs"
+                        f"Found skill '{skill_dict.get('name')}' with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs"
+                    )
+                except Exception as e:
+                    logger.warning(f"Error loading skill {vmcp.skill_uuid}: {e}")
+
+                if not tool_uuids and not snippet_uuids:
+                    logger.warning(
+                        f"No tools or snippets found for skill_uuid: {vmcp.skill_uuid}"
                     )
 
-                    for tool_uuid in skill_tool_uuids:
-                        tool_dict = lookup_cache.tools_by_uuid.get(tool_uuid)
-                        tool_name = tool_dict.get("name") if tool_dict else None
-                        if tool_name:
-                            tool_names.append(tool_name)
-                            logger.info(
-                                f"Resolved tool UUID {tool_uuid} to name '{tool_name}'"
-                            )
-
-                    for snippet_uuid in skill_snippet_uuids:
-                        snippet_dict = lookup_cache.snippets_by_uuid.get(snippet_uuid)
-                        snippet_name = (
-                            snippet_dict.get("name") if snippet_dict else None
-                        )
-                        if snippet_name:
-                            snippet_names.append(snippet_name)
-                            logger.info(
-                                f"Resolved snippet UUID {snippet_uuid} to name '{snippet_name}'"
-                            )
-
                 logger.info(
-                    f"Final tool_names list: {tool_names}, snippet_names list: {snippet_names}"
+                    f"Final tool_uuids list: {tool_uuids}, snippet_uuids list: {snippet_uuids}"
                 )
             else:
                 logger.info(
                     "No skill_uuid provided, creating VMCP server without tools or snippets"
                 )
 
-            # Start the runtime server using VirtualMcpServerManager
+            # Start the runtime server using VirtualMcpServerManager with UUIDs
+            # Manager will create composite name internally
             server = vmcp_server_manager.add_server(
-                name=vmcp.name,
+                name=vmcp.name or "",
+                uuid=vmcp.uuid or "",
                 description=vmcp.description or "",
                 port=vmcp.port if hasattr(vmcp, "port") and vmcp.port else None,
-                tools=tool_names,
-                snippets=snippet_names,
+                tools=tool_uuids,  # Pass UUIDs, not names
+                snippets=snippet_uuids,  # Pass UUIDs, not names
                 env_id=env_id,
             )
 
             # Update the schema with the actual port assigned
             vmcp.port = server.port
 
-            # Save the persistent JSON representation
-            vmcp_json = json.dumps(vmcp.to_dict(), indent=4)
-            vmcp_handler.write_file_content(vmcp_filename, vmcp_json)
+            # Save the persistent JSON representation using ObjectHandler
+            vmcp_handler.write_dict(vmcp.uuid, vmcp.to_dict())
 
-            # Write description for search capability
+            # Update cache after create
+            if vmcp.name:
+                vmcp_handler.update_cache(vmcp.uuid, new_name=vmcp.name)
+
+            # Write description for search capability (indexed by UUID)
             if vmcp_descriptions and vmcp.description:
-                vmcp_descriptions.write_description(vmcp.name, vmcp.description)
-                logger.info(f"VMCP server description saved for: {vmcp.name}")
+                vmcp_descriptions.write_description(vmcp.uuid, vmcp.description)
+                logger.info(f"VMCP server description saved for UUID: {vmcp.uuid}")
 
             logger.info(
                 f"VMCP server '{vmcp.name}' created successfully on port {server.port}"
@@ -228,9 +219,21 @@ def register_vmcp_api(
                 "port": server.port,
             }
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"Error creating vmcp server '{vmcp.name}': {e}")
+
+            # Check if it's a port conflict error
+            if "port" in error_msg.lower() and (
+                "not available" in error_msg.lower()
+                or "already in use" in error_msg.lower()
+                or "in use" in error_msg.lower()
+            ):
+                raise HTTPException(
+                    status_code=409, detail=f"Port conflict: {error_msg}"
+                )
+
             raise HTTPException(
-                status_code=500, detail=f"Error creating vmcp server: {str(e)}"
+                status_code=500, detail=f"Error creating vmcp server: {error_msg}"
             )
 
     @app.get("/vmcp_servers/", tags=[tags])
@@ -249,27 +252,22 @@ def register_vmcp_api(
         list_vmcp_counter.inc()
 
         try:
-            # Get all server files from persistent storage
-            all_files = vmcp_handler.list_files()
-            server_files = [f for f in all_files if f.endswith(".json")]
+            # Get all VMCP objects using ObjectHandler
+            vmcp_resources = vmcp_handler.list_all_dicts()
 
             # Build full server objects by combining persistent and runtime data
             servers_list = []
-            for filename in server_files:
-                server_name = filename[:-5]  # Remove .json extension
+            for vmcp_data in vmcp_resources:
+                server_name = vmcp_data.get("name")
+                server_uuid = vmcp_data.get("uuid")
                 try:
-                    # Read persistent data from JSON
-                    content = vmcp_handler.read_file(filename, raw_content=True)
-                    if isinstance(content, str):
-                        vmcp_data = json.loads(content)
-                    else:
-                        logger.warning(f"Unexpected content type for {filename}")
-                        continue
-
                     # Get runtime data (may be None if server not running)
+                    # Manager will construct composite name internally
                     runtime_server = None
                     try:
-                        runtime_server = vmcp_server_manager.get_server(server_name)
+                        runtime_server = vmcp_server_manager.get_server(
+                            server_name or "", server_uuid or ""
+                        )
                     except Exception:
                         pass  # Server not running, which is fine
 
@@ -292,7 +290,9 @@ def register_vmcp_api(
                                     runtime_server.description if runtime_server else ""
                                 ),
                                 "port": runtime_server.port if runtime_server else None,
-                                "tools": runtime_server.tools if runtime_server else [],
+                                "tools": (
+                                    runtime_server.tool_uuids if runtime_server else []
+                                ),
                             }
                             if runtime_server
                             else None
@@ -305,8 +305,8 @@ def register_vmcp_api(
             # Sort by modified_at in descending order (most recent first)
             servers_list.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
 
-            # Convert to dict with server names as keys
-            servers_dict = {server["name"]: server for server in servers_list}
+            # Convert to dict with server UUIDs as keys to avoid duplications
+            servers_dict = {server["uuid"]: server for server in servers_list}
 
             logger.info(f"Listed {len(servers_dict)} vmcp servers")
             return {"virtual_mcp_servers": servers_dict}
@@ -316,14 +316,14 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error listing vmcp servers: {str(e)}"
             )
 
-    @app.get("/vmcp_servers/{name}", tags=[tags])
-    def get_vmcp_server(name: str):
-        """Get a specific virtual MCP server by name.
+    @app.get("/vmcp_servers/{uuid_or_name}", tags=[tags])
+    def get_vmcp_server(uuid_or_name: str):
+        """Get a specific virtual MCP server by UUID or name.
 
         Returns both persistent and runtime information.
 
         Args:
-            name: The name of the vmcp server.
+            uuid_or_name: The UUID or name of the vmcp server.
 
         Returns:
             dict: The vmcp server object with runtime details.
@@ -331,47 +331,47 @@ def register_vmcp_api(
         Raises:
             HTTPException: If vmcp server not found (404) or retrieval fails (500).
         """
-        logger.info(f"Request to get vmcp server: {name}")
+        logger.info(f"Request to get vmcp server: {uuid_or_name}")
         get_vmcp_counter.inc()
 
         try:
-            # Get persistent data
-            vmcp_filename = f"{name}.json"
-            content = vmcp_handler.read_file(vmcp_filename, raw_content=True)
-            if not isinstance(content, str):
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Invalid content type for vmcp server '{name}'",
-                )
-            vmcp_dict = json.loads(content)
+            # Resolve UUID or name to UUID and read manifest
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(uuid_or_name)
+            vmcp_dict = vmcp_handler.read_dict(vmcp_uuid)
+            server_name = vmcp_dict.get("name")
+            server_uuid = vmcp_dict.get("uuid")
 
             # Get runtime details from manager
             try:
-                runtime_details = vmcp_server_manager.get_server_details(name)
+                runtime_details = vmcp_server_manager.get_server_details(
+                    server_name or "", server_uuid or ""
+                )
                 vmcp_dict["runtime"] = runtime_details
                 vmcp_dict["running"] = True
             except Exception:
                 vmcp_dict["running"] = False
                 vmcp_dict["runtime"] = None
 
-            logger.info(f"Retrieved vmcp server: {name}")
+            logger.info(f"Retrieved vmcp server: {uuid_or_name}")
             return vmcp_dict
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving vmcp server '{name}': {e}")
+            logger.error(f"Error retrieving vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving vmcp server: {str(e)}"
             )
 
-    @app.delete("/vmcp_servers/{name}", tags=[tags])
-    def delete_vmcp_server(name: str):
-        """Delete a virtual MCP server by name.
+    @app.delete("/vmcp_servers/{uuid_or_name}", tags=[tags])
+    def delete_vmcp_server(uuid_or_name: str):
+        """Delete a virtual MCP server by UUID or name.
 
         Stops the runtime server and removes persistent data.
 
         Args:
-            name: The name of the vmcp server to delete.
+            uuid_or_name: The UUID or name of the vmcp server to delete.
 
         Returns:
             dict: Success message.
@@ -379,51 +379,69 @@ def register_vmcp_api(
         Raises:
             HTTPException: If vmcp server not found (404) or deletion fails (500).
         """
-        logger.info(f"Request to delete vmcp server: {name}")
+        logger.info(f"Request to delete vmcp server: {uuid_or_name}")
         delete_vmcp_counter.inc()
 
         try:
+            # Resolve UUID or name to UUID and read dict
+            server_uuid = vmcp_handler.resolve_to_uuid_or_error(uuid_or_name)
+            vmcp_dict = vmcp_handler.read_dict(server_uuid)
+            server_name = vmcp_dict.get("name")
+            server_parent = vmcp_dict.get("parent")
+
             # Stop and remove the runtime server
             try:
-                vmcp_server_manager.remove_server(name)
-                logger.info(f"Stopped runtime server: {name}")
+                vmcp_server_manager.remove_server(server_name or "", server_uuid or "")
+                logger.info(f"Stopped runtime server: {server_name}_{server_uuid}")
             except Exception as e:
-                logger.warning(f"Could not stop runtime server '{name}': {e}")
+                logger.warning(f"Could not stop runtime server: {e}")
 
-            # Delete persistent data
-            vmcp_filename = f"{name}.json"
-            result = vmcp_handler.delete_file(vmcp_filename)
+            # Delete persistent data using ObjectHandler
+            vmcp_handler.delete_object(server_uuid)
 
-            # Delete the description
+            # Update cache after delete
+            if server_name and server_uuid:
+                vmcp_handler.update_cache(
+                    server_uuid,
+                    new_name=None,
+                    old_name=server_name,
+                    old_parent=server_parent,
+                )
+
+            # Delete the description (indexed by UUID)
             if vmcp_descriptions:
                 try:
-                    vmcp_descriptions.delete_description(name)
-                    logger.info(f"VMCP server description deleted for: {name}")
+                    vmcp_descriptions.delete_description(server_uuid or "")
+                    logger.info(
+                        f"VMCP server description deleted for UUID: {server_uuid}"
+                    )
                 except Exception as e:
                     logger.warning(
-                        f"Could not delete vmcp server description for '{name}': {e}"
+                        f"Could not delete vmcp server description for UUID '{server_uuid}': {e}"
                     )
 
-            logger.info(f"VMCP server '{name}' deleted successfully")
-            return {"message": f"VMCP server '{name}' deleted successfully."}
+            logger.info(f"VMCP server '{uuid_or_name}' deleted successfully")
+            return {"message": f"VMCP server '{uuid_or_name}' deleted successfully."}
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except HTTPException as e:
             raise
         except Exception as e:
-            logger.error(f"Error deleting vmcp server '{name}': {e}")
+            logger.error(f"Error deleting vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting vmcp server: {str(e)}"
             )
 
-    @app.put("/vmcp_servers/{name}", tags=[tags])
+    @app.put("/vmcp_servers/{uuid_or_name}", tags=[tags])
     def update_vmcp_server(
-        name: str, vmcp: Annotated[VmcpSchema, Query()], request: Request
+        uuid_or_name: str, vmcp: Annotated[VmcpSchema, Query()], request: Request
     ):
         """Update an existing virtual MCP server.
 
         Updates both persistent data and restarts the runtime server.
 
         Args:
-            name: The name of the vmcp server to update.
+            uuid_or_name: The UUID or name of the vmcp server to update.
             vmcp: The updated vmcp schema.
             request: The incoming request object for context extraction.
 
@@ -433,21 +451,34 @@ def register_vmcp_api(
         Raises:
             HTTPException: If vmcp server not found (404) or update fails (500).
         """
-        logger.info(f"Request to update vmcp server: {name}")
+        logger.info(f"Request to update vmcp server: {uuid_or_name}")
         update_vmcp_counter.inc()
 
         try:
-            vmcp_filename = f"{name}.json"
-
-            # Check if vmcp server exists
-            existing_vmcp = vmcp_handler.list_files()
-            if vmcp_filename not in existing_vmcp:
-                raise HTTPException(
-                    status_code=404, detail=f"VMCP server '{name}' not found."
-                )
+            # Resolve UUID or name to UUID and read current data
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(uuid_or_name)
+            existing_vmcp = vmcp_handler.read_dict(vmcp_uuid)
+            old_name = existing_vmcp.get("name")
+            old_parent = existing_vmcp.get("parent")
+            server_uuid = existing_vmcp.get("uuid")
 
             # Update modified timestamp
             vmcp.modified_at = datetime.now(timezone.utc).isoformat()
+
+            # Preserve UUID if not provided in update
+            if not vmcp.uuid:
+                vmcp.uuid = server_uuid
+
+            # Determine new name and correct parent
+            new_name = vmcp.name
+            if new_name:
+                # Determine correct parent for this VMCP server becoming HEAD
+                vmcp.parent = vmcp_handler.get_cache_parent_for_head(
+                    vmcp.uuid or "", new_name
+                )
+                logger.info(
+                    f"Setting parent for VMCP server '{new_name}' to {vmcp.parent}"
+                )
 
             # Extract env_id from request headers
             headers = request.headers
@@ -462,73 +493,78 @@ def register_vmcp_api(
 
             # Stop the old runtime server
             try:
-                vmcp_server_manager.remove_server(name)
-                logger.info(f"Stopped old runtime server: {name}")
+                vmcp_server_manager.remove_server(old_name or "", server_uuid or "")
+                logger.info(f"Stopped old runtime server: {old_name}_{server_uuid}")
             except Exception as e:
-                logger.warning(f"Could not stop old runtime server '{name}': {e}")
+                logger.warning(f"Could not stop old runtime server: {e}")
 
-            # Extract tool names from the skill by resolving skill_uuid
-            tool_names = []
+            # Get tool and snippet UUIDs from the skill
+            tool_uuids = []
+            snippet_uuids = []
             if vmcp.skill_uuid:
-                # Load the skill to get tool UUIDs
-                skills_handler = FileHandler(get_skills_directory())
-                tools_handler = FileHandler(get_tools_directory())
-                lookup_cache = build_lookup_cache(
-                    skills_handler=skills_handler,
-                    tools_handler=tools_handler,
-                )
+                skills_handler = get_object_handler("skill")
 
-                skill_dict = lookup_cache.skills_by_uuid.get(vmcp.skill_uuid)
-                skill_tool_uuids = (
-                    skill_dict.get("tool_uuids", []) if skill_dict else []
-                )
+                try:
+                    # Read skill dict by UUID
+                    skill_dict = skills_handler.read_dict(vmcp.skill_uuid)
+                    tool_uuids = skill_dict.get("tool_uuids", [])
+                    snippet_uuids = skill_dict.get("snippet_uuids", [])
+                    logger.info(
+                        f"Found skill with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs"
+                    )
+                except Exception as e:
+                    logger.warning(f"Error loading skill {vmcp.skill_uuid}: {e}")
 
-                for tool_uuid in skill_tool_uuids:
-                    tool_dict = lookup_cache.tools_by_uuid.get(tool_uuid)
-                    tool_name = tool_dict.get("name") if tool_dict else None
-                    if tool_name:
-                        tool_names.append(tool_name)
-
-            # Start new runtime server
+            # Start new runtime server with UUIDs
             server = vmcp_server_manager.add_server(
-                name=vmcp.name,
+                name=vmcp.name or "",
+                uuid=vmcp.uuid or "",
                 description=vmcp.description or "",
                 port=vmcp.port if hasattr(vmcp, "port") and vmcp.port else None,
-                tools=tool_names,
+                tools=tool_uuids,  # Pass UUIDs, not names
+                snippets=snippet_uuids,  # Pass UUIDs, not names
                 env_id=env_id,
             )
 
             # Update the schema with the actual port
             vmcp.port = server.port
 
-            # Update persistent data
-            vmcp_json = json.dumps(vmcp.to_dict(), indent=4)
-            vmcp_handler.write_file_content(vmcp_filename, vmcp_json)
+            # Update persistent data using ObjectHandler
+            vmcp_handler.write_dict(vmcp.uuid or "", vmcp.to_dict())
+
+            # Update cache after update
+            if vmcp.name and old_name:
+                vmcp_handler.update_cache(
+                    vmcp.uuid or "",
+                    new_name=vmcp.name,
+                    old_name=old_name,
+                    old_parent=old_parent,
+                )
 
             logger.info(
-                f"VMCP server '{name}' updated successfully on port {server.port}"
+                f"VMCP server '{vmcp.name}' updated successfully on port {server.port}"
             )
             return {
-                "message": f"VMCP server '{name}' updated successfully.",
+                "message": f"VMCP server '{vmcp.name}' updated successfully.",
                 "port": server.port,
             }
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error updating vmcp server '{name}': {e}")
+            logger.error(f"Error updating vmcp server '{id}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating vmcp server: {str(e)}"
             )
 
-    @app.post("/vmcp_servers/{name}/start", tags=[tags])
-    def start_vmcp_server(name: str, request: Request):
+    @app.post("/vmcp_servers/{uuid_or_name}/start", tags=[tags])
+    def start_vmcp_server(uuid_or_name: str, request: Request):
         """Start or restart a virtual MCP server.
 
         This endpoint allows starting a server that exists in persistent storage
         but is not currently running in the runtime manager.
 
         Args:
-            name: The name of the vmcp server to start.
+            uuid_or_name: The UUID or name of the vmcp server to start.
             request: The incoming request object for context extraction.
 
         Returns:
@@ -537,29 +573,27 @@ def register_vmcp_api(
         Raises:
             HTTPException: If vmcp server not found (404) or start fails (500).
         """
-        logger.info(f"Request to start vmcp server: {name}")
+        logger.info(f"Request to start vmcp server: {uuid_or_name}")
 
         try:
+            # Resolve UUID or name to UUID and read manifest
+            vmcp_uuid = vmcp_handler.resolve_to_uuid_or_error(uuid_or_name)
+            vmcp_data = vmcp_handler.read_dict(vmcp_uuid)
+            server_name = vmcp_data.get("name", "")
+            server_uuid = vmcp_data.get("uuid", "")
+
             # Check if server already running
             try:
-                existing_server = vmcp_server_manager.get_server(name)
+                existing_server = vmcp_server_manager.get_server(
+                    server_name, server_uuid
+                )
                 if existing_server:
                     return {
-                        "message": f"VMCP server '{name}' is already running.",
+                        "message": f"VMCP server '{server_name}' is already running.",
                         "port": existing_server.port,
                     }
             except Exception:
                 pass  # Server not running, proceed to start it
-
-            # Read persistent data
-            vmcp_filename = f"{name}.json"
-            content = vmcp_handler.read_file(vmcp_filename, raw_content=True)
-            if not isinstance(content, str):
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Invalid content type for vmcp server '{name}'",
-                )
-            vmcp_data = json.loads(content)
 
             # Extract env_id from request headers
             headers = request.headers
@@ -572,70 +606,52 @@ def register_vmcp_api(
                 else ""
             )
 
-            # Extract tool names and snippet names from skill_uuid
-            tool_names = []
-            snippet_names = []
+            # Get tool and snippet UUIDs from skill_uuid
+            tool_uuids = []
+            snippet_uuids = []
             skill_uuid = vmcp_data.get("skill_uuid")
 
             if skill_uuid:
                 logger.info(
                     f"Resolving tools and snippets for skill_uuid: {skill_uuid}"
                 )
-                skills_handler = FileHandler(get_skills_directory())
-                tools_handler = FileHandler(get_tools_directory())
-                snippets_handler = FileHandler(get_snippets_directory())
-                lookup_cache = build_lookup_cache(
-                    skills_handler=skills_handler,
-                    tools_handler=tools_handler,
-                    snippets_handler=snippets_handler,
-                )
+                skills_handler = get_object_handler("skill")
 
-                skill_dict = lookup_cache.skills_by_uuid.get(skill_uuid)
-                skill_tool_uuids = (
-                    skill_dict.get("tool_uuids", []) if skill_dict else []
-                )
-                skill_snippet_uuids = (
-                    skill_dict.get("snippet_uuids", []) if skill_dict else []
-                )
-
-                if skill_dict:
+                try:
+                    # Read skill dict by UUID
+                    skill_dict = skills_handler.read_dict(skill_uuid)
+                    tool_uuids = skill_dict.get("tool_uuids", [])
+                    snippet_uuids = skill_dict.get("snippet_uuids", [])
                     logger.info(
-                        f"Found skill with {len(skill_tool_uuids)} tool UUIDs and {len(skill_snippet_uuids)} snippet UUIDs"
+                        f"Found skill with {len(tool_uuids)} tool UUIDs and {len(snippet_uuids)} snippet UUIDs"
                     )
+                except Exception as e:
+                    logger.warning(f"Error loading skill {skill_uuid}: {e}")
 
-                for tool_uuid in skill_tool_uuids:
-                    tool_dict = lookup_cache.tools_by_uuid.get(tool_uuid)
-                    tool_name = tool_dict.get("name") if tool_dict else None
-                    if tool_name:
-                        tool_names.append(tool_name)
-
-                for snippet_uuid in skill_snippet_uuids:
-                    snippet_dict = lookup_cache.snippets_by_uuid.get(snippet_uuid)
-                    snippet_name = snippet_dict.get("name") if snippet_dict else None
-                    if snippet_name:
-                        snippet_names.append(snippet_name)
-
-            # Start the runtime server
+            # Start the runtime server with UUIDs
             server = vmcp_server_manager.add_server(
-                name=vmcp_data.get("name"),
+                name=server_name,
+                uuid=server_uuid,
                 description=vmcp_data.get("description", ""),
                 port=vmcp_data.get("port"),
-                tools=tool_names,
-                snippets=snippet_names,
+                tools=tool_uuids,  # Pass UUIDs, not names
+                snippets=snippet_uuids,  # Pass UUIDs, not names
                 env_id=env_id,
             )
 
             logger.info(
-                f"VMCP server '{name}' started successfully on port {server.port}"
+                f"VMCP server '{server_name}' started successfully on port {server.port}"
             )
             return {
-                "message": f"VMCP server '{name}' started successfully.",
+                "message": f"VMCP server '{server_name}' started successfully.",
                 "port": server.port,
             }
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error starting vmcp server '{name}': {e}")
+            logger.error(f"Error starting vmcp server '{id}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error starting vmcp server: {str(e)}"
             )
@@ -681,30 +697,30 @@ def register_vmcp_api(
             filtered_matched_entities = [
                 matched_entity
                 for matched_entity in matched_entities
-                if matched_entity["similarity_score"] <= similarity_threshold
+                if float(matched_entity.get("similarity_score", 0))
+                <= similarity_threshold
             ]
 
             # Get full vmcp server objects for filtering
             vmcp_servers_to_filter = []
             for matched_entity in filtered_matched_entities:
-                vmcp_name = matched_entity.get("filename") or matched_entity.get("name")
-                if not vmcp_name:
+                # The filename in matched_entity is the UUID (since we index by UUID)
+                vmcp_uuid = matched_entity.get("filename") or matched_entity.get("name")
+                if not vmcp_uuid:
                     logger.warning(
                         f"Matched entity missing 'filename' or 'name' field: {matched_entity}"
                     )
                     continue
                 try:
-                    vmcp_filename = f"{vmcp_name}.json"
-                    content = vmcp_handler.read_file(vmcp_filename, raw_content=True)
-                    if isinstance(content, str):
-                        vmcp_dict = json.loads(content)
-                        vmcp_dict["similarity_score"] = matched_entity.get(
-                            "similarity_score", 0.0
-                        )
-                        vmcp_servers_to_filter.append(vmcp_dict)
+                    # Read dict by UUID
+                    vmcp_dict = vmcp_handler.read_dict(vmcp_uuid)
+                    vmcp_dict["similarity_score"] = matched_entity.get(
+                        "similarity_score", 0.0
+                    )
+                    vmcp_servers_to_filter.append(vmcp_dict)
                 except Exception as e:
                     logger.warning(
-                        f"Could not load vmcp server {vmcp_name} for filtering: {e}"
+                        f"Could not load vmcp server {vmcp_uuid} for filtering: {e}"
                     )
 
             # Apply manifest and lifecycle filters

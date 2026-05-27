@@ -229,6 +229,12 @@ export function ToolsPage() {
           tool.name.toLowerCase().includes(lowerSearch) ||
           tool.description?.toLowerCase().includes(lowerSearch)
         );
+      } else if (searchMode === 'uuid') {
+        // UUID search: filter by matching UUID (partial match)
+        const lowerSearch = searchTerm.toLowerCase();
+        filtered = filtered.filter((tool) =>
+          tool.uuid?.toLowerCase().includes(lowerSearch)
+        );
       }
     }
 
@@ -431,21 +437,21 @@ export function ToolsPage() {
                   />
                   <Td
                     dataLabel="Name"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.name}
                   </Td>
                   <Td
                     dataLabel="Description"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.description || 'No description'}
                   </Td>
                   <Td
                     dataLabel="State"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.state || '-'}

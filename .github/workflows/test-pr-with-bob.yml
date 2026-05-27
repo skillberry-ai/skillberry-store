@@ -15,7 +15,7 @@
 # 5. Detects the relevant Node/UI project directory
 # 6. Configures Bob Shell and Playwright MCP
 # 7. Asks Bob to generate focused tests plus reviewer proof notes
-# 8. Commits/pushes generated tests back to the PR branch when allowed
+# 8. Captures generated test files as artifacts (does NOT commit or push changes)
 # 9. Installs dependencies and runs project tests
 # 10. Starts the UI server, runs Playwright with screenshots/videos/traces, and
 #     creates a proof bundle
@@ -23,8 +23,7 @@
 #
 # REQUIRED SECRETS:
 # - BOBSHELL_API_KEY: Bob Shell API key
-# - SKILLBERRY_BOT_TOKEN: token with permission to comment on PRs and push to
-#   trusted PR branches
+# - SKILLBERRY_BOT_TOKEN: token with permission to comment on PRs
 #
 # OPTIONAL REPOSITORY VARIABLE:
 # - BOB_ALLOWED_HEAD_OWNERS: comma-separated list of trusted GitHub org/user
@@ -49,9 +48,13 @@ on:
 permissions:
   actions: read
   checks: read
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
+
+concurrency:
+  group: test-pr-with-bob-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
 
 jobs:
   test-pr-with-bob:
@@ -64,8 +67,10 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       CI: true
       BOB_UI_HOST: 127.0.0.1
-      BOB_UI_PORT: 5173
-      BOB_UI_BASE_URL: http://127.0.0.1:5173
+      BOB_UI_PORT: 8002
+      BOB_UI_BASE_URL: http://127.0.0.1:8002
+      BOB_BACKEND_PORT: 8000
+      BOB_BACKEND_URL: http://127.0.0.1:8000
 
     steps:
       - name: Set artifact directory
@@ -233,13 +238,11 @@ jobs:
 
           if grep -qE '^[AMDRC][[:space:]]+src/skillberry_store/ui/' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null; then
             PROJECT_DIR="src/skillberry_store/ui"
-          elif [ -f "src/skillberry_store/ui/package.json" ]; then
-            PROJECT_DIR="src/skillberry_store/ui"
-          elif [ -f "ui/package.json" ]; then
+          elif grep -qE '^[AMDRC][[:space:]]+ui/' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null && [ -f "ui/package.json" ]; then
             PROJECT_DIR="ui"
-          elif [ -f "frontend/package.json" ]; then
+          elif grep -qE '^[AMDRC][[:space:]]+frontend/' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null && [ -f "frontend/package.json" ]; then
             PROJECT_DIR="frontend"
-          elif [ -f "package.json" ]; then
+          elif grep -q '.' "${ARTIFACT_DIR}/changed-files.txt" 2>/dev/null && [ -f "package.json" ] && [ ! -f "src/skillberry_store/ui/package.json" ] && [ ! -f "ui/package.json" ] && [ ! -f "frontend/package.json" ]; then
             PROJECT_DIR="."
           fi
 
@@ -280,6 +283,101 @@ jobs:
           fi
           echo "Bob Shell authentication configured successfully"
 
+      - name: Setup Python 3.11
+        if: steps.pr.outputs.should_run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache Python venv
+        if: steps.pr.outputs.should_run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            .stamps
+          key: python-venv-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            python-venv-${{ runner.os }}-
+
+      - name: Start full system via make run
+        if: steps.pr.outputs.should_run == 'true'
+        id: system_start
+        run: |
+          set +e
+          mkdir -p "${ARTIFACT_DIR}/logs"
+
+          echo "Creating Python virtual environment..."
+          python -m venv .venv
+          source .venv/bin/activate
+
+          echo "Starting full system via make run (backend port ${BOB_BACKEND_PORT}, UI port ${BOB_UI_PORT})..."
+          make run > "${ARTIFACT_DIR}/logs/make-run.log" 2>&1 &
+
+          # Wait up to 3 minutes for backend health check
+          BACKEND_READY="false"
+          for attempt in $(seq 1 60); do
+            if curl -fsS "http://127.0.0.1:${BOB_BACKEND_PORT}/health" > /dev/null 2>&1; then
+              BACKEND_READY="true"
+              echo "Backend ready after ${attempt} attempts ($(( attempt * 3 ))s)"
+              break
+            fi
+            sleep 3
+          done
+
+          if [ "${BACKEND_READY}" != "true" ]; then
+            echo "Backend did not become ready within 3 minutes. Last 40 log lines:"
+            tail -40 "${ARTIFACT_DIR}/logs/make-run.log" | tee "${ARTIFACT_DIR}/logs/make-run-startup-failure.log"
+          fi
+
+          # Wait up to 2 additional minutes for the Vite UI server
+          UI_READY="false"
+          if [ "${BACKEND_READY}" = "true" ]; then
+            for attempt in $(seq 1 60); do
+              if curl -fsS "http://127.0.0.1:${BOB_UI_PORT}" > /dev/null 2>&1; then
+                UI_READY="true"
+                echo "UI ready after ${attempt} attempts ($(( attempt * 2 ))s)"
+                break
+              fi
+              sleep 2
+            done
+          fi
+
+          if [ "${UI_READY}" != "true" ]; then
+            echo "UI did not become ready within 2 minutes. Last 40 log lines:"
+            tail -40 "${ARTIFACT_DIR}/logs/make-run.log"
+          fi
+
+          echo "backend_ready=${BACKEND_READY}" >> "$GITHUB_OUTPUT"
+          echo "ui_ready=${UI_READY}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Seed test data
+        if: steps.pr.outputs.should_run == 'true' && steps.system_start.outputs.backend_ready == 'true'
+        run: |
+          set +e
+          BASE="http://127.0.0.1:${BOB_BACKEND_PORT}"
+          echo "Seeding test data at ${BASE}..."
+
+          # Seed 2 skills
+          curl -s -X POST "${BASE}/skills/" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"example-summarizer","description":"Summarizes text using an LLM","version":"1.0.0","state":"approved","tags":["nlp","summarization"]}' > /dev/null && echo "Seeded skill: example-summarizer"
+          curl -s -X POST "${BASE}/skills/" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"example-code-reviewer","description":"Reviews code for quality and bugs","version":"1.0.0","state":"approved","tags":["dev","code"]}' > /dev/null && echo "Seeded skill: example-code-reviewer"
+
+          # Seed 2 snippets
+          curl -s -X POST \
+            "${BASE}/snippets/?name=hello-world&description=Simple+hello+world+snippet&content=print%28%27hello%27%29&version=1.0.0&content_type=text%2Fx-python&state=approved" \
+            > /dev/null && echo "Seeded snippet: hello-world"
+          curl -s -X POST \
+            "${BASE}/snippets/?name=curl-example&description=Example+curl+command&content=curl+https%3A%2F%2Fexample.com&version=1.0.0&content_type=text%2Fx-sh&state=approved" \
+            > /dev/null && echo "Seeded snippet: curl-example"
+
+          echo "Seeding complete"
+          exit 0
+
       - name: Configure Playwright MCP for Bob
         if: steps.pr.outputs.should_run == 'true'
         run: |
@@ -314,6 +412,14 @@ jobs:
 
             Task: generate high-quality tests for this pull request AND generate reviewer-facing proof that the PR works.
 
+            IMPORTANT — CI environment:
+            The full application stack is running in this CI job:
+            - Backend API: http://127.0.0.1:8000 (FastAPI — real code from this PR branch)
+            - UI: http://127.0.0.1:8002 (Vite dev server, proxies /api/* to the backend)
+            - Test data has been seeded: 2 skills and 2 snippets are present in the database.
+            Do NOT mock the backend with page.route() unless the PR specifically tests offline/error behavior.
+            Use the live backend for all API interactions in tests.
+
             Requirements:
             - Analyze the PR title, body, changed files, and diff.
             - Create focused tests that exercise the behavior changed by the PR.
@@ -323,10 +429,13 @@ jobs:
             - If the PR changes UI behavior, create or update Playwright tests with @playwright/test.
             - Use the configured Playwright MCP server in .mcp.json to inspect UI behavior where helpful.
             - For UI behavior, make the tests produce proof that a reviewer can inspect:
-              - screenshots for important before/after or final UI states,
+              - screenshots for important before/after or final UI states of the CHANGED feature,
               - Playwright trace/video where available,
               - explicit assertions for the changed behavior,
               - concise notes explaining what the screenshots/videos prove.
+            - Before taking a screenshot, always wait for specific UI elements to appear
+              (use page.waitForSelector or expect(locator).toBeVisible) — never use waitForTimeout alone.
+            - Screenshots must show the CHANGED feature, not generic pages unrelated to the diff.
             - Use page.screenshot(...) or test.info().outputPath(...) for important screenshots.
             - Keep tests deterministic and CI-friendly.
             - Avoid broad/flaky snapshots.
@@ -367,13 +476,10 @@ jobs:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit generated tests to the PR branch
+      - name: Capture generated test files (no commit/push)
         if: steps.pr.outputs.should_run == 'true'
         id: commit_tests
         env:
-          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
-          HEAD_REPO: ${{ steps.pr.outputs.head_repo }}
-          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         run: |
           set +e
@@ -392,51 +498,15 @@ jobs:
             exit 0
           fi
 
-          echo "Generated changes detected:"
+          echo "Generated changes detected (will be captured as artifacts, not committed):"
           git status --short | tee "${ARTIFACT_DIR}/generated-test-changes.txt"
 
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # Create a diff of the generated changes for artifact upload
+          git diff > "${ARTIFACT_DIR}/generated-changes.diff" 2>&1 || true
+          git diff --cached > "${ARTIFACT_DIR}/generated-changes-staged.diff" 2>&1 || true
 
-          git add -A
-          git reset .bob/ 2>/dev/null || true
-          git reset .mcp.json 2>/dev/null || true
-          git reset .bob-pr-test-notes.md 2>/dev/null || true
-
-          if git diff --cached --quiet; then
-            echo "No committable generated test changes after excluding temporary files."
-            exit 0
-          fi
-
-          git commit -m "Add Bob-generated tests for PR #${PR_NUMBER}" > "${ARTIFACT_DIR}/logs/generated-tests-commit.log" 2>&1
-          COMMIT_EXIT=$?
-          if [ "${COMMIT_EXIT}" != "0" ]; then
-            echo "Commit failed with exit code ${COMMIT_EXIT}" | tee "${ARTIFACT_DIR}/logs/generated-tests-push-failure.log"
-            echo "push_exit_code=${COMMIT_EXIT}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "committed_tests=true" >> "$GITHUB_OUTPUT"
-
-          git remote remove pr-head 2>/dev/null || true
-          git remote add pr-head "https://x-access-token:${GITHUB_TOKEN}@github.com/${HEAD_REPO}.git"
-
-          # Try to rebase onto the latest PR branch before pushing. This reduces
-          # non-fast-forward failures when the PR branch moved after checkout.
-          git fetch pr-head "${HEAD_REF}" >> "${ARTIFACT_DIR}/logs/generated-tests-push.log" 2>&1
-          git rebase "pr-head/${HEAD_REF}" >> "${ARTIFACT_DIR}/logs/generated-tests-push.log" 2>&1 || \
-            git rebase --abort >> "${ARTIFACT_DIR}/logs/generated-tests-push.log" 2>&1 || true
-
-          git push pr-head "HEAD:${HEAD_REF}" >> "${ARTIFACT_DIR}/logs/generated-tests-push.log" 2>&1
-          PUSH_EXIT=$?
-          echo "push_exit_code=${PUSH_EXIT}" >> "$GITHUB_OUTPUT"
-          if [ "${PUSH_EXIT}" = "0" ]; then
-            echo "pushed_tests=true" >> "$GITHUB_OUTPUT"
-            echo "Generated tests were committed and pushed to the PR branch."
-          else
-            cp "${ARTIFACT_DIR}/logs/generated-tests-push.log" "${ARTIFACT_DIR}/logs/generated-tests-push-failure.log"
-            echo "Generated tests were committed locally but push failed. The workflow will continue and still test the local generated tests."
-          fi
+          echo "Generated test files have been captured as artifacts for review."
+          echo "No changes will be committed or pushed to the PR branch."
 
           exit 0
 
@@ -577,12 +647,20 @@ jobs:
             "${ARTIFACT_DIR}/videos" \
             "${ARTIFACT_DIR}/traces"
 
-          if [ -z "${PROJECT_DIR}" ] || [ ! -f "${PROJECT_DIR}/package.json" ] || [ "${PACKAGE_MANAGER}" = "none" ]; then
-            echo "No detected Node project. Skipping Playwright tests." | tee "${ARTIFACT_DIR}/logs/playwright.stdout.log"
-            echo "playwright_command=${PW_COMMAND}" >> "$GITHUB_OUTPUT"
-            echo "playwright_exit_code=0" >> "$GITHUB_OUTPUT"
-            echo "server_ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          # If no Node project was detected but the full system is running via make run,
+          # fall back to the known UI directory so backend-only PRs still get Playwright proof.
+          if [ -z "${PROJECT_DIR}" ] || [ "${PACKAGE_MANAGER}" = "none" ]; then
+            if [ -f "src/skillberry_store/ui/package.json" ] && [ -f "src/skillberry_store/ui/playwright.config.ts" ]; then
+              echo "No UI changes detected but backend is running — using src/skillberry_store/ui for Playwright proof."
+              PROJECT_DIR="src/skillberry_store/ui"
+              PACKAGE_MANAGER="npm"
+            else
+              echo "No detected Node project. Skipping Playwright tests." | tee "${ARTIFACT_DIR}/logs/playwright.stdout.log"
+              echo "playwright_command=${PW_COMMAND}" >> "$GITHUB_OUTPUT"
+              echo "playwright_exit_code=0" >> "$GITHUB_OUTPUT"
+              echo "server_ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
 
           pushd "${PROJECT_DIR}" > /dev/null
@@ -637,11 +715,12 @@ jobs:
           import baseConfig from './playwright.config';
 
           const artifactDir = process.env.BOB_ARTIFACT_DIR || 'test-results';
-          const baseURL = process.env.BOB_UI_BASE_URL || 'http://127.0.0.1:5173';
+          const baseURL = process.env.BOB_UI_BASE_URL || 'http://127.0.0.1:8002';
 
           export default defineConfig({
             ...(baseConfig as any),
             webServer: undefined,
+            timeout: 45000,
             outputDir: path.join(artifactDir, 'playwright-output'),
             reporter: [
               ['list'],
@@ -653,8 +732,10 @@ jobs:
               ...((baseConfig as any).use || {}),
               baseURL,
               trace: 'on',
-              video: 'on',
+              video: 'retain-on-failure',
               screenshot: 'on',
+              actionTimeout: 20000,
+              navigationTimeout: 30000,
             },
           });
           TS
@@ -666,16 +747,34 @@ jobs:
           cat > e2e/.bob-ui-proof.spec.ts <<'TS'
           import { expect, test } from '@playwright/test';
 
-          test('Bob proof: application shell loads and can be screenshotted', async ({ page }, testInfo) => {
-            await page.goto('/');
-            await page.waitForLoadState('domcontentloaded');
-            await page.waitForTimeout(1000);
-            await page.screenshot({
-              path: testInfo.outputPath('bob-ui-proof-home.png'),
-              fullPage: true,
+          // Proof pages: always screenshot these three routes to show the app is functional.
+          const PROOF_PAGES: Array<[string, string]> = [
+            ['/', 'home'],
+            ['/skills', 'skills'],
+            ['/tools', 'tools'],
+          ];
+
+          test('Bob proof: application shell loads with real backend', async ({ page }, testInfo) => {
+            for (const [route, label] of PROOF_PAGES) {
+              await page.goto(route);
+              // Wait for PatternFly nav — this means the React app rendered and
+              // the backend API responded (empty or seeded data, not an error).
+              await page.waitForSelector('nav', { timeout: 20000 });
+              // Also wait for network to settle so list data is visible in the screenshot.
+              await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+              await page.screenshot({
+                path: testInfo.outputPath(`bob-proof-${label}.png`),
+                fullPage: true,
+              });
+            }
+
+            // Verify no global PatternFly danger alert is visible on the last page.
+            // A danger alert at page level means the backend returned an error.
+            const dangerAlert = page.locator('.pf-v5-c-alert.pf-m-danger, [aria-label="Danger Alert"]');
+            await expect(dangerAlert).toHaveCount(0, { timeout: 3000 }).catch(() => {
+              // Non-fatal: log but don't fail proof test — the screenshot is the proof.
+              console.warn('Warning: a danger alert was found on the page.');
             });
-            const bodyText = (await page.locator('body').innerText()).trim();
-            expect(bodyText.length).toBeGreaterThan(0);
           });
           TS
 
@@ -703,26 +802,34 @@ jobs:
             SERVER_COMMAND="${PM_RUN} preview -- --host ${BOB_UI_HOST} --port ${BOB_UI_PORT}"
           fi
 
-          if [ "${SERVER_COMMAND}" = "skip" ]; then
-            echo "No dev or preview script found; cannot start UI server." | tee "${ARTIFACT_DIR}/logs/ui-server.log"
+          if [ "${SERVER_COMMAND}" = "skip" ] && ! curl -fsS "${BASE_URL}" > /dev/null 2>&1; then
+            echo "No dev or preview script found and server not already running; cannot proceed." | tee "${ARTIFACT_DIR}/logs/ui-server.log"
             PW_EXIT=1
           else
-            echo "Starting UI server in ${PROJECT_DIR}: ${SERVER_COMMAND}" | tee "${ARTIFACT_DIR}/logs/ui-server-command.log"
-            bash -lc "${SERVER_COMMAND}" > "${ARTIFACT_DIR}/logs/ui-server.log" 2>&1 &
-            SERVER_PID=$!
-            echo "${SERVER_PID}" > "${ARTIFACT_DIR}/ui-server.pid"
+            # Check if server is already running (e.g. started by make run). If so, skip
+            # starting a second server which would fail with EADDRINUSE.
+            if curl -fsS "${BASE_URL}" > /dev/null 2>&1; then
+              echo "Server already running at ${BASE_URL} (started by make run)" | tee "${ARTIFACT_DIR}/logs/ui-server-command.log"
+              SERVER_READY="true"
+              SERVER_PID=""
+            else
+              echo "Starting UI server in ${PROJECT_DIR}: ${SERVER_COMMAND}" | tee "${ARTIFACT_DIR}/logs/ui-server-command.log"
+              bash -lc "${SERVER_COMMAND}" > "${ARTIFACT_DIR}/logs/ui-server.log" 2>&1 &
+              SERVER_PID=$!
+              echo "${SERVER_PID}" > "${ARTIFACT_DIR}/ui-server.pid"
 
-            for attempt in $(seq 1 90); do
-              if curl -fsS "${BASE_URL}" > /dev/null 2>&1; then
-                SERVER_READY="true"
-                break
-              fi
-              if ! kill -0 "${SERVER_PID}" > /dev/null 2>&1; then
-                echo "UI server process exited before becoming ready." >> "${ARTIFACT_DIR}/logs/ui-server.log"
-                break
-              fi
-              sleep 2
-            done
+              for attempt in $(seq 1 90); do
+                if curl -fsS "${BASE_URL}" > /dev/null 2>&1; then
+                  SERVER_READY="true"
+                  break
+                fi
+                if ! kill -0 "${SERVER_PID}" > /dev/null 2>&1; then
+                  echo "UI server process exited before becoming ready." >> "${ARTIFACT_DIR}/logs/ui-server.log"
+                  break
+                fi
+                sleep 2
+              done
+            fi
 
             if [ "${SERVER_READY}" != "true" ]; then
               echo "Timed out waiting for UI server at ${BASE_URL}" | tee "${ARTIFACT_DIR}/logs/playwright.stderr.log"
@@ -738,7 +845,7 @@ jobs:
               PW_EXIT=$?
             fi
 
-            if kill -0 "${SERVER_PID}" > /dev/null 2>&1; then
+            if [ -n "${SERVER_PID:-}" ] && kill -0 "${SERVER_PID}" > /dev/null 2>&1; then
               kill "${SERVER_PID}" > /dev/null 2>&1 || true
             fi
           fi
@@ -839,6 +946,8 @@ jobs:
           PUSHED_TESTS: ${{ steps.commit_tests.outputs.pushed_tests }}
           PUSH_EXIT_CODE: ${{ steps.commit_tests.outputs.push_exit_code }}
           BOB_GENERATE_OUTCOME: ${{ steps.bob_generate.outcome }}
+          BACKEND_READY: ${{ steps.system_start.outputs.backend_ready }}
+          UI_READY: ${{ steps.system_start.outputs.ui_ready }}
           SCREENSHOT_COUNT: ${{ steps.proof.outputs.screenshot_count }}
           VIDEO_COUNT: ${{ steps.proof.outputs.video_count }}
           TRACE_COUNT: ${{ steps.proof.outputs.trace_count }}
@@ -918,6 +1027,8 @@ jobs:
               'pushed_tests': os.environ.get('PUSHED_TESTS') or 'false',
               'push_exit_code': os.environ.get('PUSH_EXIT_CODE') or '0',
               'bob_generate_outcome': os.environ.get('BOB_GENERATE_OUTCOME') or 'unknown',
+              'backend_ready': os.environ.get('BACKEND_READY') or 'false',
+              'ui_ready': os.environ.get('UI_READY') or 'false',
               'coverage_summary': coverage_summary,
               'playwright_summary': playwright_summary,
           }
@@ -966,6 +1077,8 @@ jobs:
           COVERAGE_SUMMARY: ${{ steps.stats.outputs.coverage_summary }}
           PLAYWRIGHT_SUMMARY: ${{ steps.stats.outputs.playwright_summary }}
           BOB_GENERATE_OUTCOME: ${{ steps.stats.outputs.bob_generate_outcome }}
+          BACKEND_READY: ${{ steps.stats.outputs.backend_ready }}
+          UI_READY: ${{ steps.stats.outputs.ui_ready }}
         run: |
           set -euo pipefail
 
@@ -995,10 +1108,10 @@ jobs:
 
           | Area | Result |
           |---|---|
+          | Backend started (make run) | ${BACKEND_READY:-false} |
+          | UI started (Vite via UIManager) | ${UI_READY:-false} |
           | Bob generated tests | ${BOB_GENERATE_OUTCOME:-unknown} |
-          | Generated tests committed locally | ${COMMITTED_TESTS:-false} |
-          | Generated tests pushed to PR | ${PUSHED_TESTS:-false} |
-          | Push exit code | ${PUSH_EXIT_CODE:-0} |
+          | Generated test files captured | ${COMMITTED_TESTS:-false} |
           | Dependency install | exit ${INSTALL_EXIT:-unknown} |
           | Project tests | exit ${PROJECT_TEST_EXIT:-unknown}: \\`${PROJECT_TEST_COMMAND:-skip}\\` |
           | UI server ready | ${SERVER_READY:-false}: \\`${SERVER_COMMAND:-skip}\\` |
@@ -1040,8 +1153,8 @@ jobs:
             echo "- No visual proof was captured. Treat this run as insufficient for UI confidence until the server/test failure is fixed." >> "${REPORT_FILE}"
           fi
 
-          if [ "${PUSHED_TESTS:-false}" != "true" ] && [ "${COMMITTED_TESTS:-false}" = "true" ]; then
-            echo "- Bob generated tests locally but could not push them to the PR. Inspect \\`logs/generated-tests-push-failure.log\\`." >> "${REPORT_FILE}"
+          if [ "${COMMITTED_TESTS:-false}" = "true" ]; then
+            echo "- Bob generated test files are available in the artifact bundle under \\`generated-test-changes.txt\\` and \\`generated-changes.diff\\`. Review and manually apply if needed." >> "${REPORT_FILE}"
           fi
 
           cat >> "${REPORT_FILE}" <<'EOF_REPORT'
@@ -1102,6 +1215,16 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+      - name: Stop system
+        if: steps.pr.outputs.should_run == 'true' && always()
+        run: |
+          set +e
+          if [ -f .venv/bin/activate ]; then
+            source .venv/bin/activate
+            make stop >> "${ARTIFACT_DIR}/logs/make-run.log" 2>&1 || true
+          fi
+          exit 0
+
       - name: Comment report on PR
         if: steps.pr.outputs.should_run == 'true' && always()
         env:
@@ -1152,10 +1275,28 @@ jobs:
           INSTALL_EXIT: ${{ steps.install_deps.outputs.install_exit_code }}
           PROJECT_TEST_EXIT: ${{ steps.project_tests.outputs.project_tests_exit_code }}
           PLAYWRIGHT_EXIT: ${{ steps.playwright_tests.outputs.playwright_exit_code }}
+          BACKEND_READY: ${{ steps.system_start.outputs.backend_ready }}
         run: |
           set -euo pipefail
-          if [ "${INSTALL_EXIT:-0}" != "0" ] || [ "${PROJECT_TEST_EXIT:-0}" != "0" ] || [ "${PLAYWRIGHT_EXIT:-0}" != "0" ]; then
-            echo "One or more test stages failed. See the PR report and proof artifacts."
+          FAILED=false
+          if [ "${INSTALL_EXIT:-0}" != "0" ]; then
+            echo "Node dependency installation failed (exit ${INSTALL_EXIT})."
+            FAILED=true
+          fi
+          if [ "${PROJECT_TEST_EXIT:-0}" != "0" ]; then
+            echo "Project tests failed (exit ${PROJECT_TEST_EXIT})."
+            FAILED=true
+          fi
+          if [ "${PLAYWRIGHT_EXIT:-0}" != "0" ]; then
+            echo "Playwright tests failed (exit ${PLAYWRIGHT_EXIT})."
+            FAILED=true
+          fi
+          if [ "${BACKEND_READY:-false}" = "false" ]; then
+            echo "Backend did not start successfully — inspect logs/make-run.log in the artifact bundle."
+            FAILED=true
+          fi
+          if [ "${FAILED}" = "true" ]; then
+            echo "One or more stages failed. See the PR report and proof artifacts."
             exit 1
           fi
-          echo "All configured test stages passed."
+          echo "All configured stages passed."

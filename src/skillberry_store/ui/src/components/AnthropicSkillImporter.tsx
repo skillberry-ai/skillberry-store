@@ -40,6 +40,15 @@ interface ImportResult {
   ignored_files?: string[];
 }
 
+interface BatchImportResult {
+  success: boolean;
+  message: string;
+  total_skills: number;
+  successful_imports: number;
+  failed_imports: number;
+  results: ImportResult[];
+}
+
 export function AnthropicSkillImporter({
   isOpen,
   onClose,
@@ -52,9 +61,12 @@ export function AnthropicSkillImporter({
   const [folderPath, setFolderPath] = useState('');
   const [snippetMode, setSnippetMode] = useState<'file' | 'paragraph'>('file');
   const [treatAllAsDocuments, setTreatAllAsDocuments] = useState(false);
+  const [batchMode, setBatchMode] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchImportResult | null>(null);
+  const [currentSkillImporting, setCurrentSkillImporting] = useState<string>('');
   
   // Namespace selection state
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
@@ -96,8 +108,11 @@ export function AnthropicSkillImporter({
     setFolderPath('');
     setProgress(0);
     setResult(null);
+    setBatchResult(null);
+    setCurrentSkillImporting('');
     setSelectedNamespaces([]);
     setNamespaceInput('');
+    setBatchMode(false);
   };
 
   const handleClose = () => {
@@ -128,69 +143,236 @@ export function AnthropicSkillImporter({
     setSelectedNamespaces(selectedNamespaces.filter(ns => ns !== namespaceToRemove));
   };
 
-  const handleImport = async () => {
+  /**
+   * Validates import inputs based on source type
+   */
+  const validateImportInputs = (
+    sourceType: 'url' | 'zip' | 'folder',
+    githubUrl: string,
+    zipFile: File | null,
+    folderPath: string,
+    isBatchMode: boolean
+  ): void => {
+    if (sourceType === 'url' && !githubUrl) {
+      throw new Error('Please provide a GitHub URL');
+    } else if (sourceType === 'zip') {
+      if (!zipFile) {
+        throw new Error('Please select a ZIP file');
+      }
+      if (isBatchMode) {
+        throw new Error('Batch import is not supported for ZIP files. Please use URL or Local Folder.');
+      }
+    } else if (sourceType === 'folder' && !folderPath) {
+      throw new Error('Please provide a folder path');
+    }
+  };
+
+  /**
+   * Prepares FormData with common fields for skill import
+   */
+  const prepareFormData = (
+    sourceType: 'url' | 'zip' | 'folder',
+    snippetMode: 'file' | 'paragraph',
+    treatAllAsDocuments: boolean,
+    selectedNamespaces: string[]
+  ): FormData => {
+    const formData = new FormData();
+    formData.append('source_type', sourceType);
+    formData.append('snippet_mode', snippetMode);
+    formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
+    
+    // Add namespaces as additional tags with namespace: prefix
+    const namespacesToUse = selectedNamespaces.length > 0 ? selectedNamespaces : ['default'];
+    namespacesToUse.forEach(namespace => {
+      formData.append('tags', `namespace:${namespace}`);
+    });
+
+    return formData;
+  };
+
+  /**
+   * Detects child skill directories from a parent directory URL or path
+   */
+  const detectChildSkills = async (
+    sourceType: 'url' | 'folder',
+    sourcePath: string
+  ): Promise<string[]> => {
+    try {
+      const formData = new FormData();
+      formData.append('source_type', sourceType);
+      
+      if (sourceType === 'url') {
+        formData.append('github_url', sourcePath);
+      } else {
+        formData.append('folder_path', sourcePath);
+      }
+      
+      const response = await fetch('/api/skills/detect-anthropic-skills', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Detection failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.skill_paths || [];
+    } catch (error) {
+      console.error('Failed to detect child skills:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * Imports a single skill
+   */
+  const importSingleSkill = async (
+    sourceType: 'url' | 'zip' | 'folder',
+    sourcePath: string,
+    skillPath?: string
+  ): Promise<ImportResult> => {
+    // Prepare common FormData fields
+    const formData = prepareFormData(sourceType, snippetMode, treatAllAsDocuments, selectedNamespaces);
+
+    // Add source-specific fields
+    if (sourceType === 'url') {
+      // For batch mode, append the skill_path to the base URL
+      const fullUrl = skillPath ? `${sourcePath}/${skillPath}` : sourcePath;
+      formData.append('github_url', fullUrl);
+    } else if (sourceType === 'zip') {
+      if (!zipFile) {
+        throw new Error('ZIP file is required');
+      }
+      formData.append('zip_file', zipFile);
+    } else if (sourceType === 'folder') {
+      const fullPath = skillPath ? `${sourcePath}/${skillPath}` : sourcePath;
+      formData.append('folder_path', fullPath);
+    }
+
+    const response = await fetch('/api/skills/import-anthropic', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `Import failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      message: data.message || 'Import successful',
+      skill_name: data.skill_name,
+      tools_created: data.tools_created,
+      snippets_created: data.snippets_created,
+      ignored_files: data.ignored_files || [],
+    };
+  };
+
+  /**
+   * Handles batch import of multiple skills
+   */
+  const handleBatchImport = async () => {
+    setIsImporting(true);
+    setBatchResult(null);
+    setProgress(5);
+
+    try {
+      // Validate input using shared validation function
+      validateImportInputs(importSource, githubUrl, zipFile, folderPath, true);
+
+      const sourcePath = importSource === 'url' ? githubUrl : folderPath;
+      
+      // Step 1: Detect child skills
+      setProgress(10);
+      const skillPaths = await detectChildSkills(importSource, sourcePath);
+      
+      if (skillPaths.length === 0) {
+        throw new Error('No skills detected in the parent directory. Make sure subdirectories contain SKILL.md files.');
+      }
+
+      setProgress(20);
+
+      // Step 2: Import each skill sequentially
+      const results: ImportResult[] = [];
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < skillPaths.length; i++) {
+        const skillPath = skillPaths[i];
+        setCurrentSkillImporting(skillPath);
+        
+        // Update progress: 20% to 90% for imports
+        const importProgress = 20 + ((i / skillPaths.length) * 70);
+        setProgress(Math.round(importProgress));
+
+        try {
+          const result = await importSingleSkill(importSource, sourcePath, skillPath);
+          results.push(result);
+          successCount++;
+        } catch (error) {
+          const errorResult: ImportResult = {
+            success: false,
+            message: `Failed to import ${skillPath}: ${(error as Error).message}`,
+            skill_name: skillPath,
+          };
+          results.push(errorResult);
+          failCount++;
+        }
+      }
+
+      setProgress(100);
+      setCurrentSkillImporting('');
+
+      // Set batch result
+      setBatchResult({
+        success: successCount > 0,
+        message: `Batch import completed: ${successCount} successful, ${failCount} failed`,
+        total_skills: skillPaths.length,
+        successful_imports: successCount,
+        failed_imports: failCount,
+        results,
+      });
+
+      if (successCount > 0) {
+        onImportComplete();
+      }
+    } catch (error) {
+      setBatchResult({
+        success: false,
+        message: `Batch import failed: ${(error as Error).message}`,
+        total_skills: 0,
+        successful_imports: 0,
+        failed_imports: 0,
+        results: [],
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  /**
+   * Handles single skill import
+   */
+  const handleSingleImport = async () => {
     setIsImporting(true);
     setResult(null);
     setProgress(10);
 
     try {
-      // Prepare form data
-      const formData = new FormData();
-      formData.append('source_type', importSource);
-      formData.append('snippet_mode', snippetMode);
-      formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
-      
-      // Add namespaces as additional tags with namespace: prefix
-      // If no namespaces are selected, use "default" namespace
-      const namespacesToUse = selectedNamespaces.length > 0 ? selectedNamespaces : ['default'];
-      namespacesToUse.forEach(namespace => {
-        formData.append('tags', `namespace:${namespace}`);
-      });
-
-      if (importSource === 'url') {
-        if (!githubUrl) {
-          throw new Error('Please provide a GitHub URL');
-        }
-        formData.append('github_url', githubUrl);
-      } else if (importSource === 'zip') {
-        if (!zipFile) {
-          throw new Error('Please select a ZIP file');
-        }
-        formData.append('zip_file', zipFile);
-      } else if (importSource === 'folder') {
-        if (!folderPath) {
-          throw new Error('Please provide a folder path');
-        }
-        formData.append('folder_path', folderPath);
-      }
+      // Validate input using shared validation function
+      validateImportInputs(importSource, githubUrl, zipFile, folderPath, false);
 
       setProgress(30);
 
-      // Call backend import endpoint
-      const response = await fetch('/api/skills/import-anthropic', {
-        method: 'POST',
-        body: formData,
-      });
+      const sourcePath = importSource === 'url' ? githubUrl : importSource === 'folder' ? folderPath : '';
+      const importResult = await importSingleSkill(importSource, sourcePath);
 
-      setProgress(80);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || `Import failed: ${response.statusText}`);
-      }
-
-      const data = await response.json();
       setProgress(100);
-
-      setResult({
-        success: true,
-        message: data.message || 'Import successful',
-        skill_name: data.skill_name,
-        tools_created: data.tools_created,
-        snippets_created: data.snippets_created,
-        ignored_files: data.ignored_files || [],
-      });
-
+      setResult(importResult);
       onImportComplete();
     } catch (error) {
       setResult({
@@ -199,6 +381,14 @@ export function AnthropicSkillImporter({
       });
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (batchMode) {
+      await handleBatchImport();
+    } else {
+      await handleSingleImport();
     }
   };
 
@@ -212,10 +402,16 @@ export function AnthropicSkillImporter({
         <Button
           key="import"
           variant="primary"
-          onClick={result ? handleClose : handleImport}
-          isDisabled={!result && (isImporting || (importSource === 'url' ? !githubUrl : importSource === 'zip' ? !zipFile : !folderPath))}
+          onClick={(result || batchResult) ? handleClose : handleImport}
+          isDisabled={
+            !(result || batchResult) && 
+            (isImporting || 
+              (importSource === 'url' ? !githubUrl : 
+                importSource === 'zip' ? !zipFile : 
+                !folderPath))
+          }
         >
-          {isImporting ? <Spinner size="md" /> : result ? 'Done' : 'Import'}
+          {isImporting ? <Spinner size="md" /> : (result || batchResult) ? 'Done' : 'Import'}
         </Button>,
         <Button key="cancel" variant="link" onClick={handleClose} isDisabled={isImporting}>
           Cancel
@@ -246,6 +442,34 @@ export function AnthropicSkillImporter({
             >
               Local Folder
             </Button>
+          </div>
+        </FormGroup>
+
+        <FormGroup label="Import Mode">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <input
+              type="checkbox"
+              id="batch-mode"
+              checked={batchMode}
+              onChange={(e) => setBatchMode(e.target.checked)}
+              disabled={isImporting || importSource === 'zip'}
+              style={{ cursor: (isImporting || importSource === 'zip') ? 'not-allowed' : 'pointer' }}
+            />
+            <label 
+              htmlFor="batch-mode" 
+              style={{ 
+                cursor: (isImporting || importSource === 'zip') ? 'not-allowed' : 'pointer',
+                userSelect: 'none'
+              }}
+            >
+              Batch Mode - Import multiple skills from parent directory
+            </label>
+          </div>
+          <div style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
+            {batchMode 
+              ? 'The system will detect all subdirectories containing SKILL.md files and import them sequentially.'
+              : 'Import a single skill from the specified location.'}
+            {importSource === 'zip' && ' (Batch mode is not available for ZIP files)'}
           </div>
         </FormGroup>
 
@@ -390,13 +614,17 @@ export function AnthropicSkillImporter({
             fieldId="github-url-input"
           >
             <div style={{ fontSize: '0.875rem', color: '#6a6e73', marginBottom: '0.5rem' }}>
-              Example: https://github.com/anthropics/skills/tree/main/skills/pptx
+              {batchMode 
+                ? 'Example (parent): https://github.com/anthropics/skills/tree/main/skills'
+                : 'Example (single): https://github.com/anthropics/skills/tree/main/skills/pptx'}
             </div>
             <TextInput
               type="text"
               value={githubUrl}
               onChange={(_event, value) => setGithubUrl(value)}
-              placeholder="https://github.com/anthropics/skills/tree/main/skills/pptx"
+              placeholder={batchMode 
+                ? 'https://github.com/anthropics/skills/tree/main/skills'
+                : 'https://github.com/anthropics/skills/tree/main/skills/pptx'}
               isDisabled={isImporting}
             />
           </FormGroup>
@@ -440,13 +668,15 @@ export function AnthropicSkillImporter({
             fieldId="folder-path-input"
           >
             <div style={{ fontSize: '0.875rem', color: '#6a6e73', marginBottom: '0.5rem' }}>
-              Provide the absolute path to the folder containing the Anthropic skill files
+              {batchMode 
+                ? 'Provide the absolute path to the parent folder containing multiple skill subdirectories'
+                : 'Provide the absolute path to the folder containing the Anthropic skill files'}
             </div>
             <TextInput
               type="text"
               value={folderPath}
               onChange={(_event, value) => setFolderPath(value)}
-              placeholder="/path/to/skill/folder"
+              placeholder={batchMode ? '/path/to/parent/folder' : '/path/to/skill/folder'}
               isDisabled={isImporting}
             />
           </FormGroup>
@@ -456,14 +686,19 @@ export function AnthropicSkillImporter({
           <div style={{ marginTop: '1rem' }}>
             <Progress
               value={progress}
-              title="Importing skill"
+              title={batchMode && currentSkillImporting 
+                ? `Importing: ${currentSkillImporting}` 
+                : batchMode 
+                  ? 'Importing skills...' 
+                  : 'Importing skill'}
               size={ProgressSize.sm}
               measureLocation={ProgressMeasureLocation.top}
             />
           </div>
         )}
 
-        {result && (
+        {/* Single import result */}
+        {result && !batchMode && (
           <Alert
             variant={result.success ? 'success' : 'danger'}
             title={result.success ? 'Success' : 'Error'}
@@ -483,6 +718,51 @@ export function AnthropicSkillImporter({
                   </ListItem>
                 )}
               </List>
+            )}
+          </Alert>
+        )}
+
+        {/* Batch import result */}
+        {batchResult && batchMode && (
+          <Alert
+            variant={batchResult.success ? 'success' : 'danger'}
+            title={batchResult.success ? 'Batch Import Completed' : 'Batch Import Failed'}
+            style={{ marginTop: '1rem' }}
+            isInline
+          >
+            <p>{batchResult.message}</p>
+            {batchResult.total_skills > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <strong>Summary:</strong>
+                <List>
+                  <ListItem>Total skills detected: {batchResult.total_skills}</ListItem>
+                  <ListItem>Successful imports: {batchResult.successful_imports}</ListItem>
+                  <ListItem>Failed imports: {batchResult.failed_imports}</ListItem>
+                </List>
+                
+                {batchResult.results.length > 0 && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <strong>Details:</strong>
+                    <List>
+                      {batchResult.results.map((res, idx) => (
+                        <ListItem key={idx}>
+                          {res.success ? '✓' : '✗'} {res.skill_name || `Skill ${idx + 1}`}
+                          {res.success && res.tools_created !== undefined && (
+                            <span style={{ marginLeft: '0.5rem', fontSize: '0.875rem', color: '#6a6e73' }}>
+                              ({res.tools_created} tools, {res.snippets_created} snippets)
+                            </span>
+                          )}
+                          {!res.success && (
+                            <div style={{ marginLeft: '1rem', fontSize: '0.875rem', color: '#c9190b' }}>
+                              {res.message}
+                            </div>
+                          )}
+                        </ListItem>
+                      ))}
+                    </List>
+                  </div>
+                )}
+              </div>
             )}
           </Alert>
         )}

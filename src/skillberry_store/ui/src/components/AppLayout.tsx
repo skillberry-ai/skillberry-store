@@ -1,7 +1,7 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Page,
@@ -16,20 +16,38 @@ import {
   NavList,
   NavItem,
   PageSection,
-  Brand,
   Button,
   Divider,
 } from '@patternfly/react-core';
-import { BarsIcon } from '@patternfly/react-icons';
+import { BarsIcon, CodeIcon } from '@patternfly/react-icons';
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Start with sidebar closed on smaller screens
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth >= 1200;
+    }
+    return true;
+  });
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Handle responsive sidebar behavior
+  useEffect(() => {
+    const handleResize = () => {
+      // Auto-close sidebar on smaller screens
+      if (window.innerWidth < 1200 && isSidebarOpen) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isSidebarOpen]);
 
   const navItems = [
     { id: 'home', label: 'Home', path: '/' },
@@ -52,15 +70,12 @@ export function AppLayout({ children }: AppLayoutProps) {
       </MastheadToggle>
       <MastheadMain>
         <MastheadBrand onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
-          <Brand
-            src="/vite.svg"
-            alt="Skillberry Store"
-            heights={{ default: '36px' }}
-          >
-            <span style={{ marginLeft: '1rem', fontSize: '1.25rem', fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#151515' }}>
+            <CodeIcon style={{ color: '#0066CC', fontSize: '1.5rem', flexShrink: 0 }} />
+            <span style={{ fontSize: '1.25rem', fontWeight: 600, whiteSpace: 'nowrap' }}>
               Skillberry Store
             </span>
-          </Brand>
+          </div>
         </MastheadBrand>
       </MastheadMain>
       <MastheadContent>
@@ -70,7 +85,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   );
 
   const sidebar = (
-    <PageSidebar isSidebarOpen={isSidebarOpen}>
+    <PageSidebar>
       <PageSidebarBody>
         <Nav>
           <NavList>
@@ -112,6 +127,17 @@ export function AppLayout({ children }: AppLayoutProps) {
               Virtual MCP Servers
             </NavItem>
 
+            {/* Virtual NFS Servers */}
+            <NavItem
+              key="vnfs-servers"
+              itemId="vnfs-servers"
+              isActive={location.pathname === '/vnfs-servers' ||
+                       location.pathname.startsWith('/vnfs-servers')}
+              onClick={() => navigate('/vnfs-servers')}
+            >
+              Virtual NFS Servers
+            </NavItem>
+
             <Divider style={{ margin: '0.5rem 0' }} />
 
             {/* Observability */}
@@ -140,7 +166,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   );
 
   return (
-    <Page masthead={masthead} sidebar={sidebar}>
+    <Page
+      header={masthead}
+      sidebar={isSidebarOpen ? sidebar : undefined}
+    >
       <PageSection>{children}</PageSection>
     </Page>
   );

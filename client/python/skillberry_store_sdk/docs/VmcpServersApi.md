@@ -5,16 +5,16 @@ All URIs are relative to *http://localhost*
 Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**create_vmcp_server_vmcp_servers_post**](VmcpServersApi.md#create_vmcp_server_vmcp_servers_post) | **POST** /vmcp_servers/ | Create Vmcp Server
-[**delete_vmcp_server_vmcp_servers_name_delete**](VmcpServersApi.md#delete_vmcp_server_vmcp_servers_name_delete) | **DELETE** /vmcp_servers/{name} | Delete Vmcp Server
-[**get_vmcp_server_vmcp_servers_name_get**](VmcpServersApi.md#get_vmcp_server_vmcp_servers_name_get) | **GET** /vmcp_servers/{name} | Get Vmcp Server
+[**delete_vmcp_server_vmcp_servers_uuid_or_name_delete**](VmcpServersApi.md#delete_vmcp_server_vmcp_servers_uuid_or_name_delete) | **DELETE** /vmcp_servers/{uuid_or_name} | Delete Vmcp Server
+[**get_vmcp_server_vmcp_servers_uuid_or_name_get**](VmcpServersApi.md#get_vmcp_server_vmcp_servers_uuid_or_name_get) | **GET** /vmcp_servers/{uuid_or_name} | Get Vmcp Server
 [**list_vmcp_servers_vmcp_servers_get**](VmcpServersApi.md#list_vmcp_servers_vmcp_servers_get) | **GET** /vmcp_servers/ | List Vmcp Servers
 [**search_vmcp_servers_search_vmcp_servers_get**](VmcpServersApi.md#search_vmcp_servers_search_vmcp_servers_get) | **GET** /search/vmcp_servers | Search Vmcp Servers
-[**start_vmcp_server_vmcp_servers_name_start_post**](VmcpServersApi.md#start_vmcp_server_vmcp_servers_name_start_post) | **POST** /vmcp_servers/{name}/start | Start Vmcp Server
-[**update_vmcp_server_vmcp_servers_name_put**](VmcpServersApi.md#update_vmcp_server_vmcp_servers_name_put) | **PUT** /vmcp_servers/{name} | Update Vmcp Server
+[**start_vmcp_server_vmcp_servers_uuid_or_name_start_post**](VmcpServersApi.md#start_vmcp_server_vmcp_servers_uuid_or_name_start_post) | **POST** /vmcp_servers/{uuid_or_name}/start | Start Vmcp Server
+[**update_vmcp_server_vmcp_servers_uuid_or_name_put**](VmcpServersApi.md#update_vmcp_server_vmcp_servers_uuid_or_name_put) | **PUT** /vmcp_servers/{uuid_or_name} | Update Vmcp Server
 
 
 # **create_vmcp_server_vmcp_servers_post**
-> object create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+> object create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
 
 Create Vmcp Server
 
@@ -57,7 +57,8 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[Optional[str]] | List of tags for categorizing (optional)
-    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
+    extra = skillberry_store_sdk.Extra() # Extra | Optional dictionary for additional flexible information (optional)
+    parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     port = 56 # int | Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. (optional)
@@ -65,7 +66,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Create Vmcp Server
-        api_response = api_instance.create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+        api_response = api_instance.create_vmcp_server_vmcp_servers_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
         print("The response of VmcpServersApi->create_vmcp_server_vmcp_servers_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -85,7 +86,8 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[Optional[str]]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Extra**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **port** | **int**| Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. | [optional] 
@@ -113,17 +115,17 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **delete_vmcp_server_vmcp_servers_name_delete**
-> object delete_vmcp_server_vmcp_servers_name_delete(name)
+# **delete_vmcp_server_vmcp_servers_uuid_or_name_delete**
+> object delete_vmcp_server_vmcp_servers_uuid_or_name_delete(uuid_or_name)
 
 Delete Vmcp Server
 
-Delete a virtual MCP server by name.
+Delete a virtual MCP server by UUID or name.
 
 Stops the runtime server and removes persistent data.
 
 Args:
-    name: The name of the vmcp server to delete.
+    uuid_or_name: The UUID or name of the vmcp server to delete.
 
 Returns:
     dict: Success message.
@@ -150,15 +152,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
         # Delete Vmcp Server
-        api_response = api_instance.delete_vmcp_server_vmcp_servers_name_delete(name)
-        print("The response of VmcpServersApi->delete_vmcp_server_vmcp_servers_name_delete:\n")
+        api_response = api_instance.delete_vmcp_server_vmcp_servers_uuid_or_name_delete(uuid_or_name)
+        print("The response of VmcpServersApi->delete_vmcp_server_vmcp_servers_uuid_or_name_delete:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->delete_vmcp_server_vmcp_servers_name_delete: %s\n" % e)
+        print("Exception when calling VmcpServersApi->delete_vmcp_server_vmcp_servers_uuid_or_name_delete: %s\n" % e)
 ```
 
 
@@ -168,7 +170,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
 
 ### Return type
 
@@ -192,17 +194,17 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **get_vmcp_server_vmcp_servers_name_get**
-> object get_vmcp_server_vmcp_servers_name_get(name)
+# **get_vmcp_server_vmcp_servers_uuid_or_name_get**
+> object get_vmcp_server_vmcp_servers_uuid_or_name_get(uuid_or_name)
 
 Get Vmcp Server
 
-Get a specific virtual MCP server by name.
+Get a specific virtual MCP server by UUID or name.
 
 Returns both persistent and runtime information.
 
 Args:
-    name: The name of the vmcp server.
+    uuid_or_name: The UUID or name of the vmcp server.
 
 Returns:
     dict: The vmcp server object with runtime details.
@@ -229,15 +231,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
         # Get Vmcp Server
-        api_response = api_instance.get_vmcp_server_vmcp_servers_name_get(name)
-        print("The response of VmcpServersApi->get_vmcp_server_vmcp_servers_name_get:\n")
+        api_response = api_instance.get_vmcp_server_vmcp_servers_uuid_or_name_get(uuid_or_name)
+        print("The response of VmcpServersApi->get_vmcp_server_vmcp_servers_uuid_or_name_get:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->get_vmcp_server_vmcp_servers_name_get: %s\n" % e)
+        print("Exception when calling VmcpServersApi->get_vmcp_server_vmcp_servers_uuid_or_name_get: %s\n" % e)
 ```
 
 
@@ -247,7 +249,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
 
 ### Return type
 
@@ -430,8 +432,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **start_vmcp_server_vmcp_servers_name_start_post**
-> object start_vmcp_server_vmcp_servers_name_start_post(name)
+# **start_vmcp_server_vmcp_servers_uuid_or_name_start_post**
+> object start_vmcp_server_vmcp_servers_uuid_or_name_start_post(uuid_or_name)
 
 Start Vmcp Server
 
@@ -441,7 +443,7 @@ This endpoint allows starting a server that exists in persistent storage
 but is not currently running in the runtime manager.
 
 Args:
-    name: The name of the vmcp server to start.
+    uuid_or_name: The UUID or name of the vmcp server to start.
     request: The incoming request object for context extraction.
 
 Returns:
@@ -469,15 +471,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
         # Start Vmcp Server
-        api_response = api_instance.start_vmcp_server_vmcp_servers_name_start_post(name)
-        print("The response of VmcpServersApi->start_vmcp_server_vmcp_servers_name_start_post:\n")
+        api_response = api_instance.start_vmcp_server_vmcp_servers_uuid_or_name_start_post(uuid_or_name)
+        print("The response of VmcpServersApi->start_vmcp_server_vmcp_servers_uuid_or_name_start_post:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->start_vmcp_server_vmcp_servers_name_start_post: %s\n" % e)
+        print("Exception when calling VmcpServersApi->start_vmcp_server_vmcp_servers_uuid_or_name_start_post: %s\n" % e)
 ```
 
 
@@ -487,7 +489,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
 
 ### Return type
 
@@ -511,8 +513,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **update_vmcp_server_vmcp_servers_name_put**
-> object update_vmcp_server_vmcp_servers_name_put(name, name2=name2, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+# **update_vmcp_server_vmcp_servers_uuid_or_name_put**
+> object update_vmcp_server_vmcp_servers_uuid_or_name_put(uuid_or_name, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
 
 Update Vmcp Server
 
@@ -521,7 +523,7 @@ Update an existing virtual MCP server.
 Updates both persistent data and restarts the runtime server.
 
 Args:
-    name: The name of the vmcp server to update.
+    uuid_or_name: The UUID or name of the vmcp server to update.
     vmcp: The updated vmcp schema.
     request: The incoming request object for context extraction.
 
@@ -550,14 +552,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.VmcpServersApi(api_client)
-    name = 'name_example' # str | 
-    name2 = 'name_example' # str | Name (optional)
+    uuid_or_name = 'uuid_or_name_example' # str | 
+    name = 'name_example' # str | Name (optional)
     uuid = 'uuid_example' # str | A UUID. If not provided, a UUID will be automatically generated. (optional)
     version = 'version_example' # str | Version (optional)
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
+    extra = skillberry_store_sdk.Extra1() # Extra1 | Optional dictionary for additional flexible information (optional)
+    parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     port = 56 # int | Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. (optional)
@@ -565,11 +568,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Update Vmcp Server
-        api_response = api_instance.update_vmcp_server_vmcp_servers_name_put(name, name2=name2, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
-        print("The response of VmcpServersApi->update_vmcp_server_vmcp_servers_name_put:\n")
+        api_response = api_instance.update_vmcp_server_vmcp_servers_uuid_or_name_put(uuid_or_name, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, port=port, skill_uuid=skill_uuid)
+        print("The response of VmcpServersApi->update_vmcp_server_vmcp_servers_uuid_or_name_put:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling VmcpServersApi->update_vmcp_server_vmcp_servers_name_put: %s\n" % e)
+        print("Exception when calling VmcpServersApi->update_vmcp_server_vmcp_servers_uuid_or_name_put: %s\n" % e)
 ```
 
 
@@ -579,14 +582,15 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
- **name2** | **str**| Name | [optional] 
+ **uuid_or_name** | **str**|  | 
+ **name** | **str**| Name | [optional] 
  **uuid** | **str**| A UUID. If not provided, a UUID will be automatically generated. | [optional] 
  **version** | **str**| Version | [optional] 
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Extra1**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **port** | **int**| Port on which the virtual MCP server is running. If None, an available port will be auto-assigned. | [optional] 

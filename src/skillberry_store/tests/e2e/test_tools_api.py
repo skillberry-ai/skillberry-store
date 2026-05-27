@@ -3,11 +3,15 @@ E2E tests for tool API endpoints.
 Tests the full lifecycle of tool operations: create, list, get, update, and delete.
 """
 
+import asyncio
+import json
+import logging
 import pytest
 import httpx
 
 
 BASE_URL = "http://localhost:8000"
+logger = logging.getLogger(__name__)
 
 
 
@@ -181,10 +185,10 @@ async def test_get_tool_module_nonexistent_tool(run_sbs):
 
 @pytest.mark.asyncio
 async def test_create_duplicate_tool(run_sbs):
-    """Test that creating a duplicate tool fails."""
+    """Test that creating a duplicate tool UUID fails."""
     tool_params = {
         "name": "test_tool",
-        "description": "A test tool for demonstration",
+        "description": "A test tool",
         "programming_language": "python",
         "packaging_format": "code",
         "state": "approved"
@@ -196,10 +200,28 @@ async def test_create_duplicate_tool(run_sbs):
         files = {
             "module": ("test_tool.py", file_content, "text/x-python")
         }
-        response = await client.post(f"{BASE_URL}/tools/", params=tool_params, files=files)
-        # Should fail with 409 Conflict
-        assert response.status_code == 409, f"Expected 409, got {response.status_code}: {response.text}"
-        assert "already exists" in response.json().get("detail", "")
+
+        create_response = await client.post(f"{BASE_URL}/tools/", params=tool_params, files=files)
+        assert create_response.status_code == 200, (
+            f"Expected 200, got {create_response.status_code}: {create_response.text}"
+        )
+        created = create_response.json()
+        created_uuid = created.get("uuid")
+        assert created_uuid is not None
+
+        duplicate_params = {
+            **tool_params,
+            "uuid": created_uuid,
+        }
+        duplicate_response = await client.post(
+            f"{BASE_URL}/tools/",
+            params=duplicate_params,
+            files=files,
+        )
+        assert duplicate_response.status_code == 409, (
+            f"Expected 409, got {duplicate_response.status_code}: {duplicate_response.text}"
+        )
+        assert "already exists" in duplicate_response.json().get("detail", "")
 
 
 @pytest.mark.asyncio
@@ -314,7 +336,7 @@ async def test_add_tool_from_python_endpoint_update(run_sbs):
         assert updated.get("message") == "Tool 'add_via_tools_add_update' created successfully."
         assert updated.get("module_name") == "add_via_tools_add_update.py"
         assert updated.get("uuid") is not None
-        assert updated.get("uuid") != first_uuid
+        assert updated.get("uuid") == first_uuid    # When updating with add from python, UUID should be the same
         assert updated.get("description") == "Add two integers with updated description."
 
         get_response = await client.get(f"{BASE_URL}/tools/add_via_tools_add_update")
@@ -421,16 +443,24 @@ async def test_update_nonexistent_tool(run_sbs):
 
 @pytest.mark.asyncio
 async def test_delete_tool(run_sbs):
-    """Test deleting a tool."""
+    """Test deleting a tool by UUID."""
     async with httpx.AsyncClient() as client:
-        response = await client.delete(f"{BASE_URL}/tools/test_tool")
+        # First get the tool by name to obtain its UUID
+        get_response = await client.get(f"{BASE_URL}/tools/test_tool")
+        assert get_response.status_code == 200
+        tool_data = get_response.json()
+        tool_uuid = tool_data.get("uuid")
+        assert tool_uuid is not None, "Tool UUID should be present"
+        
+        # Delete by UUID
+        response = await client.delete(f"{BASE_URL}/tools/{tool_uuid}")
         assert response.status_code == 200
         data = response.json()
         assert "deleted successfully" in data.get("message", "")
 
-        # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/tools/test_tool")
-        assert get_response.status_code == 404
+        # Verify deletion by UUID
+        verify_response = await client.get(f"{BASE_URL}/tools/{tool_uuid}")
+        assert verify_response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -752,3 +782,358 @@ async def test_search_tools(run_sbs):
             delete_response = await client.delete(f"{BASE_URL}/tools/{tool_params['name']}")
 
 
+@pytest.mark.asyncio
+async def test_two_tools_same_name_different_uuid(run_sbs):
+    """Test creating two tools with the same name but different UUIDs, then executing each by UUID.
+    
+    This test verifies that:
+    1. Two tools with the same name but different UUIDs can be created successfully
+    2. Each tool can be executed independently by its UUID
+    3. Each tool executes its own distinct logic correctly
+    """
+    tool_name = "calculate"  # Same name for both tools
+    
+    # Tool A: Adds two numbers
+    tool_a_content = b"""def calculate(x: int, y: int) -> int:
+    \"\"\"Add two numbers together.
+    
+    Args:
+        x: First number
+        y: Second number
+        
+    Returns:
+        Sum of x and y
+    \"\"\"
+    return x + y
+"""
+    
+    # Tool B: Multiplies two numbers
+    tool_b_content = b"""def calculate(x: int, y: int) -> int:
+    \"\"\"Multiply two numbers together.
+    
+    Args:
+        x: First number
+        y: Second number
+        
+    Returns:
+        Product of x and y
+    \"\"\"
+    return x * y
+"""
+    
+    async with httpx.AsyncClient() as client:
+        # Create Tool A (addition)
+        tool_a_params = {
+            "name": tool_name,
+            "description": "A tool that adds two numbers",
+            "programming_language": "python",
+            "packaging_format": "code",
+            "state": "approved"
+        }
+        files_a = {
+            "module": ("calculate_add.py", tool_a_content, "text/x-python")
+        }
+        create_a_response = await client.post(f"{BASE_URL}/tools/", params=tool_a_params, files=files_a)
+        assert create_a_response.status_code == 200, f"Expected 200 for Tool A, got {create_a_response.status_code}: {create_a_response.text}"
+        tool_a_data = create_a_response.json()
+        tool_a_uuid = tool_a_data.get("uuid")
+        assert tool_a_uuid is not None, "Tool A should have a UUID"
+        assert tool_a_data.get("name") == tool_name
+        logger.info(f"Created Tool A with UUID: {tool_a_uuid}")
+        
+        # Create Tool B (multiplication) - same name, different UUID
+        tool_b_params = {
+            "name": tool_name,
+            "description": "A tool that multiplies two numbers",
+            "programming_language": "python",
+            "packaging_format": "code",
+            "state": "approved"
+        }
+        files_b = {
+            "module": ("calculate_multiply.py", tool_b_content, "text/x-python")
+        }
+        create_b_response = await client.post(f"{BASE_URL}/tools/", params=tool_b_params, files=files_b)
+        assert create_b_response.status_code == 200, f"Expected 200 for Tool B, got {create_b_response.status_code}: {create_b_response.text}"
+        tool_b_data = create_b_response.json()
+        tool_b_uuid = tool_b_data.get("uuid")
+        assert tool_b_uuid is not None, "Tool B should have a UUID"
+        assert tool_b_data.get("name") == tool_name
+        logger.info(f"Created Tool B with UUID: {tool_b_uuid}")
+        
+        # Verify that the UUIDs are different
+        assert tool_a_uuid != tool_b_uuid, "Tool A and Tool B should have different UUIDs"
+        
+        # Execute Tool A by UUID (should add: 5 + 3 = 8)
+        execute_params_a = {"x": 5, "y": 3}
+        execute_a_response = await client.post(
+            f"{BASE_URL}/tools/{tool_a_uuid}/execute",
+            json=execute_params_a
+        )
+        assert execute_a_response.status_code == 200, f"Expected 200 for Tool A execution, got {execute_a_response.status_code}: {execute_a_response.text}"
+        result_a = execute_a_response.json()
+        assert result_a is not None
+        assert isinstance(result_a, dict), f"Expected dict for Tool A result, got {type(result_a)}"
+        assert result_a.get("return value") == "8", f"Tool A should return 8 (5+3), got {result_a.get('return value')}"
+        logger.info(f"Tool A executed correctly: 5 + 3 = {result_a.get('return value')}")
+        
+        # Execute Tool B by UUID (should multiply: 5 * 3 = 15)
+        execute_params_b = {"x": 5, "y": 3}
+        execute_b_response = await client.post(
+            f"{BASE_URL}/tools/{tool_b_uuid}/execute",
+            json=execute_params_b
+        )
+        assert execute_b_response.status_code == 200, f"Expected 200 for Tool B execution, got {execute_b_response.status_code}: {execute_b_response.text}"
+        result_b = execute_b_response.json()
+        assert result_b is not None
+        assert isinstance(result_b, dict), f"Expected dict for Tool B result, got {type(result_b)}"
+        assert result_b.get("return value") == "15", f"Tool B should return 15 (5*3), got {result_b.get('return value')}"
+        logger.info(f"Tool B executed correctly: 5 * 3 = {result_b.get('return value')}")
+        
+        # Verify both tools are listed
+        list_response = await client.get(f"{BASE_URL}/tools/")
+        assert list_response.status_code == 200
+        tools_list = list_response.json()
+        tool_uuids = [t.get("uuid") for t in tools_list]
+        assert tool_a_uuid in tool_uuids, "Tool A should be in the tools list"
+        assert tool_b_uuid in tool_uuids, "Tool B should be in the tools list"
+        
+        # Clean up - delete both tools by UUID
+        delete_a_response = await client.delete(f"{BASE_URL}/tools/{tool_a_uuid}")
+        assert delete_a_response.status_code == 200, f"Expected 200 for Tool A deletion, got {delete_a_response.status_code}"
+        logger.info(f"Deleted Tool A (UUID: {tool_a_uuid})")
+        
+        delete_b_response = await client.delete(f"{BASE_URL}/tools/{tool_b_uuid}")
+        assert delete_b_response.status_code == 200, f"Expected 200 for Tool B deletion, got {delete_b_response.status_code}"
+        logger.info(f"Deleted Tool B (UUID: {tool_b_uuid})")
+
+
+
+
+@pytest.mark.asyncio
+async def test_create_tools_with_complex_dependencies(run_sbs):
+    """Test creating tools with complex multi-level dependencies.
+    
+    This test creates a hierarchy of tools with dependencies:
+    - Group 1: add, subtract (standalone)
+    - Group 2: multiply, calc_add_subtract (depend on Group 1)
+    - Group 3: calc (depends on Group 2)
+    
+    The test verifies that:
+    1. Each tool is created successfully
+    2. Dependencies are correctly detected by the server
+    3. The final tool can be executed with all dependencies resolved
+    """
+    import os
+    
+    # Define the path to test resources
+    resources_path = os.path.join(
+        os.path.dirname(__file__),
+        '..',
+        'resources',
+        'e2e',
+        'example_functions'
+    )
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        created_tools = []
+        tool_uuids = {}  # Track UUIDs for dependency verification
+        
+        try:
+            # Group 1: Create standalone tools (add, subtract)
+            logger.info("Creating Group 1 tools: add, subtract")
+            
+            # Create 'add' tool
+            with open(os.path.join(resources_path, 'add.py'), 'rb') as f:
+                add_content = f.read()
+            
+            add_params = {
+                "name": "add",
+                "description": "Adds two numbers",
+                "programming_language": "python",
+                "packaging_format": "code",
+                "state": "approved"
+            }
+            add_files = {"module": ("add.py", add_content, "text/x-python")}
+            add_response = await client.post(f"{BASE_URL}/tools/", params=add_params, files=add_files)
+            assert add_response.status_code == 200, f"Failed to create 'add' tool: {add_response.text}"
+            add_data = add_response.json()
+            assert add_data.get("name") == "add"
+            add_uuid = add_data.get("uuid")
+            assert add_uuid is not None, "'add' tool should have a UUID"
+            tool_uuids["add"] = add_uuid
+            created_tools.append("add")
+            
+            # Verify 'add' has no dependencies
+            add_tool = await client.get(f"{BASE_URL}/tools/add")
+            assert add_tool.status_code == 200
+            add_tool_data = add_tool.json()
+            dependencies = add_tool_data.get("dependencies") or []
+            assert len(dependencies) == 0, f"'add' should have no dependencies, got: {dependencies}"
+            logger.info(f"✓ 'add' tool created with UUID {add_uuid} and 0 dependencies")
+            
+            # Create 'subtract' tool
+            with open(os.path.join(resources_path, 'subtract.py'), 'rb') as f:
+                subtract_content = f.read()
+            
+            subtract_params = {
+                "name": "subtract",
+                "description": "Subtracts two numbers",
+                "programming_language": "python",
+                "packaging_format": "code",
+                "state": "approved"
+            }
+            subtract_files = {"module": ("subtract.py", subtract_content, "text/x-python")}
+            subtract_response = await client.post(f"{BASE_URL}/tools/", params=subtract_params, files=subtract_files)
+            assert subtract_response.status_code == 200, f"Failed to create 'subtract' tool: {subtract_response.text}"
+            subtract_data = subtract_response.json()
+            assert subtract_data.get("name") == "subtract"
+            subtract_uuid = subtract_data.get("uuid")
+            assert subtract_uuid is not None, "'subtract' tool should have a UUID"
+            tool_uuids["subtract"] = subtract_uuid
+            created_tools.append("subtract")
+            
+            # Verify 'subtract' has no dependencies
+            subtract_tool = await client.get(f"{BASE_URL}/tools/subtract")
+            assert subtract_tool.status_code == 200
+            subtract_tool_data = subtract_tool.json()
+            dependencies = subtract_tool_data.get("dependencies") or []
+            assert len(dependencies) == 0, f"'subtract' should have no dependencies, got: {dependencies}"
+            logger.info(f"✓ 'subtract' tool created with UUID {subtract_uuid} and 0 dependencies")
+            
+            # Group 2: Create tools that depend on Group 1 (multiply, calc_add_subtract)
+            logger.info("Creating Group 2 tools: multiply, calc_add_subtract")
+            
+            # Create 'multiply' tool (depends on add and subtract)
+            with open(os.path.join(resources_path, 'multiply.py'), 'rb') as f:
+                multiply_content = f.read()
+            
+            multiply_params = {
+                "name": "multiply",
+                "description": "Multiplies two numbers",
+                "programming_language": "python",
+                "packaging_format": "code",
+                "state": "approved"
+            }
+            multiply_files = {"module": ("multiply.py", multiply_content, "text/x-python")}
+            multiply_response = await client.post(f"{BASE_URL}/tools/", params=multiply_params, files=multiply_files)
+            assert multiply_response.status_code == 200, f"Failed to create 'multiply' tool: {multiply_response.text}"
+            multiply_data = multiply_response.json()
+            assert multiply_data.get("name") == "multiply"
+            multiply_uuid = multiply_data.get("uuid")
+            assert multiply_uuid is not None, "'multiply' tool should have a UUID"
+            tool_uuids["multiply"] = multiply_uuid
+            created_tools.append("multiply")
+            
+            # Verify 'multiply' depends on 'add' and 'subtract' (by UUID)
+            multiply_tool = await client.get(f"{BASE_URL}/tools/multiply")
+            assert multiply_tool.status_code == 200
+            multiply_tool_data = multiply_tool.json()
+            dependencies = multiply_tool_data.get("dependencies") or []
+            assert len(dependencies) == 2, f"'multiply' should have 2 dependencies, got: {dependencies}"
+            assert tool_uuids["add"] in dependencies, f"'multiply' should depend on 'add' (UUID: {tool_uuids['add']}), got: {dependencies}"
+            assert tool_uuids["subtract"] in dependencies, f"'multiply' should depend on 'subtract' (UUID: {tool_uuids['subtract']}), got: {dependencies}"
+            logger.info(f"✓ 'multiply' tool created with UUID {multiply_uuid} and dependencies: {dependencies}")
+            
+            # Create 'calc_add_subtract' tool (depends on add and subtract)
+            with open(os.path.join(resources_path, 'calc_add_subtract.py'), 'rb') as f:
+                calc_add_subtract_content = f.read()
+            
+            calc_add_subtract_params = {
+                "name": "calc_add_subtract",
+                "description": "Performs addition or subtraction",
+                "programming_language": "python",
+                "packaging_format": "code",
+                "state": "approved"
+            }
+            calc_add_subtract_files = {"module": ("calc_add_subtract.py", calc_add_subtract_content, "text/x-python")}
+            calc_add_subtract_response = await client.post(f"{BASE_URL}/tools/", params=calc_add_subtract_params, files=calc_add_subtract_files)
+            assert calc_add_subtract_response.status_code == 200, f"Failed to create 'calc_add_subtract' tool: {calc_add_subtract_response.text}"
+            calc_add_subtract_data = calc_add_subtract_response.json()
+            assert calc_add_subtract_data.get("name") == "calc_add_subtract"
+            calc_add_subtract_uuid = calc_add_subtract_data.get("uuid")
+            assert calc_add_subtract_uuid is not None, "'calc_add_subtract' tool should have a UUID"
+            tool_uuids["calc_add_subtract"] = calc_add_subtract_uuid
+            created_tools.append("calc_add_subtract")
+            
+            # Verify 'calc_add_subtract' depends on 'add' and 'subtract' (by UUID)
+            calc_add_subtract_tool = await client.get(f"{BASE_URL}/tools/calc_add_subtract")
+            assert calc_add_subtract_tool.status_code == 200
+            calc_add_subtract_tool_data = calc_add_subtract_tool.json()
+            dependencies = calc_add_subtract_tool_data.get("dependencies") or []
+            assert len(dependencies) == 2, f"'calc_add_subtract' should have 2 dependencies, got: {dependencies}"
+            assert tool_uuids["add"] in dependencies, f"'calc_add_subtract' should depend on 'add' (UUID: {tool_uuids['add']}), got: {dependencies}"
+            assert tool_uuids["subtract"] in dependencies, f"'calc_add_subtract' should depend on 'subtract' (UUID: {tool_uuids['subtract']}), got: {dependencies}"
+            logger.info(f"✓ 'calc_add_subtract' tool created with UUID {calc_add_subtract_uuid} and dependencies: {dependencies}")
+            
+            # Group 3: Create tool that depends on Group 2 (calc)
+            logger.info("Creating Group 3 tool: calc")
+            
+            # Create 'calc' tool (depends on multiply and calc_add_subtract)
+            with open(os.path.join(resources_path, 'calc_complex_dep.py'), 'rb') as f:
+                calc_content = f.read()
+            
+            calc_params = {
+                "name": "calc",
+                "description": "Performs arithmetic operations",
+                "programming_language": "python",
+                "packaging_format": "code",
+                "state": "approved"
+            }
+            calc_files = {"module": ("calc.py", calc_content, "text/x-python")}
+            calc_response = await client.post(f"{BASE_URL}/tools/", params=calc_params, files=calc_files)
+            assert calc_response.status_code == 200, f"Failed to create 'calc' tool: {calc_response.text}"
+            calc_data = calc_response.json()
+            assert calc_data.get("name") == "calc"
+            calc_uuid = calc_data.get("uuid")
+            assert calc_uuid is not None, "'calc' tool should have a UUID"
+            tool_uuids["calc"] = calc_uuid
+            created_tools.append("calc")
+            
+            # Verify 'calc' depends on 'multiply' and 'calc_add_subtract' (by UUID)
+            calc_tool = await client.get(f"{BASE_URL}/tools/calc")
+            assert calc_tool.status_code == 200
+            calc_tool_data = calc_tool.json()
+            dependencies = calc_tool_data.get("dependencies") or []
+            assert len(dependencies) == 2, f"'calc' should have 2 dependencies, got: {dependencies}"
+            assert tool_uuids["multiply"] in dependencies, f"'calc' should depend on 'multiply' (UUID: {tool_uuids['multiply']}), got: {dependencies}"
+            assert tool_uuids["calc_add_subtract"] in dependencies, f"'calc' should depend on 'calc_add_subtract' (UUID: {tool_uuids['calc_add_subtract']}), got: {dependencies}"
+            logger.info(f"✓ 'calc' tool created with UUID {calc_uuid} and dependencies: {dependencies}")
+            
+            # Execute the 'calc' tool with multiplication: 3 * 5 = 15
+            logger.info("Executing 'calc' tool with operation='*', num1=3, num2=5")
+            execute_params = {
+                "operation": "*",
+                "num1": 3,
+                "num2": 5
+            }
+            execute_response = await client.post(
+                f"{BASE_URL}/tools/calc/execute",
+                json=execute_params
+            )
+            assert execute_response.status_code == 200, f"Failed to execute 'calc' tool: {execute_response.text}"
+            result = execute_response.json()
+            
+            # Verify the result is 15 (3 * 5)
+            assert result is not None
+            assert isinstance(result, dict), f"Expected dict result, got {type(result)}"
+            return_value = result.get("return value")
+            assert return_value is not None, "Expected return value to be present"
+            # The result might be a string or float
+            if isinstance(return_value, str):
+                assert return_value == "15.0" or return_value == "15", f"Expected '15' or '15.0', got '{return_value}'"
+            else:
+                assert float(return_value) == 15.0, f"Expected 15.0, got {return_value}"
+            logger.info(f"✓ 'calc' tool executed successfully: 3 * 5 = {return_value}")
+            
+        finally:
+            # Clean up - delete all created tools in reverse order
+            logger.info("Cleaning up created tools")
+            for tool_name in reversed(created_tools):
+                try:
+                    delete_response = await client.delete(f"{BASE_URL}/tools/{tool_name}")
+                    if delete_response.status_code == 200:
+                        logger.info(f"✓ Deleted tool: {tool_name}")
+                    else:
+                        logger.warning(f"Failed to delete tool {tool_name}: {delete_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"Error deleting tool {tool_name}: {e}")

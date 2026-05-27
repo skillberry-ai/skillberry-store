@@ -49,7 +49,7 @@ import type { Skill } from '@/types';
 import { detectLanguage } from '@/utils/detectLanguage';
 
 export function SkillDetailPage() {
-  const { name } = useParams<{ name: string }>();
+  const { uuid } = useParams<{ uuid: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -80,9 +80,9 @@ export function SkillDetailPage() {
   const [selectedSnippetItem, setSelectedSnippetItem] = useState<string | null>(null);
 
   const { data: skill, isLoading, error } = useQuery({
-    queryKey: ['skills', name],
-    queryFn: () => skillsApi.get(name!),
-    enabled: !!name,
+    queryKey: ['skills', uuid],
+    queryFn: () => skillsApi.get(uuid!),
+    enabled: !!uuid,
   });
 
   // Fetch all tools for the dropdown
@@ -99,7 +99,7 @@ export function SkillDetailPage() {
 
   // Fetch tool modules for all tools in the skill
   const { data: toolModules } = useQuery({
-    queryKey: ['skill-tools-modules', name, skill?.tools],
+    queryKey: ['skill-tools-modules', uuid, skill?.tools],
     queryFn: async () => {
       if (!skill?.tools || skill.tools.length === 0) return [];
       const modules = await Promise.all(
@@ -120,9 +120,9 @@ export function SkillDetailPage() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (updatedSkill: Skill) =>
-      skillsApi.update(name!, updatedSkill),
+      skillsApi.update(skill?.name!, updatedSkill),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['skills', name] });
+      queryClient.invalidateQueries({ queryKey: ['skills', uuid] });
       queryClient.invalidateQueries({ queryKey: ['skills'] });
       setIsEditModalOpen(false);
       setEditError('');
@@ -134,7 +134,7 @@ export function SkillDetailPage() {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: () => skillsApi.delete(name!),
+    mutationFn: () => skillsApi.delete(skill?.name!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
       navigate('/skills');

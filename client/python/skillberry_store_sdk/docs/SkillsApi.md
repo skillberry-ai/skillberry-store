@@ -5,17 +5,17 @@ All URIs are relative to *http://localhost*
 Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**create_skill_skills_post**](SkillsApi.md#create_skill_skills_post) | **POST** /skills/ | Create Skill
-[**delete_skill_skills_name_delete**](SkillsApi.md#delete_skill_skills_name_delete) | **DELETE** /skills/{name} | Delete Skill
-[**export_anthropic_skill_skills_name_export_anthropic_get**](SkillsApi.md#export_anthropic_skill_skills_name_export_anthropic_get) | **GET** /skills/{name}/export-anthropic | Export Anthropic Skill
-[**get_skill_skills_name_get**](SkillsApi.md#get_skill_skills_name_get) | **GET** /skills/{name} | Get Skill
+[**delete_skill_skills_uuid_or_name_delete**](SkillsApi.md#delete_skill_skills_uuid_or_name_delete) | **DELETE** /skills/{uuid_or_name} | Delete Skill
+[**export_anthropic_skill_skills_uuid_or_name_export_anthropic_get**](SkillsApi.md#export_anthropic_skill_skills_uuid_or_name_export_anthropic_get) | **GET** /skills/{uuid_or_name}/export-anthropic | Export Anthropic Skill
+[**get_skill_skills_uuid_or_name_get**](SkillsApi.md#get_skill_skills_uuid_or_name_get) | **GET** /skills/{uuid_or_name} | Get Skill
 [**import_anthropic_skill_skills_import_anthropic_post**](SkillsApi.md#import_anthropic_skill_skills_import_anthropic_post) | **POST** /skills/import-anthropic | Import Anthropic Skill
 [**list_skills_skills_get**](SkillsApi.md#list_skills_skills_get) | **GET** /skills/ | List Skills
 [**search_skills_search_skills_get**](SkillsApi.md#search_skills_search_skills_get) | **GET** /search/skills | Search Skills
-[**update_skill_skills_name_put**](SkillsApi.md#update_skill_skills_name_put) | **PUT** /skills/{name} | Update Skill
+[**update_skill_skills_uuid_or_name_put**](SkillsApi.md#update_skill_skills_uuid_or_name_put) | **PUT** /skills/{uuid_or_name} | Update Skill
 
 
 # **create_skill_skills_post**
-> object create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
+> object create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
 
 Create Skill
 
@@ -59,7 +59,8 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
+    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
+    parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
     tool_uuids = ['tool_uuids_example'] # List[Optional[str]] | Ordered list of tool UUIDs that comprise this skill (optional)
@@ -67,7 +68,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Create Skill
-        api_response = api_instance.create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, created_at=created_at, modified_at=modified_at, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
+        api_response = api_instance.create_skill_skills_post(name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, tool_uuids=tool_uuids, snippet_uuids=snippet_uuids)
         print("The response of SkillsApi->create_skill_skills_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -87,7 +88,8 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
  **tool_uuids** | [**List[Optional[str]]**](str.md)| Ordered list of tool UUIDs that comprise this skill | [optional] 
@@ -115,15 +117,15 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **delete_skill_skills_name_delete**
-> object delete_skill_skills_name_delete(name)
+# **delete_skill_skills_uuid_or_name_delete**
+> object delete_skill_skills_uuid_or_name_delete(uuid_or_name)
 
 Delete Skill
 
-Delete a skill by name.
+Delete a skill by UUID or name.
 
 Args:
-    name: The name of the skill to delete.
+    uuid_or_name: The UUID or name of the skill to delete.
 
 Returns:
     dict: Success message.
@@ -150,15 +152,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.SkillsApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
         # Delete Skill
-        api_response = api_instance.delete_skill_skills_name_delete(name)
-        print("The response of SkillsApi->delete_skill_skills_name_delete:\n")
+        api_response = api_instance.delete_skill_skills_uuid_or_name_delete(uuid_or_name)
+        print("The response of SkillsApi->delete_skill_skills_uuid_or_name_delete:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling SkillsApi->delete_skill_skills_name_delete: %s\n" % e)
+        print("Exception when calling SkillsApi->delete_skill_skills_uuid_or_name_delete: %s\n" % e)
 ```
 
 
@@ -168,7 +170,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
 
 ### Return type
 
@@ -192,19 +194,19 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **export_anthropic_skill_skills_name_export_anthropic_get**
-> object export_anthropic_skill_skills_name_export_anthropic_get(name)
+# **export_anthropic_skill_skills_uuid_or_name_export_anthropic_get**
+> object export_anthropic_skill_skills_uuid_or_name_export_anthropic_get(uuid_or_name)
 
 Export Anthropic Skill
 
 Export a skill to Anthropic format as a ZIP file.
 
 Args:
-    name: The name of the skill to export
-    
+    uuid_or_name: The UUID or name of the skill to export
+
 Returns:
     ZIP file with the skill in Anthropic format
-    
+
 Raises:
     HTTPException: If skill not found or export fails
 
@@ -227,15 +229,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.SkillsApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
         # Export Anthropic Skill
-        api_response = api_instance.export_anthropic_skill_skills_name_export_anthropic_get(name)
-        print("The response of SkillsApi->export_anthropic_skill_skills_name_export_anthropic_get:\n")
+        api_response = api_instance.export_anthropic_skill_skills_uuid_or_name_export_anthropic_get(uuid_or_name)
+        print("The response of SkillsApi->export_anthropic_skill_skills_uuid_or_name_export_anthropic_get:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling SkillsApi->export_anthropic_skill_skills_name_export_anthropic_get: %s\n" % e)
+        print("Exception when calling SkillsApi->export_anthropic_skill_skills_uuid_or_name_export_anthropic_get: %s\n" % e)
 ```
 
 
@@ -245,7 +247,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
 
 ### Return type
 
@@ -269,15 +271,15 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **get_skill_skills_name_get**
-> object get_skill_skills_name_get(name)
+# **get_skill_skills_uuid_or_name_get**
+> object get_skill_skills_uuid_or_name_get(uuid_or_name)
 
 Get Skill
 
-Get a specific skill by name with populated tool and snippet objects.
+Get a specific skill by UUID or name with populated tool and snippet objects.
 
 Args:
-    name: The name of the skill.
+    uuid_or_name: The UUID or name of the skill.
 
 Returns:
     dict: The skill object with full tool and snippet details.
@@ -304,15 +306,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.SkillsApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
 
     try:
         # Get Skill
-        api_response = api_instance.get_skill_skills_name_get(name)
-        print("The response of SkillsApi->get_skill_skills_name_get:\n")
+        api_response = api_instance.get_skill_skills_uuid_or_name_get(uuid_or_name)
+        print("The response of SkillsApi->get_skill_skills_uuid_or_name_get:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling SkillsApi->get_skill_skills_name_get: %s\n" % e)
+        print("Exception when calling SkillsApi->get_skill_skills_uuid_or_name_get: %s\n" % e)
 ```
 
 
@@ -322,7 +324,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
 
 ### Return type
 
@@ -347,7 +349,7 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **import_anthropic_skill_skills_import_anthropic_post**
-> object import_anthropic_skill_skills_import_anthropic_post(source_type, github_url=github_url, zip_file=zip_file, folder_path=folder_path, snippet_mode=snippet_mode)
+> object import_anthropic_skill_skills_import_anthropic_post(source_type, github_url=github_url, zip_file=zip_file, folder_path=folder_path, snippet_mode=snippet_mode, treat_all_as_documents=treat_all_as_documents, tags=tags)
 
 Import Anthropic Skill
 
@@ -359,10 +361,11 @@ Args:
     zip_file: ZIP file upload (required if source_type='zip')
     folder_path: Local folder path (required if source_type='folder')
     snippet_mode: 'file' or 'paragraph' - how to import text files
-    
+    tags: List of additional tags to add to all imported objects (skills, tools, snippets)
+
 Returns:
     dict: Import result with created tools, snippets, and skill info
-    
+
 Raises:
     HTTPException: If import fails
 
@@ -390,10 +393,12 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     zip_file = 'zip_file_example' # str |  (optional)
     folder_path = 'folder_path_example' # str |  (optional)
     snippet_mode = 'file' # str |  (optional) (default to 'file')
+    treat_all_as_documents = False # bool |  (optional) (default to False)
+    tags = ['tags_example'] # List[str] |  (optional)
 
     try:
         # Import Anthropic Skill
-        api_response = api_instance.import_anthropic_skill_skills_import_anthropic_post(source_type, github_url=github_url, zip_file=zip_file, folder_path=folder_path, snippet_mode=snippet_mode)
+        api_response = api_instance.import_anthropic_skill_skills_import_anthropic_post(source_type, github_url=github_url, zip_file=zip_file, folder_path=folder_path, snippet_mode=snippet_mode, treat_all_as_documents=treat_all_as_documents, tags=tags)
         print("The response of SkillsApi->import_anthropic_skill_skills_import_anthropic_post:\n")
         pprint(api_response)
     except Exception as e:
@@ -412,6 +417,8 @@ Name | Type | Description  | Notes
  **zip_file** | **str**|  | [optional] 
  **folder_path** | **str**|  | [optional] 
  **snippet_mode** | **str**|  | [optional] [default to &#39;file&#39;]
+ **treat_all_as_documents** | **bool**|  | [optional] [default to False]
+ **tags** | [**List[str]**](str.md)|  | [optional] 
 
 ### Return type
 
@@ -592,15 +599,15 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **update_skill_skills_name_put**
-> object update_skill_skills_name_put(name, skill_schema)
+# **update_skill_skills_uuid_or_name_put**
+> object update_skill_skills_uuid_or_name_put(uuid_or_name, skill_schema)
 
 Update Skill
 
-Update an existing skill.
+Update an existing skill by UUID or name.
 
 Args:
-    name: The name of the skill to update.
+    uuid_or_name: The UUID or name of the skill to update.
     skill: The updated skill schema.
 
 Returns:
@@ -629,16 +636,16 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.SkillsApi(api_client)
-    name = 'name_example' # str | 
+    uuid_or_name = 'uuid_or_name_example' # str | 
     skill_schema = skillberry_store_sdk.SkillSchema() # SkillSchema | 
 
     try:
         # Update Skill
-        api_response = api_instance.update_skill_skills_name_put(name, skill_schema)
-        print("The response of SkillsApi->update_skill_skills_name_put:\n")
+        api_response = api_instance.update_skill_skills_uuid_or_name_put(uuid_or_name, skill_schema)
+        print("The response of SkillsApi->update_skill_skills_uuid_or_name_put:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling SkillsApi->update_skill_skills_name_put: %s\n" % e)
+        print("Exception when calling SkillsApi->update_skill_skills_uuid_or_name_put: %s\n" % e)
 ```
 
 
@@ -648,7 +655,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **name** | **str**|  | 
+ **uuid_or_name** | **str**|  | 
  **skill_schema** | [**SkillSchema**](SkillSchema.md)|  | 
 
 ### Return type

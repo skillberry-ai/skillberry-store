@@ -16,8 +16,8 @@ dependencies = [
   "asgiref>=3.8.1",
   "attrs>=25.1.0",
   "bottleneck>=1.3.4",
-  "certifi>=2025.1.31",
-  "charset-normalizer>=3.4.1",
+  "certifi",
+  "charset-normalizer",
   "click>=8.1.8",
   "configobj>=5.0.9",
   "distro>=1.9.0",
@@ -28,7 +28,7 @@ dependencies = [
   "fastapi>=0.115.12",
   "fastapi-mcp>=0.3.7",
   "fastapi-versioning>=0.10.0",
-  "fastembed>=0.7.1",
+  "fastembed",
   "filelock>=3.17.0",
   "flake8>=3.9.0",
   "fsspec>=2025.2.0",
@@ -37,7 +37,7 @@ dependencies = [
   "httpx>=0.28.1",
   "httpx-sse>=0.4.0",
   "huggingface-hub>=0.29.1",
-  "idna>=3.10",
+  "idna",
   "iniconfig>=2.0.0",
   "jdk4py>=21.0.4.2",
   "jinja2>=3.1.5",
@@ -84,7 +84,7 @@ dependencies = [
   "python-multipart>=0.0.6",
   "pyyaml>=6.0.2",
   "regex>=2024.11.6",
-  "requests>=2.32.3",
+  "requests",
   "requests-toolbelt>=1.0.0",
   "rfc3986>=1.5.0",
   "rich>=13.9.4",
@@ -100,11 +100,11 @@ dependencies = [
   "sniffio>=1.3.1",
   "sse-starlette>=2.1.3",
   "starlette>=0.45.3",
-  "sympy>=1.13.3",
+  "sympy>=1.13.1",
   "tenacity>=9.0.0",
   "threadpoolctl>=3.5.0",
   "tiktoken>=0.9.0",
-  "tokenizers>=0.21.0",
+  "tokenizers",
   "toml>=0.10.2",
   "tqdm>=4.67.1",
   "transformers>=4.48.0",
@@ -128,8 +128,14 @@ dependencies = [
   "toml-cli",
   "tomli",
   "tomli-w",
+  "torch==2.10.0+cpu; platform_system == 'Linux'",
+  "torch==2.10.0; platform_system == 'Darwin'",
+  "torch==2.10.0+cpu; platform_system == 'Windows'",
   "sentence_transformers",
   "pandas",
+  "wsgidav>=4.3",
+  "cheroot>=10.0",
+  "shenanigaNFS @ git+https://github.com/JordanMilne/ShenanigaNFS.git",
 ]
 
 [project.optional-dependencies]
@@ -143,6 +149,12 @@ dev = [
 [tool.uv.sources]
 skillberry-store-sdk = { path = "client/python/skillberry_store_sdk", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["setuptools", "wheel"]
