@@ -144,6 +144,53 @@ export function AnthropicSkillImporter({
   };
 
   /**
+   * Validates import inputs based on source type
+   */
+  const validateImportInputs = (
+    sourceType: 'url' | 'zip' | 'folder',
+    githubUrl: string,
+    zipFile: File | null,
+    folderPath: string,
+    isBatchMode: boolean
+  ): void => {
+    if (sourceType === 'url' && !githubUrl) {
+      throw new Error('Please provide a GitHub URL');
+    } else if (sourceType === 'zip') {
+      if (!zipFile) {
+        throw new Error('Please select a ZIP file');
+      }
+      if (isBatchMode) {
+        throw new Error('Batch import is not supported for ZIP files. Please use URL or Local Folder.');
+      }
+    } else if (sourceType === 'folder' && !folderPath) {
+      throw new Error('Please provide a folder path');
+    }
+  };
+
+  /**
+   * Prepares FormData with common fields for skill import
+   */
+  const prepareFormData = (
+    sourceType: 'url' | 'zip' | 'folder',
+    snippetMode: 'file' | 'paragraph',
+    treatAllAsDocuments: boolean,
+    selectedNamespaces: string[]
+  ): FormData => {
+    const formData = new FormData();
+    formData.append('source_type', sourceType);
+    formData.append('snippet_mode', snippetMode);
+    formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
+    
+    // Add namespaces as additional tags with namespace: prefix
+    const namespacesToUse = selectedNamespaces.length > 0 ? selectedNamespaces : ['default'];
+    namespacesToUse.forEach(namespace => {
+      formData.append('tags', `namespace:${namespace}`);
+    });
+
+    return formData;
+  };
+
+  /**
    * Detects child skill directories from a parent directory URL or path
    */
   const detectChildSkills = async (
@@ -186,17 +233,10 @@ export function AnthropicSkillImporter({
     sourcePath: string,
     skillPath?: string
   ): Promise<ImportResult> => {
-    const formData = new FormData();
-    formData.append('source_type', sourceType);
-    formData.append('snippet_mode', snippetMode);
-    formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
-    
-    // Add namespaces as additional tags with namespace: prefix
-    const namespacesToUse = selectedNamespaces.length > 0 ? selectedNamespaces : ['default'];
-    namespacesToUse.forEach(namespace => {
-      formData.append('tags', `namespace:${namespace}`);
-    });
+    // Prepare common FormData fields
+    const formData = prepareFormData(sourceType, snippetMode, treatAllAsDocuments, selectedNamespaces);
 
+    // Add source-specific fields
     if (sourceType === 'url') {
       // For batch mode, append the skill_path to the base URL
       const fullUrl = skillPath ? `${sourcePath}/${skillPath}` : sourcePath;
@@ -241,14 +281,8 @@ export function AnthropicSkillImporter({
     setProgress(5);
 
     try {
-      // Validate input
-      if (importSource === 'url' && !githubUrl) {
-        throw new Error('Please provide a GitHub URL');
-      } else if (importSource === 'folder' && !folderPath) {
-        throw new Error('Please provide a folder path');
-      } else if (importSource === 'zip') {
-        throw new Error('Batch import is not supported for ZIP files. Please use URL or Local Folder.');
-      }
+      // Validate input using shared validation function
+      validateImportInputs(importSource, githubUrl, zipFile, folderPath, true);
 
       const sourcePath = importSource === 'url' ? githubUrl : folderPath;
       
@@ -329,14 +363,8 @@ export function AnthropicSkillImporter({
     setProgress(10);
 
     try {
-      // Validate input
-      if (importSource === 'url' && !githubUrl) {
-        throw new Error('Please provide a GitHub URL');
-      } else if (importSource === 'zip' && !zipFile) {
-        throw new Error('Please select a ZIP file');
-      } else if (importSource === 'folder' && !folderPath) {
-        throw new Error('Please provide a folder path');
-      }
+      // Validate input using shared validation function
+      validateImportInputs(importSource, githubUrl, zipFile, folderPath, false);
 
       setProgress(30);
 
