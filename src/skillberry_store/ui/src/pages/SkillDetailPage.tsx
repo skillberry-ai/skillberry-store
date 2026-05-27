@@ -42,8 +42,11 @@ import {
   TreeViewDataItem,
 } from '@patternfly/react-core';
 import { EditIcon, TrashIcon, FolderIcon, FileIcon, FileCodeIcon, ExportIcon } from '@patternfly/react-icons';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { skillsApi, toolsApi, snippetsApi } from '@/services/api';
 import type { Skill } from '@/types';
+import { detectLanguage } from '@/utils/detectLanguage';
 
 export function SkillDetailPage() {
   const { uuid } = useParams<{ uuid: string }>();
@@ -706,20 +709,26 @@ export function SkillDetailPage() {
                             <Title headingLevel="h4" size="md" style={{ marginBottom: '0.5rem' }}>
                               {selectedToolModule.name}
                             </Title>
-                            <CodeBlock>
-                              <CodeBlockCode
-                                style={{
-                                  backgroundColor: '#f5f5f5',
-                                  color: '#151515',
-                                  padding: '1rem',
-                                  borderRadius: '4px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5'
+                            <div style={{
+                              border: '1px solid #3d3d3d',
+                              borderRadius: '6px',
+                              overflow: 'hidden'
+                            }}>
+                              <SyntaxHighlighter
+                                language="python"
+                                style={vscDarkPlus}
+                                showLineNumbers={true}
+                                wrapLines={false}
+                                customStyle={{
+                                  margin: 0,
+                                  fontSize: '15px',
+                                  lineHeight: '1.6',
+                                  minHeight: '100%',
                                 }}
                               >
                                 {selectedToolModule.module}
-                              </CodeBlockCode>
-                            </CodeBlock>
+                              </SyntaxHighlighter>
+                            </div>
                           </div>
                         ) : (
                           <div style={{
@@ -770,20 +779,26 @@ export function SkillDetailPage() {
                             <Title headingLevel="h4" size="md" style={{ marginBottom: '0.5rem' }}>
                               {selectedSnippet.name}
                             </Title>
-                            <CodeBlock>
-                              <CodeBlockCode
-                                style={{
-                                  backgroundColor: '#f5f5f5',
-                                  color: '#151515',
-                                  padding: '1rem',
-                                  borderRadius: '4px',
-                                  fontSize: '14px',
-                                  lineHeight: '1.5'
+                            <div style={{
+                              border: '1px solid #3d3d3d',
+                              borderRadius: '6px',
+                              overflow: 'hidden'
+                            }}>
+                              <SyntaxHighlighter
+                                language={detectLanguage(selectedSnippet.tags || [])}
+                                style={vscDarkPlus}
+                                showLineNumbers={true}
+                                wrapLines={false}
+                                customStyle={{
+                                  margin: 0,
+                                  fontSize: '15px',
+                                  lineHeight: '1.6',
+                                  minHeight: '100%',
                                 }}
                               >
                                 {selectedSnippet.content}
-                              </CodeBlockCode>
-                            </CodeBlock>
+                              </SyntaxHighlighter>
+                            </div>
                           </div>
                         ) : (
                           <div style={{
