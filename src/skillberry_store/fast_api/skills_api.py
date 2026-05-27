@@ -422,43 +422,43 @@ def register_skills_api(
         folder_path: Optional[str] = Form(None),
     ):
         """Detect child skill directories in a parent directory.
-        
+
         This endpoint scans a parent directory (from GitHub URL or local folder)
         and returns a list of subdirectories that contain SKILL.md files.
-        
+
         Args:
             source_type: 'url' or 'folder'
             github_url: GitHub repository URL (required if source_type='url')
             folder_path: Local folder path (required if source_type='folder')
-            
+
         Returns:
             dict: List of skill paths relative to the parent directory
-            
+
         Raises:
             HTTPException: If detection fails
         """
         logger.info(f"Request to detect Anthropic skills from {source_type}")
-        
+
         try:
             import os
             import requests
             import re
-            
+
             skill_paths = []
-            
+
             if source_type == "url":
                 if not github_url:
                     raise HTTPException(
                         status_code=400,
                         detail="github_url is required for source_type='url'",
                     )
-                
+
                 # Convert GitHub URL to API URL
                 api_url = github_url.replace("github.com", "api.github.com/repos")
                 api_url = re.sub(r"/tree/(main|master)/", r"/contents/", api_url)
-                
+
                 logger.info(f"Fetching directory listing from: {api_url}")
-                
+
                 # Fetch directory contents
                 response = requests.get(api_url, timeout=30)
                 if not response.ok:
@@ -466,9 +466,9 @@ def register_skills_api(
                         status_code=response.status_code,
                         detail=f"GitHub API error: {response.text or response.reason}",
                     )
-                
+
                 items = response.json()
-                
+
                 # Check each subdirectory for SKILL.md
                 for item in items:
                     if item["type"] == "dir":
@@ -480,7 +480,8 @@ def register_skills_api(
                             if dir_response.ok:
                                 dir_items = dir_response.json()
                                 has_skill_md = any(
-                                    f["name"].upper() == "SKILL.MD" and f["type"] == "file"
+                                    f["name"].upper() == "SKILL.MD"
+                                    and f["type"] == "file"
                                     for f in dir_items
                                 )
                                 if has_skill_md:
@@ -488,26 +489,26 @@ def register_skills_api(
                                     logger.info(f"Found skill directory: {dir_name}")
                         except Exception as e:
                             logger.warning(f"Failed to check directory {dir_name}: {e}")
-                            
+
             elif source_type == "folder":
                 if not folder_path:
                     raise HTTPException(
                         status_code=400,
                         detail="folder_path is required for source_type='folder'",
                     )
-                
+
                 if not os.path.exists(folder_path):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Folder does not exist: {folder_path}",
                     )
-                
+
                 if not os.path.isdir(folder_path):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Path is not a directory: {folder_path}",
                     )
-                
+
                 # List subdirectories
                 try:
                     for entry in os.listdir(folder_path):
@@ -528,14 +529,14 @@ def register_skills_api(
                     status_code=400,
                     detail=f"Invalid source_type: {source_type}. Must be 'url' or 'folder'",
                 )
-            
+
             logger.info(f"Detected {len(skill_paths)} skill directories")
             return {
                 "success": True,
                 "skill_paths": skill_paths,
                 "total": len(skill_paths),
             }
-            
+
         except HTTPException:
             raise
         except Exception as e:
