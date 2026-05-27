@@ -41,61 +41,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { snippetsApi } from '@/services/api';
 import type { Snippet } from '@/types';
-
-// Helper function to detect language from file path or tags
-const detectLanguage = (tags: string[]): string => {
-  // Check for file: tag to extract extension
-  const fileTag = tags.find(tag => tag.startsWith('file:'));
-  if (fileTag) {
-    const filePath = fileTag.substring(5);
-    const extension = filePath.split('.').pop()?.toLowerCase();
-    
-    const languageMap: Record<string, string> = {
-      'py': 'python',
-      'js': 'javascript',
-      'ts': 'typescript',
-      'jsx': 'jsx',
-      'tsx': 'tsx',
-      'java': 'java',
-      'cpp': 'cpp',
-      'c': 'c',
-      'cs': 'csharp',
-      'go': 'go',
-      'rs': 'rust',
-      'rb': 'ruby',
-      'php': 'php',
-      'swift': 'swift',
-      'kt': 'kotlin',
-      'scala': 'scala',
-      'sh': 'bash',
-      'bash': 'bash',
-      'zsh': 'bash',
-      'sql': 'sql',
-      'json': 'json',
-      'yaml': 'yaml',
-      'yml': 'yaml',
-      'xml': 'xml',
-      'html': 'html',
-      'css': 'css',
-      'scss': 'scss',
-      'md': 'markdown',
-      'txt': 'text',
-    };
-    
-    if (extension && languageMap[extension]) {
-      return languageMap[extension];
-    }
-  }
-  
-  // Check for language: tag
-  const langTag = tags.find(tag => tag.startsWith('language:'));
-  if (langTag) {
-    return langTag.substring(9).toLowerCase();
-  }
-  
-  // Default to text
-  return 'text';
-};
+import { detectLanguage } from '@/utils/detectLanguage';
 
 export function SnippetDetailPage() {
   const { name } = useParams<{ name: string }>();
