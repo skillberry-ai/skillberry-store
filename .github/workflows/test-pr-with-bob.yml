@@ -15,7 +15,7 @@
 # 5. Detects the relevant Node/UI project directory
 # 6. Configures Bob Shell and Playwright MCP
 # 7. Asks Bob to generate focused tests plus reviewer proof notes
-# 8. Commits/pushes generated tests back to the PR branch when allowed
+# 8. Captures generated test files as artifacts (does NOT commit or push changes)
 # 9. Installs dependencies and runs project tests
 # 10. Starts the UI server, runs Playwright with screenshots/videos/traces, and
 #     creates a proof bundle
@@ -23,8 +23,7 @@
 #
 # REQUIRED SECRETS:
 # - BOBSHELL_API_KEY: Bob Shell API key
-# - SKILLBERRY_BOT_TOKEN: token with permission to comment on PRs and push to
-#   trusted PR branches
+# - SKILLBERRY_BOT_TOKEN: token with permission to comment on PRs
 #
 # OPTIONAL REPOSITORY VARIABLE:
 # - BOB_ALLOWED_HEAD_OWNERS: comma-separated list of trusted GitHub org/user
@@ -49,7 +48,7 @@ on:
 permissions:
   actions: read
   checks: read
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
 
@@ -477,13 +476,10 @@ jobs:
           BOBSHELL_API_KEY: ${{ secrets.BOBSHELL_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit generated tests to the PR branch
+      - name: Capture generated test files (no commit/push)
         if: steps.pr.outputs.should_run == 'true'
         id: commit_tests
         env:
-          GITHUB_TOKEN: ${{ secrets.SKILLBERRY_BOT_TOKEN }}
-          HEAD_REPO: ${{ steps.pr.outputs.head_repo }}
-          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
           PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         run: |
           set +e
@@ -502,51 +498,15 @@ jobs:
             exit 0
           fi
 
-          echo "Generated changes detected:"
+          echo "Generated changes detected (will be captured as artifacts, not committed):"
           git status --short | tee "${ARTIFACT_DIR}/generated-test-changes.txt"
 
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # Create a diff of the generated changes for artifact upload
+          git diff > "${ARTIFACT_DIR}/generated-changes.diff" 2>&1 || true
+          git diff --cached > "${ARTIFACT_DIR}/generated-changes-staged.diff" 2>&1 || true
 
-          git add -A
-          git reset .bob/ 2>/dev/null || true
-          git reset .mcp.json 2>/dev/null || true
-          git reset .bob-pr-test-notes.md 2>/dev/null || true
-
-          if git diff --cached --quiet; then
-            echo "No committable generated test changes after excluding temporary files."
-            exit 0
-          fi
-
-          git commit -m "Add Bob-generated tests for PR #${PR_NUMBER}" > "${ARTIFACT_DIR}/logs/generated-tests-commit.log" 2>&1
-          COMMIT_EXIT=$?
-          if [ "${COMMIT_EXIT}" != "0" ]; then
-            echo "Commit failed with exit code ${COMMIT_EXIT}" | tee "${ARTIFACT_DIR}/logs/generated-tests-push-failure.log"
-            echo "push_exit_code=${COMMIT_EXIT}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "committed_tests=true" >> "$GITHUB_OUTPUT"
-
-          git remote remove pr-head 2>/dev/null || true
-          git remote add pr-head "https://x-access-token:${GITHUB_TOKEN}@github.com/${HEAD_REPO}.git"
-
-          # Try to rebase onto the latest PR branch before pushing. This reduces
-          # non-fast-forward failures when the PR branch moved after checkout.
-          git fetch pr-head "${HEAD_REF}" >> "${ARTIFACT_DIR}/logs/generated-tests-push.log" 2>&1
-          git rebase "pr-head/${HEAD_REF}" >> "${ARTIFACT_DIR}/logs/generated-tests-push.log" 2>&1 || \
-            git rebase --abort >> "${ARTIFACT_DIR}/logs/generated-tests-push.log" 2>&1 || true
-
-          git push pr-head "HEAD:${HEAD_REF}" >> "${ARTIFACT_DIR}/logs/generated-tests-push.log" 2>&1
-          PUSH_EXIT=$?
-          echo "push_exit_code=${PUSH_EXIT}" >> "$GITHUB_OUTPUT"
-          if [ "${PUSH_EXIT}" = "0" ]; then
-            echo "pushed_tests=true" >> "$GITHUB_OUTPUT"
-            echo "Generated tests were committed and pushed to the PR branch."
-          else
-            cp "${ARTIFACT_DIR}/logs/generated-tests-push.log" "${ARTIFACT_DIR}/logs/generated-tests-push-failure.log"
-            echo "Generated tests were committed locally but push failed. The workflow will continue and still test the local generated tests."
-          fi
+          echo "Generated test files have been captured as artifacts for review."
+          echo "No changes will be committed or pushed to the PR branch."
 
           exit 0
 
@@ -1151,9 +1111,7 @@ jobs:
           | Backend started (make run) | ${BACKEND_READY:-false} |
           | UI started (Vite via UIManager) | ${UI_READY:-false} |
           | Bob generated tests | ${BOB_GENERATE_OUTCOME:-unknown} |
-          | Generated tests committed locally | ${COMMITTED_TESTS:-false} |
-          | Generated tests pushed to PR | ${PUSHED_TESTS:-false} |
-          | Push exit code | ${PUSH_EXIT_CODE:-0} |
+          | Generated test files captured | ${COMMITTED_TESTS:-false} |
           | Dependency install | exit ${INSTALL_EXIT:-unknown} |
           | Project tests | exit ${PROJECT_TEST_EXIT:-unknown}: \\`${PROJECT_TEST_COMMAND:-skip}\\` |
           | UI server ready | ${SERVER_READY:-false}: \\`${SERVER_COMMAND:-skip}\\` |
@@ -1195,8 +1153,8 @@ jobs:
             echo "- No visual proof was captured. Treat this run as insufficient for UI confidence until the server/test failure is fixed." >> "${REPORT_FILE}"
           fi
 
-          if [ "${PUSHED_TESTS:-false}" != "true" ] && [ "${COMMITTED_TESTS:-false}" = "true" ]; then
-            echo "- Bob generated tests locally but could not push them to the PR. Inspect \\`logs/generated-tests-push-failure.log\\`." >> "${REPORT_FILE}"
+          if [ "${COMMITTED_TESTS:-false}" = "true" ]; then
+            echo "- Bob generated test files are available in the artifact bundle under \\`generated-test-changes.txt\\` and \\`generated-changes.diff\\`. Review and manually apply if needed." >> "${REPORT_FILE}"
           fi
 
           cat >> "${REPORT_FILE}" <<'EOF_REPORT'
