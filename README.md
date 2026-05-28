@@ -193,11 +193,24 @@ Example usage:
 pip install skillberry-store-sdk
 
 # Use the CLI
-sbs --help                                 # Show available commands
-sbs connect http://prod:8000               # Connect to different server
-sbs list-skills-skills-get list            # List all skills
-sbs get-tool-tools-name-get convert        # Get a specific tool
+sbs --help                     # Show available commands
+sbs connect http://prod:8000   # Connect to different server
+sbs list-skills                # List all skills
+sbs get-tool convert           # Get a specific tool
+sbs create-vmcp-server         # Create a VMCP server
+sbs search-tools "calculator"  # Search for tools
 ```
+
+Available command groups:
+
+| Group | Commands |
+|-------|----------|
+| **Tools** | `create-tool`, `list-tools`, `get-tool`, `get-tool-module`, `update-tool`, `delete-tool`, `execute-tool`, `search-tools`, `add-tool` |
+| **Skills** | `create-skill`, `list-skills`, `get-skill`, `update-skill`, `delete-skill`, `search-skills`, `detect-anthropic-skills`, `import-anthropic-skill`, `export-anthropic-skill` |
+| **Snippets** | `create-snippet`, `list-snippets`, `get-snippet`, `update-snippet`, `delete-snippet`, `search-snippets` |
+| **VMCP Servers** | `create-vmcp-server`, `list-vmcp-servers`, `get-vmcp-server`, `update-vmcp-server`, `delete-vmcp-server`, `start-vmcp-server`, `search-vmcp-servers` |
+| **vNFS Servers** | `create-vnfs-server`, `list-vnfs-servers`, `get-vnfs-server`, `update-vnfs-server`, `delete-vnfs-server`, `start-vnfs-server`, `search-vnfs-servers` |
+| **Admin** | `metrics`, `purge-all`, `health`, `health-ready` |
 
 For detailed CLI documentation, see [docs/cli.md](docs/cli.md).
 
