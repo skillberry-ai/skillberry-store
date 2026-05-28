@@ -363,7 +363,7 @@ class ObjectHandler:
                 logger.error(error_msg)
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Internal error while updating {self.object_type} chain: {str(e)}"
+                    detail=f"Internal error while updating {self.object_type} chain: {str(e)}",
                 )
 
             # Check if this object points to the deleted object
