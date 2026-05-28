@@ -154,7 +154,7 @@ def register_tools_api(
     """
     tool_handler = get_object_handler("tool")
 
-    @app.post("/tools/", tags=[tags])
+    @app.post("/tools/", tags=[tags], openapi_extra={"x-cli-name": "create-tool"})
     async def create_tool(
         tool: Annotated[ToolSchema, Query()],
         module: UploadFile = File(...),
@@ -260,7 +260,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error creating tool: {str(e)}"
             )
 
-    @app.get("/tools/", tags=[tags])
+    @app.get("/tools/", tags=[tags], openapi_extra={"x-cli-name": "list-tools"})
     def list_tools() -> List[Dict[str, Any]]:
         """List all tools.
 
@@ -299,7 +299,7 @@ def register_tools_api(
                 detail=f"Error listing tools: {str(e)}\n{error_traceback}",
             )
 
-    @app.get("/tools/{uuid_or_name}", tags=[tags])
+    @app.get("/tools/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-tool"})
     def get_tool(uuid_or_name: str) -> Dict[str, Any]:
         """Get a specific tool by UUID or name.
 
@@ -332,7 +332,8 @@ def register_tools_api(
             )
 
     @app.get(
-        "/tools/{uuid_or_name}/module", tags=[tags], response_class=PlainTextResponse
+        "/tools/{uuid_or_name}/module", tags=[tags], response_class=PlainTextResponse,
+        openapi_extra={"x-cli-name": "get-tool-module"}
     )
     async def get_tool_module(uuid_or_name: str) -> PlainTextResponse:
         """Get the module file content for a specific tool.
@@ -405,7 +406,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error retrieving module file: {str(e)}"
             )
 
-    @app.delete("/tools/{uuid_or_name}", tags=[tags])
+    @app.delete("/tools/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "delete-tool"})
     def delete_tool(uuid_or_name: str) -> Dict:
         """Delete a tool by UUID or name.
 
@@ -470,7 +471,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error deleting tool: {str(e)}"
             )
 
-    @app.put("/tools/{uuid_or_name}", tags=[tags])
+    @app.put("/tools/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "update-tool"})
     def update_tool(uuid_or_name: str, tool: ToolSchema) -> Dict:
         """Update an existing tool.
 
@@ -556,7 +557,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error updating tool: {str(e)}"
             )
 
-    @app.post("/tools/{uuid_or_name}/execute", tags=[tags])
+    @app.post("/tools/{uuid_or_name}/execute", tags=[tags], openapi_extra={"x-cli-name": "execute-tool"})
     async def execute_tool(
         uuid_or_name: str, request: Request, parameters: Optional[Dict[str, Any]] = None
     ) -> Dict:
@@ -709,7 +710,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error executing tool: {str(e)}"
             )
 
-    @app.get("/search/tools", tags=[tags])
+    @app.get("/search/tools", tags=[tags], openapi_extra={"x-cli-name": "search-tools"})
     def search_tools(
         search_term: str,
         max_number_of_results: int = 5,
@@ -801,7 +802,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error searching tools: {str(e)}"
             )
 
-    @app.post("/tools/add", tags=[tags])
+    @app.post("/tools/add", tags=[tags], openapi_extra={"x-cli-name": "add-tool"})
     async def add_tool_from_python(
         tool: UploadFile = File(...),
         selected_func: Optional[str] = None,

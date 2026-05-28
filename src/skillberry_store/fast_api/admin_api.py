@@ -43,7 +43,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         tags: FastAPI tags for grouping the endpoints in documentation.
     """
 
-    @app.get("/admin/metrics", tags=[tags], response_class=PlainTextResponse)
+    @app.get("/admin/metrics", tags=[tags], response_class=PlainTextResponse, openapi_extra={"x-cli-name": "metrics"})
     async def get_metrics():
         """Proxy endpoint to fetch Prometheus metrics.
 
@@ -81,7 +81,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                 status_code=503, detail=f"Error fetching metrics: {str(e)}"
             )
 
-    @app.delete("/admin/purge-all", tags=[tags])
+    @app.delete("/admin/purge-all", tags=[tags], openapi_extra={"x-cli-name": "purge-all"})
     async def purge_all_data():
         """Delete all backend components including skills, tools, snippets, VMCP servers, and their descriptions.
 
@@ -258,7 +258,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             "vector_indexes_reset": vector_indexes_reset,
         }
 
-    @app.get("/health", tags=[tags])
+    @app.get("/health", tags=[tags], openapi_extra={"x-cli-name": "health"})
     def health_check():
         """Health check endpoint.
 
@@ -267,7 +267,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         """
         return {"status": "healthy"}
 
-    @app.get("/health/ready", tags=[tags])
+    @app.get("/health/ready", tags=[tags], openapi_extra={"x-cli-name": "health-ready"})
     def readiness_check():
         """Readiness check endpoint - verifies all description directories are initialized.
 
