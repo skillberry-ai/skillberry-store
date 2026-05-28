@@ -48,7 +48,11 @@ def register_vnfs_api(
     vnfs_server_manager = VirtualNfsServerManager(sts_url=sts_url, app=app)
     app.state.vnfs_server_manager = vnfs_server_manager
 
-    @app.post("/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "create-vnfs-server"})
+    @app.post(
+        "/vnfs_servers/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "create-vnfs-server"},
+    )
     def create_vnfs_server(vnfs: Annotated[VnfsSchema, Query()], request: Request):
         """Create and start a new vNFS endpoint."""
         logger.info(f"Request to create vnfs server: {vnfs.name}")
@@ -110,7 +114,9 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error creating vNFS server: {exc}"
             )
 
-    @app.get("/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vnfs-servers"})
+    @app.get(
+        "/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vnfs-servers"}
+    )
     def list_vnfs_servers():
         """List all vNFS endpoints."""
         logger.info("Request to list vnfs servers")
@@ -165,7 +171,11 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error listing vNFS servers: {exc}"
             )
 
-    @app.get("/vnfs_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-vnfs-server"})
+    @app.get(
+        "/vnfs_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "get-vnfs-server"},
+    )
     def get_vnfs_server(uuid_or_name: str):
         """Get a specific vNFS endpoint by UUID or name."""
         logger.info(f"Request to get vnfs server: {uuid_or_name}")
@@ -205,7 +215,11 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error retrieving vNFS server: {exc}"
             )
 
-    @app.delete("/vnfs_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "delete-vnfs-server"})
+    @app.delete(
+        "/vnfs_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "delete-vnfs-server"},
+    )
     def delete_vnfs_server(uuid_or_name: str):
         """Stop and delete a vNFS endpoint by UUID or name."""
         logger.info(f"Request to delete vnfs server: {uuid_or_name}")
@@ -261,7 +275,11 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error deleting vNFS server: {exc}"
             )
 
-    @app.put("/vnfs_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "update-vnfs-server"})
+    @app.put(
+        "/vnfs_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "update-vnfs-server"},
+    )
     def update_vnfs_server(
         uuid_or_name: str, vnfs: Annotated[VnfsSchema, Query()], request: Request
     ):
@@ -338,7 +356,11 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error updating vNFS server: {exc}"
             )
 
-    @app.post("/vnfs_servers/{uuid_or_name}/start", tags=[tags], openapi_extra={"x-cli-name": "start-vnfs-server"})
+    @app.post(
+        "/vnfs_servers/{uuid_or_name}/start",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "start-vnfs-server"},
+    )
     def start_vnfs_server(uuid_or_name: str, request: Request):
         """Start or restart a vNFS endpoint."""
         logger.info(f"Request to start vnfs server: {uuid_or_name}")
@@ -385,7 +407,11 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error starting vNFS server: {exc}"
             )
 
-    @app.get("/search/vnfs_servers", tags=[tags], openapi_extra={"x-cli-name": "search-vnfs-servers"})
+    @app.get(
+        "/search/vnfs_servers",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "search-vnfs-servers"},
+    )
     def search_vnfs_servers(
         search_term: str,
         max_number_of_results: int = 5,

@@ -209,7 +209,9 @@ def register_skills_api(
                 status_code=500, detail=f"Error listing skills: {str(e)}"
             )
 
-    @app.get("/skills/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-skill"})
+    @app.get(
+        "/skills/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-skill"}
+    )
     def get_skill(uuid_or_name: str):
         """Get a specific skill by UUID or name with populated tool and snippet objects.
 
@@ -241,7 +243,11 @@ def register_skills_api(
                 status_code=500, detail=f"Error retrieving skill: {str(e)}"
             )
 
-    @app.delete("/skills/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "delete-skill"})
+    @app.delete(
+        "/skills/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "delete-skill"},
+    )
     def delete_skill(uuid_or_name: str):
         """Delete a skill by UUID or name.
 
@@ -309,7 +315,11 @@ def register_skills_api(
                 status_code=500, detail=f"Error deleting skill: {str(e)}"
             )
 
-    @app.put("/skills/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "update-skill"})
+    @app.put(
+        "/skills/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "update-skill"},
+    )
     def update_skill(uuid_or_name: str, skill: SkillSchema):
         """Update an existing skill by UUID or name.
 
@@ -388,7 +398,9 @@ def register_skills_api(
                 status_code=500, detail=f"Error updating skill: {str(e)}"
             )
 
-    @app.get("/search/skills", tags=[tags], openapi_extra={"x-cli-name": "search-skills"})
+    @app.get(
+        "/search/skills", tags=[tags], openapi_extra={"x-cli-name": "search-skills"}
+    )
     def search_skills(
         search_term: str,
         max_number_of_results: int = 5,
@@ -480,7 +492,11 @@ def register_skills_api(
                 status_code=500, detail=f"Error searching skills: {str(e)}"
             )
 
-    @app.post("/skills/detect-anthropic-skills", tags=[tags], openapi_extra={"x-cli-name": "detect-anthropic-skills"})
+    @app.post(
+        "/skills/detect-anthropic-skills",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "detect-anthropic-skills"},
+    )
     async def detect_anthropic_skills(
         source_type: str = Form(...),
         github_url: Optional[str] = Form(None),
@@ -611,7 +627,11 @@ def register_skills_api(
                 detail=f"Error detecting skills: {str(e)}",
             )
 
-    @app.post("/skills/import-anthropic", tags=[tags], openapi_extra={"x-cli-name": "import-anthropic-skill"})
+    @app.post(
+        "/skills/import-anthropic",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "import-anthropic-skill"},
+    )
     async def import_anthropic_skill(
         source_type: str = Form(...),
         github_url: Optional[str] = Form(None),
@@ -883,7 +903,11 @@ def register_skills_api(
                 status_code=500, detail=f"Error importing Anthropic skill: {str(e)}"
             )
 
-    @app.get("/skills/{uuid_or_name}/export-anthropic", tags=[tags], openapi_extra={"x-cli-name": "export-anthropic-skill"})
+    @app.get(
+        "/skills/{uuid_or_name}/export-anthropic",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "export-anthropic-skill"},
+    )
     async def export_anthropic_skill(uuid_or_name: str):
         """Export a skill to Anthropic format as a ZIP file.
 

@@ -92,7 +92,11 @@ def register_vmcp_api(
     # Store in app state for cleanup access
     app.state.vmcp_server_manager = vmcp_server_manager
 
-    @app.post("/vmcp_servers/", tags=[tags], openapi_extra={"x-cli-name": "create-vmcp-server"})
+    @app.post(
+        "/vmcp_servers/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "create-vmcp-server"},
+    )
     def create_vmcp_server(vmcp: Annotated[VmcpSchema, Query()], request: Request):
         """Create a new virtual MCP server.
 
@@ -236,7 +240,9 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error creating vmcp server: {error_msg}"
             )
 
-    @app.get("/vmcp_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vmcp-servers"})
+    @app.get(
+        "/vmcp_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vmcp-servers"}
+    )
     def list_vmcp_servers():
         """List all virtual MCP servers.
 
@@ -316,7 +322,11 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error listing vmcp servers: {str(e)}"
             )
 
-    @app.get("/vmcp_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-vmcp-server"})
+    @app.get(
+        "/vmcp_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "get-vmcp-server"},
+    )
     def get_vmcp_server(uuid_or_name: str):
         """Get a specific virtual MCP server by UUID or name.
 
@@ -364,7 +374,11 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error retrieving vmcp server: {str(e)}"
             )
 
-    @app.delete("/vmcp_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "delete-vmcp-server"})
+    @app.delete(
+        "/vmcp_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "delete-vmcp-server"},
+    )
     def delete_vmcp_server(uuid_or_name: str):
         """Delete a virtual MCP server by UUID or name.
 
@@ -432,7 +446,11 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error deleting vmcp server: {str(e)}"
             )
 
-    @app.put("/vmcp_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "update-vmcp-server"})
+    @app.put(
+        "/vmcp_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "update-vmcp-server"},
+    )
     def update_vmcp_server(
         uuid_or_name: str, vmcp: Annotated[VmcpSchema, Query()], request: Request
     ):
@@ -556,7 +574,11 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error updating vmcp server: {str(e)}"
             )
 
-    @app.post("/vmcp_servers/{uuid_or_name}/start", tags=[tags], openapi_extra={"x-cli-name": "start-vmcp-server"})
+    @app.post(
+        "/vmcp_servers/{uuid_or_name}/start",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "start-vmcp-server"},
+    )
     def start_vmcp_server(uuid_or_name: str, request: Request):
         """Start or restart a virtual MCP server.
 
@@ -656,7 +678,11 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error starting vmcp server: {str(e)}"
             )
 
-    @app.get("/search/vmcp_servers", tags=[tags], openapi_extra={"x-cli-name": "search-vmcp-servers"})
+    @app.get(
+        "/search/vmcp_servers",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "search-vmcp-servers"},
+    )
     def search_vmcp_servers(
         search_term: str,
         max_number_of_results: int = 5,
