@@ -225,10 +225,7 @@ def register_vnfs_api(
             except Exception as e:
                 logger.warning(f"Could not stop runtime server: {e}")
 
-            # Delete persistent data using ObjectHandler
-            vnfs_handler.delete_object(server_uuid)
-
-            # Update cache after delete
+            # Update cache BEFORE deletion (fixes parent chain while object still exists)
             if server_name and server_uuid:
                 vnfs_handler.update_cache(
                     server_uuid,
@@ -236,6 +233,9 @@ def register_vnfs_api(
                     old_name=server_name,
                     old_parent=server_parent,
                 )
+
+            # Now delete persistent data using ObjectHandler
+            vnfs_handler.delete_object(server_uuid)
 
             # Delete the description (indexed by UUID)
             if vnfs_descriptions:

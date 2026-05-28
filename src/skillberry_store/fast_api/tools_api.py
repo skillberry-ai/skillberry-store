@@ -436,14 +436,14 @@ def register_tools_api(
             except Exception as e:
                 logger.warning(f"Could not read tool metadata before deletion: {e}")
 
-            # Delete the tool using ObjectHandler (deletes entire UUID subfolder)
-            result = tool_handler.delete_object(tool_uuid)
-
-            # Update cache after deletion
+            # Update cache BEFORE deletion (fixes parent chain while object still exists)
             if tool_uuid and tool_name:
                 tool_handler.update_cache(
                     tool_uuid, new_name=None, old_name=tool_name, old_parent=tool_parent
                 )
+
+            # Now delete the tool using ObjectHandler (deletes entire UUID subfolder)
+            result = tool_handler.delete_object(tool_uuid)
 
             # Delete the description for the tool (indexed by UUID)
             if tools_descriptions and tool_uuid:

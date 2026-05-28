@@ -271,11 +271,7 @@ def register_skills_api(
             except Exception as e:
                 logger.warning(f"Could not read skill before deletion: {e}")
 
-            # Resolve UUID or name to UUID and delete the skill object folder
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
-            result = skill_handler.delete_object(skill_uuid)
-
-            # Update cache after deletion
+            # Update cache BEFORE deletion (fixes parent chain while object still exists)
             if skill_uuid and skill_name:
                 skill_handler.update_cache(
                     skill_uuid,
@@ -283,6 +279,9 @@ def register_skills_api(
                     old_name=skill_name,
                     old_parent=skill_parent,
                 )
+
+            # Now delete the skill object folder
+            result = skill_handler.delete_object(skill_uuid)
 
             # Delete the description for the skill (indexed by UUID)
             if skills_descriptions:
