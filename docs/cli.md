@@ -39,7 +39,7 @@ The CLI command is `sbs` (Skillberry Store):
 
 ```bash
 sbs --help                    # Show all available commands
-sbs <resource> <action>       # General command structure
+sbs <command> [args] [flags]  # General command structure
 ```
 
 ## Configuration
@@ -59,64 +59,135 @@ sbs connect https://staging.example.com
 
 The CLI will remember this connection for future commands.
 
-## Common Commands
+## Command Reference
 
 ### Skills Management
 
 ```bash
 # List all skills
-sbs list-skills-skills-get list
+sbs list-skills
 
 # Get a specific skill
-sbs get-skill-skills-name-get <skill-name>
+sbs get-skill <skill-name>
 
 # Create a new skill
-sbs create-skill-skills-post --body='{"name":"my-skill","description":"My skill"}'
+sbs create-skill --name my-skill --description "My skill"
+
+# Update a skill
+sbs update-skill <skill-name> --description "Updated description"
 
 # Delete a skill
-sbs delete-skill-skills-name-delete <skill-name>
+sbs delete-skill <skill-name>
+
+# Search skills semantically
+sbs search-skills --search-term "data processing"
+
+# Anthropic skill import/export
+sbs detect-anthropic-skills
+sbs import-anthropic-skill
+sbs export-anthropic-skill <skill-name>
 ```
 
 ### Tools Management
 
 ```bash
 # List all tools
-sbs list-tools-tools-get list
+sbs list-tools
 
 # Get a specific tool
-sbs get-tool-tools-name-get <tool-name>
+sbs get-tool <tool-name>
+
+# Get the source module of a tool
+sbs get-tool-module <tool-name>
 
 # Search tools semantically
-sbs search-tools-tools-search-get --query="calculator functions"
+sbs search-tools --search-term "calculator functions"
 
 # Execute a tool
-sbs execute-tool-tools-name-execute-post <tool-name> --body='{"params":{"x":5,"y":3}}'
+sbs execute-tool <tool-name> --body='{"params":{"x":5,"y":3}}'
+
+# Add a tool from a Python file
+sbs add-tool
+
+# Update or delete a tool
+sbs update-tool <tool-name>
+sbs delete-tool <tool-name>
 ```
 
 ### Snippets Management
 
 ```bash
 # List all snippets
-sbs list-snippets-snippets-get list
+sbs list-snippets
 
 # Get a specific snippet
-sbs get-snippet-snippets-name-get <snippet-name>
+sbs get-snippet <snippet-name>
 
 # Create a snippet
-sbs create-snippet-snippets-post --body='{"name":"helper","code":"def helper(): pass"}'
+sbs create-snippet --name helper --description "Helper utilities"
+
+# Update or delete a snippet
+sbs update-snippet <snippet-name>
+sbs delete-snippet <snippet-name>
+
+# Search snippets semantically
+sbs search-snippets --search-term "string utilities"
 ```
 
 ### VMCP Servers
 
 ```bash
 # List virtual MCP servers
-sbs list-vmcp-servers-vmcp-servers-get list
+sbs list-vmcp-servers
 
 # Get a specific VMCP server
-sbs get-vmcp-server-vmcp-servers-name-get <server-name>
+sbs get-vmcp-server <server-name>
 
 # Create a VMCP server
-sbs create-vmcp-server-vmcp-servers-post --body='{"name":"my-server","tools":["tool1","tool2"]}'
+sbs create-vmcp-server --name my-server --skill-uuid <uuid>
+
+# Start, update, or delete a VMCP server
+sbs start-vmcp-server <server-name>
+sbs update-vmcp-server <server-name>
+sbs delete-vmcp-server <server-name>
+
+# Search VMCP servers
+sbs search-vmcp-servers --search-term "math tools"
+```
+
+### vNFS Servers
+
+```bash
+# List virtual NFS servers
+sbs list-vnfs-servers
+
+# Get a specific vNFS server
+sbs get-vnfs-server <server-name>
+
+# Create a vNFS server
+sbs create-vnfs-server --name my-server --skill-uuid <uuid>
+
+# Start, update, or delete a vNFS server
+sbs start-vnfs-server <server-name>
+sbs update-vnfs-server <server-name>
+sbs delete-vnfs-server <server-name>
+
+# Search vNFS servers
+sbs search-vnfs-servers --search-term "data files"
+```
+
+### Admin
+
+```bash
+# Health checks
+sbs health
+sbs health-ready
+
+# Prometheus metrics
+sbs metrics
+
+# Delete all data (irreversible)
+sbs purge-all
 ```
 
 ## Advanced Features
@@ -127,29 +198,29 @@ Restish supports multiple output formats:
 
 ```bash
 # JSON output (default)
-sbs list-tools-tools-get list
+sbs list-tools
 
 # YAML output
-sbs list-tools-tools-get list -o yaml
+sbs list-tools -o yaml
 
 # Table output
-sbs list-tools-tools-get list -o table
+sbs list-tools -o table
 
 # Raw output
-sbs list-tools-tools-get list -o raw
+sbs list-tools -o raw
 ```
 
 ### Filtering and Pagination
 
 ```bash
 # Filter results
-sbs list-tools-tools-get list --filter='state=active'
+sbs list-tools --filter='state=active'
 
 # Limit results
-sbs list-tools-tools-get list --limit=10
+sbs list-tools --limit=10
 
 # Pagination
-sbs list-tools-tools-get list --offset=20 --limit=10
+sbs list-tools --offset=20 --limit=10
 ```
 
 ### Request Body from File
@@ -158,10 +229,10 @@ For complex requests, use a file:
 
 ```bash
 # Create tool from JSON file
-sbs create-tool-tools-post --body=@tool-definition.json
+sbs create-tool --body=@tool-definition.json
 
 # Update skill from YAML file
-sbs update-skill-skills-name-put <skill-name> --body=@skill-update.yaml
+sbs update-skill <skill-name> --body=@skill-update.yaml
 ```
 
 ### Verbose Mode
@@ -169,7 +240,7 @@ sbs update-skill-skills-name-put <skill-name> --body=@skill-update.yaml
 See detailed request/response information:
 
 ```bash
-sbs list-tools-tools-get list -v
+sbs list-tools -v
 ```
 
 ## Architecture
@@ -183,7 +254,7 @@ The CLI works through the following flow:
 
 2. **Command delegation**: All commands are passed to `restish`:
    ```
-   sbs list-tools-tools-get list → restish sbs list-tools-tools-get list
+   sbs list-tools → restish sbs list-tools
    ```
 
 3. **Output filtering**: The CLI filters restish output to:
@@ -223,10 +294,11 @@ make run
 
 ### API spec sync failed
 
-Manually sync the API spec:
+Manually sync the API spec by clearing the cache and re-running any command:
 
 ```bash
-restish api sync sbs
+rm ~/.cache/restish/sbs.cbor
+sbs --help
 ```
 
 ## Examples
@@ -238,37 +310,30 @@ restish api sync sbs
 sbs connect http://localhost:8000
 
 # 2. List existing tools
-sbs list-tools-tools-get list
+sbs list-tools
 
 # 3. Add a new tool
-sbs create-tool-tools-post --body='{
-  "name": "calculator",
-  "description": "Basic calculator",
-  "code": "def add(x, y): return x + y"
-}'
+sbs create-tool --name calculator --description "Basic calculator"
 
 # 4. Execute the tool
-sbs execute-tool-tools-name-execute-post calculator --body='{"params":{"x":5,"y":3}}'
+sbs execute-tool calculator --body='{"params":{"x":5,"y":3}}'
 
 # 5. Create a skill using the tool
-sbs create-skill-skills-post --body='{
-  "name": "math-skill",
-  "tools": ["calculator"]
-}'
+sbs create-skill --name math-skill --description "Math utilities"
 
 # 6. List skills to verify
-sbs list-skills-skills-get list
+sbs list-skills
 ```
 
 ### Batch Operations
 
 ```bash
 # Export all tools
-sbs list-tools-tools-get list -o json > tools-backup.json
+sbs list-tools -o json > tools-backup.json
 
 # Import tools from backup
 cat tools-backup.json | jq -c '.[]' | while read tool; do
-  sbs create-tool-tools-post --body="$tool"
+  sbs create-tool --body="$tool"
 done
 ```
 
@@ -280,15 +345,15 @@ The CLI can be easily integrated into shell scripts:
 #!/bin/bash
 
 # Check if tool exists
-if sbs get-tool-tools-name-get my-tool 2>/dev/null; then
+if sbs get-tool my-tool 2>/dev/null; then
   echo "Tool exists"
 else
   echo "Creating tool..."
-  sbs create-tool-tools-post --body=@tool.json
+  sbs create-tool --body=@tool.json
 fi
 
 # Get tool output as JSON
-RESULT=$(sbs execute-tool-tools-name-execute-post my-tool --body='{"params":{}}' -o json)
+RESULT=$(sbs execute-tool my-tool --body='{"params":{}}' -o json)
 echo "Result: $RESULT"
 ```
 

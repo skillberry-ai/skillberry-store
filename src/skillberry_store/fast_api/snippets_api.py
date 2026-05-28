@@ -54,7 +54,7 @@ def register_snippets_api(
     """
     snippet_handler = get_object_handler("snippet")
 
-    @app.post("/snippets/", tags=[tags])
+    @app.post("/snippets/", tags=[tags], openapi_extra={"x-cli-name": "create-snippet"})
     async def create_snippet(
         snippet: Annotated[SnippetSchema, Query()],
         file: Optional[UploadFile] = File(None),
@@ -150,7 +150,7 @@ def register_snippets_api(
                 status_code=500, detail=f"Error creating snippet: {str(e)}"
             )
 
-    @app.get("/snippets/", tags=[tags])
+    @app.get("/snippets/", tags=[tags], openapi_extra={"x-cli-name": "list-snippets"})
     def list_snippets():
         """List all snippets.
 
@@ -177,7 +177,11 @@ def register_snippets_api(
                 status_code=500, detail=f"Error listing snippets: {str(e)}"
             )
 
-    @app.get("/snippets/{uuid_or_name}", tags=[tags])
+    @app.get(
+        "/snippets/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "get-snippet"},
+    )
     def get_snippet(uuid_or_name: str):
         """Get a specific snippet by UUID or name.
 
@@ -207,7 +211,11 @@ def register_snippets_api(
                 status_code=500, detail=f"Error retrieving snippet: {str(e)}"
             )
 
-    @app.delete("/snippets/{uuid_or_name}", tags=[tags])
+    @app.delete(
+        "/snippets/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "delete-snippet"},
+    )
     def delete_snippet(uuid_or_name: str):
         """Delete a snippet by UUID or name.
 
@@ -276,7 +284,11 @@ def register_snippets_api(
                 status_code=500, detail=f"Error deleting snippet: {str(e)}"
             )
 
-    @app.put("/snippets/{uuid_or_name}", tags=[tags])
+    @app.put(
+        "/snippets/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "update-snippet"},
+    )
     def update_snippet(uuid_or_name: str, snippet: SnippetSchema):
         """Update an existing snippet by UUID or name.
 
@@ -355,7 +367,9 @@ def register_snippets_api(
                 status_code=500, detail=f"Error updating snippet: {str(e)}"
             )
 
-    @app.get("/search/snippets", tags=[tags])
+    @app.get(
+        "/search/snippets", tags=[tags], openapi_extra={"x-cli-name": "search-snippets"}
+    )
     def search_snippets(
         search_term: str,
         max_number_of_results: int = 5,
