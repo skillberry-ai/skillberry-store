@@ -343,41 +343,42 @@ class ObjectHandler:
             deleted_uuid: UUID of the deleted object
             deleted_parent: Parent of the deleted object
             name: Name of the deleted object
+
+        Raises:
+            HTTPException: If unable to read an object in the chain (500).
         """
-        try:
-            # Start from HEAD
-            head_uuid = self.name_cache.get_head(name)
-            if not head_uuid:
-                return
+        # Start from HEAD
+        head_uuid = self.name_cache.get_head(name)
+        if not head_uuid:
+            return
 
-            # Walk the chain from HEAD
-            current_uuid = head_uuid
-            while current_uuid:
-                # Read current object
-                try:
-                    current_object = self.read_dict(current_uuid)
-                except Exception as e:
-                    logger.warning(
-                        f"Could not read object {current_uuid} while fixing chain: {e}"
-                    )
-                    break
+        # Walk the chain from HEAD
+        current_uuid = head_uuid
+        while current_uuid:
+            # Read current object - if this fails, it's a data integrity error
+            try:
+                current_object = self.read_dict(current_uuid)
+            except Exception as e:
+                error_msg = f"Data integrity error: Could not read {self.object_type} {current_uuid} while fixing parent chain for '{name}': {e}"
+                logger.error(error_msg)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Internal error while updating {self.object_type} chain: {str(e)}",
+                )
 
-                # Check if this object points to the deleted object
-                current_parent = current_object.get("parent")
-                if current_parent == deleted_uuid:
-                    # Found it! Update this object to point to deleted object's parent
-                    current_object["parent"] = deleted_parent
-                    self.write_dict(current_uuid, current_object)
-                    logger.info(
-                        f"Fixed parent chain: {current_uuid} now points to {deleted_parent} (was {deleted_uuid})"
-                    )
-                    return  # Done, only one object can point to deleted object
+            # Check if this object points to the deleted object
+            current_parent = current_object.get("parent")
+            if current_parent == deleted_uuid:
+                # Found it! Update this object to point to deleted object's parent
+                current_object["parent"] = deleted_parent
+                self.write_dict(current_uuid, current_object)
+                logger.info(
+                    f"Fixed parent chain: {current_uuid} now points to {deleted_parent} (was {deleted_uuid})"
+                )
+                return  # Done, only one object can point to deleted object
 
-                # Move to next in chain
-                current_uuid = current_parent
-
-        except Exception as e:
-            logger.warning(f"Error fixing parent chain after delete: {e}")
+            # Move to next in chain
+            current_uuid = current_parent
 
     # ==================== Core ID Resolution Methods ====================
 

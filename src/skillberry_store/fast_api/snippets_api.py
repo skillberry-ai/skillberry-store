@@ -247,10 +247,7 @@ def register_snippets_api(
             except Exception as e:
                 logger.warning(f"Could not read snippet before deletion: {e}")
 
-            # Delete the snippet using ObjectHandler
-            result = snippet_handler.delete_object(snippet_uuid)
-
-            # Update cache after deletion
+            # Update cache BEFORE deletion (fixes parent chain while object still exists)
             if snippet_uuid and snippet_name:
                 snippet_handler.update_cache(
                     snippet_uuid,
@@ -258,6 +255,9 @@ def register_snippets_api(
                     old_name=snippet_name,
                     old_parent=snippet_parent,
                 )
+
+            # Now delete the snippet using ObjectHandler
+            result = snippet_handler.delete_object(snippet_uuid)
 
             # Delete the description for the snippet (indexed by UUID)
             if snippets_descriptions and snippet_uuid:
