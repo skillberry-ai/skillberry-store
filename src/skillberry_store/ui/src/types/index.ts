@@ -116,3 +116,48 @@ export interface ApiError {
   detail: string;
   status?: number;
 }
+
+export type PluginType = 'creator' | 'evaluator' | 'optimizer';
+
+export interface PluginAction {
+  label: string;
+  description?: string;
+  endpoint: string;
+  method: string;
+  params_schema: {
+    type: string;
+    properties: Record<string, any>;
+    required?: string[];
+  };
+}
+
+export interface PluginUIConfig {
+  icon: string;
+  color: string;
+  actions: PluginAction[];
+  settings_schema?: Record<string, any>;
+}
+
+export interface Plugin {
+  slug: string;  // Entry point name used in URLs
+  name: string;
+  description: string;
+  version: string;
+  plugin_type: PluginType;
+  author?: string;
+  homepage?: string;
+  enabled: boolean;
+  status: string;
+  has_router: boolean;
+  has_cli: boolean;
+  has_ui: boolean;
+  ui_config?: PluginUIConfig;
+}
+
+export interface PluginActionResult {
+  success: boolean;
+  content_type?: string;
+  message?: string;
+  error?: string;
+  data?: any;
+}

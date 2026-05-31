@@ -20,9 +20,31 @@ This service implements a smart skills repository for agentic workflows. Manage,
 - **Support Multiple MCP backends**: Consume and route additional tools from multiple backend MCP servers.
 - **Agentic Framework Integration**: Connect to different agentic frameworks via the MCP frontend.
 - **MCP control API**: Exposes an MCP server API for each of the available REST operations ( e.g., add tools, semantic search etc.)
+- **Plugin Architecture**: Extensible plugin system for AI-powered content generation, evaluation, and optimization. See [Plugin Installation Guide](docs/plugins-installation.md).
 
 
 ## Quickstart 🚀
+
+### Installation 📦
+
+Install skillberry-store with all plugins (default):
+```bash
+pip install skillberry-store
+```
+
+Or install with specific plugins only:
+```bash
+# Creator plugin only (AI-powered content generation)
+pip install skillberry-store[plugin-creator]
+
+# Evaluator plugin only (AI-powered content evaluation)
+pip install skillberry-store[plugin-evaluator]
+
+# Multiple plugins
+pip install skillberry-store[plugin-creator,plugin-evaluator]
+```
+
+For detailed plugin installation options and configuration, see the [Plugin Installation Guide](docs/plugins-installation.md).
 
 ### Run the Service with Docker or Podman 🐳
 

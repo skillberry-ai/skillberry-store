@@ -14,6 +14,7 @@ import { VMCPServersPage } from './pages/VMCPServersPage';
 import { VMCPServerDetailPage } from './pages/VMCPServerDetailPage';
 import { VNFSServersPage } from './pages/VNFSServersPage';
 import { VNFSServerDetailPage } from './pages/VNFSServerDetailPage';
+import { PluginsPage } from './pages/PluginsPage';
 import { AdminPage } from './pages/AdminPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -44,6 +45,9 @@ function App() {
         <Route path="/vnfs-servers" element={<VNFSServersPage />} />
         <Route path="/vnfs-servers/:uuid" element={<VNFSServerDetailPage />} />
 
+        {/* Plugins route */}
+        <Route path="/plugins" element={<PluginsPage />} />
+
         {/* Admin route */}
         <Route path="/admin" element={<AdminPage />} />
         
@@ -58,3 +62,5 @@ function App() {
 }
 
 export default App;
+
+// Made with Bob

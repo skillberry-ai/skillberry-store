@@ -1,0 +1,27 @@
+[project]
+name = "skillberry-plugin-creator"
+version = "0.2.0"
+description = "AI-powered content creator plugin for Skillberry Store (supports multiple LLM providers)"
+requires-python = ">=3.10"
+dependencies = [
+    "skillberry-store>=0.1.0",
+    "llm-switchboard>=0.1.0",
+    "click>=8.0.0",
+    "fastapi>=0.100.0",
+]
+
+[project.entry-points."skillberry_store.plugins"]
+creator = "skillberry_plugin_creator.plugin:AICreatorPlugin"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

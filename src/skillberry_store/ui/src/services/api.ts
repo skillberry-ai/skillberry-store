@@ -9,6 +9,8 @@ import type {
   VNFSServer,
   SearchResult,
   ExecutionResult,
+  Plugin,
+  PluginActionResult,
 } from '@/types';
 
 const API_BASE = '/api';
@@ -400,6 +402,32 @@ export const vnfsApi = {
     });
     const response = await fetch(`${API_BASE}/search/vnfs_servers?${params}`);
     return handleResponse<SearchResult[]>(response);
+  },
+};
+
+// Plugins API
+export const pluginsApi = {
+  list: async (): Promise<Plugin[]> => {
+    const response = await fetch(`${API_BASE}/plugins/`);
+    return handleResponse<Plugin[]>(response);
+  },
+
+  get: async (name: string): Promise<Plugin> => {
+    const response = await fetch(`${API_BASE}/plugins/${name}`);
+    return handleResponse<Plugin>(response);
+  },
+
+  executeAction: async (
+    pluginName: string,
+    action: string,
+    params: Record<string, any>
+  ): Promise<PluginActionResult> => {
+    const response = await fetch(`${API_BASE}/plugins/${pluginName}/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return handleResponse<PluginActionResult>(response);
   },
 };
 

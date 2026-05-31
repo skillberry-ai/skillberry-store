@@ -54,6 +54,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { id: 'skills', label: 'Skills', path: '/skills' },
     { id: 'tools', label: 'Tools', path: '/tools' },
     { id: 'snippets', label: 'Snippets', path: '/snippets' },
+    { id: 'plugins', label: 'Plugins', path: '/plugins' },
     { id: 'vmcp-servers', label: 'Virtual MCP Servers', path: '/vmcp-servers' },
   ];
 
@@ -101,8 +102,8 @@ export function AppLayout({ children }: AppLayoutProps) {
             
             <Divider style={{ margin: '0.5rem 0' }} />
             
-            {/* Skills, Tools, Snippets */}
-            {navItems.slice(1, 4).map((item) => (
+            {/* Skills, Tools, Snippets, Plugins */}
+            {navItems.slice(1, 5).map((item) => (
               <NavItem
                 key={item.id}
                 itemId={item.id}
