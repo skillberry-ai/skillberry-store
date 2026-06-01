@@ -509,14 +509,14 @@ export function SnippetsPage() {
                   </Td>
                   <Td
                     dataLabel="Content Type"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.content_type || '-'}
                   </Td>
                   <Td
                     dataLabel="Version"
-                    onClick={() => navigate(`/snippets/${snippet.name}`)}
+                    onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {snippet.version || '-'}

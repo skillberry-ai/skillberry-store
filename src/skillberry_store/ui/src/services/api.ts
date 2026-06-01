@@ -71,8 +71,8 @@ export const toolsApi = {
     return handleResponse<Tool>(response);
   },
 
-  update: async (name: string, tool: Tool): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/tools/${name}`, {
+  update: async (uuid: string, tool: Tool): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE}/tools/${uuid}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tool),
@@ -80,8 +80,8 @@ export const toolsApi = {
     return handleResponse<{ message: string }>(response);
   },
 
-  delete: async (name: string): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/tools/${name}`, {
+  delete: async (uuid: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE}/tools/${uuid}`, {
       method: 'DELETE',
     });
     return handleResponse<{ message: string }>(response);
@@ -206,10 +206,10 @@ export const snippetsApi = {
   },
 
   update: async (
-    name: string,
+    uuid: string,
     snippet: Snippet
   ): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/snippets/${name}`, {
+    const response = await fetch(`${API_BASE}/snippets/${uuid}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(snippet),
@@ -217,8 +217,8 @@ export const snippetsApi = {
     return handleResponse<{ message: string }>(response);
   },
 
-  delete: async (name: string): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/snippets/${name}`, {
+  delete: async (uuid: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE}/snippets/${uuid}`, {
       method: 'DELETE',
     });
     return handleResponse<{ message: string }>(response);
@@ -278,7 +278,7 @@ export const vmcpApi = {
   },
 
   update: async (
-    name: string,
+    uuid: string,
     server: Partial<VMCPServer>
   ): Promise<{ message: string }> => {
     const params = new URLSearchParams();
@@ -291,14 +291,14 @@ export const vmcpApi = {
       server.tags.forEach(tag => params.append('tags', tag));
     }
 
-    const response = await fetch(`${API_BASE}/vmcp_servers/${name}?${params}`, {
+    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}?${params}`, {
       method: 'PUT',
     });
     return handleResponse<{ message: string }>(response);
   },
 
-  delete: async (name: string): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/vmcp_servers/${name}`, {
+  delete: async (uuid: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}`, {
       method: 'DELETE',
     });
     return handleResponse<{ message: string }>(response);
@@ -361,7 +361,7 @@ export const vnfsApi = {
   },
 
   update: async (
-    name: string,
+    uuid: string,
     server: Partial<VNFSServer>
   ): Promise<{ message: string }> => {
     const params = new URLSearchParams();
@@ -374,12 +374,12 @@ export const vnfsApi = {
     if (server.tags) {
       server.tags.forEach(tag => params.append('tags', tag));
     }
-    const response = await fetch(`${API_BASE}/vnfs_servers/${name}?${params}`, { method: 'PUT' });
+    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}?${params}`, { method: 'PUT' });
     return handleResponse<{ message: string }>(response);
   },
 
-  delete: async (name: string): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/vnfs_servers/${name}`, { method: 'DELETE' });
+  delete: async (uuid: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}`, { method: 'DELETE' });
     return handleResponse<{ message: string }>(response);
   },
 

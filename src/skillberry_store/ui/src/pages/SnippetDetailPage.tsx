@@ -73,7 +73,7 @@ export function SnippetDetailPage() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (updatedSnippet: Snippet) =>
-      snippetsApi.update(snippet?.name!, updatedSnippet),
+      snippetsApi.update(snippet?.uuid!, updatedSnippet),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['snippets', uuid] });
       queryClient.invalidateQueries({ queryKey: ['snippets'] });
@@ -87,7 +87,7 @@ export function SnippetDetailPage() {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: () => snippetsApi.delete(snippet?.name!),
+    mutationFn: () => snippetsApi.delete(snippet?.uuid!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['snippets'] });
       navigate('/snippets');

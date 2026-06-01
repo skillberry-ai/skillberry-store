@@ -526,14 +526,14 @@ export function VMCPServersPage() {
                   </Td>
                   <Td
                     dataLabel="Port"
-                    onClick={() => navigate(`/vmcp-servers/${server.name}`)}
+                    onClick={() => navigate(`/vmcp-servers/${server.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {server.port || '-'}
                   </Td>
                   <Td
                     dataLabel="Status"
-                    onClick={() => navigate(`/vmcp-servers/${server.name}`)}
+                    onClick={() => navigate(`/vmcp-servers/${server.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {server.running ? (

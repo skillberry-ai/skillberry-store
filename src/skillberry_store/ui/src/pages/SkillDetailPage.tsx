@@ -61,8 +61,8 @@ export function SkillDetailPage() {
     version: '',
     description: '',
     tags: [] as string[],
-    toolNames: [] as string[],
-    snippetNames: [] as string[],
+    toolUuids: [] as string[],
+    snippetUuids: [] as string[],
     extra: {} as Record<string, any>,
   });
   const [tagInput, setTagInput] = useState('');
@@ -134,7 +134,7 @@ export function SkillDetailPage() {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: () => skillsApi.delete(skill?.name!),
+    mutationFn: () => skillsApi.delete(skill?.uuid!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
       navigate('/skills');
@@ -148,8 +148,8 @@ export function SkillDetailPage() {
         version: skill.version || '',
         description: skill.description,
         tags: skill.tags || [],
-        toolNames: skill.tools?.map(t => t.name) || [],
-        snippetNames: skill.snippets?.map(s => s.name) || [],
+        toolUuids: skill.tools?.map(t => t.uuid) || [],
+        snippetUuids: skill.snippets?.map(s => s.uuid) || [],
         extra: skill.extra || {},
       });
       setExtraInput(JSON.stringify(skill.extra || {}, null, 2));
@@ -177,32 +177,21 @@ export function SkillDetailPage() {
     }
     
     try {
-      // Fetch tool and snippet UUIDs
-      const toolPromises = editedSkill.toolNames.map(name =>
-        fetch(`/api/tools/${name}`).then(r => r.json())
-      );
-      const snippetPromises = editedSkill.snippetNames.map(name =>
-        fetch(`/api/snippets/${name}`).then(r => r.json())
-      );
-      
-      const tools = await Promise.all(toolPromises);
-      const snippets = await Promise.all(snippetPromises);
-      
-      // Build skill object for request body
+      // Build skill object for request body - UUIDs are already available
       const updatedSkill = {
         uuid: skill!.uuid,
         name: editedSkill.name,
         version: editedSkill.version,
         description: editedSkill.description,
         tags: editedSkill.tags,
-        tool_uuids: tools.map(t => t.uuid),
-        snippet_uuids: snippets.map(s => s.uuid),
+        tool_uuids: editedSkill.toolUuids,
+        snippet_uuids: editedSkill.snippetUuids,
         state: skill!.state,
         extra: Object.keys(parsedExtra).length > 0 ? parsedExtra : undefined,
       };
       
-      // Call API with JSON body
-      const response = await fetch(`/api/skills/${name}`, {
+      // Call API with JSON body using skill UUID
+      const response = await fetch(`/api/skills/${skill!.uuid}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSkill),
@@ -244,9 +233,9 @@ export function SkillDetailPage() {
     const lowerSearch = toolSearchTerm.toLowerCase();
     return allTools.filter(tool =>
       tool.name.toLowerCase().includes(lowerSearch) &&
-      !editedSkill.toolNames.includes(tool.name)
+      !editedSkill.toolUuids.includes(tool.uuid)
     );
-  }, [isEditModalOpen, allTools, toolSearchTerm, editedSkill.toolNames]);
+  }, [isEditModalOpen, allTools, toolSearchTerm, editedSkill.toolUuids]);
 
   // Filter snippets based on search term - only when modal is open
   const filteredSnippets = useMemo(() => {
@@ -254,43 +243,43 @@ export function SkillDetailPage() {
     const lowerSearch = snippetSearchTerm.toLowerCase();
     return allSnippets.filter(snippet =>
       snippet.name.toLowerCase().includes(lowerSearch) &&
-      !editedSkill.snippetNames.includes(snippet.name)
+      !editedSkill.snippetUuids.includes(snippet.uuid)
     );
-  }, [isEditModalOpen, allSnippets, snippetSearchTerm, editedSkill.snippetNames]);
+  }, [isEditModalOpen, allSnippets, snippetSearchTerm, editedSkill.snippetUuids]);
 
   const handleSelectTool = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
-    if (typeof value === 'string' && value && !editedSkill.toolNames.includes(value)) {
+    if (typeof value === 'string' && value && !editedSkill.toolUuids.includes(value)) {
       setEditedSkill({
         ...editedSkill,
-        toolNames: [...editedSkill.toolNames, value],
+        toolUuids: [...editedSkill.toolUuids, value],
       });
       setIsToolSelectOpen(false);
       setToolSearchTerm('');
     }
   };
 
-  const handleRemoveTool = (toolToRemove: string) => {
+  const handleRemoveTool = (toolUuidToRemove: string) => {
     setEditedSkill({
       ...editedSkill,
-      toolNames: editedSkill.toolNames.filter(tool => tool !== toolToRemove),
+      toolUuids: editedSkill.toolUuids.filter(uuid => uuid !== toolUuidToRemove),
     });
   };
 
   const handleSelectSnippet = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
-    if (typeof value === 'string' && value && !editedSkill.snippetNames.includes(value)) {
+    if (typeof value === 'string' && value && !editedSkill.snippetUuids.includes(value)) {
       setEditedSkill({
         ...editedSkill,
-        snippetNames: [...editedSkill.snippetNames, value],
+        snippetUuids: [...editedSkill.snippetUuids, value],
       });
       setIsSnippetSelectOpen(false);
       setSnippetSearchTerm('');
     }
   };
 
-  const handleRemoveSnippet = (snippetToRemove: string) => {
+  const handleRemoveSnippet = (snippetUuidToRemove: string) => {
     setEditedSkill({
       ...editedSkill,
-      snippetNames: editedSkill.snippetNames.filter(snippet => snippet !== snippetToRemove),
+      snippetUuids: editedSkill.snippetUuids.filter(uuid => uuid !== snippetUuidToRemove),
     });
   };
 
@@ -964,30 +953,43 @@ export function SkillDetailPage() {
                   </SelectOption>
                 ) : (
                   filteredTools.map((tool) => (
-                    <SelectOption key={tool.name} value={tool.name}>
-                      {tool.name}
+                    <SelectOption key={tool.uuid} value={tool.uuid}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ fontWeight: 'bold' }}>{tool.name}</div>
+                        <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
+                          UUID: {tool.uuid}
+                        </div>
+                        {tool.description && (
+                          <div style={{ fontSize: '0.9em', color: '#6a6e73' }}>
+                            {tool.description}
+                          </div>
+                        )}
+                      </div>
                     </SelectOption>
                   ))
                 )}
               </SelectList>
             </Select>
-            {editedSkill.toolNames.length > 0 && (
+            {editedSkill.toolUuids.length > 0 && (
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {editedSkill.toolNames.map((tool) => (
-                  <Button
-                    key={tool}
-                    variant="plain"
-                    onClick={() => handleRemoveTool(tool)}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      backgroundColor: '#e7f1fa',
-                      border: '1px solid #bee1f4',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {tool} ✕
-                  </Button>
-                ))}
+                {editedSkill.toolUuids.map((toolUuid) => {
+                  const tool = allTools?.find(t => t.uuid === toolUuid);
+                  return (
+                    <Button
+                      key={toolUuid}
+                      variant="plain"
+                      onClick={() => handleRemoveTool(toolUuid)}
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#e7f1fa',
+                        border: '1px solid #bee1f4',
+                        borderRadius: '3px',
+                      }}
+                    >
+                      {tool?.name || toolUuid} ✕
+                    </Button>
+                  );
+                })}
               </div>
             )}
           </FormGroup>
@@ -1026,30 +1028,43 @@ export function SkillDetailPage() {
                   </SelectOption>
                 ) : (
                   filteredSnippets.map((snippet) => (
-                    <SelectOption key={snippet.name} value={snippet.name}>
-                      {snippet.name}
+                    <SelectOption key={snippet.uuid} value={snippet.uuid}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ fontWeight: 'bold' }}>{snippet.name}</div>
+                        <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
+                          UUID: {snippet.uuid}
+                        </div>
+                        {snippet.description && (
+                          <div style={{ fontSize: '0.9em', color: '#6a6e73' }}>
+                            {snippet.description}
+                          </div>
+                        )}
+                      </div>
                     </SelectOption>
                   ))
                 )}
               </SelectList>
             </Select>
-            {editedSkill.snippetNames.length > 0 && (
+            {editedSkill.snippetUuids.length > 0 && (
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {editedSkill.snippetNames.map((snippet) => (
-                  <Button
-                    key={snippet}
-                    variant="plain"
-                    onClick={() => handleRemoveSnippet(snippet)}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      backgroundColor: '#f4e7f7',
-                      border: '1px solid #d8bfd8',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {snippet} ✕
-                  </Button>
-                ))}
+                {editedSkill.snippetUuids.map((snippetUuid) => {
+                  const snippet = allSnippets?.find(s => s.uuid === snippetUuid);
+                  return (
+                    <Button
+                      key={snippetUuid}
+                      variant="plain"
+                      onClick={() => handleRemoveSnippet(snippetUuid)}
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#f4e7f7',
+                        border: '1px solid #d8bfd8',
+                        borderRadius: '3px',
+                      }}
+                    >
+                      {snippet?.name || snippetUuid} ✕
+                    </Button>
+                  );
+                })}
               </div>
             )}
           </FormGroup>
