@@ -114,16 +114,24 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         vmcp_servers_count = 0
         try:
             if hasattr(app, "state") and hasattr(app.state, "vmcp_server_manager"):
+                from skillberry_store.modules.object_handler import get_object_handler
+                
                 vmcp_manager = app.state.vmcp_server_manager
-                server_names = vmcp_manager.list_servers()
-                vmcp_servers_count = len(server_names)
-                for server_name in server_names:
+                vmcp_handler = get_object_handler("vmcp")
+                # Iterate over all vmcp objects to get name and UUID
+                for vmcp_obj in vmcp_handler.iter_dicts():
+                    name = vmcp_obj.get('name', 'unknown')
+                    uuid = vmcp_obj.get('uuid', 'unknown')
                     try:
-                        vmcp_manager.remove_server(server_name)
-                        logger.info(f"Stopped and removed VMCP server: {server_name}")
+                        if name != 'unknown' and uuid != 'unknown':
+                            vmcp_manager.remove_server(name, uuid)
+                            logger.info(f"Stopped and removed VMCP server: {name} ({uuid})")
+                            vmcp_servers_count += 1
+                        else:
+                            logger.warning(f"VMCP object missing name or uuid: {vmcp_obj}")
                     except Exception as e:
                         logger.warning(
-                            f"Failed to stop VMCP server {server_name}: {str(e)}"
+                            f"Failed to stop VMCP server {name}: {str(e)}"
                         )
                 vmcp_stopped = True
                 logger.info(
@@ -139,16 +147,24 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         vnfs_servers_count = 0
         try:
             if hasattr(app, "state") and hasattr(app.state, "vnfs_server_manager"):
+                from skillberry_store.modules.object_handler import get_object_handler
+                
                 vnfs_manager = app.state.vnfs_server_manager
-                server_names = vnfs_manager.list_servers()
-                vnfs_servers_count = len(server_names)
-                for server_name in server_names:
+                vnfs_handler = get_object_handler("vnfs")
+                # Iterate over all vnfs objects to get name and UUID
+                for vnfs_obj in vnfs_handler.iter_dicts():
+                    name = vnfs_obj.get('name', 'unknown')
+                    uuid = vnfs_obj.get('uuid', 'unknown')
                     try:
-                        vnfs_manager.remove_server(server_name)
-                        logger.info(f"Stopped and removed vNFS server: {server_name}")
+                        if name != 'unknown' and uuid != 'unknown':
+                            vnfs_manager.remove_server(name, uuid)
+                            logger.info(f"Stopped and removed vNFS server: {name} ({uuid})")
+                            vnfs_servers_count += 1
+                        else:
+                            logger.warning(f"vNFS object missing name or uuid: {vnfs_obj}")
                     except Exception as e:
                         logger.warning(
-                            f"Failed to stop vNFS server {server_name}: {str(e)}"
+                            f"Failed to stop vNFS server {name}: {str(e)}"
                         )
                 vnfs_stopped = True
                 logger.info(
@@ -204,6 +220,30 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                     {"name": dir_name, "path": dir_path, "error": str(e)}
                 )
 
+        # Step 2.5: Clear ObjectHandler in-memory caches
+        caches_cleared = False
+        try:
+            from skillberry_store.modules.object_handler import get_object_handler
+            
+            for object_type in ['tool', 'snippet', 'skill', 'vmcp', 'vnfs']:
+                try:
+                    handler = get_object_handler(object_type)
+                    # Clear dict cache
+                    if handler.dict_cache:
+                        handler.dict_cache.clear()
+                        logger.info(f"Cleared dict cache for {object_type}")
+                    # Clear name cache
+                    if handler.name_cache:
+                        handler.name_cache.clear()
+                        logger.info(f"Cleared name cache for {object_type}")
+                except Exception as e:
+                    logger.warning(f"Failed to clear caches for {object_type}: {str(e)}")
+            
+            caches_cleared = True
+            logger.info("All ObjectHandler caches cleared")
+        except Exception as e:
+            logger.warning(f"Failed to clear ObjectHandler caches: {str(e)}")
+
         # Step 3: Reset in-memory vector indexes
         vector_indexes_reset = False
         try:
@@ -252,7 +292,8 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
 
         logger.info(
             f"Successfully purged all data. Deleted directories: {deleted_dirs}, "
-            f"stopped {vmcp_servers_count} VMCP servers, stopped {vnfs_servers_count} vNFS servers"
+            f"stopped {vmcp_servers_count} VMCP servers, stopped {vnfs_servers_count} vNFS servers, "
+            f"cleared caches: {caches_cleared}"
         )
         return {
             "message": "All backend data successfully purged",
@@ -262,6 +303,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             "vmcp_servers_count": vmcp_servers_count,
             "vnfs_servers_stopped": vnfs_stopped,
             "vnfs_servers_count": vnfs_servers_count,
+            "caches_cleared": caches_cleared,
             "vector_indexes_reset": vector_indexes_reset,
         }
 

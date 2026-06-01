@@ -178,11 +178,13 @@ export function AdminPage() {
         importedVMCP = await importVMCPServers(importData.vmcp_servers);
       }
 
-      // Invalidate all query caches to refresh the views
-      queryClient.invalidateQueries({ queryKey: ['skills'] });
-      queryClient.invalidateQueries({ queryKey: ['tools'] });
-      queryClient.invalidateQueries({ queryKey: ['snippets'] });
-      queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
+      // Force refetch all query caches to refresh the views immediately
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['skills'] }),
+        queryClient.refetchQueries({ queryKey: ['tools'] }),
+        queryClient.refetchQueries({ queryKey: ['snippets'] }),
+        queryClient.refetchQueries({ queryKey: ['vmcp-servers'] }),
+      ]);
 
       setImportResult({
         success: true,
