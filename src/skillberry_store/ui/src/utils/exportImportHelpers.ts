@@ -2,7 +2,8 @@
 // Licensed under the Apache License, Version 2.0
 
 import { toolsApi, snippetsApi, vmcpApi, vnfsApi } from '@/services/api';
-import type { Tool, Snippet, Skill, VMCPServer, VNFSServer } from '@/types';
+import type { Tool, Snippet, VMCPServer, VNFSServer } from '@/types';
+import JSZip from 'jszip';
 
 /**
  * Export tools with their module content
@@ -182,7 +183,51 @@ export async function importVMCPServers(servers: VMCPServer[]): Promise<number> 
 }
 
 /**
- * Download data as JSON file
+ * Download data as compressed JSON file (.json.zip)
+ */
+export async function downloadCompressedJSON(data: any, filename: string): Promise<void> {
+  const jsonString = JSON.stringify(data, null, 2);
+  const zip = new JSZip();
+  
+  // Add JSON file to ZIP with .json extension
+  const jsonFilename = filename.endsWith('.json') ? filename : `${filename}.json`;
+  zip.file(jsonFilename, jsonString);
+  
+  // Generate ZIP file
+  const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  
+  // Download the ZIP file
+  const url = URL.createObjectURL(zipBlob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${filename}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Read and decompress JSON from a ZIP file
+ */
+export async function readCompressedJSON(file: File): Promise<any> {
+  const zip = new JSZip();
+  const zipContent = await zip.loadAsync(file);
+  
+  // Find the first JSON file in the ZIP
+  const jsonFile = Object.keys(zipContent.files).find(name => name.endsWith('.json'));
+  
+  if (!jsonFile) {
+    throw new Error('No JSON file found in the ZIP archive');
+  }
+  
+  // Extract and parse the JSON content
+  const jsonString = await zipContent.files[jsonFile].async('string');
+  return JSON.parse(jsonString);
+}
+
+/**
+ * Download data as JSON file (legacy, uncompressed)
  */
 export function downloadJSON(data: any, filename: string): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
