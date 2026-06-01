@@ -18,20 +18,6 @@ import {
   UploadIcon,
   ExclamationTriangleIcon,
 } from '@patternfly/react-icons';
-import {
-  exportTools,
-  importTools,
-  exportSnippets,
-  importSnippets,
-  exportSkills,
-  importSkills,
-  exportVMCPServers,
-  importVMCPServers,
-  exportVNFSServers,
-  importVNFSServers,
-  downloadCompressedJSON,
-  readCompressedJSON,
-} from '../utils/exportImportHelpers';
 
 const API_BASE_URL = '/api';
 
@@ -94,50 +80,30 @@ export function AdminPage() {
     setBackupResult(null);
     
     try {
-      // Fetch all skills, tools, snippets, VMCP servers, and vNFS servers
-      const [skillsRes, toolsRes, snippetsRes, vmcpRes, vnfsRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/skills/`),
-        fetch(`${API_BASE_URL}/tools/`),
-        fetch(`${API_BASE_URL}/snippets/`),
-        fetch(`${API_BASE_URL}/vmcp_servers/`),
-        fetch(`${API_BASE_URL}/vnfs_servers/`),
-      ]);
-
-      if (!skillsRes.ok || !toolsRes.ok || !snippetsRes.ok || !vmcpRes.ok || !vnfsRes.ok) {
-        throw new Error('Failed to fetch data');
+      // Call the backend backup API
+      const response = await fetch(`${API_BASE_URL}/admin/backup`);
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Backup failed' }));
+        throw new Error(error.detail || 'Backup failed');
       }
 
-      const [skillsData, toolsData, snippetsData, vmcpData, vnfsData] = await Promise.all([
-        skillsRes.json(),
-        toolsRes.json(),
-        snippetsRes.json(),
-        vmcpRes.json(),
-        vnfsRes.json(),
-      ]);
-
-      // Use helper functions to export data (reusing logic from individual pages)
-      const toolsWithContent = await exportTools(toolsData);
-      const snippetsForExport = exportSnippets(snippetsData);
-      const skillsForExport = exportSkills(skillsData);
-      const vmcpForExport = exportVMCPServers(vmcpData.virtual_mcp_servers ? Object.values(vmcpData.virtual_mcp_servers) : []);
-      const vnfsForExport = exportVNFSServers(vnfsData.virtual_nfs_servers ? Object.values(vnfsData.virtual_nfs_servers) : []);
-
-      // Create backup data
-      const backupData = {
-        skills: skillsForExport,
-        tools: toolsWithContent,
-        snippets: snippetsForExport,
-        vmcp_servers: vmcpForExport,
-        vnfs_servers: vnfsForExport,
-        exported_at: new Date().toISOString(),
-      };
-
-      // Download as compressed JSON file (.json.zip)
-      await downloadCompressedJSON(backupData, `skillberry-backup-${new Date().toISOString().split('T')[0]}.json`);
+      // Get the blob from the response
+      const blob = await response.blob();
+      
+      // Create a download link and trigger download
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `skillberry-backup-${new Date().toISOString().split('T')[0]}.json.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
       setBackupResult({
         success: true,
-        message: `Successfully backed up ${skillsData.length} skills, ${toolsData.length} tools, ${snippetsData.length} snippets, ${vmcpForExport.length} VMCP servers, and ${vnfsForExport.length} vNFS servers.`,
+        message: 'Successfully created and downloaded backup file.',
       });
     } catch (error) {
       setBackupResult({
@@ -168,53 +134,22 @@ export function AdminPage() {
     setRestoreResult(null);
 
     try {
-      // Read and decompress the backup file
-      const importData = await readCompressedJSON(pendingRestoreFile);
+      // Create FormData and append the file
+      const formData = new FormData();
+      formData.append('backup_file', pendingRestoreFile);
 
-      // Validate that we have valid data
-      if (!importData || typeof importData !== 'object') {
-        throw new Error('Invalid backup file format');
-      }
-
-      // First, purge all existing data
-      const purgeResponse = await fetch(`${API_BASE_URL}/admin/purge-all`, {
-        method: 'DELETE',
+      // Call the backend restore API
+      const response = await fetch(`${API_BASE_URL}/admin/restore`, {
+        method: 'POST',
+        body: formData,
       });
 
-      if (!purgeResponse.ok) {
-        throw new Error('Failed to purge existing data before restore');
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Restore failed' }));
+        throw new Error(error.detail || 'Restore failed');
       }
 
-      let importedTools = 0;
-      let importedSnippets = 0;
-      let importedSkills = 0;
-      let importedVMCP = 0;
-      let importedVNFS = 0;
-
-      // Import tools first (with their modules) - reusing logic from ToolsPage
-      if (importData.tools && Array.isArray(importData.tools)) {
-        importedTools = await importTools(importData.tools);
-      }
-
-      // Import snippets - reusing logic from SnippetsPage
-      if (importData.snippets && Array.isArray(importData.snippets)) {
-        importedSnippets = await importSnippets(importData.snippets);
-      }
-
-      // Import skills last (after tools and snippets exist) - reusing logic from SkillsPage
-      if (importData.skills && Array.isArray(importData.skills)) {
-        importedSkills = await importSkills(importData.skills);
-      }
-
-      // Import VMCP servers - reusing logic from VMCPServersPage
-      if (importData.vmcp_servers && Array.isArray(importData.vmcp_servers)) {
-        importedVMCP = await importVMCPServers(importData.vmcp_servers);
-      }
-
-      // Import vNFS servers
-      if (importData.vnfs_servers && Array.isArray(importData.vnfs_servers)) {
-        importedVNFS = await importVNFSServers(importData.vnfs_servers);
-      }
+      const result = await response.json();
 
       // Force refetch all query caches to refresh the views immediately
       await Promise.all([
@@ -225,9 +160,10 @@ export function AdminPage() {
         queryClient.refetchQueries({ queryKey: ['vnfs-servers'] }),
       ]);
 
+      const counts = result.imported_counts || {};
       setRestoreResult({
         success: true,
-        message: `Successfully restored ${importedSkills} skills, ${importedTools} tools, ${importedSnippets} snippets, ${importedVMCP} VMCP servers, and ${importedVNFS} vNFS servers.`,
+        message: `Successfully restored ${counts.skills || 0} skills, ${counts.tools || 0} tools, ${counts.snippets || 0} snippets, ${counts.vmcp_servers || 0} VMCP servers, and ${counts.vnfs_servers || 0} vNFS servers.`,
       });
     } catch (error) {
       setRestoreResult({
