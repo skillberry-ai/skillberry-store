@@ -136,9 +136,6 @@ dependencies = [
   "wsgidav>=4.3",
   "cheroot>=10.0",
   "shenanigaNFS @ git+https://github.com/JordanMilne/ShenanigaNFS.git",
-  # Plugins - installed by default
-  "skillberry-plugin-creator>=0.2.0",
-  "skillberry-plugin-evaluator>=0.2.0",
 ]
 
 [project.optional-dependencies]

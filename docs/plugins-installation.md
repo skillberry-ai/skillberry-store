@@ -6,9 +6,9 @@ The skillberry-store supports a flexible plugin architecture that allows extendi
 
 ## Installation Options
 
-### 1. Install All Plugins (Default)
+### 1. Install Without Plugins (Minimal Installation)
 
-When you install skillberry-store without any extras, all plugins are included by default:
+When you install skillberry-store without any extras, you get the core functionality only:
 
 ```bash
 pip install skillberry-store
@@ -16,10 +16,24 @@ pip install skillberry-store
 
 This installs:
 - Core skillberry-store functionality
+- No plugins (plugins can be added later)
+
+The store will start normally without any plugins. Plugin-related API endpoints will be available but will return empty lists.
+
+### 2. Install All Plugins
+
+To install all available plugins:
+
+```bash
+pip install skillberry-store[plugins-all]
+```
+
+This installs:
+- Core skillberry-store functionality
 - skillberry-plugin-creator (AI-powered content generation)
 - skillberry-plugin-evaluator (AI-powered content evaluation and tagging)
 
-### 2. Install Specific Plugins
+### 3. Install Specific Plugins
 
 If you want to install only specific plugins, use the optional dependency syntax:
 
@@ -38,23 +52,19 @@ pip install skillberry-store[plugin-evaluator]
 pip install skillberry-store[plugin-creator,plugin-evaluator]
 ```
 
-### 3. Install All Plugins Explicitly
+### 4. Adding Plugins Later
 
-You can also explicitly request all plugins:
+If you initially installed skillberry-store without plugins, you can add them later:
 
 ```bash
-pip install skillberry-store[plugins-all]
+# Add all plugins to existing installation
+pip install skillberry-plugin-creator skillberry-plugin-evaluator
+
+# Or reinstall with plugins
+pip install --upgrade skillberry-store[plugins-all]
 ```
 
-### 4. Install Without Plugins
-
-If you want to install skillberry-store without any plugins (minimal installation), you would need to:
-
-1. Clone the repository
-2. Modify `pyproject.toml` to remove plugin dependencies from the main `dependencies` list
-3. Install with `pip install -e .`
-
-Alternatively, wait for a future release that may support a `minimal` extra.
+The store will automatically discover and load newly installed plugins on the next restart.
 
 ## Available Plugins
 

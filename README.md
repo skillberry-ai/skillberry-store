@@ -27,20 +27,23 @@ This service implements a smart skills repository for agentic workflows. Manage,
 
 ### Installation 📦
 
-Install skillberry-store with all plugins (default):
+Install skillberry-store without plugins (minimal installation):
 ```bash
 pip install skillberry-store
 ```
 
-Or install with specific plugins only:
+Or install with plugins:
 ```bash
+# All plugins
+pip install skillberry-store[plugins-all]
+
 # Creator plugin only (AI-powered content generation)
 pip install skillberry-store[plugin-creator]
 
 # Evaluator plugin only (AI-powered content evaluation)
 pip install skillberry-store[plugin-evaluator]
 
-# Multiple plugins
+# Multiple specific plugins
 pip install skillberry-store[plugin-creator,plugin-evaluator]
 ```
 
