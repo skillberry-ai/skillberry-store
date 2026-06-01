@@ -343,3 +343,83 @@ For plugin-related issues:
 - GitHub Issues: https://github.com/skillberry-ai/skillberry-store/issues
 - Documentation: https://github.com/skillberry-ai/skillberry-store/tree/main/docs
 - Examples: See `plugins/` directory for reference implementations
+
+## Troubleshooting
+
+### Removing Plugins from Virtual Environment
+
+If you have plugins installed in your development environment and want to remove them to test the minimal installation:
+
+```bash
+# Check which plugins are installed
+pip list | grep skillberry-plugin
+
+# Uninstall all plugins
+pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator
+
+# Verify they're removed (should return no results)
+pip list | grep skillberry-plugin
+```
+
+**Note:** The exit code 1 from the grep command when no plugins are found is expected and normal.
+
+### Verifying Plugin Installation Status
+
+To check if plugins are currently installed and loaded:
+
+```bash
+# Check installed packages
+pip list | grep skillberry-plugin
+
+# Check if plugins are discovered by the store (requires store to be running)
+curl http://localhost:8000/api/plugins/
+```
+
+### Running Store Without Plugins
+
+After removing plugins, when you run `make run`:
+- The store will start normally without any errors
+- The PluginLoader will discover 0 plugins (logged at startup)
+- The `/api/plugins/` endpoint will return an empty list `[]`
+- All core functionality works normally
+
+### Re-installing Plugins
+
+If you removed plugins and want to add them back:
+
+```bash
+# For development (from source)
+make install-requirements ODEPS=plugins-all
+
+# For production (from PyPI)
+pip install --upgrade skillberry-store[plugins-all]
+```
+
+### Common Issues
+
+**Issue:** Plugins still appear after uninstalling
+- **Solution:** Make sure you're in the correct virtual environment. Check with `which python` and ensure it points to your project's `.venv/bin/python`
+
+**Issue:** `make run` installs plugins automatically
+- **Explanation:** This shouldn't happen with the current configuration. If it does, check that plugins are not in the main `dependencies` list in `pyproject.toml`, only in `[project.optional-dependencies]`
+
+**Issue:** Plugin endpoints return 404
+- **Solution:** This is expected when plugins are not installed. The plugin system is working correctly - plugins are simply not available.
+
+### Development Tips
+
+1. **Clean State Testing:** To test without plugins, uninstall them as shown above
+2. **Plugin Development:** Use editable installs for development:
+   ```bash
+   pip install -e plugins/skillberry-plugin-creator
+   ```
+3. **Switching Configurations:** You can quickly switch between with/without plugins:
+   ```bash
+   # Without plugins
+   pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator
+   make run
+   
+   # With plugins
+   make install-requirements ODEPS=plugins-all
+   make run
+   ```
