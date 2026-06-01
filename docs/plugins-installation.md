@@ -66,6 +66,43 @@ pip install --upgrade skillberry-store[plugins-all]
 
 The store will automatically discover and load newly installed plugins on the next restart.
 
+## Development Workflow
+
+### Running Without Plugins (Development)
+
+When developing skillberry-store from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/skillberry-ai/skillberry-store.git
+cd skillberry-store
+
+# Run without plugins (default)
+make run
+```
+
+This runs `uv pip install -e .` which installs only the core dependencies (no plugins).
+
+### Running With Plugins (Development)
+
+To run with plugins during development:
+
+```bash
+# Install with all plugins
+make install-requirements ODEPS=plugins-all
+
+# Or install specific plugins
+make install-requirements ODEPS=plugin-creator
+make install-requirements ODEPS=plugin-evaluator
+
+# Then run
+make run
+```
+
+The `ODEPS` variable specifies optional dependencies (extras) to install.
+
+**Note:** The `[tool.uv.sources]` section in `pyproject.toml` tells uv where to find plugin packages locally (for development), but they're only installed when explicitly requested via extras or direct installation.
+
 ## Available Plugins
 
 ### Creator Plugin (`skillberry-plugin-creator`)
