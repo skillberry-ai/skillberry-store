@@ -1,5 +1,7 @@
 ##@ Development
 
+test: ODEPS=plugins-all,dev
+
 test-e2e: ## Test end-to-end the tools service (installs sdk)
 	@$(MAKE) install-requirements ODEPS=dev
 	pytest src/skillberry_store/tests/e2e

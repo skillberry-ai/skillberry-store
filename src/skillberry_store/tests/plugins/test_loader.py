@@ -215,7 +215,7 @@ def test_plugin_loader_mount_routers_to_app():
     mock_app.include_router.assert_called_once()
     call_args = mock_app.include_router.call_args
     assert call_args[0][0] is mock_router
-    assert call_args[1]["prefix"] == "/api/plugins/router_plugin"
+    assert call_args[1]["prefix"] == "/plugins/router_plugin"
     assert call_args[1]["tags"] == ["plugins", "router_plugin"]
 
 
