@@ -892,7 +892,7 @@ def register_skills_api(
 
             # Create new skill
             logger.info(f"Creating new skill '{skill_name}'...")
-            result = create_skill(skill_schema)
+            result = await create_skill(skill_schema)
             skill_uuid = result.get("uuid")
             action = "created"
 

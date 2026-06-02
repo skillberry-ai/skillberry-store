@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 async def test_list_plugins_empty(run_sbs):
     """Test listing plugins when none are installed."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/plugins/")
+        response = await client.get(f"{BASE_URL}/plugins/")
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
         assert isinstance(data, list)
@@ -24,7 +24,7 @@ async def test_list_plugins_empty(run_sbs):
 async def test_list_plugins_structure(run_sbs):
     """Test that list plugins returns correct structure."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/plugins/")
+        response = await client.get(f"{BASE_URL}/plugins/")
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
@@ -49,7 +49,7 @@ async def test_list_plugins_structure(run_sbs):
 async def test_get_plugin_not_found(run_sbs):
     """Test getting a non-existent plugin returns 404."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/api/plugins/nonexistent_plugin")
+        response = await client.get(f"{BASE_URL}/plugins/nonexistent_plugin")
         assert response.status_code == 404
         data = response.json()
         assert "detail" in data
@@ -61,7 +61,7 @@ async def test_get_plugin_info_structure(run_sbs):
     """Test that get plugin info returns correct structure if plugin exists."""
     async with httpx.AsyncClient() as client:
         # First list plugins to see if any exist
-        list_response = await client.get(f"{BASE_URL}/api/plugins/")
+        list_response = await client.get(f"{BASE_URL}/plugins/")
         assert list_response.status_code == 200
         plugins = list_response.json()
         
@@ -80,7 +80,7 @@ async def test_plugins_api_cors_headers(run_sbs):
     """Test that plugins API includes CORS headers."""
     async with httpx.AsyncClient() as client:
         response = await client.options(
-            f"{BASE_URL}/api/plugins/",
+            f"{BASE_URL}/plugins/",
             headers={"Origin": "http://localhost:3000"}
         )
         # FastAPI with CORS middleware should handle OPTIONS
@@ -92,7 +92,7 @@ async def test_plugins_api_accepts_json(run_sbs):
     """Test that plugins API accepts JSON content type."""
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{BASE_URL}/api/plugins/",
+            f"{BASE_URL}/plugins/",
             headers={"Accept": "application/json"}
         )
         assert response.status_code == 200
@@ -106,7 +106,7 @@ async def test_list_plugins_performance(run_sbs):
     
     async with httpx.AsyncClient() as client:
         start = time.time()
-        response = await client.get(f"{BASE_URL}/api/plugins/")
+        response = await client.get(f"{BASE_URL}/plugins/")
         elapsed = time.time() - start
         
         assert response.status_code == 200
@@ -119,7 +119,7 @@ async def test_plugins_api_error_handling(run_sbs):
     """Test that plugins API handles errors gracefully."""
     async with httpx.AsyncClient() as client:
         # Try to get plugin with invalid characters
-        response = await client.get(f"{BASE_URL}/api/plugins/../../../etc/passwd")
+        response = await client.get(f"{BASE_URL}/plugins/../../../etc/passwd")
         # Should either 404 or handle path traversal safely
         assert response.status_code in [404, 400]
 
@@ -129,13 +129,13 @@ async def test_plugins_api_returns_valid_json(run_sbs):
     """Test that all plugins API responses are valid JSON."""
     async with httpx.AsyncClient() as client:
         # List plugins
-        response = await client.get(f"{BASE_URL}/api/plugins/")
+        response = await client.get(f"{BASE_URL}/plugins/")
         assert response.status_code == 200
         data = response.json()  # Will raise if not valid JSON
         assert isinstance(data, list)
         
         # Get non-existent plugin
-        response = await client.get(f"{BASE_URL}/api/plugins/nonexistent")
+        response = await client.get(f"{BASE_URL}/plugins/nonexistent")
         assert response.status_code == 404
         data = response.json()  # Will raise if not valid JSON
         assert isinstance(data, dict)

@@ -970,7 +970,7 @@ def register_tools_api(
                 )
 
                 # Delegate to update_tool to handle manifest merge and description update
-                update_result = update_tool(tool_uuid, tool_schema)
+                update_result = await update_tool(tool_uuid, tool_schema)
                 logger.info(f"Tool '{func_name}' updated successfully")
 
                 return {
