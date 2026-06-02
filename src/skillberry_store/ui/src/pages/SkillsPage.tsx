@@ -784,8 +784,18 @@ export function SkillsPage() {
                   </SelectOption>
                 ) : (
                   filteredTools.map((tool) => (
-                    <SelectOption key={tool.name} value={tool.name}>
-                      {tool.name}
+                    <SelectOption key={tool.uuid} value={tool.name}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ fontWeight: 'bold' }}>{tool.name}</div>
+                        <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
+                          UUID: {tool.uuid}
+                        </div>
+                        {tool.description && (
+                          <div style={{ fontSize: '0.9em', color: '#6a6e73' }}>
+                            {tool.description}
+                          </div>
+                        )}
+                      </div>
                     </SelectOption>
                   ))
                 )}
@@ -846,8 +856,18 @@ export function SkillsPage() {
                   </SelectOption>
                 ) : (
                   filteredSnippets.map((snippet) => (
-                    <SelectOption key={snippet.name} value={snippet.name}>
-                      {snippet.name}
+                    <SelectOption key={snippet.uuid} value={snippet.name}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ fontWeight: 'bold' }}>{snippet.name}</div>
+                        <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
+                          UUID: {snippet.uuid}
+                        </div>
+                        {snippet.description && (
+                          <div style={{ fontSize: '0.9em', color: '#6a6e73' }}>
+                            {snippet.description}
+                          </div>
+                        )}
+                      </div>
                     </SelectOption>
                   ))
                 )}

@@ -108,7 +108,7 @@ export function ToolDetailPage() {
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (updatedTool: Tool) =>
-      toolsApi.update(tool?.name!, updatedTool),
+      toolsApi.update(tool?.uuid!, updatedTool),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tools', uuid] });
       queryClient.invalidateQueries({ queryKey: ['tools'] });
@@ -122,7 +122,7 @@ export function ToolDetailPage() {
 
   // Delete tool mutation
   const deleteMutation = useMutation({
-    mutationFn: () => toolsApi.delete(tool?.name!),
+    mutationFn: () => toolsApi.delete(tool?.uuid!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tools'] });
       navigate('/tools');

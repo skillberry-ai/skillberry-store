@@ -458,7 +458,7 @@ export function ToolsPage() {
                   </Td>
                   <Td
                     dataLabel="Tags"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.tags && tool.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (
@@ -477,14 +477,14 @@ export function ToolsPage() {
                   </Td>
                   <Td
                     dataLabel="Module Name"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.module_name || '-'}
                   </Td>
                   <Td
                     dataLabel="Version"
-                    onClick={() => navigate(`/tools/${tool.name}`)}
+                    onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >
                     {tool.version || '-'}

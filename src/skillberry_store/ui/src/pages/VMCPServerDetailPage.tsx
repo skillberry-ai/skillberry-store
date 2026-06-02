@@ -90,10 +90,17 @@ export function VMCPServerDetailPage() {
     queryFn: skillsApi.list,
   });
 
+  // Fetch the specific skill details if skill_uuid is present
+  const { data: attachedSkill } = useQuery({
+    queryKey: ['skill', server?.skill_uuid],
+    queryFn: () => skillsApi.get(server!.skill_uuid!),
+    enabled: !!server?.skill_uuid,
+  });
+
   // Update mutation
   const updateMutation = useMutation({
     mutationFn: (updatedServer: Omit<VMCPServer, 'uuid' | 'runtime' | 'running'>) =>
-      vmcpApi.update(server?.name!, updatedServer),
+      vmcpApi.update(server?.uuid!, updatedServer),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers', uuid] });
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
@@ -107,7 +114,7 @@ export function VMCPServerDetailPage() {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: () => vmcpApi.delete(server?.name!),
+    mutationFn: () => vmcpApi.delete(server?.uuid!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
       navigate('/vmcp-servers');
@@ -344,11 +351,27 @@ export function VMCPServerDetailPage() {
 
               {server.skill_uuid && (
                 <DescriptionListGroup>
-                  <DescriptionListTerm>Skill UUID</DescriptionListTerm>
+                  <DescriptionListTerm>Attached Skill</DescriptionListTerm>
                   <DescriptionListDescription>
-                    <Text component="small" style={{ fontFamily: 'monospace' }}>
-                      {server.skill_uuid}
-                    </Text>
+                    {attachedSkill ? (
+                      <div>
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <strong>{attachedSkill.name}</strong>
+                        </div>
+                        {attachedSkill.description && (
+                          <div style={{ marginBottom: '0.5rem', color: '#6a6e73' }}>
+                            {attachedSkill.description}
+                          </div>
+                        )}
+                        <Text component="small" style={{ fontFamily: 'monospace', color: '#6a6e73' }}>
+                          UUID: {server.skill_uuid}
+                        </Text>
+                      </div>
+                    ) : (
+                      <Text component="small" style={{ fontFamily: 'monospace' }}>
+                        {server.skill_uuid}
+                      </Text>
+                    )}
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}

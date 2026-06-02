@@ -2,7 +2,8 @@
 // Licensed under the Apache License, Version 2.0
 
 import { toolsApi, snippetsApi, vmcpApi, vnfsApi } from '@/services/api';
-import type { Tool, Snippet, Skill, VMCPServer, VNFSServer } from '@/types';
+import type { Tool, Snippet, VMCPServer, VNFSServer } from '@/types';
+import JSZip from 'jszip';
 
 /**
  * Export tools with their module content
@@ -182,7 +183,7 @@ export async function importVMCPServers(servers: VMCPServer[]): Promise<number> 
 }
 
 /**
- * Download data as JSON file
+ * Download data as JSON file (legacy, uncompressed)
  */
 export function downloadJSON(data: any, filename: string): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

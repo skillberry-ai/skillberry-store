@@ -16,20 +16,8 @@ import {
   TrashIcon,
   DownloadIcon,
   UploadIcon,
-  CodeIcon,
+  ExclamationTriangleIcon,
 } from '@patternfly/react-icons';
-import { AnthropicSkillImporter } from '../components/AnthropicSkillImporter';
-import {
-  exportTools,
-  importTools,
-  exportSnippets,
-  importSnippets,
-  exportSkills,
-  importSkills,
-  exportVMCPServers,
-  importVMCPServers,
-  downloadJSON,
-} from '../utils/exportImportHelpers';
 
 const API_BASE_URL = '/api';
 
@@ -39,13 +27,13 @@ export function AdminPage() {
   const [isPurging, setIsPurging] = useState(false);
   const [purgeResult, setPurgeResult] = useState<{ success: boolean; message: string } | null>(null);
   
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupResult, setBackupResult] = useState<{ success: boolean; message: string } | null>(null);
   
-  const [isImporting, setIsImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
-  
-  const [anthropicImportModalOpen, setAnthropicImportModalOpen] = useState(false);
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreResult, setRestoreResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [pendingRestoreFile, setPendingRestoreFile] = useState<File | null>(null);
 
   const handlePurgeAll = async () => {
     setIsPurging(true);
@@ -68,6 +56,7 @@ export function AdminPage() {
         queryClient.invalidateQueries({ queryKey: ['tools'] });
         queryClient.invalidateQueries({ queryKey: ['snippets'] });
         queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
+        queryClient.invalidateQueries({ queryKey: ['vnfs-servers'] });
       } else {
         const error = await response.json();
         setPurgeResult({
@@ -86,117 +75,105 @@ export function AdminPage() {
     }
   };
 
-  const handleExportAll = async () => {
-    setIsExporting(true);
-    setExportResult(null);
+  const handleBackupAll = async () => {
+    setIsBackingUp(true);
+    setBackupResult(null);
     
     try {
-      // Fetch all skills, tools, snippets, and VMCP servers
-      const [skillsRes, toolsRes, snippetsRes, vmcpRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/skills/`),
-        fetch(`${API_BASE_URL}/tools/`),
-        fetch(`${API_BASE_URL}/snippets/`),
-        fetch(`${API_BASE_URL}/vmcp_servers/`),
-      ]);
-
-      if (!skillsRes.ok || !toolsRes.ok || !snippetsRes.ok || !vmcpRes.ok) {
-        throw new Error('Failed to fetch data');
+      // Call the backend backup API
+      const response = await fetch(`${API_BASE_URL}/admin/backup`);
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Backup failed' }));
+        throw new Error(error.detail || 'Backup failed');
       }
 
-      const [skillsData, toolsData, snippetsData, vmcpData] = await Promise.all([
-        skillsRes.json(),
-        toolsRes.json(),
-        snippetsRes.json(),
-        vmcpRes.json(),
-      ]);
+      // Get the blob from the response
+      const blob = await response.blob();
+      
+      // Create a download link and trigger download
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `skillberry-backup-${new Date().toISOString().split('T')[0]}.json.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
-      // Use helper functions to export data (reusing logic from individual pages)
-      const toolsWithContent = await exportTools(toolsData);
-      const snippetsForExport = exportSnippets(snippetsData);
-      const skillsForExport = exportSkills(skillsData);
-      const vmcpForExport = exportVMCPServers(vmcpData);
-
-      // Create export data
-      const exportData = {
-        skills: skillsForExport,
-        tools: toolsWithContent,
-        snippets: snippetsForExport,
-        vmcp_servers: vmcpForExport,
-        exported_at: new Date().toISOString(),
-      };
-
-      // Download as JSON file
-      downloadJSON(exportData, `skillberry-export-${new Date().toISOString().split('T')[0]}.json`);
-
-      setExportResult({
+      setBackupResult({
         success: true,
-        message: `Successfully exported ${skillsData.length} skills, ${toolsData.length} tools, ${snippetsData.length} snippets, and ${vmcpData?.length || 0} VMCP servers.`,
+        message: 'Successfully created and downloaded backup file.',
       });
     } catch (error) {
-      setExportResult({
+      setBackupResult({
         success: false,
-        message: `Export failed: ${(error as Error).message}`,
+        message: `Backup failed: ${(error as Error).message}`,
       });
     } finally {
-      setIsExporting(false);
+      setIsBackingUp(false);
     }
   };
 
-  const handleImportAll = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRestoreFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setIsImporting(true);
-    setImportResult(null);
+    // Store the file and show confirmation modal
+    setPendingRestoreFile(file);
+    setRestoreModalOpen(true);
+    
+    // Reset file input
+    event.target.value = '';
+  };
+
+  const handleRestoreAll = async () => {
+    if (!pendingRestoreFile) return;
+
+    setIsRestoring(true);
+    setRestoreResult(null);
 
     try {
-      const text = await file.text();
-      const importData = JSON.parse(text);
+      // Create FormData and append the file
+      const formData = new FormData();
+      formData.append('backup_file', pendingRestoreFile);
 
-      let importedTools = 0;
-      let importedSnippets = 0;
-      let importedSkills = 0;
-      let importedVMCP = 0;
+      // Call the backend restore API
+      const response = await fetch(`${API_BASE_URL}/admin/restore`, {
+        method: 'POST',
+        body: formData,
+      });
 
-      // Import tools first (with their modules) - reusing logic from ToolsPage
-      if (importData.tools && Array.isArray(importData.tools)) {
-        importedTools = await importTools(importData.tools);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Restore failed' }));
+        throw new Error(error.detail || 'Restore failed');
       }
 
-      // Import snippets - reusing logic from SnippetsPage
-      if (importData.snippets && Array.isArray(importData.snippets)) {
-        importedSnippets = await importSnippets(importData.snippets);
-      }
+      const result = await response.json();
 
-      // Import skills last (after tools and snippets exist) - reusing logic from SkillsPage
-      if (importData.skills && Array.isArray(importData.skills)) {
-        importedSkills = await importSkills(importData.skills);
-      }
+      // Force refetch all query caches to refresh the views immediately
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['skills'] }),
+        queryClient.refetchQueries({ queryKey: ['tools'] }),
+        queryClient.refetchQueries({ queryKey: ['snippets'] }),
+        queryClient.refetchQueries({ queryKey: ['vmcp-servers'] }),
+        queryClient.refetchQueries({ queryKey: ['vnfs-servers'] }),
+      ]);
 
-      // Import VMCP servers - reusing logic from VMCPServersPage
-      if (importData.vmcp_servers && Array.isArray(importData.vmcp_servers)) {
-        importedVMCP = await importVMCPServers(importData.vmcp_servers);
-      }
-
-      // Invalidate all query caches to refresh the views
-      queryClient.invalidateQueries({ queryKey: ['skills'] });
-      queryClient.invalidateQueries({ queryKey: ['tools'] });
-      queryClient.invalidateQueries({ queryKey: ['snippets'] });
-      queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
-
-      setImportResult({
+      const counts = result.imported_counts || {};
+      setRestoreResult({
         success: true,
-        message: `Successfully imported ${importedSkills} skills, ${importedTools} tools, ${importedSnippets} snippets, and ${importedVMCP} VMCP servers.`,
+        message: `Successfully restored ${counts.skills || 0} skills, ${counts.tools || 0} tools, ${counts.snippets || 0} snippets, ${counts.vmcp_servers || 0} VMCP servers, and ${counts.vnfs_servers || 0} vNFS servers.`,
       });
     } catch (error) {
-      setImportResult({
+      setRestoreResult({
         success: false,
-        message: `Import failed: ${(error as Error).message}`,
+        message: `Restore failed: ${(error as Error).message}`,
       });
     } finally {
-      setIsImporting(false);
-      // Reset file input
-      event.target.value = '';
+      setIsRestoring(false);
+      setRestoreModalOpen(false);
+      setPendingRestoreFile(null);
     }
   };
 
@@ -226,70 +203,69 @@ export function AdminPage() {
               </Alert>
             )}
 
-            {exportResult && (
+            {backupResult && (
               <Alert
-                variant={exportResult.success ? 'success' : 'danger'}
-                title={exportResult.success ? 'Success' : 'Error'}
+                variant={backupResult.success ? 'success' : 'danger'}
+                title={backupResult.success ? 'Success' : 'Error'}
                 style={{ marginBottom: '1rem' }}
                 isInline
               >
-                {exportResult.message}
+                {backupResult.message}
               </Alert>
             )}
 
-            {importResult && (
+            {restoreResult && (
               <Alert
-                variant={importResult.success ? 'success' : 'danger'}
-                title={importResult.success ? 'Success' : 'Error'}
+                variant={restoreResult.success ? 'success' : 'danger'}
+                title={restoreResult.success ? 'Success' : 'Error'}
                 style={{ marginBottom: '1rem' }}
                 isInline
               >
-                {importResult.message}
+                {restoreResult.message}
               </Alert>
             )}
 
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Backup/Restore Group */}
+              <div style={{ display: 'flex', gap: '0.5rem', padding: '0.5rem', border: '1px solid #d2d2d2', borderRadius: '4px', backgroundColor: '#f5f5f5' }}>
+                <Button
+                  variant="primary"
+                  icon={<DownloadIcon />}
+                  onClick={handleBackupAll}
+                  isDisabled={isPurging || isBackingUp || isRestoring}
+                >
+                  {isBackingUp ? <Spinner size="md" /> : 'Backup All Data'}
+                </Button>
+
+                <Button
+                  variant="warning"
+                  icon={<UploadIcon />}
+                  isDanger
+                  onClick={() => document.getElementById('restore-file-input')?.click()}
+                  isDisabled={isPurging || isBackingUp || isRestoring}
+                  style={{ color: '#c9190b' }}
+                >
+                  {isRestoring ? <Spinner size="md" /> : 'Restore All Data'}
+                </Button>
+                <input
+                  id="restore-file-input"
+                  type="file"
+                  accept=".zip,.json.zip"
+                  style={{ display: 'none' }}
+                  onChange={handleRestoreFileSelect}
+                />
+              </div>
+
+              <Divider orientation={{ default: 'vertical' }} style={{ height: '40px' }} />
+
+              {/* Hazardous Operations */}
               <Button
                 variant="danger"
                 icon={<TrashIcon />}
                 onClick={() => setPurgeModalOpen(true)}
-                isDisabled={isPurging || isExporting || isImporting}
+                isDisabled={isPurging || isBackingUp || isRestoring}
               >
                 Purge All Data
-              </Button>
-
-              <Button
-                variant="primary"
-                icon={<DownloadIcon />}
-                onClick={handleExportAll}
-                isDisabled={isPurging || isExporting || isImporting}
-              >
-                {isExporting ? <Spinner size="md" /> : 'Export All'}
-              </Button>
-
-              <Button
-                variant="secondary"
-                icon={<UploadIcon />}
-                onClick={() => document.getElementById('import-file-input')?.click()}
-                isDisabled={isPurging || isExporting || isImporting}
-              >
-                {isImporting ? <Spinner size="md" /> : 'Import All'}
-              </Button>
-              <input
-                id="import-file-input"
-                type="file"
-                accept=".json"
-                style={{ display: 'none' }}
-                onChange={handleImportAll}
-              />
-
-              <Button
-                variant="tertiary"
-                icon={<CodeIcon />}
-                onClick={() => setAnthropicImportModalOpen(true)}
-                isDisabled={isPurging || isExporting || isImporting}
-              >
-                Import Anthropic Skill
               </Button>
             </div>
 
@@ -299,10 +275,9 @@ export function AdminPage() {
               About These Actions
             </Title>
             <ul style={{ marginLeft: '1.5rem' }}>
-              <li><strong>Purge All Data:</strong> Permanently deletes all skills, tools, snippets, and Virtual MCP servers. This action cannot be undone.</li>
-              <li><strong>Export All:</strong> Downloads all skills, tools, snippets, and VMCP servers as a JSON file for backup or migration.</li>
-              <li><strong>Import All:</strong> Imports skills, tools, snippets, and VMCP servers from a previously exported JSON file.</li>
-              <li><strong>Import Anthropic Skill:</strong> Imports an Anthropic skill from a GitHub URL or ZIP file. Text files are converted to snippets, and Python/Bash functions are converted to tools.</li>
+              <li><strong>Backup All Data:</strong> Downloads all skills, tools, snippets, VMCP servers, and vNFS servers as a compressed JSON file (.json.zip) for backup or migration.</li>
+              <li><strong>Restore All Data:</strong> Restores all data from a compressed backup file (.json.zip). <span style={{ color: '#c9190b', fontWeight: 'bold' }}>Warning:</span> This will first purge all existing data before restoring from the backup.</li>
+              <li><strong>Purge All Data:</strong> Permanently deletes all skills, tools, snippets, Virtual MCP servers, and vNFS servers. This action cannot be undone.</li>
             </ul>
           </CardBody>
         </Card>
@@ -340,6 +315,7 @@ export function AdminPage() {
           <li>All tools and their code</li>
           <li>All snippets</li>
           <li>All Virtual MCP servers</li>
+          <li>All Virtual NFS servers</li>
           <li>All descriptions and indexes</li>
         </ul>
         <p style={{ marginTop: '1rem', fontWeight: 'bold' }}>
@@ -347,14 +323,56 @@ export function AdminPage() {
         </p>
       </Modal>
 
-      <AnthropicSkillImporter
-        isOpen={anthropicImportModalOpen}
-        onClose={() => setAnthropicImportModalOpen(false)}
-        onImportComplete={() => {
-          // Optionally refresh the page or show a success message
-          console.log('Anthropic skill import completed');
+      <Modal
+        variant={ModalVariant.small}
+        title="Confirm Restore All Data"
+        isOpen={restoreModalOpen}
+        onClose={() => {
+          setRestoreModalOpen(false);
+          setPendingRestoreFile(null);
         }}
-      />
+        actions={[
+          <Button
+            key="confirm"
+            variant="danger"
+            onClick={handleRestoreAll}
+            isDisabled={isRestoring}
+          >
+            {isRestoring ? <Spinner size="md" /> : 'Yes, Restore All'}
+          </Button>,
+          <Button
+            key="cancel"
+            variant="link"
+            onClick={() => {
+              setRestoreModalOpen(false);
+              setPendingRestoreFile(null);
+            }}
+            isDisabled={isRestoring}
+          >
+            Cancel
+          </Button>,
+        ]}
+      >
+        <Alert variant="danger" title="Warning: Data Will Be Reset" isInline style={{ marginBottom: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ExclamationTriangleIcon />
+            <span>This action will first PURGE ALL existing data before restoring from the backup file.</span>
+          </div>
+        </Alert>
+        <p style={{ marginBottom: '1rem' }}>
+          The restore operation will:
+        </p>
+        <ul style={{ marginLeft: '1.5rem', marginBottom: '1rem' }}>
+          <li>Delete all existing skills, tools, snippets, VMCP servers, and vNFS servers</li>
+          <li>Clear all descriptions and indexes</li>
+          <li>Restore data from the backup file: <strong>{pendingRestoreFile?.name}</strong></li>
+        </ul>
+        <p style={{ fontWeight: 'bold', color: '#c9190b' }}>
+          This action cannot be undone. Are you sure you want to continue?
+        </p>
+      </Modal>
     </>
   );
 }
+
+// Made with Bob

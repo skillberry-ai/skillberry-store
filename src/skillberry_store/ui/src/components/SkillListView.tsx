@@ -54,21 +54,21 @@ export function SkillListView({
             />
             <Td
               dataLabel="Name"
-              onClick={() => navigate(`/skills/${skill.name}`)}
+              onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >
               {skill.name}
             </Td>
             <Td
               dataLabel="Description"
-              onClick={() => navigate(`/skills/${skill.name}`)}
+              onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >
               {skill.description || 'No description'}
             </Td>
             <Td
               dataLabel="Tags"
-              onClick={() => navigate(`/skills/${skill.name}`)}
+              onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >
               {skill.tags && skill.tags.filter(tag => !tag.startsWith('namespace:')).length > 0 ? (
@@ -83,21 +83,21 @@ export function SkillListView({
             </Td>
             <Td
               dataLabel="Tools"
-              onClick={() => navigate(`/skills/${skill.name}`)}
+              onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >
               {skill.tools && skill.tools.length > 0 ? skill.tools.length : '-'}
             </Td>
             <Td
               dataLabel="Snippets"
-              onClick={() => navigate(`/skills/${skill.name}`)}
+              onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >
               {skill.snippets && skill.snippets.length > 0 ? skill.snippets.length : '-'}
             </Td>
             <Td
               dataLabel="Version"
-              onClick={() => navigate(`/skills/${skill.name}`)}
+              onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >
               {skill.version || '-'}
