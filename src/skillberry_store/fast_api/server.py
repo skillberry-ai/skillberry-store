@@ -84,7 +84,7 @@ class SBS(FastAPI):
 
         initialize_object_handlers()
         logger.info("Object handlers initialized")
-        
+
         # Store description instances in app state for access by admin API
         self.state.tools_descriptions = tools_descriptions_api(self.settings.sbs_vdb)
         self.state.snippets_descriptions = snippets_descriptions_api(
@@ -93,24 +93,26 @@ class SBS(FastAPI):
         self.state.skills_descriptions = skills_descriptions_api(self.settings.sbs_vdb)
         self.state.vmcp_descriptions = vmcp_descriptions_api(self.settings.sbs_vdb)
         self.state.vnfs_descriptions = vnfs_descriptions_api(self.settings.sbs_vdb)
-        
+
         # Initialize plugin system
         from skillberry_store.plugins.loader import PluginLoader
         from skillberry_store.plugins.store_api import StoreAPI
         from skillberry_store.modules.object_handler import get_object_handler
-        
+
         # Create StoreAPI with object handlers
-        store_api = StoreAPI({
-            "tools": get_object_handler("tool"),
-            "skills": get_object_handler("skill"),
-            "snippets": get_object_handler("snippet")
-        })
-        
+        store_api = StoreAPI(
+            {
+                "tools": get_object_handler("tool"),
+                "skills": get_object_handler("skill"),
+                "snippets": get_object_handler("snippet"),
+            }
+        )
+
         # Initialize and discover plugins
         plugin_loader = PluginLoader(store_api=store_api)
         discovered = plugin_loader.discover_plugins()
         logger.info(f"Discovered {len(discovered)} plugins: {discovered}")
-        
+
         # Store plugin loader in app state
         self.state.plugin_loader = plugin_loader
 
@@ -139,10 +141,10 @@ class SBS(FastAPI):
             self, tags="tools", tools_descriptions=self.state.tools_descriptions
         )
         register_admin_api(self, tags="admin")
-        
+
         # Register plugins API
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
-        
+
         # Mount plugin routers
         plugin_loader.mount_routers(self)
         logger.info("Plugin routers mounted")

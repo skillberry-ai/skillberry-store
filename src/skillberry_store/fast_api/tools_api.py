@@ -4,7 +4,11 @@ import json
 import logging
 from io import BytesIO
 import os
-from skillberry_store.plugins.events import emit_content_added, emit_content_updated, emit_content_deleted
+from skillberry_store.plugins.events import (
+    emit_content_added,
+    emit_content_updated,
+    emit_content_deleted,
+)
 from starlette.responses import PlainTextResponse
 import traceback
 import uuid
@@ -249,10 +253,10 @@ def register_tools_api(
             logger.info(
                 f"Tool '{tool.name}' created successfully with UUID {tool.uuid}"
             )
-            
+
             # Emit event for plugin hooks
             await emit_content_added("tool", tool.uuid)
-            
+
             return {
                 "message": f"Tool '{tool.name}' created successfully.",
                 "name": tool.name,
@@ -472,10 +476,10 @@ def register_tools_api(
                     )
 
             logger.info(f"Tool with UUID or name '{uuid_or_name}' deleted successfully")
-            
+
             # Emit event for plugin hooks
             await emit_content_deleted("tool", tool_uuid)
-            
+
             return {
                 "message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."
             }
@@ -567,10 +571,10 @@ def register_tools_api(
             logger.info(
                 f"Tool with UUID or name '{uuid_or_name}' (UUID: {tool_uuid}) updated successfully"
             )
-            
+
             # Emit event for plugin hooks
             await emit_content_updated("tool", tool_uuid)
-            
+
             return {
                 "message": f"Tool with UUID or name '{uuid_or_name}' updated successfully."
             }

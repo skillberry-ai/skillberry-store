@@ -7,7 +7,11 @@ from datetime import datetime, timezone
 from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 from prometheus_client import Counter
-from skillberry_store.plugins.events import emit_content_added, emit_content_updated, emit_content_deleted
+from skillberry_store.plugins.events import (
+    emit_content_added,
+    emit_content_updated,
+    emit_content_deleted,
+)
 
 from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.modules.description import Description
@@ -140,10 +144,10 @@ def register_snippets_api(
                 logger.info(f"Snippet description saved for UUID: {snippet.uuid}")
 
             logger.info(f"Snippet '{snippet.name}' created successfully")
-            
+
             # Emit event for plugin hooks
             await emit_content_added("snippet", snippet.uuid)
-            
+
             return {
                 "message": f"Snippet '{snippet.name}' created successfully.",
                 "name": snippet.name,
@@ -277,10 +281,10 @@ def register_snippets_api(
             logger.info(
                 f"Snippet with UUID or name '{uuid_or_name}' deleted successfully"
             )
-            
+
             # Emit event for plugin hooks
             await emit_content_deleted("snippet", snippet_uuid)
-            
+
             return {
                 "message": f"Snippet with UUID or name '{uuid_or_name}' deleted successfully."
             }
@@ -365,10 +369,10 @@ def register_snippets_api(
             logger.info(
                 f"Snippet with UUID or name '{uuid_or_name}' (UUID: {snippet_uuid}) updated successfully"
             )
-            
+
             # Emit event for plugin hooks
             await emit_content_updated("snippet", snippet_uuid)
-            
+
             return {
                 "message": f"Snippet with UUID or name '{uuid_or_name}' updated successfully."
             }
