@@ -81,9 +81,12 @@ async def test_plugins_api_cors_headers(run_sbs):
     async with httpx.AsyncClient() as client:
         response = await client.options(
             f"{BASE_URL}/plugins/",
-            headers={"Origin": "http://localhost:3000"}
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            }
         )
-        # FastAPI with CORS middleware should handle OPTIONS
+        # FastAPI with CORS middleware should handle OPTIONS preflight
         assert response.status_code in [200, 204]
 
 
