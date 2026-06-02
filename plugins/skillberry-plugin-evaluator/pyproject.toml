@@ -1,28 +1,26 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "skillberry-plugin-evaluator"
-version = "0.2.0"
-description = "AI-powered content evaluator plugin for Skillberry Store (supports multiple LLM providers)"
+version = "0.1.0"
+description = "Skillberry Store plugin for evaluating content using LLM"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "skillberry-store>=0.1.0",
-    "llm-switchboard>=0.1.0",
-    "click>=8.0.0",
-    "fastapi>=0.100.0",
-    "pydantic>=2.0.0",
+    "llm-switchboard[litellm]>=0.1.0",
 ]
 
 [project.entry-points."skillberry_store.plugins"]
-evaluator = "skillberry_plugin_evaluator.plugin:EvaluatorPlugin"
+evaluator = "skillberry_plugin_evaluator.plugin:SkillberryPluginEvaluator"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
+    "pytest",
+    "pytest-asyncio",
 ]
 
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools]
+packages = ["skillberry_plugin_evaluator"]
+package-dir = {"" = "src"}

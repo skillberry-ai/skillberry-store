@@ -3,6 +3,7 @@
 **.claude
 
 .idea/
+.bob/
 
 # Superpowers brainstorming / spec docs
 docs/superpowers/

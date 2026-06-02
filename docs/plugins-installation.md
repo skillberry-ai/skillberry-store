@@ -30,7 +30,7 @@ pip install skillberry-store[plugins-all]
 
 This installs:
 - Core skillberry-store functionality
-- skillberry-plugin-creator (AI-powered content generation)
+- skillberry-plugin-creator (AI-powered content creation)
 - skillberry-plugin-evaluator (AI-powered content evaluation and tagging)
 
 ### 3. Install Specific Plugins
@@ -101,66 +101,98 @@ make run
 
 The `ODEPS` variable specifies optional dependencies (extras) to install.
 
-**Note:** The `[tool.uv.sources]` section in `pyproject.toml` tells uv where to find plugin packages locally (for development), but they're only installed when explicitly requested via extras or direct installation.
-
 ## Available Plugins
 
 ### Creator Plugin (`skillberry-plugin-creator`)
 
-**Purpose:** AI-powered content generation for skills, tools, and snippets.
+**Purpose:** AI-powered snippet creation using LLM.
 
 **Features:**
-- Generate new skills from natural language descriptions
-- Create tools with proper schemas and implementations
-- Generate code snippets with context-aware suggestions
-- Supports 100+ LLM providers via llm-switchboard
+- Generate code snippets from natural language descriptions
+- Automatic metadata inference (language, tags)
+- Supports multiple LLM providers via llm-switchboard
 
 **Configuration:**
 ```bash
-export LLM_PROVIDER="openai.async"  # or azure, watsonx, litellm, etc.
-export LLM_API_KEY="your-api-key"
-export LLM_MODEL="gpt-4"  # optional, provider-specific default used otherwise
+export LLM_PROVIDER=openai.async  # or litellm, etc.
+export LLM_MODEL=gpt-4
+# Provider-specific variables (e.g., OPENAI_API_KEY)
 ```
 
 **API Endpoints:**
-- `POST /api/plugins/creator/generate-skill`
-- `POST /api/plugins/creator/generate-tool`
-- `POST /api/plugins/creator/generate-snippet`
+- `POST /api/plugins/skillberry-plugin-creator/create-snippet`
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/api/plugins/skillberry-plugin-creator/create-snippet \
+  -H "Content-Type: application/json" \
+  -d '{"description": "Python fibonacci function", "name": "fibonacci"}'
+```
 
 ### Evaluator Plugin (`skillberry-plugin-evaluator`)
 
 **Purpose:** AI-powered content evaluation and automatic tagging.
 
 **Features:**
-- Evaluate content quality and completeness
-- Automatically generate relevant tags
-- Assess documentation quality
-- Identify potential improvements
-- Supports 100+ LLM providers via llm-switchboard
+- Evaluate content and suggest relevant tags
+- Confidence scores for each tag
+- Supports multiple LLM providers via llm-switchboard
 
 **Configuration:**
 ```bash
-export LLM_PROVIDER="openai.async"  # or azure, watsonx, litellm, etc.
-export LLM_API_KEY="your-api-key"
-export LLM_MODEL="gpt-4"  # optional, provider-specific default used otherwise
+export LLM_PROVIDER=openai.async  # or litellm, etc.
+export LLM_MODEL=gpt-4
+# Provider-specific variables (e.g., OPENAI_API_KEY)
 ```
 
 **API Endpoints:**
-- `POST /api/plugins/evaluator/evaluate`
-- `POST /api/plugins/evaluator/suggest-tags`
+- `POST /api/plugins/skillberry-plugin-evaluator/evaluate`
 
-**Event Hooks:**
-- Automatically evaluates content when added/updated (if configured)
+**Example:**
+```bash
+curl -X POST http://localhost:8000/api/plugins/skillberry-plugin-evaluator/evaluate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "uuid": "abc-123",
+    "content_type": "snippet",
+    "content": "def hello():\n    print(\"Hello\")",
+    "name": "Hello World"
+  }'
+```
+
+## LLM Configuration
+
+Both plugins use `llm-switchboard` for LLM integration. Configuration is done via environment variables.
+
+### Common Providers
+
+#### OpenAI
+```bash
+export LLM_PROVIDER=openai.async
+export LLM_MODEL=gpt-4
+export OPENAI_API_KEY=your_key
+```
+
+#### LiteLLM (supports 100+ providers)
+```bash
+export LLM_PROVIDER=litellm
+export LLM_MODEL=your-model-name
+export OPENAI_API_KEY=your_key
+export OPENAI_API_BASE=https://your-endpoint.com
+```
+
+See [llm-switchboard documentation](https://github.com/skillberry-ai/llm-switchboard) for more providers and configuration options.
 
 ## Plugin Development
 
 ### Creating a New Plugin
 
-Plugins are separate Python packages that follow this structure:
+Plugins are separate Python packages with this structure:
 
 ```
 my-plugin/
 ├── pyproject.toml
+├── README.md
 ├── src/
 │   └── my_plugin/
 │       ├── __init__.py
@@ -169,121 +201,70 @@ my-plugin/
     └── test_plugin.py
 ```
 
-**Key Requirements:**
+**Minimal Plugin Example:**
 
-1. **Entry Point Declaration** in `pyproject.toml`:
-```toml
-[project.entry-points."skillberry_store.plugins"]
-my-plugin = "my_plugin.plugin:MyPlugin"
-```
-
-2. **Plugin Class** inheriting from `PluginBase`:
 ```python
+# src/my_plugin/plugin.py
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 
 class MyPlugin(PluginBase):
     def __init__(self):
-        super().__init__(
-            metadata=PluginMetadata(
-                name="my-plugin",
-                version="0.1.0",
-                description="My custom plugin",
-                author="Your Name",
-                plugin_type=PluginType.PROCESSOR
-            )
+        metadata = PluginMetadata(
+            name="my-plugin",
+            version="0.1.0",
+            description="My custom plugin",
+            plugin_type=PluginType.GENERAL,
         )
+        super().__init__(metadata)
     
-    def get_router(self):
-        # Return FastAPI router for API endpoints
-        pass
+    def is_enabled(self) -> bool:
+        return True
     
-    def get_cli_commands(self):
-        # Return CLI commands
-        pass
-    
-    def get_ui_config(self):
-        # Return UI configuration
-        pass
+    def get_routes(self):
+        from fastapi import APIRouter
+        router = APIRouter()
+        
+        @router.get("/hello")
+        async def hello():
+            return {"message": "Hello from my plugin"}
+        
+        return router
 ```
 
-3. **Event Handlers** (optional):
-```python
-from skillberry_store.plugins.events import on_content_added
+**pyproject.toml:**
 
-@on_content_added("skill")
-async def handle_skill_added(content_type: str, content_id: str, content: dict, store_api):
-    # Process newly added skill
-    pass
+```toml
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-plugin"
+version = "0.1.0"
+description = "My custom plugin"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.setuptools]
+packages = ["my_plugin"]
+package-dir = {"" = "src"}
 ```
 
 ### Adding Plugin to Store
 
 1. Create plugin package in `plugins/` directory
-2. Add to `pyproject.toml`:
-   - Add to main `dependencies` for default installation
-   - Add to `[project.optional-dependencies]` for optional installation
-   - Add to `[tool.uv.sources]` for local development
+2. Add to main `pyproject.toml`:
 
-Example:
 ```toml
-[project]
-dependencies = [
-    # ... other deps ...
-    "my-plugin>=0.1.0",
-]
-
 [project.optional-dependencies]
 plugin-my-plugin = ["my-plugin>=0.1.0"]
+plugins-all = [
+    "my-plugin>=0.1.0",
+    # ... other plugins
+]
 
 [tool.uv.sources]
 my-plugin = { path = "plugins/my-plugin", editable = true }
-```
-
-## LLM Provider Support
-
-Both creator and evaluator plugins use `llm-switchboard` for multi-provider LLM support.
-
-### Supported Providers
-
-- **OpenAI**: `openai.async`, `openai.sync`
-- **Azure OpenAI**: `azure.async`, `azure.sync`
-- **IBM WatsonX**: `watsonx.async`, `watsonx.sync`
-- **LiteLLM**: `litellm.async`, `litellm.sync` (supports 100+ providers)
-- **Anthropic**: `anthropic.async`, `anthropic.sync`
-- **Google**: `google.async`, `google.sync`
-- And many more...
-
-### Configuration Examples
-
-#### OpenAI
-```bash
-export LLM_PROVIDER="openai.async"
-export LLM_API_KEY="sk-..."
-export LLM_MODEL="gpt-4"
-```
-
-#### Azure OpenAI
-```bash
-export LLM_PROVIDER="azure.async"
-export LLM_API_KEY="your-azure-key"
-export AZURE_ENDPOINT="https://your-resource.openai.azure.com/"
-export LLM_MODEL="gpt-4"
-```
-
-#### IBM WatsonX
-```bash
-export LLM_PROVIDER="watsonx.async"
-export LLM_API_KEY="your-watsonx-key"
-export WATSONX_URL="https://us-south.ml.cloud.ibm.com"
-export WATSONX_PROJECT_ID="your-project-id"
-export LLM_MODEL="ibm/granite-13b-chat-v2"
-```
-
-#### LiteLLM (Universal Proxy)
-```bash
-export LLM_PROVIDER="litellm.async"
-export LLM_API_KEY="your-api-key"
-export LLM_MODEL="gpt-4"  # or any model supported by LiteLLM
 ```
 
 ## Troubleshooting
@@ -291,101 +272,26 @@ export LLM_MODEL="gpt-4"  # or any model supported by LiteLLM
 ### Plugin Not Loading
 
 1. Check plugin is installed: `pip list | grep skillberry-plugin`
-2. Verify entry point: `python -c "from importlib.metadata import entry_points; print([ep for ep in entry_points().get('skillberry_store.plugins', [])])"`
-3. Check logs for import errors
-4. Ensure all plugin dependencies are installed
+2. Check logs for import errors
+3. Verify environment variables are set
 
 ### LLM Configuration Issues
 
-1. Verify environment variables are set: `echo $LLM_PROVIDER`
+1. Verify environment variables: `env | grep LLM`
 2. Check API key is valid
-3. Test provider connection independently
-4. Review plugin logs for detailed error messages
+3. Review plugin logs for detailed error messages
 
-### Development Mode
-
-For local plugin development:
+### Removing Plugins
 
 ```bash
-# Install in editable mode
-cd plugins/my-plugin
-pip install -e .
-
-# Verify installation
-python -c "from my_plugin.plugin import MyPlugin; print(MyPlugin().metadata)"
-```
-
-## Future Enhancements
-
-Planned improvements to the plugin system:
-
-1. **Plugin Marketplace**: Central registry for community plugins
-2. **Hot Reload**: Dynamic plugin loading without restart
-3. **Plugin Dependencies**: Plugins that depend on other plugins
-4. **Minimal Installation**: `pip install skillberry-store[minimal]` without any plugins
-5. **Plugin Versioning**: Better version compatibility checking
-6. **Plugin Configuration UI**: Web interface for plugin settings
-7. **Plugin Metrics**: Usage statistics and performance monitoring
-
-## Contributing
-
-To contribute a new plugin:
-
-1. Create plugin following the structure above
-2. Add comprehensive tests
-3. Document configuration and usage
-4. Submit PR to skillberry-store repository
-5. Plugin will be reviewed and potentially included in default installation
-
-## Support
-
-For plugin-related issues:
-- GitHub Issues: https://github.com/skillberry-ai/skillberry-store/issues
-- Documentation: https://github.com/skillberry-ai/skillberry-store/tree/main/docs
-- Examples: See `plugins/` directory for reference implementations
-
-## Troubleshooting
-
-### Removing Plugins from Virtual Environment
-
-If you have plugins installed in your development environment and want to remove them to test the minimal installation:
-
-```bash
-# Check which plugins are installed
-pip list | grep skillberry-plugin
-
 # Uninstall all plugins
 pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator
 
-# Verify they're removed (should return no results)
+# Verify removal
 pip list | grep skillberry-plugin
 ```
-
-**Note:** The exit code 1 from the grep command when no plugins are found is expected and normal.
-
-### Verifying Plugin Installation Status
-
-To check if plugins are currently installed and loaded:
-
-```bash
-# Check installed packages
-pip list | grep skillberry-plugin
-
-# Check if plugins are discovered by the store (requires store to be running)
-curl http://localhost:8000/api/plugins/
-```
-
-### Running Store Without Plugins
-
-After removing plugins, when you run `make run`:
-- The store will start normally without any errors
-- The PluginLoader will discover 0 plugins (logged at startup)
-- The `/api/plugins/` endpoint will return an empty list `[]`
-- All core functionality works normally
 
 ### Re-installing Plugins
-
-If you removed plugins and want to add them back:
 
 ```bash
 # For development (from source)
@@ -395,31 +301,9 @@ make install-requirements ODEPS=plugins-all
 pip install --upgrade skillberry-store[plugins-all]
 ```
 
-### Common Issues
+## Support
 
-**Issue:** Plugins still appear after uninstalling
-- **Solution:** Make sure you're in the correct virtual environment. Check with `which python` and ensure it points to your project's `.venv/bin/python`
-
-**Issue:** `make run` installs plugins automatically
-- **Explanation:** This shouldn't happen with the current configuration. If it does, check that plugins are not in the main `dependencies` list in `pyproject.toml`, only in `[project.optional-dependencies]`
-
-**Issue:** Plugin endpoints return 404
-- **Solution:** This is expected when plugins are not installed. The plugin system is working correctly - plugins are simply not available.
-
-### Development Tips
-
-1. **Clean State Testing:** To test without plugins, uninstall them as shown above
-2. **Plugin Development:** Use editable installs for development:
-   ```bash
-   pip install -e plugins/skillberry-plugin-creator
-   ```
-3. **Switching Configurations:** You can quickly switch between with/without plugins:
-   ```bash
-   # Without plugins
-   pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator
-   make run
-   
-   # With plugins
-   make install-requirements ODEPS=plugins-all
-   make run
-   ```
+For plugin-related issues:
+- GitHub Issues: https://github.com/skillberry-ai/skillberry-store/issues
+- Documentation: https://github.com/skillberry-ai/skillberry-store/tree/main/docs
+- Examples: See `plugins/` directory for reference implementations

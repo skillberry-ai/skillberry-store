@@ -1,246 +1,207 @@
-"""AI-powered content creator plugin using llm-switchboard."""
+"""
+Skillberry Plugin Creator - Minimal LLM-based snippet creation plugin.
+Uses llm-switchboard for LLM integration.
+"""
 
 import os
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Body
-from pydantic import BaseModel
-import click
+import logging
+from typing import Dict, Any, Optional
 
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 
+logger = logging.getLogger(__name__)
 
-class AICreatorPlugin(PluginBase):
-    """AI-powered content creator using llm-switchboard for multi-LLM support.
-    
-    Supports multiple LLM providers via llm-switchboard:
-    - OpenAI (openai.async)
-    - Azure OpenAI (azure_openai.async)
-    - WatsonX (watsonx)
-    - LiteLLM (litellm) - supports 100+ providers
-    - Auto-detection from environment (auto_from_env)
-    
-    Configuration via environment variables:
-    - LLM_PROVIDER: Provider name (default: "openai.async")
-    - LLM_API_KEY: API key for the provider
-    - LLM_MODEL: Model name (optional, provider-specific default used)
-    - LLM_BASE_URL: Custom base URL (optional)
-    """
-    
+
+class SkillberryPluginCreator(PluginBase):
+    """Plugin for creating snippets using LLM."""
+
     def __init__(self):
         super().__init__()
+        
+        self._metadata = PluginMetadata(
+            name="Snippet Creator",
+            version="0.1.0",
+            description="Create code snippets using LLM",
+            plugin_type=PluginType.CREATOR,
+        )
+        
         self.llm_client = None
-        self.provider_name = None
         self._status_message = "Initializing..."
         
-        # Try to initialize llm-switchboard client
+        # Try to initialize LLM client
         try:
             from llm_switchboard import get_llm
             
-            # Get provider from environment (default to async OpenAI)
+            # Get provider from environment (llm-switchboard reads its own env vars)
             provider_name = os.getenv("LLM_PROVIDER", "openai.async")
-            api_key = os.getenv("LLM_API_KEY")
+            model_name = os.getenv("LLM_MODEL", "gpt-4")
             
-            if not api_key:
-                self._status_message = "Missing LLM_API_KEY environment variable. Set it to enable this plugin."
-            else:
-                # Get the LLM client class
-                LLMClientClass = get_llm(provider_name)
-                
-                # Build provider kwargs
-                provider_kwargs = {"api_key": api_key}
-                
-                # Add optional parameters
-                model = os.getenv("LLM_MODEL")
-                if model:
-                    provider_kwargs["model"] = model
-                
-                base_url = os.getenv("LLM_BASE_URL")
-                if base_url:
-                    provider_kwargs["base_url"] = base_url
-                
-                # Initialize the client
-                # Type ignore: LLMClient subclasses have different signatures
-                self.llm_client = LLMClientClass(**provider_kwargs)  # type: ignore
-                self.provider_name = provider_name
-                self._status_message = f"Ready (using {provider_name})"
+            logger.info(f"Initializing LLM: provider={provider_name}, model={model_name}")
+            
+            # Get the LLM client class
+            LLMClientClass = get_llm(provider_name)
+            
+            # Instantiate the client (llm-switchboard reads env vars automatically)
+            self.llm_client = LLMClientClass(model_name=model_name)
+            self._status_message = f"Ready (using {provider_name})"
+            
+            logger.info(f"LLM client initialized successfully")
                 
         except ImportError:
-            # llm-switchboard not installed, plugin will be disabled
-            self._status_message = "Missing dependency: llm-switchboard package not installed. Install it to enable this plugin."
+            self._status_message = "Missing dependency: llm-switchboard not installed"
+            logger.warning("llm-switchboard not installed, plugin will be disabled")
         except Exception as e:
-            # Configuration error, plugin will be disabled
             self._status_message = f"Configuration error: {str(e)}"
-            print(f"Failed to initialize LLM client: {e}")
-    
+            logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
+
     @property
     def metadata(self) -> PluginMetadata:
         """Return plugin metadata."""
-        provider_info = f" (using {self.provider_name})" if self.provider_name else ""
-        return PluginMetadata(
-            name="AI Content Creator",
-            description=f"Generate tools, skills, and snippets using AI{provider_info}",
-            version="0.2.0",
-            plugin_type=PluginType.CREATOR,
-            author="Skillberry Team",
-            homepage="https://github.com/skillberry-ai/skillberry-plugin-creator"
-        )
-    
-    def is_enabled(self) -> bool:
-        """Plugin is enabled if LLM client is configured."""
-        return self.llm_client is not None
+        return self._metadata
     
     def get_status_message(self) -> str:
-        """Get human-readable status message."""
+        """Return current plugin status."""
         return self._status_message
-    
-    def get_router(self) -> Optional[APIRouter]:
-        """Provide plugin's API routes."""
+
+    def is_enabled(self) -> bool:
+        """Plugin is enabled if LLM client is initialized."""
+        return self.llm_client is not None
+
+    async def create_snippet(self, description: str, name: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Create a code snippet from a description using LLM.
+        
+        Args:
+            description: Natural language description of the snippet
+            name: Optional name for the snippet
+            
+        Returns:
+            Dict with snippet details (uuid, name, content, etc.)
+        """
+        if not self.llm_client:
+            raise RuntimeError("LLM client not initialized")
+        
+        if not self.store:
+            raise RuntimeError("Store API not available")
+        
+        logger.info(f"Creating snippet from description: {description[:100]}...")
+        
+        # Generate snippet content using LLM
+        prompt = f"""Generate a code snippet based on this description:
+
+{description}
+
+Return only the code, no explanations or markdown formatting."""
+        
+        logger.debug(f"Calling LLM with prompt: {prompt[:200]}...")
+        content = await self.llm_client.generate_async(prompt=prompt)
+        logger.info(f"Generated content ({len(content)} chars)")
+        
+        # Infer metadata using LLM
+        metadata_prompt = f"""Analyze this code snippet and provide metadata in JSON format:
+
+```
+{content[:500]}
+```
+
+Return a JSON object with:
+- language: programming language (e.g., "python", "javascript")
+- tags: array of relevant tags (e.g., ["function", "utility"])
+- description: brief description (one sentence)
+
+Return ONLY the JSON, no other text."""
+        
+        logger.debug("Inferring metadata...")
+        metadata_str = await self.llm_client.generate_async(prompt=metadata_prompt)
+        
+        # Parse metadata (simple extraction, could be improved)
+        import json
+        try:
+            # Try to extract JSON from response
+            start = metadata_str.find('{')
+            end = metadata_str.rfind('}') + 1
+            if start >= 0 and end > start:
+                metadata = json.loads(metadata_str[start:end])
+            else:
+                metadata = {"language": "text", "tags": [], "description": description[:100]}
+        except:
+            logger.warning("Failed to parse metadata, using defaults")
+            metadata = {"language": "text", "tags": [], "description": description[:100]}
+        
+        logger.info(f"Inferred metadata: {metadata}")
+        
+        # Save snippet to store
+        snippet_name = name or metadata.get("description", "Generated snippet")[:50]
+        
+        snippet_data = {
+            "name": snippet_name,
+            "content": content,
+            "language": metadata.get("language", "text"),
+            "tags": metadata.get("tags", []),
+            "description": metadata.get("description", description[:200]),
+        }
+        
+        logger.info(f"Saving snippet: {snippet_name}")
+        created_snippet = self.store.create_snippet(snippet_data)
+        logger.info(f"Snippet created with UUID: {created_snippet.get('uuid')}")
+        
+        return created_snippet
+
+    def get_router(self):
+        """Register plugin routes."""
+        from fastapi import APIRouter, HTTPException
+        from pydantic import BaseModel
+        
         router = APIRouter()
         
-        class CreateRequest(BaseModel):
+        class CreateSnippetRequest(BaseModel):
             description: str
             name: Optional[str] = None
         
-        @router.post("/create-tool")
-        async def create_tool(request: CreateRequest = Body(...)):
-            """Generate a Python tool from description."""
-            if not self.is_enabled():
-                raise HTTPException(
-                    status_code=503,
-                    detail="OpenAI API key not configured. Set OPENAI_API_KEY environment variable."
-                )
-            
-            # TODO: Implement actual tool generation
-            return {
-                "success": True,
-                "content_type": "tool",
-                "message": f"Tool creation not yet implemented: {request.description}"
-            }
-        
-        @router.post("/create-skill")
-        async def create_skill(request: CreateRequest = Body(...)):
-            """Generate a skill bundle from description."""
-            if not self.is_enabled():
-                raise HTTPException(
-                    status_code=503,
-                    detail="OpenAI API key not configured. Set OPENAI_API_KEY environment variable."
-                )
-            
-            # TODO: Implement actual skill generation
-            return {
-                "success": True,
-                "content_type": "skill",
-                "message": f"Skill creation not yet implemented: {request.description}"
-            }
-        
         @router.post("/create-snippet")
-        async def create_snippet(request: CreateRequest = Body(...)):
-            """Generate a code snippet from description."""
+        async def create_snippet_endpoint(request: CreateSnippetRequest):
+            """Create a code snippet from a description."""
             if not self.is_enabled():
-                raise HTTPException(
-                    status_code=503,
-                    detail="OpenAI API key not configured. Set OPENAI_API_KEY environment variable."
-                )
+                raise HTTPException(status_code=503, detail=self._status_message)
             
-            # TODO: Implement actual snippet generation
-            return {
-                "success": True,
-                "content_type": "snippet",
-                "message": f"Snippet creation not yet implemented: {request.description}"
-            }
+            try:
+                result = await self.create_snippet(
+                    description=request.description,
+                    name=request.name
+                )
+                # Return standard API response format with success flag for UI
+                return {
+                    "success": True,
+                    "message": f"Snippet '{result['name']}' created successfully.",
+                    "name": result["name"],
+                    "uuid": result["uuid"],
+                }
+            except Exception as e:
+                logger.error(f"Failed to create snippet: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=str(e))
         
         return router
     
     def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        """Provide plugin's CLI commands."""
-        
-        @click.command()
-        @click.option('--description', required=True, help='Description of tool to create')
-        @click.option('--name', help='Optional name for the tool')
-        def create_tool(description: str, name: Optional[str] = None):
-            """Create a new tool using AI."""
-            click.echo(f"Creating tool: {description}")
-            # TODO: Implement actual creation
-        
-        @click.command()
-        @click.option('--description', required=True, help='Description of skill to create')
-        @click.option('--name', help='Optional name for the skill')
-        def create_skill(description: str, name: Optional[str] = None):
-            """Create a new skill using AI."""
-            click.echo(f"Creating skill: {description}")
-            # TODO: Implement actual creation
-        
-        @click.command()
-        @click.option('--description', required=True, help='Description of snippet to create')
-        @click.option('--name', help='Optional name for the snippet')
-        def create_snippet(description: str, name: Optional[str] = None):
-            """Create a new snippet using AI."""
-            click.echo(f"Creating snippet: {description}")
-            # TODO: Implement actual creation
-        
-        return {
-            "create-tool": create_tool,
-            "create-skill": create_skill,
-            "create-snippet": create_snippet
-        }
+        """No CLI commands for this plugin."""
+        return None
     
     def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        """Provide plugin's UI configuration."""
+        """Return UI configuration for the plugin."""
         return {
-            "icon": "PlusCircleIcon",
+            "icon": "PlusIcon",
             "color": "#0066CC",
             "actions": [
                 {
-                    "label": "Create Tool",
-                    "description": "Generate a Python tool from description",
-                    "endpoint": "/plugins/creator/create-tool",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "description": {
-                                "type": "string",
-                                "description": "What the tool should do"
-                            },
-                            "name": {
-                                "type": "string",
-                                "description": "Optional name for the tool"
-                            }
-                        },
-                        "required": ["description"]
-                    }
-                },
-                {
-                    "label": "Create Skill",
-                    "description": "Generate a skill bundle from description",
-                    "endpoint": "/plugins/creator/create-skill",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "description": {
-                                "type": "string",
-                                "description": "What the skill should do"
-                            },
-                            "name": {
-                                "type": "string",
-                                "description": "Optional name for the skill"
-                            }
-                        },
-                        "required": ["description"]
-                    }
-                },
-                {
                     "label": "Create Snippet",
-                    "description": "Generate a code snippet from description",
-                    "endpoint": "/plugins/creator/create-snippet",
+                    "endpoint": "/api/plugins/creator/create-snippet",
                     "method": "POST",
                     "params_schema": {
                         "type": "object",
                         "properties": {
                             "description": {
                                 "type": "string",
-                                "description": "What the snippet should do"
+                                "description": "Description of the snippet to create"
                             },
                             "name": {
                                 "type": "string",

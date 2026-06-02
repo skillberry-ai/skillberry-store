@@ -206,6 +206,80 @@ class StoreAPI:
         
         return [s for s in all_snippets if self._matches_filter(s, filter_criteria)]
     
+    def create_snippet(self, snippet_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new snippet.
+        
+        Args:
+            snippet_data: Dict with snippet fields (name, content, language, tags, description, etc.)
+                         UUID will be auto-generated if not provided.
+                         
+        Returns:
+            Created snippet dict with uuid and timestamps
+            
+        Raises:
+            ValueError: If required fields are missing
+            RuntimeError: If snippet creation fails
+        """
+        if not self.snippets:
+            raise RuntimeError("Snippets handler not available")
+        
+        # Validate required fields
+        if "name" not in snippet_data:
+            raise ValueError("Snippet name is required")
+        if "content" not in snippet_data:
+            raise ValueError("Snippet content is required")
+        
+        # Generate UUID if not provided
+        import uuid as uuid_module
+        from datetime import datetime, timezone
+        
+        if "uuid" not in snippet_data or not snippet_data["uuid"]:
+            snippet_data["uuid"] = str(uuid_module.uuid4())
+        
+        # Set timestamps
+        current_time = datetime.now(timezone.utc).isoformat()
+        snippet_data["created_at"] = current_time
+        snippet_data["modified_at"] = current_time
+        
+        # Set defaults for optional fields
+        snippet_data.setdefault("language", "text")
+        snippet_data.setdefault("tags", [])
+        snippet_data.setdefault("description", "")
+        
+        try:
+            # Check if snippet already exists
+            try:
+                existing = self.get_snippet(snippet_data["uuid"])
+                if existing:
+                    raise RuntimeError(f"Snippet with UUID '{snippet_data['uuid']}' already exists")
+            except Exception as e:
+                # If it's a 404, that's good - snippet doesn't exist yet
+                # Any other exception should be re-raised
+                if hasattr(e, 'status_code') and e.status_code == 404:
+                    pass  # Snippet doesn't exist, continue with creation
+                else:
+                    raise
+            
+            # Determine parent for cache
+            if snippet_data["name"]:
+                snippet_data["parent"] = self.snippets.get_cache_parent_for_head(
+                    snippet_data["uuid"], snippet_data["name"]
+                )
+            
+            # Write snippet
+            self.snippets.write_dict(snippet_data["uuid"], snippet_data)
+            
+            # Update cache
+            if snippet_data["name"]:
+                self.snippets.update_cache(snippet_data["uuid"], new_name=snippet_data["name"])
+            
+            logger.info(f"Snippet '{snippet_data['name']}' created with UUID: {snippet_data['uuid']}")
+            return snippet_data
+            
+        except Exception as e:
+            logger.error(f"Failed to create snippet: {e}")
+            raise RuntimeError(f"Failed to create snippet: {str(e)}")
+    
     def update_snippet_tags(self, uuid: str, tags: List[str]) -> bool:
         """Add tags to a snippet (merges with existing tags).
         

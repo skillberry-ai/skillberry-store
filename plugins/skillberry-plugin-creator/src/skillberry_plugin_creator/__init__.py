@@ -1,9 +1,9 @@
-"""Skillberry Creator Plugin - AI-powered content generation."""
+"""Skillberry Creator Plugin - AI-powered snippet creation."""
 
 __version__ = "0.1.0"
 
-from .plugin import AICreatorPlugin
+from .plugin import SkillberryPluginCreator
 
-__all__ = ["AICreatorPlugin"]
+__all__ = ["SkillberryPluginCreator"]
 
 # Made with Bob
