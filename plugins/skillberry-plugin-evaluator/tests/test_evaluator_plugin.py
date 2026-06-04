@@ -66,7 +66,8 @@ def test_plugin_provides_ui_config():
 
 def test_strip_score_tags_removes_all_score_types():
     plugin = SkillberryPluginEvaluator()
-    tags = ["python", "quality-score:7", "performance-score:5", "utility"]
+    # includes security-score to ensure old 3-category evaluations are cleaned up
+    tags = ["python", "quality-score:7", "performance-score:5", "security-score:8", "utility"]
     assert plugin._strip_score_tags(tags) == ["python", "utility"]
 
 
@@ -82,6 +83,23 @@ def test_strip_score_tags_empty_list():
 
 
 # ── helper: _build_context ───────────────────────────────────────────────────
+
+def test_build_context_excludes_previous_evaluation_from_extra():
+    plugin = SkillberryPluginEvaluator()
+    obj = {
+        "name": "my_tool",
+        "description": "does something",
+        "extra": {
+            "custom_key": "keep_me",
+            "evaluation": {"quality": {"score": 7, "evaluation": "old text"}},
+        },
+        "tags": [],
+    }
+    context = plugin._build_context(obj, "tool")
+    assert "keep_me" in context
+    assert "old text" not in context
+    assert "evaluation" not in context
+
 
 def test_build_context_tool_includes_key_fields():
     plugin = SkillberryPluginEvaluator()

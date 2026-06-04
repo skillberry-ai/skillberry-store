@@ -124,7 +124,10 @@ class SkillberryPluginEvaluator(PluginBase):
 
         extra = obj.get("extra")
         if extra and isinstance(extra, dict):
-            lines.append(f"Extra info: {json.dumps(extra)}")
+            # Exclude previous evaluation results so they don't bias the new evaluation.
+            extra_for_context = {k: v for k, v in extra.items() if k != "evaluation"}
+            if extra_for_context:
+                lines.append(f"Extra info: {json.dumps(extra_for_context)}")
 
         if content_type == "tool":
             if obj.get("programming_language"):
@@ -171,8 +174,8 @@ class SkillberryPluginEvaluator(PluginBase):
         return "\n".join(lines)
 
     def _strip_score_tags(self, tags: List[str]) -> List[str]:
-        """Remove existing quality/performance score tags."""
-        score_prefixes = ("quality-score:", "performance-score:")
+        """Remove all evaluator score tags so re-evaluation is a clean overwrite."""
+        score_prefixes = ("quality-score:", "performance-score:", "security-score:")
         return [t for t in tags if not any(t.startswith(p) for p in score_prefixes)]
 
     async def _write_evaluation_to_store(
