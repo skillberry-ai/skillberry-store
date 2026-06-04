@@ -66,7 +66,7 @@ class SkillberryPluginSecurity(PluginBase):
         return self.llm_client is not None
 
     def _strip_score_tags(self, tags: List[str]) -> List[str]:
-        return tags  # implemented in Task 2
+        return [t for t in tags if not t.startswith("security-score:")]
 
     def _build_context(self, obj: Dict[str, Any], content_type: str) -> str:
         return ""  # implemented in Task 3
