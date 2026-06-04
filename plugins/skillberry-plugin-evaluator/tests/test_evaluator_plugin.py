@@ -269,6 +269,63 @@ async def test_evaluate_object_raises_runtime_error_on_bad_llm_response():
         await plugin.evaluate_object("t1", "tool")
 
 
+@pytest.mark.asyncio
+async def test_skill_content_added_also_evaluates_referenced_tools_and_snippets():
+    """When a skill is added, its referenced tools and snippets are evaluated too.
+
+    This covers import flows (e.g. import-anthropic-skill) that write tools/snippets
+    directly without emitting per-object content_added events.
+    """
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = MagicMock()
+
+    mock_store.get_skill.return_value = {
+        "uuid": "skill-1", "name": "my_skill", "description": "",
+        "tool_uuids": ["tool-a"], "snippet_uuids": ["snip-b"], "tags": [], "extra": {},
+    }
+    mock_store.get_tool.return_value = {
+        "uuid": "tool-a", "name": "tool_a", "description": "", "tags": [], "extra": {},
+    }
+    mock_store.get_snippet.return_value = {
+        "uuid": "snip-b", "name": "snip_b", "description": "",
+        "content": "hello", "content_type": "text/plain", "tags": [], "extra": {},
+    }
+    mock_store.skills = MagicMock()
+    mock_store.tools = MagicMock()
+    mock_store.snippets = MagicMock()
+
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json())
+
+    from skillberry_store.plugins import events as events_module
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        from skillberry_store.plugins.events import _event_handlers
+        from unittest.mock import patch
+        mock_module = MagicMock()
+        mock_module.get_llm.return_value = MagicMock(return_value=plugin.llm_client)
+        with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+            pass  # handlers already registered on plugin
+        # Register the existing plugin's handlers manually
+        _event_handlers.setdefault("content_added:skill", [])
+        # Re-register by creating a fresh plugin with the same mock store
+        fresh_plugin = _make_plugin_with_mock_llm()
+        fresh_plugin.set_store_api(mock_store)
+        fresh_plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json())
+
+        handler = _event_handlers["content_added:skill"][0]
+        await handler(uuid="skill-1")
+
+        # skill, tool, and snippet should each have write_dict called
+        assert mock_store.skills.write_dict.called
+        assert mock_store.tools.write_dict.called
+        assert mock_store.snippets.write_dict.called
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
+
+
 # ── event handler tests ──────────────────────────────────────────────────────
 
 def test_event_handlers_registered_for_all_content_types():

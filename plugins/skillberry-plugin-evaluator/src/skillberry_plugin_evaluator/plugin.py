@@ -66,6 +66,32 @@ class SkillberryPluginEvaluator(PluginBase):
                     logger.error(
                         f"Auto-evaluation failed for {ct} {uuid}: {e}", exc_info=True
                     )
+                # For skills, also evaluate referenced tools and snippets.
+                # Import flows (e.g. import-anthropic-skill) write tools/snippets
+                # directly to the handler without emitting per-object events, so
+                # those objects would otherwise never be evaluated.
+                if ct == "skill":
+                    try:
+                        skill_obj = self.store.get_skill(uuid)
+                    except Exception:
+                        skill_obj = None
+                    if skill_obj:
+                        for tool_uuid in skill_obj.get("tool_uuids") or []:
+                            try:
+                                await self.evaluate_object(tool_uuid, "tool")
+                            except Exception as e:
+                                logger.error(
+                                    f"Auto-evaluation failed for tool {tool_uuid}: {e}",
+                                    exc_info=True,
+                                )
+                        for snippet_uuid in skill_obj.get("snippet_uuids") or []:
+                            try:
+                                await self.evaluate_object(snippet_uuid, "snippet")
+                            except Exception as e:
+                                logger.error(
+                                    f"Auto-evaluation failed for snippet {snippet_uuid}: {e}",
+                                    exc_info=True,
+                                )
 
             event_name = f"content_added:{content_type}"
             if event_name not in _event_handlers:
