@@ -164,7 +164,80 @@ class SkillberryPluginSecurity(PluginBase):
             self.store.snippets.write_dict(uuid, obj)
 
     async def evaluate_security(self, uuid: str, content_type: str) -> Dict[str, Any]:
-        raise NotImplementedError  # implemented in Task 5
+        """
+        Evaluate a store object's security posture.
+
+        Fetches the full object from the store, sends it to the LLM, then
+        stores the score as a tag (security-score:N) and the evaluation text
+        in extra["evaluation"]["security"]. Preserves any existing quality/
+        performance evaluation keys.
+
+        Args:
+            uuid: UUID of the object to evaluate
+            content_type: "tool", "skill", or "snippet"
+
+        Returns:
+            Dict with security_score (int 1-10) and security_evaluation (str)
+        """
+        if not self.llm_client:
+            raise RuntimeError("LLM client not initialized")
+        if self._store_api is None:
+            raise RuntimeError("Store API not available")
+
+        if content_type == "tool":
+            obj = self.store.get_tool(uuid)
+        elif content_type == "skill":
+            obj = self.store.get_skill(uuid)
+        elif content_type == "snippet":
+            obj = self.store.get_snippet(uuid)
+        else:
+            raise ValueError(f"Unknown content_type: {content_type}")
+
+        if not obj:
+            raise ValueError(f"{content_type.capitalize()} {uuid} not found in store")
+
+        logger.info(f"Evaluating security of {content_type} {uuid}: {obj.get('name', 'unnamed')}")
+
+        context = self._build_context(obj, content_type)
+
+        prompt = f"""You are evaluating a {content_type} from a skills store for security posture.
+
+{context}
+
+Evaluate this {content_type} on security and return a JSON object with exactly these two fields:
+- security_score: integer 1-10 where 1-3 = critical issues (injection flaws, exposed secrets, no input validation), 4-6 = moderate risks (weak error handling, risky dependencies, missing auth checks), 7-9 = minor issues (best-practice gaps, overly permissive patterns), 10 = no identified issues
+- security_evaluation: string (one paragraph explicitly naming each specific vulnerability or concern found, or "No security issues identified." if the score is 10)
+
+Return ONLY the JSON object, no other text."""
+
+        logger.debug(f"Calling LLM for security evaluation of {content_type} {uuid}")
+        response = await self.llm_client.generate_async(prompt=prompt)
+        logger.info(f"Received LLM response ({len(response)} chars)")
+
+        try:
+            start = response.find("{")
+            end = response.rfind("}") + 1
+            if start < 0 or end <= start:
+                raise ValueError("No JSON object found in LLM response")
+            evaluation = json.loads(response[start:end])
+
+            for field in ("security_score", "security_evaluation"):
+                if field not in evaluation:
+                    raise ValueError(f"Missing field in LLM response: {field}")
+
+            evaluation["security_score"] = int(evaluation["security_score"])
+
+        except Exception as e:
+            logger.warning(f"Failed to parse LLM security evaluation response: {e}")
+            raise RuntimeError(f"Failed to parse LLM response: {str(e)}")
+
+        await self._write_security_to_store(uuid, content_type, obj, evaluation)
+        logger.info(
+            f"Security evaluation stored for {content_type} {uuid}: "
+            f"security={evaluation['security_score']}"
+        )
+
+        return evaluation
 
     def get_router(self):
         return None  # implemented in Task 6

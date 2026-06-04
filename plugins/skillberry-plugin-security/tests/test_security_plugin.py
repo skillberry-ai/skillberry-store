@@ -194,3 +194,98 @@ async def test_write_security_uses_skills_writer_for_skill():
 
     assert mock_store.skills.write_dict.called
     assert not mock_store.tools.write_dict.called if hasattr(mock_store, 'tools') else True
+
+
+# ── evaluate_security ────────────────────────────────────────────────────────
+
+def _make_plugin_with_mock_llm():
+    """Create a plugin instance with a mocked LLM client."""
+    mock_client = MagicMock()
+    mock_llm_class = MagicMock(return_value=mock_client)
+    mock_module = MagicMock()
+    mock_module.get_llm.return_value = mock_llm_class
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        plugin = SkillberryPluginSecurity()
+    return plugin
+
+
+def _llm_json(score=7):
+    return json.dumps({
+        "security_score": score,
+        "security_evaluation": f"Score: {score}/10. Found a minor path traversal risk.",
+    })
+
+
+@pytest.mark.asyncio
+async def test_evaluate_security_tool_returns_both_fields():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = MagicMock()
+    mock_store.get_tool.return_value = {
+        "uuid": "tool-1", "name": "test_tool", "description": "A test tool",
+        "programming_language": "python", "packaging_format": "code",
+        "params": {}, "tags": [], "extra": {},
+    }
+    mock_store.tools = MagicMock()
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(score=7))
+
+    result = await plugin.evaluate_security("tool-1", "tool")
+
+    assert result["security_score"] == 7
+    assert "path traversal" in result["security_evaluation"]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_security_writes_tag_and_metadata():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = MagicMock()
+    mock_store.get_tool.return_value = {
+        "uuid": "tool-1", "name": "t", "description": "",
+        "tags": ["existing-tag"], "extra": {},
+    }
+    mock_store.tools = MagicMock()
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(score=5))
+
+    await plugin.evaluate_security("tool-1", "tool")
+
+    written = mock_store.tools.write_dict.call_args[0][1]
+    assert "security-score:5" in written["tags"]
+    assert "existing-tag" in written["tags"]
+    assert written["extra"]["evaluation"]["security"]["score"] == 5
+
+
+@pytest.mark.asyncio
+async def test_evaluate_security_raises_value_error_when_uuid_not_found():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = MagicMock()
+    mock_store.get_tool.return_value = None
+    plugin.set_store_api(mock_store)
+
+    with pytest.raises(ValueError, match="not found"):
+        await plugin.evaluate_security("nonexistent", "tool")
+
+
+@pytest.mark.asyncio
+async def test_evaluate_security_raises_runtime_error_on_bad_llm_response():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = MagicMock()
+    mock_store.get_tool.return_value = {
+        "uuid": "t1", "name": "t", "description": "", "tags": [], "extra": {},
+    }
+    mock_store.tools = MagicMock()
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(return_value="not json at all")
+
+    with pytest.raises(RuntimeError, match="Failed to parse"):
+        await plugin.evaluate_security("t1", "tool")
+
+
+@pytest.mark.asyncio
+async def test_evaluate_security_raises_value_error_on_unknown_content_type():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = MagicMock()
+    plugin.set_store_api(mock_store)
+
+    with pytest.raises(ValueError, match="Unknown content_type"):
+        await plugin.evaluate_security("uuid-1", "banana")
