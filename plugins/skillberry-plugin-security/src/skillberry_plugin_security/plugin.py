@@ -140,7 +140,28 @@ class SkillberryPluginSecurity(PluginBase):
         obj: Dict[str, Any],
         evaluation: Dict[str, Any],
     ) -> None:
-        pass  # implemented in Task 4
+        """Write security score tag and evaluation text back to the store object.
+
+        Merges into extra["evaluation"]["security"] without wiping quality/performance keys.
+        """
+        existing_tags = self._strip_score_tags(obj.get("tags") or [])
+        obj["tags"] = existing_tags + [f"security-score:{evaluation['security_score']}"]
+
+        if not isinstance(obj.get("extra"), dict):
+            obj["extra"] = {}
+        if not isinstance(obj["extra"].get("evaluation"), dict):
+            obj["extra"]["evaluation"] = {}
+        obj["extra"]["evaluation"]["security"] = {
+            "score": evaluation["security_score"],
+            "evaluation": evaluation["security_evaluation"],
+        }
+
+        if content_type == "tool":
+            self.store.tools.write_dict(uuid, obj)
+        elif content_type == "skill":
+            self.store.skills.write_dict(uuid, obj)
+        elif content_type == "snippet":
+            self.store.snippets.write_dict(uuid, obj)
 
     async def evaluate_security(self, uuid: str, content_type: str) -> Dict[str, Any]:
         raise NotImplementedError  # implemented in Task 5

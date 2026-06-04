@@ -103,3 +103,94 @@ def test_build_context_snippet_includes_content():
     context = plugin._build_context(obj, "snippet")
     assert "Hello World" in context
     assert "my_snippet" in context
+
+
+# ── helper: _write_security_to_store ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_write_security_adds_tag_and_metadata_to_tool():
+    plugin = SkillberryPluginSecurity()
+    mock_store = MagicMock()
+    mock_store.tools = MagicMock()
+    plugin.set_store_api(mock_store)
+
+    obj = {"uuid": "tool-1", "name": "t", "description": "", "tags": ["keeper"], "extra": {}}
+    evaluation = {"security_score": 6, "security_evaluation": "Found SQL injection risk."}
+
+    await plugin._write_security_to_store("tool-1", "tool", obj, evaluation)
+
+    written = mock_store.tools.write_dict.call_args[0][1]
+    assert "security-score:6" in written["tags"]
+    assert "keeper" in written["tags"]
+    assert written["extra"]["evaluation"]["security"]["score"] == 6
+    assert written["extra"]["evaluation"]["security"]["evaluation"] == "Found SQL injection risk."
+
+
+@pytest.mark.asyncio
+async def test_write_security_preserves_quality_and_performance_metadata():
+    plugin = SkillberryPluginSecurity()
+    mock_store = MagicMock()
+    mock_store.tools = MagicMock()
+    plugin.set_store_api(mock_store)
+
+    obj = {
+        "uuid": "tool-1", "name": "t", "description": "",
+        "tags": ["quality-score:8", "performance-score:7"],
+        "extra": {
+            "evaluation": {
+                "quality": {"score": 8, "evaluation": "Great quality."},
+                "performance": {"score": 7, "evaluation": "Good perf."},
+            }
+        },
+    }
+    evaluation = {"security_score": 5, "security_evaluation": "Weak input validation."}
+
+    await plugin._write_security_to_store("tool-1", "tool", obj, evaluation)
+
+    written = mock_store.tools.write_dict.call_args[0][1]
+    assert "quality-score:8" in written["tags"]
+    assert "performance-score:7" in written["tags"]
+    assert "security-score:5" in written["tags"]
+    eval_meta = written["extra"]["evaluation"]
+    assert "quality" in eval_meta
+    assert "performance" in eval_meta
+    assert "security" in eval_meta
+
+
+@pytest.mark.asyncio
+async def test_write_security_replaces_old_security_tag_on_snippet():
+    plugin = SkillberryPluginSecurity()
+    mock_store = MagicMock()
+    mock_store.snippets = MagicMock()
+    plugin.set_store_api(mock_store)
+
+    obj = {
+        "uuid": "snip-1", "name": "s", "description": "",
+        "tags": ["keeper", "security-score:2"],
+        "extra": {},
+    }
+    evaluation = {"security_score": 9, "security_evaluation": "Minor issue only."}
+
+    await plugin._write_security_to_store("snip-1", "snippet", obj, evaluation)
+
+    written = mock_store.snippets.write_dict.call_args[0][1]
+    tags = written["tags"]
+    assert "security-score:9" in tags
+    assert "security-score:2" not in tags
+    assert "keeper" in tags
+
+
+@pytest.mark.asyncio
+async def test_write_security_uses_skills_writer_for_skill():
+    plugin = SkillberryPluginSecurity()
+    mock_store = MagicMock()
+    mock_store.skills = MagicMock()
+    plugin.set_store_api(mock_store)
+
+    obj = {"uuid": "skill-1", "name": "s", "description": "", "tags": [], "extra": {}}
+    evaluation = {"security_score": 10, "security_evaluation": "No security issues identified."}
+
+    await plugin._write_security_to_store("skill-1", "skill", obj, evaluation)
+
+    assert mock_store.skills.write_dict.called
+    assert not mock_store.tools.write_dict.called if hasattr(mock_store, 'tools') else True
