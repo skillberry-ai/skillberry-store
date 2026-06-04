@@ -155,16 +155,22 @@ plugin-evaluator = [
   "skillberry-plugin-evaluator>=0.2.0",
 ]
 
+plugin-security = [
+  "skillberry-plugin-security>=0.1.0",
+]
+
 # Install all plugins
 plugins-all = [
   "skillberry-plugin-creator>=0.2.0",
   "skillberry-plugin-evaluator>=0.2.0",
+  "skillberry-plugin-security>=0.1.0",
 ]
 
 [tool.uv.sources]
 skillberry-store-sdk = { path = "client/python/skillberry_store_sdk", editable = true }
 skillberry-plugin-creator = { path = "plugins/skillberry-plugin-creator", editable = true }
 skillberry-plugin-evaluator = { path = "plugins/skillberry-plugin-evaluator", editable = true }
+skillberry-plugin-security = { path = "plugins/skillberry-plugin-security", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
 torch = { index = "pytorch-cpu" }
 
