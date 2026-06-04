@@ -1,5 +1,5 @@
 """
-Skillberry Plugin Evaluator - LLM-based quality/performance/security evaluation plugin.
+Skillberry Plugin Evaluator - LLM-based quality/performance evaluation plugin.
 Uses llm-switchboard for LLM integration.
 """
 
@@ -22,7 +22,7 @@ class SkillberryPluginEvaluator(PluginBase):
         self._metadata = PluginMetadata(
             name="Content Evaluator",
             version="0.1.0",
-            description="Evaluate content quality, performance, and security using LLM",
+            description="Evaluate content quality and performance using LLM",
             plugin_type=PluginType.EVALUATOR,
         )
 
@@ -174,8 +174,8 @@ class SkillberryPluginEvaluator(PluginBase):
         return "\n".join(lines)
 
     def _strip_score_tags(self, tags: List[str]) -> List[str]:
-        """Remove all evaluator score tags so re-evaluation is a clean overwrite."""
-        score_prefixes = ("quality-score:", "performance-score:", "security-score:")
+        """Remove evaluator score tags so re-evaluation is a clean overwrite."""
+        score_prefixes = ("quality-score:", "performance-score:")
         return [t for t in tags if not any(t.startswith(p) for p in score_prefixes)]
 
     async def _write_evaluation_to_store(
@@ -311,7 +311,7 @@ Return ONLY the JSON object, no other text."""
 
         @router.post("/evaluate")
         async def evaluate_endpoint(request: EvaluateRequest):
-            """Evaluate a store object and store quality/performance/security scores."""
+            """Evaluate a store object and store quality/performance scores."""
             if not self.is_enabled():
                 raise HTTPException(status_code=503, detail=self._status_message)
 

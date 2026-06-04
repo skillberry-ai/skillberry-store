@@ -64,10 +64,9 @@ def test_plugin_provides_ui_config():
 
 # ── helper: _strip_score_tags ────────────────────────────────────────────────
 
-def test_strip_score_tags_removes_all_score_types():
+def test_strip_score_tags_removes_quality_and_performance():
     plugin = SkillberryPluginEvaluator()
-    # includes security-score to ensure old 3-category evaluations are cleaned up
-    tags = ["python", "quality-score:7", "performance-score:5", "security-score:8", "utility"]
+    tags = ["python", "quality-score:7", "performance-score:5", "utility"]
     assert plugin._strip_score_tags(tags) == ["python", "utility"]
 
 
@@ -233,7 +232,7 @@ async def test_evaluate_object_writes_evaluation_metadata_to_skill():
     assert eval_meta["performance"]["score"] == 5
     assert "evaluation" in eval_meta["quality"]
     assert "evaluation" in eval_meta["performance"]
-    assert "security" not in eval_meta
+    assert set(eval_meta.keys()) == {"quality", "performance"}
 
 
 @pytest.mark.asyncio
