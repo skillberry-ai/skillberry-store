@@ -240,10 +240,72 @@ Return ONLY the JSON object, no other text."""
         return evaluation
 
     def get_router(self):
-        return None  # implemented in Task 6
+        """Register plugin routes."""
+        from fastapi import APIRouter, HTTPException
+        from pydantic import BaseModel
+
+        router = APIRouter()
+
+        class EvaluateRequest(BaseModel):
+            uuid: str
+            content_type: str  # "tool", "skill", or "snippet"
+
+        @router.post("/evaluate")
+        async def evaluate_endpoint(request: EvaluateRequest):
+            """Evaluate a store object and store the security score."""
+            if not self.is_enabled():
+                raise HTTPException(status_code=503, detail=self._status_message)
+
+            if request.content_type not in ("tool", "skill", "snippet"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="content_type must be 'tool', 'skill', or 'snippet'",
+                )
+
+            try:
+                result = await self.evaluate_security(
+                    uuid=request.uuid,
+                    content_type=request.content_type,
+                )
+                return {"success": True, "uuid": request.uuid, **result}
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e))
+            except Exception as e:
+                logger.error(
+                    f"Failed to evaluate security of {request.content_type} {request.uuid}: {e}",
+                    exc_info=True,
+                )
+                raise HTTPException(status_code=500, detail=str(e))
+
+        return router
 
     def get_cli_commands(self) -> Optional[Dict[str, Any]]:
         return None
 
     def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return None  # implemented in Task 6
+        return {
+            "icon": "ShieldAltIcon",
+            "color": "#E74C3C",
+            "actions": [
+                {
+                    "label": "Evaluate Security",
+                    "endpoint": "/api/plugins/security/evaluate",
+                    "method": "POST",
+                    "params_schema": {
+                        "type": "object",
+                        "properties": {
+                            "uuid": {
+                                "type": "string",
+                                "description": "UUID of the object to evaluate",
+                            },
+                            "content_type": {
+                                "type": "string",
+                                "enum": ["tool", "skill", "snippet"],
+                                "description": "Type of object to evaluate",
+                            },
+                        },
+                        "required": ["uuid", "content_type"],
+                    },
+                }
+            ],
+        }

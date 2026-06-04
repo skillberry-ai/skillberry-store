@@ -289,3 +289,48 @@ async def test_evaluate_security_raises_value_error_on_unknown_content_type():
 
     with pytest.raises(ValueError, match="Unknown content_type"):
         await plugin.evaluate_security("uuid-1", "banana")
+
+
+# ── router + UI config ───────────────────────────────────────────────────────
+
+def test_plugin_disabled_when_llm_unavailable():
+    mock_module = MagicMock()
+    mock_module.get_llm.side_effect = RuntimeError("LLM unavailable")
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        plugin = SkillberryPluginSecurity()
+        assert not plugin.is_enabled()
+
+
+def test_plugin_enabled_when_llm_available():
+    mock_client = MagicMock()
+    mock_llm_class = MagicMock(return_value=mock_client)
+    mock_module = MagicMock()
+    mock_module.get_llm.return_value = mock_llm_class
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        plugin = SkillberryPluginSecurity()
+        assert plugin.is_enabled()
+
+
+def test_plugin_provides_router():
+    plugin = SkillberryPluginSecurity()
+    router = plugin.get_router()
+    assert router is not None
+    route_paths = [route.path for route in router.routes]
+    assert any("evaluate" in path for path in route_paths)
+
+
+def test_plugin_provides_no_cli_commands():
+    plugin = SkillberryPluginSecurity()
+    assert plugin.get_cli_commands() is None
+
+
+def test_plugin_provides_ui_config():
+    plugin = SkillberryPluginSecurity()
+    ui_config = plugin.get_ui_config()
+    assert ui_config is not None
+    assert "icon" in ui_config
+    assert "color" in ui_config
+    assert "actions" in ui_config
+    assert len(ui_config["actions"]) > 0
+    action_labels = [action["label"] for action in ui_config["actions"]]
+    assert any("security" in label.lower() for label in action_labels)
