@@ -334,3 +334,86 @@ def test_plugin_provides_ui_config():
     assert len(ui_config["actions"]) > 0
     action_labels = [action["label"] for action in ui_config["actions"]]
     assert any("security" in label.lower() for label in action_labels)
+
+
+# ── event handler tests ──────────────────────────────────────────────────────
+
+def test_event_handlers_registered_for_all_content_types():
+    from skillberry_store.plugins import events as events_module
+
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        mock_module = MagicMock()
+        mock_module.get_llm.side_effect = RuntimeError("unavailable")
+        with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+            SkillberryPluginSecurity()
+
+        assert len(events_module._event_handlers.get("content_added:tool", [])) > 0
+        assert len(events_module._event_handlers.get("content_added:skill", [])) > 0
+        assert len(events_module._event_handlers.get("content_added:snippet", [])) > 0
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
+
+
+@pytest.mark.asyncio
+async def test_auto_evaluation_skipped_when_store_not_set():
+    from skillberry_store.plugins import events as events_module
+
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        mock_client = MagicMock()
+        mock_llm_class = MagicMock(return_value=mock_client)
+        mock_module = MagicMock()
+        mock_module.get_llm.return_value = mock_llm_class
+        with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+            SkillberryPluginSecurity()
+
+        handler = events_module._event_handlers["content_added:tool"][0]
+        await handler(uuid="any-uuid")  # must not raise
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
+
+
+@pytest.mark.asyncio
+async def test_skill_content_added_also_evaluates_referenced_tools_and_snippets():
+    """When a skill is added, its referenced tools and snippets are evaluated too."""
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = MagicMock()
+
+    mock_store.get_skill.return_value = {
+        "uuid": "skill-1", "name": "my_skill", "description": "",
+        "tool_uuids": ["tool-a"], "snippet_uuids": ["snip-b"], "tags": [], "extra": {},
+    }
+    mock_store.get_tool.return_value = {
+        "uuid": "tool-a", "name": "tool_a", "description": "", "tags": [], "extra": {},
+    }
+    mock_store.get_snippet.return_value = {
+        "uuid": "snip-b", "name": "snip_b", "description": "",
+        "content": "hello", "content_type": "text/plain", "tags": [], "extra": {},
+    }
+    mock_store.skills = MagicMock()
+    mock_store.tools = MagicMock()
+    mock_store.snippets = MagicMock()
+
+    from skillberry_store.plugins import events as events_module
+
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        fresh_plugin = _make_plugin_with_mock_llm()
+        fresh_plugin.set_store_api(mock_store)
+        fresh_plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json())
+
+        handler = events_module._event_handlers["content_added:skill"][0]
+        await handler(uuid="skill-1")
+
+        assert mock_store.skills.write_dict.called
+        assert mock_store.tools.write_dict.called
+        assert mock_store.snippets.write_dict.called
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)

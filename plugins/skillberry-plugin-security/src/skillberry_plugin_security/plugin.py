@@ -53,7 +53,48 @@ class SkillberryPluginSecurity(PluginBase):
         self._register_event_handlers()
 
     def _register_event_handlers(self) -> None:
-        pass  # implemented in Task 7
+        """Register on_content_added handlers for automatic security evaluation on object creation."""
+        from skillberry_store.plugins.events import _event_handlers
+
+        for content_type in ("tool", "skill", "snippet"):
+            async def _handle_added(uuid: str, ct=content_type):
+                if not self.is_enabled() or self._store_api is None:
+                    return
+                try:
+                    await self.evaluate_security(uuid, ct)
+                except Exception as e:
+                    logger.error(
+                        f"Auto-security-evaluation failed for {ct} {uuid}: {e}", exc_info=True
+                    )
+                # For skills, also evaluate referenced tools and snippets.
+                # Import flows write tools/snippets directly without emitting per-object events.
+                if ct == "skill":
+                    try:
+                        skill_obj = self.store.get_skill(uuid)
+                    except Exception:
+                        skill_obj = None
+                    if skill_obj:
+                        for tool_uuid in skill_obj.get("tool_uuids") or []:
+                            try:
+                                await self.evaluate_security(tool_uuid, "tool")
+                            except Exception as e:
+                                logger.error(
+                                    f"Auto-security-evaluation failed for tool {tool_uuid}: {e}",
+                                    exc_info=True,
+                                )
+                        for snippet_uuid in skill_obj.get("snippet_uuids") or []:
+                            try:
+                                await self.evaluate_security(snippet_uuid, "snippet")
+                            except Exception as e:
+                                logger.error(
+                                    f"Auto-security-evaluation failed for snippet {snippet_uuid}: {e}",
+                                    exc_info=True,
+                                )
+
+            event_name = f"content_added:{content_type}"
+            if event_name not in _event_handlers:
+                _event_handlers[event_name] = []
+            _event_handlers[event_name].append(_handle_added)
 
     @property
     def metadata(self) -> PluginMetadata:
