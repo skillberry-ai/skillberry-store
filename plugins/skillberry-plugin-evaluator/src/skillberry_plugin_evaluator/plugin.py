@@ -145,8 +145,8 @@ class SkillberryPluginEvaluator(PluginBase):
         return "\n".join(lines)
 
     def _strip_score_tags(self, tags: List[str]) -> List[str]:
-        """Remove existing quality/performance/security score tags."""
-        score_prefixes = ("quality-score:", "performance-score:", "security-score:")
+        """Remove existing quality/performance score tags."""
+        score_prefixes = ("quality-score:", "performance-score:")
         return [t for t in tags if not any(t.startswith(p) for p in score_prefixes)]
 
     async def _write_evaluation_to_store(
@@ -160,7 +160,6 @@ class SkillberryPluginEvaluator(PluginBase):
         score_tags = [
             f"quality-score:{evaluation['quality_score']}",
             f"performance-score:{evaluation['performance_score']}",
-            f"security-score:{evaluation['security_score']}",
         ]
 
         existing_tags = self._strip_score_tags(obj.get("tags") or [])
@@ -177,10 +176,6 @@ class SkillberryPluginEvaluator(PluginBase):
                 "score": evaluation["performance_score"],
                 "evaluation": evaluation["performance_evaluation"],
             },
-            "security": {
-                "score": evaluation["security_score"],
-                "evaluation": evaluation["security_evaluation"],
-            },
         }
 
         if content_type == "tool":
@@ -192,7 +187,7 @@ class SkillberryPluginEvaluator(PluginBase):
 
     async def evaluate_object(self, uuid: str, content_type: str) -> Dict[str, Any]:
         """
-        Evaluate a store object on quality, performance, and security.
+        Evaluate a store object on quality and performance.
 
         Fetches the full object from the store, sends it to the LLM, then
         stores scores as tags (quality-score:N etc.) and textual evaluations
@@ -203,8 +198,8 @@ class SkillberryPluginEvaluator(PluginBase):
             content_type: "tool", "skill", or "snippet"
 
         Returns:
-            Dict with quality_score, performance_score, security_score (int 1-10)
-            and quality_evaluation, performance_evaluation, security_evaluation (str)
+            Dict with quality_score, performance_score (int 1-10)
+            and quality_evaluation, performance_evaluation (str)
         """
         if not self.llm_client:
             raise RuntimeError("LLM client not initialized")
@@ -231,13 +226,11 @@ class SkillberryPluginEvaluator(PluginBase):
 
 {context}
 
-Evaluate this {content_type} on three dimensions and return a JSON object with exactly these six fields:
+Evaluate this {content_type} on two dimensions and return a JSON object with exactly these four fields:
 - quality_score: integer 1-10 (clarity, structure, completeness, best practices)
 - quality_evaluation: string (one paragraph)
 - performance_score: integer 1-10 (efficiency, resource usage, scalability)
 - performance_evaluation: string (one paragraph)
-- security_score: integer 1-10 (security posture, risks, vulnerabilities)
-- security_evaluation: string (one paragraph)
 
 Return ONLY the JSON object, no other text."""
 
@@ -255,13 +248,12 @@ Return ONLY the JSON object, no other text."""
             required_fields = [
                 "quality_score", "quality_evaluation",
                 "performance_score", "performance_evaluation",
-                "security_score", "security_evaluation",
             ]
             for field in required_fields:
                 if field not in evaluation:
                     raise ValueError(f"Missing field in LLM response: {field}")
 
-            for score_field in ("quality_score", "performance_score", "security_score"):
+            for score_field in ("quality_score", "performance_score"):
                 evaluation[score_field] = int(evaluation[score_field])
 
         except Exception as e:
@@ -272,8 +264,7 @@ Return ONLY the JSON object, no other text."""
         logger.info(
             f"Evaluation stored for {content_type} {uuid}: "
             f"quality={evaluation['quality_score']}, "
-            f"performance={evaluation['performance_score']}, "
-            f"security={evaluation['security_score']}"
+            f"performance={evaluation['performance_score']}"
         )
 
         return evaluation

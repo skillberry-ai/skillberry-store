@@ -66,7 +66,7 @@ def test_plugin_provides_ui_config():
 
 def test_strip_score_tags_removes_all_score_types():
     plugin = SkillberryPluginEvaluator()
-    tags = ["python", "quality-score:7", "performance-score:5", "security-score:8", "utility"]
+    tags = ["python", "quality-score:7", "performance-score:5", "utility"]
     assert plugin._strip_score_tags(tags) == ["python", "utility"]
 
 
@@ -145,14 +145,12 @@ def _make_plugin_with_mock_llm():
     return plugin
 
 
-def _llm_json(q=8, p=7, s=9):
+def _llm_json(q=8, p=7):
     return json.dumps({
         "quality_score": q,
         "quality_evaluation": "Good quality.",
         "performance_score": p,
         "performance_evaluation": "Acceptable performance.",
-        "security_score": s,
-        "security_evaluation": "Secure implementation.",
     })
 
 
@@ -167,16 +165,14 @@ async def test_evaluate_object_tool_returns_all_six_fields():
     }
     mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
-    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7, s=9))
+    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7))
 
     result = await plugin.evaluate_object("tool-1", "tool")
 
     assert result["quality_score"] == 8
     assert result["performance_score"] == 7
-    assert result["security_score"] == 9
     assert result["quality_evaluation"] == "Good quality."
     assert result["performance_evaluation"] == "Acceptable performance."
-    assert result["security_evaluation"] == "Secure implementation."
 
 
 @pytest.mark.asyncio
@@ -189,14 +185,13 @@ async def test_evaluate_object_writes_score_tags_to_tool():
     }
     mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
-    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7, s=9))
+    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7))
 
     await plugin.evaluate_object("tool-1", "tool")
 
     written = mock_store.tools.write_dict.call_args[0][1]
     assert "quality-score:8" in written["tags"]
     assert "performance-score:7" in written["tags"]
-    assert "security-score:9" in written["tags"]
     assert "existing-tag" in written["tags"]
 
 
@@ -210,7 +205,7 @@ async def test_evaluate_object_writes_evaluation_metadata_to_skill():
     }
     mock_store.skills = MagicMock()
     plugin.set_store_api(mock_store)
-    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=6, p=5, s=7))
+    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=6, p=5))
 
     await plugin.evaluate_object("skill-1", "skill")
 
@@ -218,10 +213,9 @@ async def test_evaluate_object_writes_evaluation_metadata_to_skill():
     eval_meta = written["extra"]["evaluation"]
     assert eval_meta["quality"]["score"] == 6
     assert eval_meta["performance"]["score"] == 5
-    assert eval_meta["security"]["score"] == 7
     assert "evaluation" in eval_meta["quality"]
     assert "evaluation" in eval_meta["performance"]
-    assert "evaluation" in eval_meta["security"]
+    assert "security" not in eval_meta
 
 
 @pytest.mark.asyncio
@@ -231,12 +225,12 @@ async def test_evaluate_object_replaces_old_score_tags_on_snippet():
     mock_store.get_snippet.return_value = {
         "uuid": "snip-1", "name": "s", "description": "",
         "content": "Hello", "content_type": "text/plain",
-        "tags": ["keeper", "quality-score:3", "performance-score:2", "security-score:1"],
+        "tags": ["keeper", "quality-score:3", "performance-score:2"],
         "extra": {},
     }
     mock_store.snippets = MagicMock()
     plugin.set_store_api(mock_store)
-    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7, s=9))
+    plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7))
 
     await plugin.evaluate_object("snip-1", "snippet")
 
@@ -246,8 +240,6 @@ async def test_evaluate_object_replaces_old_score_tags_on_snippet():
     assert "quality-score:3" not in tags
     assert "performance-score:7" in tags
     assert "performance-score:2" not in tags
-    assert "security-score:9" in tags
-    assert "security-score:1" not in tags
     assert "keeper" in tags
 
 
