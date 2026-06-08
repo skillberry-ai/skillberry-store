@@ -146,7 +146,7 @@ def register_snippets_api(
             logger.info(f"Snippet '{snippet.name}' created successfully")
 
             # Emit event for plugin hooks
-            await emit_content_added("snippet", snippet.uuid)
+            emit_content_added("snippet", snippet.uuid)
 
             return {
                 "message": f"Snippet '{snippet.name}' created successfully.",
@@ -283,7 +283,7 @@ def register_snippets_api(
             )
 
             # Emit event for plugin hooks
-            await emit_content_deleted("snippet", snippet_uuid)
+            emit_content_deleted("snippet", snippet_uuid)
 
             return {
                 "message": f"Snippet with UUID or name '{uuid_or_name}' deleted successfully."
@@ -371,7 +371,7 @@ def register_snippets_api(
             )
 
             # Emit event for plugin hooks
-            await emit_content_updated("snippet", snippet_uuid)
+            emit_content_updated("snippet", snippet_uuid)
 
             return {
                 "message": f"Snippet with UUID or name '{uuid_or_name}' updated successfully."

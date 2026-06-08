@@ -173,7 +173,7 @@ def register_skills_api(
             )
 
             # Emit event for plugin hooks
-            await emit_content_added("skill", skill.uuid)
+            emit_content_added("skill", skill.uuid)
 
             return {
                 "message": f"Skill '{skill.name}' created successfully.",
@@ -313,7 +313,7 @@ def register_skills_api(
             )
 
             # Emit event for plugin hooks
-            await emit_content_deleted("skill", skill_uuid)
+            emit_content_deleted("skill", skill_uuid)
 
             return {
                 "message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."
@@ -401,7 +401,7 @@ def register_skills_api(
             )
 
             # Emit event for plugin hooks
-            await emit_content_updated("skill", skill_uuid)
+            emit_content_updated("skill", skill_uuid)
 
             return {
                 "message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."
