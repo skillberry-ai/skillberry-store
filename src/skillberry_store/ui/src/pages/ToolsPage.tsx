@@ -5,6 +5,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
+import { tagMatchesFilter } from '../utils/tagUtils';
 import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
@@ -242,7 +243,7 @@ export function ToolsPage() {
     if (filtered && selectedTags.length > 0) {
       filtered = filtered.filter(tool =>
         selectedTags.every(selectedTag =>
-          tool.tags?.includes(selectedTag)
+          tagMatchesFilter(tool.tags ?? [], selectedTag)
         )
       );
     }

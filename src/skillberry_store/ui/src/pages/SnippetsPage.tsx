@@ -5,6 +5,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
+import { tagMatchesFilter } from '../utils/tagUtils';
 import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
@@ -274,7 +275,7 @@ export function SnippetsPage() {
     if (filtered && selectedTags.length > 0) {
       filtered = filtered.filter(snippet =>
         selectedTags.every(selectedTag =>
-          snippet.tags?.includes(selectedTag)
+          tagMatchesFilter(snippet.tags ?? [], selectedTag)
         )
       );
     }

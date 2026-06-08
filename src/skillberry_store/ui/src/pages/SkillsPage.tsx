@@ -4,6 +4,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TagFilter } from '../components/TagFilter';
+import { tagMatchesFilter } from '../utils/tagUtils';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportSkills, importSkills, downloadJSON } from '../utils/exportImportHelpers';
@@ -407,7 +408,7 @@ export function SkillsPage() {
     if (filtered && selectedTags.length > 0) {
       filtered = filtered.filter(skill =>
         selectedTags.every(selectedTag =>
-          skill.tags?.includes(selectedTag)
+          tagMatchesFilter(skill.tags ?? [], selectedTag)
         )
       );
     }
