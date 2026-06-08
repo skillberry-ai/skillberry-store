@@ -337,4 +337,63 @@ def test_matches_filter_missing_attribute():
     
     assert store_api._matches_filter(item, {"nonexistent": "value"}) is False
 
+
+def test_update_skill_metadata_merges_with_existing_extra(mock_handlers):
+    """Test updating skill metadata merges with existing extra fields."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    skill_dict = {
+        "uuid": "skill-uuid",
+        "name": "test_skill",
+        "extra": {"old_key": "old_val"},
+        "tags": [],
+    }
+    mock_handlers["skills"].read_dict.return_value = skill_dict
+    mock_handlers["skills"].write_dict.return_value = True
+
+    store_api = StoreAPI(mock_handlers)
+    result = store_api.update_skill_metadata("skill-uuid", {"duplicate_analysis": {"skill-y": "reason"}})
+
+    assert result is True
+    written = mock_handlers["skills"].write_dict.call_args[0][1]
+    assert written["extra"]["old_key"] == "old_val"
+    assert written["extra"]["duplicate_analysis"] == {"skill-y": "reason"}
+
+
+def test_update_skill_metadata_creates_extra_when_missing(mock_handlers):
+    """Test updating skill metadata creates extra field if missing."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    skill_dict = {"uuid": "skill-uuid", "name": "test_skill", "tags": []}
+    mock_handlers["skills"].read_dict.return_value = skill_dict
+    mock_handlers["skills"].write_dict.return_value = True
+
+    store_api = StoreAPI(mock_handlers)
+    result = store_api.update_skill_metadata("skill-uuid", {"duplicate_analysis": {"skill-z": "r"}})
+
+    assert result is True
+    written = mock_handlers["skills"].write_dict.call_args[0][1]
+    assert written["extra"]["duplicate_analysis"] == {"skill-z": "r"}
+
+
+def test_update_skill_metadata_returns_false_when_not_found(mock_handlers):
+    """Test updating metadata for non-existent skill returns False."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    mock_handlers["skills"].read_dict.return_value = None
+
+    store_api = StoreAPI(mock_handlers)
+    result = store_api.update_skill_metadata("missing", {"key": "val"})
+
+    assert result is False
+    mock_handlers["skills"].write_dict.assert_not_called()
+
+
+def test_update_skill_metadata_returns_false_when_skills_handler_none():
+    """Test updating skill metadata returns False when skills handler not set."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    store_api = StoreAPI({"tools": None, "skills": None, "snippets": None})
+    assert store_api.update_skill_metadata("any", {}) is False
+
 # Made with Bob

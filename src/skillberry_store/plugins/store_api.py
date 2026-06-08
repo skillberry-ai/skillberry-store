@@ -174,6 +174,34 @@ class StoreAPI:
             logger.error(f"Failed to update skill tags for {uuid}: {e}")
             return False
     
+    def update_skill_metadata(self, uuid: str, metadata: Dict[str, Any]) -> bool:
+        """Update skill's extra metadata (merges with existing).
+
+        Args:
+            uuid: UUID of the skill
+            metadata: Dict of metadata to add/update in extra
+
+        Returns:
+            True if successful, False if skill not found
+        """
+        if not self.skills:
+            return False
+
+        skill = self.get_skill(uuid)
+        if not skill:
+            return False
+
+        if "extra" not in skill or not isinstance(skill.get("extra"), dict):
+            skill["extra"] = {}
+        skill["extra"].update(metadata)
+
+        try:
+            self.skills.write_dict(uuid, skill)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update skill metadata for {uuid}: {e}")
+            return False
+
     # Snippet operations
     def get_snippet(self, uuid: str) -> Optional[Dict[str, Any]]:
         """Get a snippet by UUID.
