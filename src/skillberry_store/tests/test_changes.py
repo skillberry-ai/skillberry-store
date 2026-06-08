@@ -109,3 +109,29 @@ def test_delete_object_does_not_call_bump_on_failure():
         with pytest.raises(HTTPException):
             handler.delete_object("aaaaaaaa-0000-0000-0000-000000000000")
         mock_bump.assert_not_called()
+
+
+def test_changes_endpoint_returns_count():
+    """GET /changes returns {"count": N} matching the current counter value."""
+    import skillberry_store.fast_api.changes as changes_module
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    changes_module._count = 0
+    app = FastAPI()
+
+    @app.get("/changes")
+    def _changes():
+        return {"count": changes_module.get()}
+
+    client = TestClient(app)
+
+    response = client.get("/changes")
+    assert response.status_code == 200
+    assert response.json() == {"count": 0}
+
+    changes_module.bump()
+    changes_module.bump()
+
+    response = client.get("/changes")
+    assert response.json() == {"count": 2}
