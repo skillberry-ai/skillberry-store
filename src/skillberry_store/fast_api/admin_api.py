@@ -782,6 +782,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
     def get_changes_count():
         """Return the global mutation counter. Used by the UI to detect data changes."""
         from skillberry_store.fast_api.changes import get as get_count
+
         return {"count": get_count()}
 
     @app.get("/health/ready", tags=[tags], openapi_extra={"x-cli-name": "health-ready"})
