@@ -18,8 +18,11 @@ import { PluginsPage } from './pages/PluginsPage';
 import { AdminPage } from './pages/AdminPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { useChangesMonitor } from './hooks/useChangesMonitor';
 
 function App() {
+  useChangesMonitor();
+
   return (
     <AppLayout>
       <Routes>
