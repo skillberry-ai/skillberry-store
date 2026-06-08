@@ -10,6 +10,7 @@ import {
   MenuToggleElement,
   Label,
   Button,
+  Divider,
 } from '@patternfly/react-core';
 import { getTagColor } from '../utils/tagColors';
 
@@ -23,6 +24,23 @@ interface TagFilterProps {
 export function TagFilter({ allTags, selectedTags, onTagsChange, placeholder = 'Filter by tags...' }: TagFilterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Derive "quality-score:*" style prefix options from tags that contain ":"
+  const tagPrefixes = useMemo(() => {
+    const prefixes = new Set<string>();
+    allTags.forEach(tag => {
+      const colonIdx = tag.indexOf(':');
+      if (colonIdx > 0) prefixes.add(tag.slice(0, colonIdx + 1) + '*');
+    });
+    return Array.from(prefixes)
+      .filter(p => !selectedTags.includes(p))
+      .sort();
+  }, [allTags, selectedTags]);
+
+  const filteredPrefixes = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    return tagPrefixes.filter(p => p.toLowerCase().includes(lowerSearch));
+  }, [tagPrefixes, searchTerm]);
 
   const filteredTags = useMemo(() => {
     const lowerSearch = searchTerm.toLowerCase();
@@ -47,6 +65,8 @@ export function TagFilter({ allTags, selectedTags, onTagsChange, placeholder = '
   const handleClearAll = () => {
     onTagsChange([]);
   };
+
+  const isEmpty = filteredPrefixes.length === 0 && filteredTags.length === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '250px' }}>
@@ -82,16 +102,28 @@ export function TagFilter({ allTags, selectedTags, onTagsChange, placeholder = '
                 outline: 'none',
               }}
             />
-            {filteredTags.length === 0 ? (
+            {isEmpty ? (
               <SelectOption isDisabled>
                 {searchTerm ? 'No tags found' : allTags.length === 0 ? 'No tags available' : 'All tags selected'}
               </SelectOption>
             ) : (
-              filteredTags.map((tag) => (
-                <SelectOption key={tag} value={tag}>
-                  {tag}
-                </SelectOption>
-              ))
+              <>
+                {filteredPrefixes.length > 0 && (
+                  <>
+                    {filteredPrefixes.map((p) => (
+                      <SelectOption key={p} value={p}>
+                        {p}
+                      </SelectOption>
+                    ))}
+                    {filteredTags.length > 0 && <Divider />}
+                  </>
+                )}
+                {filteredTags.map((tag) => (
+                  <SelectOption key={tag} value={tag}>
+                    {tag}
+                  </SelectOption>
+                ))}
+              </>
             )}
           </SelectList>
         </Select>
