@@ -32,6 +32,8 @@ This installs:
 - Core skillberry-store functionality
 - skillberry-plugin-creator (AI-powered content creation)
 - skillberry-plugin-evaluator (AI-powered content evaluation and tagging)
+- skillberry-plugin-security (AI-powered security evaluation)
+- skillberry-plugin-dedupe (AI-powered duplicate skill detection)
 
 ### 3. Install Specific Plugins
 
@@ -47,9 +49,14 @@ pip install skillberry-store[plugin-creator]
 pip install skillberry-store[plugin-evaluator]
 ```
 
+#### Dedupe Plugin Only
+```bash
+pip install skillberry-store[plugin-dedupe]
+```
+
 #### Multiple Specific Plugins
 ```bash
-pip install skillberry-store[plugin-creator,plugin-evaluator]
+pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-dedupe]
 ```
 
 ### 4. Adding Plugins Later
@@ -58,7 +65,7 @@ If you initially installed skillberry-store without plugins, you can add them la
 
 ```bash
 # Add all plugins to existing installation
-pip install skillberry-plugin-creator skillberry-plugin-evaluator
+pip install skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe
 
 # Or reinstall with plugins
 pip install --upgrade skillberry-store[plugins-all]
@@ -158,6 +165,44 @@ curl -X POST http://localhost:8000/api/plugins/skillberry-plugin-evaluator/evalu
     "content": "def hello():\n    print(\"Hello\")",
     "name": "Hello World"
   }'
+```
+
+### Dedupe Plugin (`skillberry-plugin-dedupe`)
+
+**Purpose:** AI-powered duplicate skill detection using LLM.
+
+**Features:**
+- Automatically detects semantically duplicate skills when a skill is created or updated
+- Compares descriptions (not names) against all existing original skills in a single LLM call
+- Tags duplicate skills with `duplicate:{skill-name}` (additive — never removes existing tags)
+- Records similarity explanations in `extra["duplicate_analysis"]`
+- Handles multiple duplicates: adds one tag per match found
+
+**Configuration:**
+```bash
+export LLM_PROVIDER=openai.async  # or litellm, etc.
+export LLM_MODEL=gpt-4
+# Provider-specific variables (e.g., OPENAI_API_KEY)
+```
+
+**Trigger events:** `content_added:skill`, `content_updated:skill`
+
+**No API endpoints** — the plugin operates automatically in the background via event handlers.
+
+**Example output on a duplicate skill:**
+
+Tags added:
+```
+duplicate:web-search-tool
+```
+
+Metadata added to `extra`:
+```json
+{
+  "duplicate_analysis": {
+    "web-search-tool": "Both skills describe performing web searches and returning ranked results."
+  }
+}
 ```
 
 ## LLM Configuration
@@ -285,7 +330,7 @@ my-plugin = { path = "plugins/my-plugin", editable = true }
 
 ```bash
 # Uninstall all plugins
-pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator
+pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe
 
 # Verify removal
 pip list | grep skillberry-plugin

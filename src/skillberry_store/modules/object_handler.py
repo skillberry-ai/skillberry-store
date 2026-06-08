@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 from fastapi import HTTPException
 
+from skillberry_store.fast_api.changes import bump
 from skillberry_store.modules.dict_cache import DictCache
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.lookup_cache import LookupCache
@@ -667,6 +668,7 @@ class ObjectHandler:
                 self.dict_cache.set(uuid, dict_data)
                 logger.debug(f"Updated dict cache for {self.object_type} UUID {uuid}")
 
+            bump()
             return result
         except Exception as e:
             logger.error(f"Error writing dict for {self.object_type} UUID {uuid}: {e}")
@@ -702,6 +704,7 @@ class ObjectHandler:
                 self.dict_cache.remove(uuid)
                 logger.debug(f"Removed from dict cache: {self.object_type} UUID {uuid}")
 
+            bump()
             return result
         except HTTPException:
             raise

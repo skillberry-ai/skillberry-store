@@ -43,8 +43,11 @@ pip install skillberry-store[plugin-creator]
 # Evaluator plugin only (AI-powered content evaluation)
 pip install skillberry-store[plugin-evaluator]
 
+# Dedupe plugin only (AI-powered duplicate skill detection)
+pip install skillberry-store[plugin-dedupe]
+
 # Multiple specific plugins
-pip install skillberry-store[plugin-creator,plugin-evaluator]
+pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-dedupe]
 ```
 
 For detailed plugin installation options and configuration, see the [Plugin Installation Guide](docs/plugins-installation.md).
