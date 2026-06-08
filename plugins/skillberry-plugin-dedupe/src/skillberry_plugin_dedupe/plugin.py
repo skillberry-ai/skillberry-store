@@ -151,4 +151,42 @@ class SkillberryPluginDedupe(PluginBase):
             logger.error(f"Failed to update metadata for skill {uuid}")
 
     async def _check_for_duplicates(self, uuid: str) -> None:
-        pass  # implemented in Task 9
+        """Main handler: fetch skill, compare against candidates, tag if duplicates found."""
+        skill = self.store.get_skill(uuid)
+        if skill is None:
+            logger.warning(f"Skill {uuid} not found, skipping dedupe check")
+            return
+
+        description = skill.get("description") or ""
+        if len(description) < 10:
+            logger.debug(f"Skill {uuid} has no/short description, skipping dedupe check")
+            return
+
+        candidates = self._get_candidate_skills(uuid)
+        if not candidates:
+            logger.debug(f"No original skills to compare against for {uuid}")
+            return
+
+        prompt = self._build_prompt(skill, candidates)
+
+        try:
+            response = await self.llm_client.generate_async(prompt=prompt)
+        except Exception as e:
+            logger.error(f"LLM call failed for skill {uuid}: {e}", exc_info=True)
+            return
+
+        try:
+            findings = self._parse_llm_response(response)
+        except Exception as e:
+            logger.error(
+                f"Failed to parse LLM response for skill {uuid}: {e}. Raw: {response!r}",
+                exc_info=True,
+            )
+            return
+
+        if findings:
+            await self._apply_duplicate_findings(uuid, findings)
+            logger.info(
+                f"Skill {uuid} tagged with {len(findings)} duplicate(s): "
+                f"{[f['name'] for f in findings]}"
+            )

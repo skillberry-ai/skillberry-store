@@ -339,3 +339,133 @@ async def test_apply_duplicate_findings_no_op_when_empty():
 
     mock_store.update_skill_tags.assert_not_called()
     mock_store.update_skill_metadata.assert_not_called()
+
+
+# ── _check_for_duplicates ─────────────────────────────────────────────────────
+
+def _skill(uuid, name, description, tags=None):
+    return {"uuid": uuid, "name": name, "description": description, "tags": tags or [], "extra": {}}
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_skips_when_skill_not_found():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    mock_store.get_skill.return_value = None
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock()
+
+    await plugin._check_for_duplicates("missing-uuid")
+
+    plugin.llm_client.generate_async.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_skips_when_description_too_short():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    mock_store.get_skill.return_value = _skill("s-1", "x", "short")
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock()
+
+    await plugin._check_for_duplicates("s-1")
+
+    plugin.llm_client.generate_async.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_skips_when_no_candidates():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store(skills=[
+        _skill("s-1", "only skill", "this is a sufficiently long description here"),
+    ])
+    mock_store.get_skill.return_value = _skill("s-1", "only skill", "this is a sufficiently long description here")
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock()
+
+    await plugin._check_for_duplicates("s-1")
+
+    plugin.llm_client.generate_async.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_no_op_when_llm_returns_empty_array():
+    plugin = _make_plugin_with_mock_llm()
+    trigger = _skill("s-new", "skill", "a sufficiently long description for testing")
+    candidate = _skill("s-old", "other", "completely different capability for testing")
+    mock_store = _make_mock_store(skills=[trigger, candidate])
+    mock_store.get_skill.return_value = trigger
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(return_value="[]")
+
+    await plugin._check_for_duplicates("s-new")
+
+    mock_store.update_skill_tags.assert_not_called()
+    mock_store.update_skill_metadata.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_tags_skill_when_duplicate_found():
+    plugin = _make_plugin_with_mock_llm()
+    trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
+    candidate = _skill("s-old", "search tool", "performs web searches and returns ranked results")
+    mock_store = _make_mock_store(skills=[trigger, candidate])
+    mock_store.get_skill.return_value = trigger
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(
+        return_value='[{"name": "search tool", "reason": "Both describe web search with ranked results"}]'
+    )
+
+    await plugin._check_for_duplicates("s-new")
+
+    mock_store.update_skill_tags.assert_called_once_with("s-new", ["duplicate:search tool"])
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_multiple_duplicates_all_tagged():
+    plugin = _make_plugin_with_mock_llm()
+    trigger = _skill("s-new", "searcher", "searches the web and returns ranked results for any query")
+    cand_a = _skill("s-a", "web search", "queries web and returns ranked results for a given input")
+    cand_b = _skill("s-b", "search api", "performs web queries returning relevance-ranked results")
+    mock_store = _make_mock_store(skills=[trigger, cand_a, cand_b])
+    mock_store.get_skill.return_value = trigger
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(
+        return_value='[{"name": "web search", "reason": "same"}, {"name": "search api", "reason": "same"}]'
+    )
+
+    await plugin._check_for_duplicates("s-new")
+
+    call_tags = mock_store.update_skill_tags.call_args[0][1]
+    assert "duplicate:web search" in call_tags
+    assert "duplicate:search api" in call_tags
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_logs_error_on_llm_failure():
+    plugin = _make_plugin_with_mock_llm()
+    trigger = _skill("s-new", "skill", "a sufficiently long description for testing purposes")
+    candidate = _skill("s-old", "other", "another sufficiently long description for comparison")
+    mock_store = _make_mock_store(skills=[trigger, candidate])
+    mock_store.get_skill.return_value = trigger
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(side_effect=RuntimeError("API error"))
+
+    await plugin._check_for_duplicates("s-new")  # must not raise
+
+    mock_store.update_skill_tags.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_logs_error_on_parse_failure():
+    plugin = _make_plugin_with_mock_llm()
+    trigger = _skill("s-new", "skill", "a sufficiently long description for testing purposes")
+    candidate = _skill("s-old", "other", "another sufficiently long description for comparison")
+    mock_store = _make_mock_store(skills=[trigger, candidate])
+    mock_store.get_skill.return_value = trigger
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(return_value="not valid json at all")
+
+    await plugin._check_for_duplicates("s-new")  # must not raise
+
+    mock_store.update_skill_tags.assert_not_called()
