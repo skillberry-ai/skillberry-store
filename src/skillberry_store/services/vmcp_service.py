@@ -58,7 +58,9 @@ class VmcpService:
         data.setdefault("created_at", now)
         data["modified_at"] = now
         if data.get("name"):
-            data["parent"] = self.handler.get_cache_parent_for_head(data["uuid"], data["name"])
+            data["parent"] = self.handler.get_cache_parent_for_head(
+                data["uuid"], data["name"]
+            )
         tool_uuids, snippet_uuids = self._resolve_skill_uuids(data.get("skill_uuid"))
         server = self.server_manager.add_server(
             name=data.get("name") or "",
@@ -78,11 +80,21 @@ class VmcpService:
         logger.info(f"VMCP server '{data.get('name')}' created on port {server.port}")
         return data
 
+    def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        try:
+            return self.handler.read_dict(uuid)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                raise KeyError(f"VMCP server '{label}' not found")
+            raise
+
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
         uuid = self._resolve_uuid(uuid_or_name)
-        d = self.handler.read_dict(uuid)
+        d = self._safe_read(uuid, uuid_or_name)
         try:
-            runtime_details = self.server_manager.get_server_details(d.get("name", ""), d.get("uuid", ""))
+            runtime_details = self.server_manager.get_server_details(
+                d.get("name", ""), d.get("uuid", "")
+            )
             d["runtime"] = runtime_details
             d["running"] = True
         except Exception:
@@ -97,7 +109,9 @@ class VmcpService:
             try:
                 runtime = None
                 try:
-                    runtime = self.server_manager.get_server(item.get("name", ""), item.get("uuid", ""))
+                    runtime = self.server_manager.get_server(
+                        item.get("name", ""), item.get("uuid", "")
+                    )
                 except Exception:
                     pass
                 info = {
@@ -111,7 +125,16 @@ class VmcpService:
                     "skill_uuid": item.get("skill_uuid"),
                     "modified_at": item.get("modified_at", ""),
                     "running": runtime is not None,
-                    "runtime": {"name": runtime.name, "description": runtime.description, "port": runtime.port, "tools": runtime.tool_uuids} if runtime else None,
+                    "runtime": (
+                        {
+                            "name": runtime.name,
+                            "description": runtime.description,
+                            "port": runtime.port,
+                            "tools": runtime.tool_uuids,
+                        }
+                        if runtime
+                        else None
+                    ),
                 }
                 servers.append(info)
             except Exception as e:
@@ -119,7 +142,9 @@ class VmcpService:
         servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
         return {"virtual_mcp_servers": {s["uuid"]: s for s in servers}}
 
-    def update(self, uuid_or_name: str, data: Dict[str, Any], env_id: str = "") -> Dict[str, Any]:
+    def update(
+        self, uuid_or_name: str, data: Dict[str, Any], env_id: str = ""
+    ) -> Dict[str, Any]:
         uuid = self._resolve_uuid(uuid_or_name)
         existing = self.handler.read_dict(uuid)
         old_name = existing.get("name")
@@ -130,7 +155,9 @@ class VmcpService:
             data["uuid"] = server_uuid
         new_name = data.get("name")
         if new_name:
-            data["parent"] = self.handler.get_cache_parent_for_head(data["uuid"] or "", new_name)
+            data["parent"] = self.handler.get_cache_parent_for_head(
+                data["uuid"] or "", new_name
+            )
         try:
             self.server_manager.remove_server(old_name or "", server_uuid or "")
         except Exception as e:
@@ -148,7 +175,12 @@ class VmcpService:
         data["port"] = server.port
         self.handler.write_dict(data["uuid"] or "", data)
         if new_name and old_name:
-            self.handler.update_cache(data["uuid"] or "", new_name=new_name, old_name=old_name, old_parent=old_parent)
+            self.handler.update_cache(
+                data["uuid"] or "",
+                new_name=new_name,
+                old_name=old_name,
+                old_parent=old_parent,
+            )
         if self.descriptions and data.get("description") and data.get("uuid"):
             self.descriptions.write_description(data["uuid"], data["description"])
         logger.info(f"VMCP server '{new_name}' updated on port {server.port}")
@@ -164,7 +196,9 @@ class VmcpService:
         except Exception as e:
             logger.warning(f"Could not stop runtime server: {e}")
         if name and uuid:
-            self.handler.update_cache(uuid, new_name=None, old_name=name, old_parent=parent)
+            self.handler.update_cache(
+                uuid, new_name=None, old_name=name, old_parent=parent
+            )
         self.handler.delete_object(uuid)
         if self.descriptions:
             try:

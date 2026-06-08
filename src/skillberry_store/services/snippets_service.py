@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 class SnippetsService:
-    def __init__(self, handler: ObjectHandler, descriptions: Optional[Description] = None):
+    def __init__(
+        self, handler: ObjectHandler, descriptions: Optional[Description] = None
+    ):
         self.handler = handler
         self.descriptions = descriptions
 
@@ -36,7 +38,9 @@ class SnippetsService:
         data.setdefault("created_at", now)
         data["modified_at"] = now
         if data.get("name"):
-            data["parent"] = self.handler.get_cache_parent_for_head(data["uuid"], data["name"])
+            data["parent"] = self.handler.get_cache_parent_for_head(
+                data["uuid"], data["name"]
+            )
         self.handler.write_dict(data["uuid"], data)
         if data.get("name"):
             self.handler.update_cache(data["uuid"], new_name=data["name"])
@@ -45,9 +49,17 @@ class SnippetsService:
         logger.info(f"Snippet '{data.get('name')}' created with UUID {data['uuid']}")
         return data
 
+    def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        try:
+            return self.handler.read_dict(uuid)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                raise KeyError(f"Snippet '{label}' not found")
+            raise
+
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
         uuid = self._resolve_uuid(uuid_or_name)
-        return self.handler.read_dict(uuid)
+        return self._safe_read(uuid, uuid_or_name)
 
     def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
         items = self.handler.list_all_dicts()
@@ -70,7 +82,9 @@ class SnippetsService:
         merged["modified_at"] = datetime.now(timezone.utc).isoformat()
         self.handler.write_dict(uuid, merged)
         if new_name:
-            self.handler.update_cache(uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
+            self.handler.update_cache(
+                uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
+            )
         if self.descriptions and merged.get("description"):
             self.descriptions.write_description(uuid, merged["description"])
         logger.info(f"Snippet '{uuid_or_name}' updated")
@@ -84,7 +98,9 @@ class SnippetsService:
         except Exception:
             name, parent = None, None
         if uuid and name:
-            self.handler.update_cache(uuid, new_name=None, old_name=name, old_parent=parent)
+            self.handler.update_cache(
+                uuid, new_name=None, old_name=name, old_parent=parent
+            )
         self.handler.delete_object(uuid)
         if self.descriptions:
             try:

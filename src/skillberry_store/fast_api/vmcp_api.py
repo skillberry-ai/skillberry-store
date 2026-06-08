@@ -96,8 +96,16 @@ def register_vmcp_api(
             }
         except ValueError as e:
             error_msg = str(e)
-            if "already exists" in error_msg or "port" in error_msg.lower():
+            if "already exists" in error_msg:
                 raise HTTPException(status_code=409, detail=error_msg)
+            if "port" in error_msg.lower() and (
+                "not available" in error_msg.lower()
+                or "already in use" in error_msg.lower()
+                or "in use" in error_msg.lower()
+            ):
+                raise HTTPException(
+                    status_code=409, detail=f"Port conflict: {error_msg}"
+                )
             raise HTTPException(status_code=500, detail=error_msg)
         except Exception as e:
             logger.error(f"Error creating vmcp server '{vmcp.name}': {e}")

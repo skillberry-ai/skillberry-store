@@ -56,7 +56,9 @@ class VnfsService:
         data.setdefault("created_at", now)
         data["modified_at"] = now
         if data.get("name"):
-            data["parent"] = self.handler.get_cache_parent_for_head(data["uuid"], data["name"])
+            data["parent"] = self.handler.get_cache_parent_for_head(
+                data["uuid"], data["name"]
+            )
         server = self.server_manager.add_server(_to_ns(data))
         data["port"] = server.port
         self.handler.write_dict(data["uuid"], data)
@@ -67,11 +69,21 @@ class VnfsService:
         logger.info(f"vNFS server '{data.get('name')}' created on port {server.port}")
         return data
 
+    def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        try:
+            return self.handler.read_dict(uuid)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                raise KeyError(f"vNFS server '{label}' not found")
+            raise
+
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
         uuid = self._resolve_uuid(uuid_or_name)
-        d = self.handler.read_dict(uuid)
+        d = self._safe_read(uuid, uuid_or_name)
         try:
-            runtime = self.server_manager.get_server(d.get("name", ""), d.get("uuid", ""))
+            runtime = self.server_manager.get_server(
+                d.get("name", ""), d.get("uuid", "")
+            )
             d["running"] = runtime is not None and runtime.running
             d["export_path"] = str(runtime.export_path) if runtime else None
         except Exception:
@@ -86,7 +98,9 @@ class VnfsService:
             try:
                 runtime = None
                 try:
-                    runtime = self.server_manager.get_server(item.get("name", ""), item.get("uuid", ""))
+                    runtime = self.server_manager.get_server(
+                        item.get("name", ""), item.get("uuid", "")
+                    )
                 except Exception:
                     pass
                 info = {
@@ -120,7 +134,9 @@ class VnfsService:
             data["uuid"] = server_uuid
         new_name = data.get("name")
         if new_name:
-            data["parent"] = self.handler.get_cache_parent_for_head(data["uuid"] or "", new_name)
+            data["parent"] = self.handler.get_cache_parent_for_head(
+                data["uuid"] or "", new_name
+            )
         try:
             self.server_manager.remove_server(old_name or "", server_uuid or "")
         except Exception as e:
@@ -129,7 +145,12 @@ class VnfsService:
         data["port"] = server.port
         self.handler.write_dict(data["uuid"] or "", data)
         if new_name and old_name:
-            self.handler.update_cache(data["uuid"] or "", new_name=new_name, old_name=old_name, old_parent=old_parent)
+            self.handler.update_cache(
+                data["uuid"] or "",
+                new_name=new_name,
+                old_name=old_name,
+                old_parent=old_parent,
+            )
         if self.descriptions and data.get("description") and data.get("uuid"):
             self.descriptions.write_description(data["uuid"], data["description"])
         logger.info(f"vNFS server '{new_name}' updated on port {server.port}")
@@ -145,7 +166,9 @@ class VnfsService:
         except Exception as e:
             logger.warning(f"Could not stop runtime server: {e}")
         if name and uuid:
-            self.handler.update_cache(uuid, new_name=None, old_name=name, old_parent=parent)
+            self.handler.update_cache(
+                uuid, new_name=None, old_name=name, old_parent=parent
+            )
         self.handler.delete_object(uuid)
         if self.descriptions:
             try:

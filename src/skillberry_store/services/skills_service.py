@@ -39,16 +39,24 @@ class SkillsService:
     def populate_objects(self, skill_dict: Dict[str, Any]) -> Dict[str, Any]:
         if skill_dict.get("tool_uuids"):
             try:
-                skill_dict["tools"] = self.tools_handler.read_dicts(skill_dict["tool_uuids"])
+                skill_dict["tools"] = self.tools_handler.read_dicts(
+                    skill_dict["tool_uuids"]
+                )
             except Exception as e:
-                raise RuntimeError(f"Skill '{skill_dict.get('name')}' references missing tools: {e}")
+                raise RuntimeError(
+                    f"Skill '{skill_dict.get('name')}' references missing tools: {e}"
+                )
         else:
             skill_dict["tools"] = []
         if skill_dict.get("snippet_uuids"):
             try:
-                skill_dict["snippets"] = self.snippets_handler.read_dicts(skill_dict["snippet_uuids"])
+                skill_dict["snippets"] = self.snippets_handler.read_dicts(
+                    skill_dict["snippet_uuids"]
+                )
             except Exception as e:
-                raise RuntimeError(f"Skill '{skill_dict.get('name')}' references missing snippets: {e}")
+                raise RuntimeError(
+                    f"Skill '{skill_dict.get('name')}' references missing snippets: {e}"
+                )
         else:
             skill_dict["snippets"] = []
         return skill_dict
@@ -61,7 +69,9 @@ class SkillsService:
         data.setdefault("created_at", now)
         data["modified_at"] = now
         if data.get("name"):
-            data["parent"] = self.handler.get_cache_parent_for_head(data["uuid"], data["name"])
+            data["parent"] = self.handler.get_cache_parent_for_head(
+                data["uuid"], data["name"]
+            )
         self.handler.write_dict(data["uuid"], data)
         if data.get("name"):
             self.handler.update_cache(data["uuid"], new_name=data["name"])
@@ -70,9 +80,17 @@ class SkillsService:
         logger.info(f"Skill '{data.get('name')}' created with UUID {data['uuid']}")
         return data
 
+    def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        try:
+            return self.handler.read_dict(uuid)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                raise KeyError(f"Skill '{label}' not found")
+            raise
+
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
         uuid = self._resolve_uuid(uuid_or_name)
-        skill = self.handler.read_dict(uuid)
+        skill = self._safe_read(uuid, uuid_or_name)
         return self.populate_objects(skill)
 
     def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
@@ -98,7 +116,9 @@ class SkillsService:
         merged["modified_at"] = datetime.now(timezone.utc).isoformat()
         self.handler.write_dict(uuid, merged)
         if new_name:
-            self.handler.update_cache(uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
+            self.handler.update_cache(
+                uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
+            )
         if self.descriptions and merged.get("description"):
             self.descriptions.write_description(uuid, merged["description"])
         logger.info(f"Skill '{uuid_or_name}' updated")
@@ -112,7 +132,9 @@ class SkillsService:
         except Exception:
             name, parent = None, None
         if uuid and name:
-            self.handler.update_cache(uuid, new_name=None, old_name=name, old_parent=parent)
+            self.handler.update_cache(
+                uuid, new_name=None, old_name=name, old_parent=parent
+            )
         self.handler.delete_object(uuid)
         if self.descriptions:
             try:

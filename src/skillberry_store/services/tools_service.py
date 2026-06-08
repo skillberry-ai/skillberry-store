@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 class ToolsService:
-    def __init__(self, handler: ObjectHandler, descriptions: Optional[Description] = None):
+    def __init__(
+        self, handler: ObjectHandler, descriptions: Optional[Description] = None
+    ):
         self.handler = handler
         self.descriptions = descriptions
 
@@ -45,7 +47,9 @@ class ToolsService:
                 found.update(self.find_dependencies(nested, dep_uuid))
         return found
 
-    def create(self, data: Dict[str, Any], module_content: bytes, module_filename: str) -> Dict[str, Any]:
+    def create(
+        self, data: Dict[str, Any], module_content: bytes, module_filename: str
+    ) -> Dict[str, Any]:
         data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
         if self.handler.object_exists(data["uuid"]):
             raise ValueError(f"Tool with UUID '{data['uuid']}' already exists")
@@ -53,16 +57,26 @@ class ToolsService:
         data.setdefault("created_at", now)
         data["modified_at"] = now
         if data.get("name"):
-            data["parent"] = self.handler.get_cache_parent_for_head(data["uuid"], data["name"])
+            data["parent"] = self.handler.get_cache_parent_for_head(
+                data["uuid"], data["name"]
+            )
         self.handler.write_file(data["uuid"], module_filename, module_content)
         data["module_name"] = module_filename
         if not data.get("dependencies") and is_auto_detect_dependencies_enabled():
             try:
-                content_str = module_content.decode("utf-8") if isinstance(module_content, bytes) else module_content
+                content_str = (
+                    module_content.decode("utf-8")
+                    if isinstance(module_content, bytes)
+                    else module_content
+                )
                 available = self.handler.get_existing_names()
-                detected_names = detect_tool_dependencies(content_str, data["name"], available)
+                detected_names = detect_tool_dependencies(
+                    content_str, data["name"], available
+                )
                 if detected_names:
-                    data["dependencies"] = [self.handler.name_to_uuid(n) for n in detected_names]
+                    data["dependencies"] = [
+                        self.handler.name_to_uuid(n) for n in detected_names
+                    ]
             except Exception as e:
                 logger.warning(f"Failed to auto-detect dependencies: {e}")
         self.handler.write_dict(data["uuid"], data)
@@ -72,9 +86,17 @@ class ToolsService:
         logger.info(f"Tool '{data.get('name')}' created with UUID {data['uuid']}")
         return data
 
+    def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        try:
+            return self.handler.read_dict(uuid)
+        except Exception as e:
+            if hasattr(e, "status_code") and e.status_code == 404:
+                raise KeyError(f"Tool '{label}' not found")
+            raise
+
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
         uuid = self._resolve_uuid(uuid_or_name)
-        return self.handler.read_dict(uuid)
+        return self._safe_read(uuid, uuid_or_name)
 
     def get_module(self, uuid_or_name: str) -> str:
         uuid = self._resolve_uuid(uuid_or_name)
@@ -108,7 +130,9 @@ class ToolsService:
         merged["modified_at"] = datetime.now(timezone.utc).isoformat()
         self.handler.write_dict(uuid, merged)
         if new_name:
-            self.handler.update_cache(uuid, new_name=new_name, old_name=old_name, old_parent=old_parent)
+            self.handler.update_cache(
+                uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
+            )
         if self.descriptions and data.get("description"):
             old_desc = existing.get("description")
             if old_desc != data["description"]:
@@ -128,7 +152,9 @@ class ToolsService:
         except Exception:
             name, parent = None, None
         if uuid and name:
-            self.handler.update_cache(uuid, new_name=None, old_name=name, old_parent=parent)
+            self.handler.update_cache(
+                uuid, new_name=None, old_name=name, old_parent=parent
+            )
         self.handler.delete_object(uuid)
         if self.descriptions:
             try:
