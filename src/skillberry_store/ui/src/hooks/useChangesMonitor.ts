@@ -14,7 +14,7 @@ export function useChangesMonitor(): void {
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch('/changes');
+        const res = await fetch('/api/changes');
         if (!res.ok) return;
         const { count } = await res.json();
         if (lastCountRef.current !== null && count !== lastCountRef.current) {
