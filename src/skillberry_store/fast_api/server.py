@@ -94,55 +94,63 @@ class SBS(FastAPI):
         self.state.vmcp_descriptions = vmcp_descriptions_api(self.settings.sbs_vdb)
         self.state.vnfs_descriptions = vnfs_descriptions_api(self.settings.sbs_vdb)
 
+        # Initialize service layer
+        from skillberry_store.modules.object_handler import get_object_handler
+        from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
+        from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
+        from skillberry_store.services.tools_service import ToolsService
+        from skillberry_store.services.skills_service import SkillsService
+        from skillberry_store.services.snippets_service import SnippetsService
+        from skillberry_store.services.vnfs_service import VnfsService
+        from skillberry_store.services.vmcp_service import VmcpService
+
+        sts_url = f"http://{self.settings.sbs_host}:{self.settings.sbs_port}"
+
+        tools_service = ToolsService(get_object_handler("tool"), self.state.tools_descriptions)
+        skills_service = SkillsService(
+            handler=get_object_handler("skill"),
+            tools_handler=get_object_handler("tool"),
+            snippets_handler=get_object_handler("snippet"),
+            descriptions=self.state.skills_descriptions,
+        )
+        snippets_service = SnippetsService(get_object_handler("snippet"), self.state.snippets_descriptions)
+        vnfs_service = VnfsService(
+            get_object_handler("vnfs"),
+            VirtualNfsServerManager(sts_url=sts_url, app=self),
+            self.state.vnfs_descriptions,
+        )
+        vmcp_service = VmcpService(
+            get_object_handler("vmcp"),
+            VirtualMcpServerManager(sts_url=sts_url, app=self),
+            get_object_handler("skill"),
+            self.state.vmcp_descriptions,
+        )
+
         # Initialize plugin system
         from skillberry_store.plugins.loader import PluginLoader
         from skillberry_store.plugins.store_api import StoreAPI
-        from skillberry_store.modules.object_handler import get_object_handler
 
-        # Create StoreAPI with object handlers
-        store_api = StoreAPI(
-            {
-                "tools": get_object_handler("tool"),
-                "skills": get_object_handler("skill"),
-                "snippets": get_object_handler("snippet"),
-            }
-        )
+        store_api = StoreAPI({
+            "tools": tools_service,
+            "skills": skills_service,
+            "snippets": snippets_service,
+            "vnfs": vnfs_service,
+            "vmcp": vmcp_service,
+        })
 
-        # Initialize and discover plugins
         plugin_loader = PluginLoader(store_api=store_api)
         discovered = plugin_loader.discover_plugins()
         logger.info(f"Discovered {len(discovered)} plugins: {discovered}")
 
-        # Store plugin loader in app state
         self.state.plugin_loader = plugin_loader
 
-        sts_url = f"http://{self.settings.sbs_host}:{self.settings.sbs_port}"
-        register_vmcp_api(
-            self,
-            sts_url=sts_url,
-            tags="vmcp_servers",
-            vmcp_descriptions=self.state.vmcp_descriptions,
-        )
-        register_vnfs_api(
-            self,
-            sts_url=sts_url,
-            tags="vnfs_servers",
-            vnfs_descriptions=self.state.vnfs_descriptions,
-        )
-        register_skills_api(
-            self, tags="skills", skills_descriptions=self.state.skills_descriptions
-        )
-        register_snippets_api(
-            self,
-            tags="snippets",
-            snippets_descriptions=self.state.snippets_descriptions,
-        )
-        register_tools_api(
-            self, tags="tools", tools_descriptions=self.state.tools_descriptions
-        )
+        register_vmcp_api(self, sts_url=sts_url, tags="vmcp_servers", vmcp_descriptions=self.state.vmcp_descriptions, service=vmcp_service)
+        register_vnfs_api(self, sts_url=sts_url, tags="vnfs_servers", vnfs_descriptions=self.state.vnfs_descriptions, service=vnfs_service)
+        register_skills_api(self, tags="skills", skills_descriptions=self.state.skills_descriptions, service=skills_service)
+        register_snippets_api(self, tags="snippets", snippets_descriptions=self.state.snippets_descriptions, service=snippets_service)
+        register_tools_api(self, tags="tools", tools_descriptions=self.state.tools_descriptions, service=tools_service)
         register_admin_api(self, tags="admin")
 
-        # Register plugins API
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
 
         # Mount plugin routers
