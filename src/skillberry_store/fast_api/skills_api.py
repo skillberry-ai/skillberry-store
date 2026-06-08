@@ -1,10 +1,12 @@
 """Skills API endpoints for the Skillberry Store service."""
 
+from __future__ import annotations
+
 import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Annotated, List
+from typing import TYPE_CHECKING, Optional, Annotated, List
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import Response
 from prometheus_client import Counter
@@ -17,7 +19,6 @@ from skillberry_store.plugins.events import (
 from skillberry_store.tools.anthropic.importer import import_from_anthropic_skill
 from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.modules.file_executor import detect_tool_dependencies
-from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
 from skillberry_store.schemas.manifest_schema import ManifestState
@@ -31,6 +32,10 @@ from skillberry_store.tools.configure import (
 )
 from skillberry_store.fast_api.search_filters import apply_search_filters
 from skillberry_store.utils.utils import normalize_uuid, generate_or_validate_uuid
+from skillberry_store.services.skills_service import SkillsService
+
+if TYPE_CHECKING:
+    from skillberry_store.modules.description import Description
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +65,7 @@ def register_skills_api(
     app: FastAPI,
     tags: str = "skills",
     skills_descriptions: Optional[Description] = None,
+    service: Optional[SkillsService] = None,
 ):
     """Register skills API endpoints with the FastAPI application.
 
@@ -67,10 +73,19 @@ def register_skills_api(
         app: The FastAPI application instance.
         tags: FastAPI tags for grouping the endpoints in documentation.
         skills_descriptions: Description instance for managing skill descriptions.
+        service: Optional SkillsService instance; created from default handlers if not provided.
     """
-    skill_handler = get_object_handler("skill")
-    tools_handler = get_object_handler("tool")
-    snippets_handler = get_object_handler("snippet")
+    if service is None:
+        service = SkillsService(
+            handler=get_object_handler("skill"),
+            tools_handler=get_object_handler("tool"),
+            snippets_handler=get_object_handler("snippet"),
+            descriptions=skills_descriptions,
+        )
+    # expose handlers for Anthropic import/export endpoints below
+    skill_handler = service.handler
+    tools_handler = service.tools_handler
+    snippets_handler = service.snippets_handler
 
     def populate_skill_objects(skill_dict):
         """Populate full tool and snippet objects from UUIDs."""
@@ -112,145 +127,43 @@ def register_skills_api(
 
     @app.post("/skills/", tags=[tags], openapi_extra={"x-cli-name": "create-skill"})
     async def create_skill(skill: Annotated[SkillSchema, Query()]):
-        """Create a new skill.
-
-        The form fields are dynamically generated from SkillSchema.
-        Any changes to SkillSchema will automatically reflect in this API.
-
-        Args:
-            skill: The skill schema with tool_uuids and snippet_uuids (auto-generated from SkillSchema).
-                   If uuid is not provided, it will be automatically generated.
-
-        Returns:
-            dict: Success message with the skill name and uuid.
-
-        Raises:
-            HTTPException: If skill already exists (409) or creation fails (500).
-        """
         logger.info(f"Request to create skill: {skill.name}")
         create_skill_counter.inc()
-
-        # Generate or validate UUID
-        skill.uuid = generate_or_validate_uuid(skill.uuid)
-        logger.info(f"UUID for skill '{skill.name}': {skill.uuid}")
-
-        # Set timestamps
-        current_time = datetime.now(timezone.utc).isoformat()
-        skill.created_at = current_time
-        skill.modified_at = current_time
-
-        # Check if skill with this UUID already exists
-        if skill_handler.object_exists(skill.uuid):
-            raise HTTPException(
-                status_code=409,
-                detail=f"Skill with UUID '{skill.uuid}' already exists.",
-            )
-
         try:
-            # Determine correct parent for this skill becoming HEAD
-            if skill.name:
-                skill.parent = skill_handler.get_cache_parent_for_head(
-                    skill.uuid, skill.name
-                )
-                logger.info(
-                    f"Setting parent for skill '{skill.name}' to {skill.parent}"
-                )
-
-            # Save skill dict to UUID subfolder
-            skill_handler.write_dict(skill.uuid, skill.to_dict())
-
-            # Update cache - this becomes new HEAD
-            if skill.name:
-                skill_handler.update_cache(skill.uuid, new_name=skill.name)
-
-            # Write description for search capability (indexed by UUID)
-            if skills_descriptions and skill.description:
-                skills_descriptions.write_description(skill.uuid, skill.description)
-                logger.info(f"Skill description saved for UUID: {skill.uuid}")
-
-            logger.info(
-                f"Skill '{skill.name}' (UUID: {skill.uuid}) created successfully"
-            )
-
-            # Emit event for plugin hooks
-            emit_content_added("skill", skill.uuid)
-
-            return {
-                "message": f"Skill '{skill.name}' created successfully.",
-                "name": skill.name,
-                "uuid": skill.uuid,
-            }
+            result = service.create(skill.to_dict())
+            emit_content_added("skill", result["uuid"])
+            return {"message": f"Skill '{result['name']}' created successfully.", "name": result["name"], "uuid": result["uuid"]}
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             logger.error(f"Error creating skill '{skill.name}': {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error creating skill: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Error creating skill: {str(e)}")
 
     @app.get("/skills/", tags=[tags], openapi_extra={"x-cli-name": "list-skills"})
     def list_skills():
-        """List all skills with populated tool and snippet objects.
-
-        Returns:
-            list: A list of all skill objects with full tool and snippet details.
-
-        Raises:
-            HTTPException: If listing fails (500).
-        """
         logger.info("Request to list skills")
         list_skills_counter.inc()
-
         try:
-            # Get all skills using list_all_dicts
-            skills = skill_handler.list_all_dicts()
-
-            # Populate full tool and snippet objects for each skill
-            for skill_dict in skills:
-                populate_skill_objects(skill_dict)
-
-            # Sort by modified_at in descending order (most recent first)
-            skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-
-            logger.info(f"Listed {len(skills)} skills")
-            return skills
+            return service.list_all()
         except Exception as e:
             logger.error(f"Error listing skills: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error listing skills: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Error listing skills: {str(e)}")
 
     @app.get(
         "/skills/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-skill"}
     )
     def get_skill(uuid_or_name: str):
-        """Get a specific skill by UUID or name with populated tool and snippet objects.
-
-        Args:
-            uuid_or_name: The UUID or name of the skill.
-
-        Returns:
-            dict: The skill object with full tool and snippet details.
-
-        Raises:
-            HTTPException: If skill not found (404) or retrieval fails (500).
-        """
         logger.info(f"Request to get skill: {uuid_or_name}")
         get_skill_counter.inc()
-
         try:
-            # Resolve UUID or name to UUID and read manifest
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
-            skill_dict = skill_handler.read_dict(skill_uuid)
-            # Populate full tool and snippet objects
-            populate_skill_objects(skill_dict)
-            logger.info(f"Retrieved skill: {uuid_or_name}")
-            return skill_dict
-        except HTTPException:
-            raise
+            return service.get(uuid_or_name)
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except RuntimeError as e:
+            raise HTTPException(status_code=505, detail=str(e))
         except Exception as e:
             logger.error(f"Error retrieving skill '{uuid_or_name}': {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error retrieving skill: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Error retrieving skill: {str(e)}")
 
     @app.delete(
         "/skills/{uuid_or_name}",
@@ -258,74 +171,19 @@ def register_skills_api(
         openapi_extra={"x-cli-name": "delete-skill"},
     )
     async def delete_skill(uuid_or_name: str):
-        """Delete a skill by UUID or name.
-
-        Args:
-            uuid_or_name: The UUID or name of the skill to delete.
-
-        Returns:
-            dict: Success message.
-
-        Raises:
-            HTTPException: If skill not found (404) or deletion fails (500).
-        """
         logger.info(f"Request to delete skill: {uuid_or_name}")
         delete_skill_counter.inc()
-
         try:
-            # Resolve UUID or name to UUID (raises 404 if not found)
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
-
-            # Read skill to get name and parent before deletion
-            skill_name = None
-            skill_parent = None
-            try:
-                skill_dict = skill_handler.read_dict(skill_uuid)
-                skill_name = skill_dict.get("name")
-                skill_parent = skill_dict.get("parent")
-            except Exception as e:
-                logger.warning(f"Could not read skill before deletion: {e}")
-
-            # Update cache BEFORE deletion (fixes parent chain while object still exists)
-            if skill_uuid and skill_name:
-                skill_handler.update_cache(
-                    skill_uuid,
-                    new_name=None,
-                    old_name=skill_name,
-                    old_parent=skill_parent,
-                )
-
-            # Now delete the skill object folder
-            result = skill_handler.delete_object(skill_uuid)
-
-            # Delete the description for the skill (indexed by UUID)
-            if skills_descriptions:
-                try:
-                    skills_descriptions.delete_description(skill_uuid)
-                    logger.info(f"Skill description deleted for UUID: {skill_uuid}")
-                except Exception as e:
-                    logger.warning(
-                        f"Could not delete skill description for UUID '{skill_uuid}': {e}"
-                    )
-
-            logger.info(
-                f"Skill with UUID or name '{uuid_or_name}' deleted successfully"
-            )
-
-            # Emit event for plugin hooks
+            skill = service.get(uuid_or_name)
+            skill_uuid = skill["uuid"]
+            service.delete(uuid_or_name)
             emit_content_deleted("skill", skill_uuid)
-
-            return {
-                "message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."
-            }
-        except HTTPException as e:
-            # Re-raise HTTPException (like 404) without modification
-            raise
+            return {"message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."}
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             logger.error(f"Error deleting skill '{uuid_or_name}': {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error deleting skill: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Error deleting skill: {str(e)}")
 
     @app.put(
         "/skills/{uuid_or_name}",
@@ -333,86 +191,17 @@ def register_skills_api(
         openapi_extra={"x-cli-name": "update-skill"},
     )
     async def update_skill(uuid_or_name: str, skill: SkillSchema):
-        """Update an existing skill by UUID or name.
-
-        Args:
-            uuid_or_name: The UUID or name of the skill to update.
-            skill: The updated skill schema.
-
-        Returns:
-            dict: Success message.
-
-        Raises:
-            HTTPException: If skill not found (404) or update fails (500).
-        """
         logger.info(f"Request to update skill: {uuid_or_name}")
         update_skill_counter.inc()
-
         try:
-            # Resolve UUID or name to UUID (raises 404 if not found)
-            skill_uuid = skill_handler.resolve_to_uuid_or_error(uuid_or_name)
-
-            # Read existing dict to preserve uuid and created_at
-            existing_dict = skill_handler.read_dict(skill_uuid)
-            old_name = existing_dict.get("name")
-            old_parent = existing_dict.get("parent")
-
-            # Convert update data to dict
-            update_data = skill.to_dict()
-
-            # Determine new name
-            new_name = skill.name if skill.name else old_name
-
-            # Determine correct parent for this skill becoming HEAD
-            if new_name:
-                new_parent = skill_handler.get_cache_parent_for_head(
-                    skill_uuid, new_name
-                )
-                update_data["parent"] = new_parent
-                logger.info(f"Setting parent for skill '{new_name}' to {new_parent}")
-
-            # Merge: preserve uuid and created_at from existing, update modified_at
-            merged_dict = {**existing_dict, **update_data}
-            merged_dict["uuid"] = existing_dict.get("uuid", skill_uuid)
-            merged_dict["created_at"] = existing_dict.get("created_at")
-            merged_dict["modified_at"] = datetime.now(timezone.utc).isoformat()
-
-            # Write the merged dict using ObjectHandler
-            skill_handler.write_dict(skill_uuid, merged_dict)
-
-            # Update cache - this becomes HEAD for its (possibly new) name
-            if new_name:
-                skill_handler.update_cache(
-                    skill_uuid,
-                    new_name=new_name,
-                    old_name=old_name,
-                    old_parent=old_parent,
-                )
-
-            # Update description for search capability (indexed by UUID)
-            if skills_descriptions and merged_dict.get("description"):
-                skills_descriptions.write_description(
-                    skill_uuid, merged_dict["description"]
-                )
-                logger.info(f"Skill description updated for UUID: {skill_uuid}")
-
-            logger.info(
-                f"Skill with UUID or name '{uuid_or_name}' (UUID: {skill_uuid}) updated successfully"
-            )
-
-            # Emit event for plugin hooks
-            emit_content_updated("skill", skill_uuid)
-
-            return {
-                "message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."
-            }
-        except HTTPException:
-            raise
+            result = service.update(uuid_or_name, skill.to_dict())
+            emit_content_updated("skill", result["uuid"])
+            return {"message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."}
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             logger.error(f"Error updating skill '{uuid_or_name}': {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error updating skill: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Error updating skill: {str(e)}")
 
     @app.get(
         "/search/skills", tags=[tags], openapi_extra={"x-cli-name": "search-skills"}
@@ -440,73 +229,28 @@ def register_skills_api(
         """
         logger.info(f"Request to search skill descriptions for term: {search_term}")
         search_skills_counter.inc()
-
         if not skills_descriptions:
-            raise HTTPException(
-                status_code=503,
-                detail="Skill search is not available - descriptions not initialized",
-            )
-
+            raise HTTPException(status_code=503, detail="Skill search is not available - descriptions not initialized")
         try:
-            matched_entities = skills_descriptions.search_description(
-                search_term=search_term, k=max_number_of_results
-            )
-
-            filtered_matched_entities = [
-                matched_entity
-                for matched_entity in matched_entities
-                if matched_entity["similarity_score"] <= similarity_threshold
-            ]
-
-            # Get full skill objects for filtering
-            # Descriptions are indexed by UUID, so matched_entity["filename"] contains UUID
+            matched_entities = skills_descriptions.search_description(search_term=search_term, k=max_number_of_results)
+            filtered_matched_entities = [m for m in matched_entities if float(m["similarity_score"]) <= similarity_threshold]
             skills_to_filter = []
             for matched_entity in filtered_matched_entities:
                 skill_uuid = matched_entity.get("filename")
                 if not skill_uuid:
-                    logger.warning(
-                        f"Matched entity missing 'filename' field: {matched_entity}"
-                    )
                     continue
                 try:
-                    # Read skill manifest by UUID
                     skill_dict = skill_handler.read_dict(skill_uuid)
-                    skill_dict["similarity_score"] = matched_entity.get(
-                        "similarity_score", 0.0
-                    )
+                    skill_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
                     skills_to_filter.append(skill_dict)
                 except Exception as e:
-                    logger.warning(
-                        f"Could not load skill with UUID {skill_uuid} for filtering: {e}"
-                    )
-
-            # Apply manifest and lifecycle filters
-            filtered_skills = apply_search_filters(
-                skills_to_filter,
-                manifest_filter=manifest_filter,
-                lifecycle_state=lifecycle_state,
-            )
-
-            # Sort by modified_at in descending order (most recent first)
+                    logger.warning(f"Could not load skill {skill_uuid}: {e}")
+            filtered_skills = apply_search_filters(skills_to_filter, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
             filtered_skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-
-            # Return only filename and similarity_score (filename is the skill name)
-            result = [
-                {
-                    "filename": skill.get("name", ""),
-                    "similarity_score": skill.get("similarity_score", 0.0),
-                }
-                for skill in filtered_skills
-                if skill.get("name")  # Only include if name exists
-            ]
-
-            logger.info(f"Found {len(result)} matching skills after filtering")
-            return result
+            return [{"filename": s.get("name", ""), "similarity_score": s.get("similarity_score", 0.0)} for s in filtered_skills if s.get("name")]
         except Exception as e:
             logger.error(f"Error searching skills: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error searching skills: {str(e)}"
-            )
+            raise HTTPException(status_code=500, detail=f"Error searching skills: {str(e)}")
 
     @app.post(
         "/skills/detect-anthropic-skills",
