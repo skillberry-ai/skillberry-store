@@ -1,6 +1,8 @@
 """Unit tests for the global mutation counter."""
 
 import importlib
+import pytest
+from unittest.mock import patch, MagicMock
 import skillberry_store.fast_api.changes as changes_module
 
 
@@ -33,3 +35,77 @@ def test_get_does_not_change_count():
     changes_module.get()
     changes_module.get()
     assert changes_module.get() == 1
+
+
+def test_write_dict_calls_bump_on_success():
+    """write_dict must call bump() after a successful write."""
+    from skillberry_store.modules.object_handler import ObjectHandler
+
+    handler = ObjectHandler.__new__(ObjectHandler)
+    handler.object_type = "skill"
+    handler.dict_filename = "skill.json"
+    handler.dict_cache = None
+
+    mock_file_handler = MagicMock()
+    mock_file_handler.write_file_content.return_value = {"status": "ok"}
+    handler.file_handler = mock_file_handler
+
+    with patch("skillberry_store.modules.object_handler.bump") as mock_bump:
+        handler.write_dict("aaaaaaaa-0000-0000-0000-000000000000", {"name": "x"})
+        mock_bump.assert_called_once()
+
+
+def test_write_dict_does_not_call_bump_on_failure():
+    """write_dict must NOT call bump() when the write raises an exception."""
+    from skillberry_store.modules.object_handler import ObjectHandler
+    from fastapi import HTTPException
+
+    handler = ObjectHandler.__new__(ObjectHandler)
+    handler.object_type = "skill"
+    handler.dict_filename = "skill.json"
+    handler.dict_cache = None
+
+    mock_file_handler = MagicMock()
+    mock_file_handler.write_file_content.side_effect = RuntimeError("disk full")
+    handler.file_handler = mock_file_handler
+
+    with patch("skillberry_store.modules.object_handler.bump") as mock_bump:
+        with pytest.raises(HTTPException):
+            handler.write_dict("aaaaaaaa-0000-0000-0000-000000000000", {"name": "x"})
+        mock_bump.assert_not_called()
+
+
+def test_delete_object_calls_bump_on_success():
+    """delete_object must call bump() after a successful delete."""
+    from skillberry_store.modules.object_handler import ObjectHandler
+
+    handler = ObjectHandler.__new__(ObjectHandler)
+    handler.object_type = "skill"
+    handler.dict_cache = None
+
+    mock_file_handler = MagicMock()
+    mock_file_handler.delete_subdirectory.return_value = {"status": "ok"}
+    handler.file_handler = mock_file_handler
+
+    with patch("skillberry_store.modules.object_handler.bump") as mock_bump:
+        handler.delete_object("aaaaaaaa-0000-0000-0000-000000000000")
+        mock_bump.assert_called_once()
+
+
+def test_delete_object_does_not_call_bump_on_failure():
+    """delete_object must NOT call bump() when deletion raises an exception."""
+    from skillberry_store.modules.object_handler import ObjectHandler
+    from fastapi import HTTPException
+
+    handler = ObjectHandler.__new__(ObjectHandler)
+    handler.object_type = "skill"
+    handler.dict_cache = None
+
+    mock_file_handler = MagicMock()
+    mock_file_handler.delete_subdirectory.side_effect = RuntimeError("not found")
+    handler.file_handler = mock_file_handler
+
+    with patch("skillberry_store.modules.object_handler.bump") as mock_bump:
+        with pytest.raises(HTTPException):
+            handler.delete_object("aaaaaaaa-0000-0000-0000-000000000000")
+        mock_bump.assert_not_called()
