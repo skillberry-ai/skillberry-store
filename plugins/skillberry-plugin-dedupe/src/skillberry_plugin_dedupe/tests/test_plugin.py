@@ -132,3 +132,210 @@ async def test_event_handler_skipped_when_store_not_set():
     finally:
         events_module._event_handlers.clear()
         events_module._event_handlers.update(saved)
+
+
+# ── _get_candidate_skills ─────────────────────────────────────────────────────
+
+def test_get_candidate_skills_excludes_trigger_skill():
+    plugin = _make_plugin_with_mock_llm()
+    plugin.set_store_api(_make_mock_store(skills=[
+        {"uuid": "s-trigger", "name": "trigger", "description": "d", "tags": []},
+        {"uuid": "s-other", "name": "other", "description": "d", "tags": []},
+    ]))
+    candidates = plugin._get_candidate_skills("s-trigger")
+    uuids = [c["uuid"] for c in candidates]
+    assert "s-trigger" not in uuids
+    assert "s-other" in uuids
+
+
+def test_get_candidate_skills_excludes_skills_tagged_as_duplicates():
+    plugin = _make_plugin_with_mock_llm()
+    plugin.set_store_api(_make_mock_store(skills=[
+        {"uuid": "s-orig", "name": "original", "description": "d", "tags": []},
+        {"uuid": "s-dup", "name": "dup", "description": "d", "tags": ["duplicate:original"]},
+    ]))
+    candidates = plugin._get_candidate_skills("s-new")
+    uuids = [c["uuid"] for c in candidates]
+    assert "s-orig" in uuids
+    assert "s-dup" not in uuids
+
+
+def test_get_candidate_skills_returns_empty_when_only_trigger_exists():
+    plugin = _make_plugin_with_mock_llm()
+    plugin.set_store_api(_make_mock_store(skills=[
+        {"uuid": "s-1", "name": "only", "description": "d", "tags": []},
+    ]))
+    assert plugin._get_candidate_skills("s-1") == []
+
+
+def test_get_candidate_skills_returns_empty_when_all_are_duplicates():
+    plugin = _make_plugin_with_mock_llm()
+    plugin.set_store_api(_make_mock_store(skills=[
+        {"uuid": "s-dup1", "tags": ["duplicate:x"]},
+        {"uuid": "s-dup2", "tags": ["duplicate:y", "python"]},
+    ]))
+    assert plugin._get_candidate_skills("s-new") == []
+
+
+# ── _build_prompt ─────────────────────────────────────────────────────────────
+
+def test_build_prompt_contains_trigger_skill_name_and_description():
+    plugin = _make_plugin_with_mock_llm()
+    skill = {"name": "my_skill", "description": "searches the web for results"}
+    candidates = [{"name": "other", "description": "does something else"}]
+    prompt = plugin._build_prompt(skill, candidates)
+    assert "my_skill" in prompt
+    assert "searches the web for results" in prompt
+
+
+def test_build_prompt_contains_all_candidates():
+    plugin = _make_plugin_with_mock_llm()
+    skill = {"name": "new", "description": "desc"}
+    candidates = [
+        {"name": "cand-a", "description": "alpha desc"},
+        {"name": "cand-b", "description": "beta desc"},
+    ]
+    prompt = plugin._build_prompt(skill, candidates)
+    assert "cand-a" in prompt
+    assert "alpha desc" in prompt
+    assert "cand-b" in prompt
+    assert "beta desc" in prompt
+
+
+def test_build_prompt_requests_json_array_output():
+    plugin = _make_plugin_with_mock_llm()
+    prompt = plugin._build_prompt(
+        {"name": "x", "description": "y"},
+        [{"name": "z", "description": "w"}],
+    )
+    assert "JSON" in prompt or "json" in prompt
+    assert "[]" in prompt or "empty" in prompt.lower()
+
+
+# ── _parse_llm_response ───────────────────────────────────────────────────────
+
+def test_parse_llm_response_valid_json_with_duplicates():
+    plugin = _make_plugin_with_mock_llm()
+    response = '[{"name": "skill-a", "reason": "very similar description"}]'
+    findings = plugin._parse_llm_response(response)
+    assert len(findings) == 1
+    assert findings[0]["name"] == "skill-a"
+    assert findings[0]["reason"] == "very similar description"
+
+
+def test_parse_llm_response_empty_array():
+    plugin = _make_plugin_with_mock_llm()
+    findings = plugin._parse_llm_response("[]")
+    assert findings == []
+
+
+def test_parse_llm_response_tolerates_surrounding_prose():
+    plugin = _make_plugin_with_mock_llm()
+    response = 'Sure, here are the duplicates:\n[{"name": "x", "reason": "same thing"}]\nDone.'
+    findings = plugin._parse_llm_response(response)
+    assert len(findings) == 1
+    assert findings[0]["name"] == "x"
+
+
+def test_parse_llm_response_multiple_duplicates():
+    plugin = _make_plugin_with_mock_llm()
+    response = '[{"name": "a", "reason": "r1"}, {"name": "b", "reason": "r2"}]'
+    findings = plugin._parse_llm_response(response)
+    assert len(findings) == 2
+    names = {f["name"] for f in findings}
+    assert names == {"a", "b"}
+
+
+def test_parse_llm_response_raises_on_no_json_array():
+    plugin = _make_plugin_with_mock_llm()
+    with pytest.raises(ValueError, match="No JSON array"):
+        plugin._parse_llm_response("No duplicates found.")
+
+
+def test_parse_llm_response_skips_entries_missing_name_or_reason():
+    plugin = _make_plugin_with_mock_llm()
+    response = '[{"name": "ok", "reason": "good"}, {"only_name": "bad"}]'
+    findings = plugin._parse_llm_response(response)
+    assert len(findings) == 1
+    assert findings[0]["name"] == "ok"
+
+
+# ── _apply_duplicate_findings ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_apply_duplicate_findings_writes_tags():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    mock_store.get_skill.return_value = {"uuid": "s-1", "extra": {}, "tags": []}
+    plugin.set_store_api(mock_store)
+
+    await plugin._apply_duplicate_findings("s-1", [{"name": "skill-x", "reason": "same"}])
+
+    mock_store.update_skill_tags.assert_called_once_with("s-1", ["duplicate:skill-x"])
+
+
+@pytest.mark.asyncio
+async def test_apply_duplicate_findings_writes_duplicate_analysis_to_extra():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    mock_store.get_skill.return_value = {"uuid": "s-1", "extra": {}, "tags": []}
+    plugin.set_store_api(mock_store)
+
+    await plugin._apply_duplicate_findings("s-1", [{"name": "skill-x", "reason": "same thing"}])
+
+    mock_store.update_skill_metadata.assert_called_once_with(
+        "s-1", {"duplicate_analysis": {"skill-x": "same thing"}}
+    )
+
+
+@pytest.mark.asyncio
+async def test_apply_duplicate_findings_preserves_existing_analysis():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    mock_store.get_skill.return_value = {
+        "uuid": "s-1",
+        "extra": {"duplicate_analysis": {"skill-old": "old reason"}},
+        "tags": [],
+    }
+    plugin.set_store_api(mock_store)
+
+    await plugin._apply_duplicate_findings("s-1", [{"name": "skill-new", "reason": "new reason"}])
+
+    call_args = mock_store.update_skill_metadata.call_args[0]
+    analysis = call_args[1]["duplicate_analysis"]
+    assert analysis["skill-old"] == "old reason"
+    assert analysis["skill-new"] == "new reason"
+
+
+@pytest.mark.asyncio
+async def test_apply_duplicate_findings_multiple_findings():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    mock_store.get_skill.return_value = {"uuid": "s-1", "extra": {}, "tags": []}
+    plugin.set_store_api(mock_store)
+
+    findings = [
+        {"name": "skill-a", "reason": "reason a"},
+        {"name": "skill-b", "reason": "reason b"},
+    ]
+    await plugin._apply_duplicate_findings("s-1", findings)
+
+    mock_store.update_skill_tags.assert_called_once_with(
+        "s-1", ["duplicate:skill-a", "duplicate:skill-b"]
+    )
+    call_args = mock_store.update_skill_metadata.call_args[0]
+    analysis = call_args[1]["duplicate_analysis"]
+    assert analysis["skill-a"] == "reason a"
+    assert analysis["skill-b"] == "reason b"
+
+
+@pytest.mark.asyncio
+async def test_apply_duplicate_findings_no_op_when_empty():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    plugin.set_store_api(mock_store)
+
+    await plugin._apply_duplicate_findings("s-1", [])
+
+    mock_store.update_skill_tags.assert_not_called()
+    mock_store.update_skill_metadata.assert_not_called()

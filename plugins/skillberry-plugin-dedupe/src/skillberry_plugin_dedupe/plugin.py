@@ -79,16 +79,76 @@ class SkillberryPluginDedupe(PluginBase):
             _event_handlers[event_name].append(_handle)
 
     def _get_candidate_skills(self, trigger_uuid: str) -> List[Dict]:
-        return []  # implemented in Task 5
+        """Return original (non-duplicate-tagged) skills other than the trigger skill."""
+        all_skills = self.store.list_skills()
+        return [
+            s for s in all_skills
+            if s.get("uuid") != trigger_uuid
+            and not any(t.startswith("duplicate:") for t in (s.get("tags") or []))
+        ]
 
     def _build_prompt(self, skill: Dict, candidates: List[Dict]) -> str:
-        return ""  # implemented in Task 6
+        """Build the single LLM prompt for duplicate detection."""
+        lines = [
+            "You are a skill deduplication assistant. Identify whether the new skill is semantically",
+            "equivalent or very similar to any of the existing skills.",
+            "",
+            "Focus on the DESCRIPTION, not the name. Two skills are duplicates if their descriptions",
+            "describe essentially the same capability or purpose. Minor wording differences do not",
+            "count — the similarity must be very strong.",
+            "",
+            "New skill:",
+            f"  Name: {skill.get('name', '')}",
+            f"  Description: {skill.get('description', '')}",
+            "",
+            "Existing skills:",
+        ]
+        for i, candidate in enumerate(candidates, 1):
+            lines.append(f"  {i}. Name: {candidate.get('name', '')}")
+            lines.append(f"     Description: {candidate.get('description', '')}")
+        lines.extend([
+            "",
+            'Return ONLY a JSON array. Each entry must have "name" (the existing skill\'s exact name)',
+            'and "reason" (one sentence explaining the similarity). If no duplicates are found,',
+            "return [].",
+        ])
+        return "\n".join(lines)
 
     def _parse_llm_response(self, response: str) -> List[Dict]:
-        return []  # implemented in Task 7
+        """Extract and validate the JSON array from the LLM response."""
+        match = re.search(r'\[.*\]', response, re.DOTALL)
+        if not match:
+            raise ValueError(f"No JSON array found in LLM response: {response!r}")
+        raw = json.loads(match.group())
+        return [
+            {"name": item["name"], "reason": item["reason"]}
+            for item in raw
+            if "name" in item and "reason" in item
+        ]
 
     async def _apply_duplicate_findings(self, uuid: str, findings: List[Dict]) -> None:
-        pass  # implemented in Task 8
+        """Write duplicate tags and analysis to the skill. Additive — never removes."""
+        if not findings:
+            return
+
+        tags = [f"duplicate:{f['name']}" for f in findings]
+        success = self.store.update_skill_tags(uuid, tags)
+        if not success:
+            logger.error(f"Failed to update tags for skill {uuid}")
+
+        skill = self.store.get_skill(uuid)
+        if skill is None:
+            logger.error(f"Skill {uuid} not found when writing duplicate_analysis")
+            return
+
+        existing_extra = skill.get("extra") or {}
+        existing_analysis = existing_extra.get("duplicate_analysis") or {}
+        for finding in findings:
+            existing_analysis[finding["name"]] = finding["reason"]
+
+        success = self.store.update_skill_metadata(uuid, {"duplicate_analysis": existing_analysis})
+        if not success:
+            logger.error(f"Failed to update metadata for skill {uuid}")
 
     async def _check_for_duplicates(self, uuid: str) -> None:
         pass  # implemented in Task 9
