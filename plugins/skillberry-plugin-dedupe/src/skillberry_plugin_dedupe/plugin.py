@@ -66,7 +66,17 @@ class SkillberryPluginDedupe(PluginBase):
         return None
 
     def _register_event_handlers(self) -> None:
-        pass  # implemented in Task 4
+        from skillberry_store.plugins.events import _event_handlers
+
+        for event_name in ("content_added:skill", "content_updated:skill"):
+            async def _handle(uuid: str, _event=event_name):
+                if not self.is_enabled() or self._store_api is None:
+                    return
+                await self._check_for_duplicates(uuid)
+
+            if event_name not in _event_handlers:
+                _event_handlers[event_name] = []
+            _event_handlers[event_name].append(_handle)
 
     def _get_candidate_skills(self, trigger_uuid: str) -> List[Dict]:
         return []  # implemented in Task 5

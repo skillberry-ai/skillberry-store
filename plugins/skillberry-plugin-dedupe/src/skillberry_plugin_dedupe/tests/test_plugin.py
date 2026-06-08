@@ -74,3 +74,61 @@ def test_plugin_no_cli_commands():
 def test_plugin_no_ui_config():
     plugin = _make_plugin_with_mock_llm()
     assert plugin.get_ui_config() is None
+
+
+# ── event handler registration ────────────────────────────────────────────────
+
+def test_event_handlers_registered_for_skill_added_and_updated():
+    from skillberry_store.plugins import events as events_module
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        plugin = _make_plugin_with_mock_llm()
+        assert len(events_module._event_handlers.get("content_added:skill", [])) > 0
+        assert len(events_module._event_handlers.get("content_updated:skill", [])) > 0
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
+
+
+def test_event_handlers_not_registered_for_tools_or_snippets():
+    from skillberry_store.plugins import events as events_module
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        _make_plugin_with_mock_llm()
+        assert "content_added:tool" not in events_module._event_handlers
+        assert "content_added:snippet" not in events_module._event_handlers
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
+
+
+@pytest.mark.asyncio
+async def test_event_handler_skipped_when_plugin_disabled():
+    from skillberry_store.plugins import events as events_module
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        plugin = _make_plugin_disabled()
+        plugin.set_store_api(_make_mock_store())
+        handler = events_module._event_handlers.get("content_added:skill", [None])[0]
+        if handler:
+            await handler(uuid="any-uuid")  # must not raise
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
+
+
+@pytest.mark.asyncio
+async def test_event_handler_skipped_when_store_not_set():
+    from skillberry_store.plugins import events as events_module
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        _make_plugin_with_mock_llm()
+        handler = events_module._event_handlers["content_added:skill"][0]
+        await handler(uuid="any-uuid")  # must not raise — store not injected
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
