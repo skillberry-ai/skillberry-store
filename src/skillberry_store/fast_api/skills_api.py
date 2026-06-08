@@ -132,12 +132,18 @@ def register_skills_api(
         try:
             result = service.create(skill.to_dict())
             emit_content_added("skill", result["uuid"])
-            return {"message": f"Skill '{result['name']}' created successfully.", "name": result["name"], "uuid": result["uuid"]}
+            return {
+                "message": f"Skill '{result['name']}' created successfully.",
+                "name": result["name"],
+                "uuid": result["uuid"],
+            }
         except ValueError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             logger.error(f"Error creating skill '{skill.name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error creating skill: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error creating skill: {str(e)}"
+            )
 
     @app.get("/skills/", tags=[tags], openapi_extra={"x-cli-name": "list-skills"})
     def list_skills():
@@ -147,7 +153,9 @@ def register_skills_api(
             return service.list_all()
         except Exception as e:
             logger.error(f"Error listing skills: {e}")
-            raise HTTPException(status_code=500, detail=f"Error listing skills: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error listing skills: {str(e)}"
+            )
 
     @app.get(
         "/skills/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-skill"}
@@ -163,7 +171,9 @@ def register_skills_api(
             raise HTTPException(status_code=505, detail=str(e))
         except Exception as e:
             logger.error(f"Error retrieving skill '{uuid_or_name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error retrieving skill: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error retrieving skill: {str(e)}"
+            )
 
     @app.delete(
         "/skills/{uuid_or_name}",
@@ -178,12 +188,16 @@ def register_skills_api(
             skill_uuid = skill["uuid"]
             service.delete(uuid_or_name)
             emit_content_deleted("skill", skill_uuid)
-            return {"message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."}
+            return {
+                "message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."
+            }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             logger.error(f"Error deleting skill '{uuid_or_name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error deleting skill: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error deleting skill: {str(e)}"
+            )
 
     @app.put(
         "/skills/{uuid_or_name}",
@@ -196,12 +210,16 @@ def register_skills_api(
         try:
             result = service.update(uuid_or_name, skill.to_dict())
             emit_content_updated("skill", result["uuid"])
-            return {"message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."}
+            return {
+                "message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."
+            }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             logger.error(f"Error updating skill '{uuid_or_name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error updating skill: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error updating skill: {str(e)}"
+            )
 
     @app.get(
         "/search/skills", tags=[tags], openapi_extra={"x-cli-name": "search-skills"}
@@ -230,10 +248,19 @@ def register_skills_api(
         logger.info(f"Request to search skill descriptions for term: {search_term}")
         search_skills_counter.inc()
         if not skills_descriptions:
-            raise HTTPException(status_code=503, detail="Skill search is not available - descriptions not initialized")
+            raise HTTPException(
+                status_code=503,
+                detail="Skill search is not available - descriptions not initialized",
+            )
         try:
-            matched_entities = skills_descriptions.search_description(search_term=search_term, k=max_number_of_results)
-            filtered_matched_entities = [m for m in matched_entities if float(m["similarity_score"]) <= similarity_threshold]
+            matched_entities = skills_descriptions.search_description(
+                search_term=search_term, k=max_number_of_results
+            )
+            filtered_matched_entities = [
+                m
+                for m in matched_entities
+                if float(m["similarity_score"]) <= similarity_threshold
+            ]
             skills_to_filter = []
             for matched_entity in filtered_matched_entities:
                 skill_uuid = matched_entity.get("filename")
@@ -241,16 +268,31 @@ def register_skills_api(
                     continue
                 try:
                     skill_dict = skill_handler.read_dict(skill_uuid)
-                    skill_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                    skill_dict["similarity_score"] = matched_entity.get(
+                        "similarity_score", 0.0
+                    )
                     skills_to_filter.append(skill_dict)
                 except Exception as e:
                     logger.warning(f"Could not load skill {skill_uuid}: {e}")
-            filtered_skills = apply_search_filters(skills_to_filter, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
+            filtered_skills = apply_search_filters(
+                skills_to_filter,
+                manifest_filter=manifest_filter,
+                lifecycle_state=lifecycle_state,
+            )
             filtered_skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return [{"filename": s.get("name", ""), "similarity_score": s.get("similarity_score", 0.0)} for s in filtered_skills if s.get("name")]
+            return [
+                {
+                    "filename": s.get("name", ""),
+                    "similarity_score": s.get("similarity_score", 0.0),
+                }
+                for s in filtered_skills
+                if s.get("name")
+            ]
         except Exception as e:
             logger.error(f"Error searching skills: {e}")
-            raise HTTPException(status_code=500, detail=f"Error searching skills: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error searching skills: {str(e)}"
+            )
 
     @app.post(
         "/skills/detect-anthropic-skills",

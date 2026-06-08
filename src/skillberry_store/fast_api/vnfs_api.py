@@ -37,24 +37,44 @@ def register_vnfs_api(
     if service is None:
         from skillberry_store.modules.object_handler import get_object_handler
         from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
-        service = VnfsService(get_object_handler("vnfs"), VirtualNfsServerManager(sts_url=sts_url, app=app), vnfs_descriptions)
+
+        service = VnfsService(
+            get_object_handler("vnfs"),
+            VirtualNfsServerManager(sts_url=sts_url, app=app),
+            vnfs_descriptions,
+        )
     app.state.vnfs_server_manager = service.server_manager
 
-    @app.post("/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "create-vnfs-server"})
+    @app.post(
+        "/vnfs_servers/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "create-vnfs-server"},
+    )
     def create_vnfs_server(vnfs: Annotated[VnfsSchema, Query()], request: Request):
         logger.info(f"Request to create vnfs server: {vnfs.name}")
         create_vnfs_counter.inc()
         try:
             result = service.create(vnfs.to_dict())
-            return {"message": f"vNFS server '{result['name']}' created successfully.", "name": result["name"], "uuid": result["uuid"], "port": result["port"]}
+            return {
+                "message": f"vNFS server '{result['name']}' created successfully.",
+                "name": result["name"],
+                "uuid": result["uuid"],
+                "port": result["port"],
+            }
         except ValueError as e:
-            status = 409 if "already exists" in str(e) or "not available" in str(e) else 500
+            status = (
+                409 if "already exists" in str(e) or "not available" in str(e) else 500
+            )
             raise HTTPException(status_code=status, detail=str(e))
         except Exception as exc:
             logger.error(f"Error creating vnfs server '{vnfs.name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error creating vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error creating vNFS server: {exc}"
+            )
 
-    @app.get("/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vnfs-servers"})
+    @app.get(
+        "/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vnfs-servers"}
+    )
     def list_vnfs_servers():
         logger.info("Request to list vnfs servers")
         list_vnfs_counter.inc()
@@ -62,9 +82,15 @@ def register_vnfs_api(
             return service.list_all()
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")
-            raise HTTPException(status_code=500, detail=f"Error listing vNFS servers: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error listing vNFS servers: {exc}"
+            )
 
-    @app.get("/vnfs_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-vnfs-server"})
+    @app.get(
+        "/vnfs_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "get-vnfs-server"},
+    )
     def get_vnfs_server(uuid_or_name: str):
         logger.info(f"Request to get vnfs server: {uuid_or_name}")
         get_vnfs_counter.inc()
@@ -74,9 +100,15 @@ def register_vnfs_api(
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as exc:
             logger.error(f"Error retrieving vnfs server '{uuid_or_name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error retrieving vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error retrieving vNFS server: {exc}"
+            )
 
-    @app.delete("/vnfs_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "delete-vnfs-server"})
+    @app.delete(
+        "/vnfs_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "delete-vnfs-server"},
+    )
     def delete_vnfs_server(uuid_or_name: str):
         logger.info(f"Request to delete vnfs server: {uuid_or_name}")
         delete_vnfs_counter.inc()
@@ -87,22 +119,39 @@ def register_vnfs_api(
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as exc:
             logger.error(f"Error deleting vnfs server '{uuid_or_name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error deleting vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error deleting vNFS server: {exc}"
+            )
 
-    @app.put("/vnfs_servers/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "update-vnfs-server"})
-    def update_vnfs_server(uuid_or_name: str, vnfs: Annotated[VnfsSchema, Query()], request: Request):
+    @app.put(
+        "/vnfs_servers/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "update-vnfs-server"},
+    )
+    def update_vnfs_server(
+        uuid_or_name: str, vnfs: Annotated[VnfsSchema, Query()], request: Request
+    ):
         logger.info(f"Request to update vnfs server: {uuid_or_name}")
         update_vnfs_counter.inc()
         try:
             result = service.update(uuid_or_name, vnfs.to_dict())
-            return {"message": f"vNFS server '{result.get('name')}' updated successfully.", "port": result["port"]}
+            return {
+                "message": f"vNFS server '{result.get('name')}' updated successfully.",
+                "port": result["port"],
+            }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as exc:
             logger.error(f"Error updating vnfs server '{uuid_or_name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error updating vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error updating vNFS server: {exc}"
+            )
 
-    @app.post("/vnfs_servers/{uuid_or_name}/start", tags=[tags], openapi_extra={"x-cli-name": "start-vnfs-server"})
+    @app.post(
+        "/vnfs_servers/{uuid_or_name}/start",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "start-vnfs-server"},
+    )
     def start_vnfs_server(uuid_or_name: str, request: Request):
         """Start or restart a vNFS endpoint."""
         logger.info(f"Request to start vnfs server: {uuid_or_name}")
@@ -113,13 +162,19 @@ def register_vnfs_api(
             try:
                 existing = service.server_manager.get_server(server_name, server_uuid)
                 if existing and existing.running:
-                    return {"message": f"vNFS server '{server_name}' is already running.", "port": existing.port}
+                    return {
+                        "message": f"vNFS server '{server_name}' is already running.",
+                        "port": existing.port,
+                    }
             except Exception:
                 pass
             schema = VnfsSchema.from_dict(vnfs_data)
             server = service.server_manager.add_server(schema)
             logger.info(f"vNFS server '{server_name}' started on port {server.port}")
-            return {"message": f"vNFS server '{server_name}' started successfully.", "port": server.port}
+            return {
+                "message": f"vNFS server '{server_name}' started successfully.",
+                "port": server.port,
+            }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except ValueError as e:
@@ -128,9 +183,15 @@ def register_vnfs_api(
             raise
         except Exception as exc:
             logger.error(f"Error starting vnfs server '{uuid_or_name}': {exc}")
-            raise HTTPException(status_code=500, detail=f"Error starting vNFS server: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error starting vNFS server: {exc}"
+            )
 
-    @app.get("/search/vnfs_servers", tags=[tags], openapi_extra={"x-cli-name": "search-vnfs-servers"})
+    @app.get(
+        "/search/vnfs_servers",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "search-vnfs-servers"},
+    )
     def search_vnfs_servers(
         search_term: str,
         max_number_of_results: int = 5,
@@ -141,10 +202,18 @@ def register_vnfs_api(
         logger.info(f"Request to search vnfs servers for: {search_term}")
         search_vnfs_counter.inc()
         if not vnfs_descriptions:
-            raise HTTPException(status_code=503, detail="vNFS server search is not available")
+            raise HTTPException(
+                status_code=503, detail="vNFS server search is not available"
+            )
         try:
-            matched = vnfs_descriptions.search_description(search_term=search_term, k=max_number_of_results)
-            filtered = [m for m in matched if float(m["similarity_score"]) <= similarity_threshold]
+            matched = vnfs_descriptions.search_description(
+                search_term=search_term, k=max_number_of_results
+            )
+            filtered = [
+                m
+                for m in matched
+                if float(m["similarity_score"]) <= similarity_threshold
+            ]
             to_filter = []
             for m in filtered:
                 vnfs_uuid = m.get("filename") or m.get("name")
@@ -156,9 +225,22 @@ def register_vnfs_api(
                     to_filter.append(d)
                 except Exception as exc:
                     logger.warning(f"Could not load vnfs '{vnfs_uuid}': {exc}")
-            result_items = apply_search_filters(to_filter, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
+            result_items = apply_search_filters(
+                to_filter,
+                manifest_filter=manifest_filter,
+                lifecycle_state=lifecycle_state,
+            )
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return [{"filename": s.get("name", ""), "similarity_score": s.get("similarity_score", 0.0)} for s in result_items if s.get("name")]
+            return [
+                {
+                    "filename": s.get("name", ""),
+                    "similarity_score": s.get("similarity_score", 0.0),
+                }
+                for s in result_items
+                if s.get("name")
+            ]
         except Exception as exc:
             logger.error(f"Error searching vnfs servers: {exc}")
-            raise HTTPException(status_code=500, detail=f"Error searching vNFS servers: {exc}")
+            raise HTTPException(
+                status_code=500, detail=f"Error searching vNFS servers: {exc}"
+            )

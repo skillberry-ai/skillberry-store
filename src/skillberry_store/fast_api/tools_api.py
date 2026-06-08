@@ -170,14 +170,25 @@ def register_tools_api(
         try:
             file_content = await module.read()
             module_filename = module.filename if module.filename else f"{tool.name}.py"
-            result = service.create(tool.to_dict(), module_content=file_content, module_filename=module_filename)
+            result = service.create(
+                tool.to_dict(),
+                module_content=file_content,
+                module_filename=module_filename,
+            )
             emit_content_added("tool", result["uuid"])
-            return {"message": f"Tool '{result['name']}' created successfully.", "name": result["name"], "uuid": result["uuid"], "module_name": result["module_name"]}
+            return {
+                "message": f"Tool '{result['name']}' created successfully.",
+                "name": result["name"],
+                "uuid": result["uuid"],
+                "module_name": result["module_name"],
+            }
         except ValueError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             logger.error(f"Error creating tool '{tool.name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error creating tool: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error creating tool: {str(e)}"
+            )
 
     @app.get("/tools/", tags=[tags], openapi_extra={"x-cli-name": "list-tools"})
     def list_tools() -> List[Dict[str, Any]]:
@@ -188,7 +199,10 @@ def register_tools_api(
         except Exception as e:
             error_traceback = traceback.format_exc()
             logger.error(f"Error listing tools: {e}\n{error_traceback}")
-            raise HTTPException(status_code=500, detail=f"Error listing tools: {str(e)}\n{error_traceback}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error listing tools: {str(e)}\n{error_traceback}",
+            )
 
     @app.get(
         "/tools/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-tool"}
@@ -202,7 +216,9 @@ def register_tools_api(
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             logger.error(f"Error retrieving tool '{uuid_or_name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error retrieving tool: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error retrieving tool: {str(e)}"
+            )
 
     @app.get(
         "/tools/{uuid_or_name}/module",
@@ -218,8 +234,12 @@ def register_tools_api(
             if tool_dict.get("packaging_format") == "mcp":
                 tools = await get_mcp_tools(tool_dict)
                 if not tools:
-                    raise HTTPException(status_code=404, detail=f"MCP tool '{uuid_or_name}' not found.")
-                return PlainTextResponse(content=mcp_content(vars(tools[0])), media_type="text/plain")
+                    raise HTTPException(
+                        status_code=404, detail=f"MCP tool '{uuid_or_name}' not found."
+                    )
+                return PlainTextResponse(
+                    content=mcp_content(vars(tools[0])), media_type="text/plain"
+                )
             content = service.get_module(uuid_or_name)
             return PlainTextResponse(content=content, media_type="text/plain")
         except KeyError as e:
@@ -228,7 +248,9 @@ def register_tools_api(
             raise
         except Exception as e:
             logger.error(f"Error retrieving module for '{uuid_or_name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error retrieving module file: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error retrieving module file: {str(e)}"
+            )
 
     @app.delete(
         "/tools/{uuid_or_name}",
@@ -243,12 +265,16 @@ def register_tools_api(
             tool_uuid = tool["uuid"]
             service.delete(uuid_or_name)
             emit_content_deleted("tool", tool_uuid)
-            return {"message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."}
+            return {
+                "message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."
+            }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             logger.error(f"Error deleting tool '{uuid_or_name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error deleting tool: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error deleting tool: {str(e)}"
+            )
 
     @app.put(
         "/tools/{uuid_or_name}",
@@ -261,12 +287,16 @@ def register_tools_api(
         try:
             result = service.update(uuid_or_name, tool.to_dict())
             emit_content_updated("tool", result["uuid"])
-            return {"message": f"Tool with UUID or name '{uuid_or_name}' updated successfully."}
+            return {
+                "message": f"Tool with UUID or name '{uuid_or_name}' updated successfully."
+            }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             logger.error(f"Error updating tool '{uuid_or_name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error updating tool: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error updating tool: {str(e)}"
+            )
 
     @app.post(
         "/tools/{uuid_or_name}/execute",
@@ -292,7 +322,9 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or execution fails (500).
         """
-        logger.info(f"[execute_tool] Received execute tool: {uuid_or_name} with parameters: {parameters}")
+        logger.info(
+            f"[execute_tool] Received execute tool: {uuid_or_name} with parameters: {parameters}"
+        )
         try:
             tool_dict = service.get(uuid_or_name)
             tool_uuid = tool_dict["uuid"]
@@ -300,22 +332,45 @@ def register_tools_api(
             execute_tool_counter.labels(name=tool_uuid).inc()
             start_time = time.time()
             headers_dict = dict(request.headers.items())
-            skillberry_context = unflatten_keys(headers_dict).get(SKILLBERRY_CONTEXT.lower())
-            env_id = skillberry_context.get("env_id") if skillberry_context is not None else None
+            skillberry_context = unflatten_keys(headers_dict).get(
+                SKILLBERRY_CONTEXT.lower()
+            )
+            env_id = (
+                skillberry_context.get("env_id")
+                if skillberry_context is not None
+                else None
+            )
             if tool_dict.get("packaging_format") == "mcp":
                 module_content = mcp_content_from_manifest(tool_dict)
             else:
                 module_content = service.get_module(uuid_or_name)
-            dep_uuids = service.find_dependencies(tool_dict.get("dependencies", []), tool_uuid)
+            dep_uuids = service.find_dependencies(
+                tool_dict.get("dependencies", []), tool_uuid
+            )
             dep_dicts = service.handler.read_dicts(list(dep_uuids))
-            dep_files = [service.handler.read_file(m["uuid"], m["module_name"], raw_content=True) for m in dep_dicts]
-            file_executor = FileExecutor(name=tool_name, file_content=module_content, file_manifest=tool_dict, dependent_file_contents=dep_files, dependent_tools_as_dict=dep_dicts)
-            result = await file_executor.execute_file(parameters=parameters or {}, env_id=env_id)
+            dep_files = [
+                service.handler.read_file(m["uuid"], m["module_name"], raw_content=True)
+                for m in dep_dicts
+            ]
+            file_executor = FileExecutor(
+                name=tool_name,
+                file_content=module_content,
+                file_manifest=tool_dict,
+                dependent_file_contents=dep_files,
+                dependent_tools_as_dict=dep_dicts,
+            )
+            result = await file_executor.execute_file(
+                parameters=parameters or {}, env_id=env_id
+            )
             if not (isinstance(result, dict) and "error" in result):
                 duration = time.time() - start_time
                 execute_successfully_tool_counter.labels(name=tool_uuid).inc()
-                execute_successfully_tool_latency.labels(name=tool_uuid).observe(duration)
-                logger.info(f"Tool '{tool_name}' (UUID: {tool_uuid}) executed successfully")
+                execute_successfully_tool_latency.labels(name=tool_uuid).observe(
+                    duration
+                )
+                logger.info(
+                    f"Tool '{tool_name}' (UUID: {tool_uuid}) executed successfully"
+                )
             else:
                 error_message = result.get("error", "Unknown Error")
                 status_code = 404 if "not found" in error_message.lower() else 500
@@ -327,7 +382,9 @@ def register_tools_api(
             raise
         except Exception as e:
             logger.error(f"Error executing tool '{uuid_or_name}': {e}")
-            raise HTTPException(status_code=500, detail=f"Error executing tool: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error executing tool: {str(e)}"
+            )
 
     @app.get("/search/tools", tags=[tags], openapi_extra={"x-cli-name": "search-tools"})
     def search_tools(
@@ -354,10 +411,19 @@ def register_tools_api(
         logger.info(f"Request to search tool descriptions for term: {search_term}")
         search_tools_counter.inc()
         if not tools_descriptions:
-            raise HTTPException(status_code=503, detail="Tool search is not available - descriptions not initialized")
+            raise HTTPException(
+                status_code=503,
+                detail="Tool search is not available - descriptions not initialized",
+            )
         try:
-            matched_entities = tools_descriptions.search_description(search_term=search_term, k=max_number_of_results)
-            filtered_matched_entities = [m for m in matched_entities if float(m["similarity_score"]) <= similarity_threshold]
+            matched_entities = tools_descriptions.search_description(
+                search_term=search_term, k=max_number_of_results
+            )
+            filtered_matched_entities = [
+                m
+                for m in matched_entities
+                if float(m["similarity_score"]) <= similarity_threshold
+            ]
             tools_to_filter = []
             for matched_entity in filtered_matched_entities:
                 tool_name = matched_entity.get("filename") or matched_entity.get("name")
@@ -365,16 +431,31 @@ def register_tools_api(
                     continue
                 try:
                     tool_dict = service.get(tool_name)
-                    tool_dict["similarity_score"] = matched_entity.get("similarity_score", 0.0)
+                    tool_dict["similarity_score"] = matched_entity.get(
+                        "similarity_score", 0.0
+                    )
                     tools_to_filter.append(tool_dict)
                 except Exception as e:
                     logger.warning(f"Could not load tool {tool_name}: {e}")
-            filtered_tools = apply_search_filters(tools_to_filter, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
+            filtered_tools = apply_search_filters(
+                tools_to_filter,
+                manifest_filter=manifest_filter,
+                lifecycle_state=lifecycle_state,
+            )
             filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return [{"filename": t.get("name", ""), "similarity_score": t.get("similarity_score", 0.0)} for t in filtered_tools if t.get("name")]
+            return [
+                {
+                    "filename": t.get("name", ""),
+                    "similarity_score": t.get("similarity_score", 0.0),
+                }
+                for t in filtered_tools
+                if t.get("name")
+            ]
         except Exception as e:
             logger.error(f"Error searching tools: {e}")
-            raise HTTPException(status_code=500, detail=f"Error searching tools: {str(e)}")
+            raise HTTPException(
+                status_code=500, detail=f"Error searching tools: {str(e)}"
+            )
 
     @app.post("/tools/add", tags=[tags], openapi_extra={"x-cli-name": "add-tool"})
     async def add_tool_from_python(
