@@ -11,6 +11,7 @@ def test_plugin_type_enum():
     assert PluginType.CREATOR == "creator"
     assert PluginType.EVALUATOR == "evaluator"
     assert PluginType.OPTIMIZER == "optimizer"
+    assert PluginType.IMPORTER == "importer"
 
 
 def test_plugin_metadata_creation():

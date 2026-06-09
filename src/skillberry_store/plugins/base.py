@@ -14,6 +14,7 @@ class PluginType(str, Enum):
     CREATOR = "creator"
     EVALUATOR = "evaluator"
     OPTIMIZER = "optimizer"
+    IMPORTER = "importer"
 
 
 class PluginMetadata(BaseModel):
