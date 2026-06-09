@@ -18,8 +18,6 @@ Method | HTTP request | Description
 
 Create Vnfs Server
 
-Create and start a new vNFS endpoint.
-
 ### Example
 
 
@@ -45,7 +43,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
@@ -75,7 +73,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
@@ -109,8 +107,6 @@ No authorization required
 > object delete_vnfs_server_vnfs_servers_uuid_or_name_delete(uuid_or_name)
 
 Delete Vnfs Server
-
-Stop and delete a vNFS endpoint by UUID or name.
 
 ### Example
 
@@ -178,8 +174,6 @@ No authorization required
 
 Get Vnfs Server
 
-Get a specific vNFS endpoint by UUID or name.
-
 ### Example
 
 
@@ -246,8 +240,6 @@ No authorization required
 
 List Vnfs Servers
 
-List all vNFS endpoints.
-
 ### Example
 
 
@@ -308,8 +300,6 @@ No authorization required
 > object search_vnfs_servers_search_vnfs_servers_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
 
 Search Vnfs Servers
-
-Semantic search for vNFS endpoints by description.
 
 ### Example
 
@@ -453,8 +443,6 @@ No authorization required
 
 Update Vnfs Server
 
-Update metadata and restart a vNFS endpoint.
-
 ### Example
 
 
@@ -481,7 +469,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
@@ -512,7 +500,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 

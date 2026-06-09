@@ -17,22 +17,6 @@ Method | HTTP request | Description
 
 Create Snippet
 
-Create a new snippet.
-
-The form fields are dynamically generated from SnippetSchema.
-Any changes to SnippetSchema will automatically reflect in this API.
-
-Args:
-    snippet: The snippet schema containing content and metadata (auto-generated from SnippetSchema).
-            If uuid is not provided, it will be automatically generated.
-    file: Optional file upload for large content. If provided, overrides snippet.content.
-
-Returns:
-    dict: Success message with the snippet name and uuid.
-
-Raises:
-    HTTPException: If snippet already exists (409) or creation fails (500).
-
 ### Example
 
 
@@ -59,7 +43,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
@@ -89,7 +73,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
@@ -122,17 +106,6 @@ No authorization required
 > object delete_snippet_snippets_uuid_or_name_delete(uuid_or_name)
 
 Delete Snippet
-
-Delete a snippet by UUID or name.
-
-Args:
-    uuid_or_name: The UUID or name of the snippet to delete.
-
-Returns:
-    dict: Success message.
-
-Raises:
-    HTTPException: If snippet not found (404) or deletion fails (500).
 
 ### Example
 
@@ -200,17 +173,6 @@ No authorization required
 
 Get Snippet
 
-Get a specific snippet by UUID or name.
-
-Args:
-    uuid_or_name: The UUID or name of the snippet.
-
-Returns:
-    dict: The snippet object.
-
-Raises:
-    HTTPException: If snippet not found (404) or retrieval fails (500).
-
 ### Example
 
 
@@ -277,14 +239,6 @@ No authorization required
 
 List Snippets
 
-List all snippets.
-
-Returns:
-    list: A list of all snippet objects.
-
-Raises:
-    HTTPException: If listing fails (500).
-
 ### Example
 
 
@@ -345,20 +299,6 @@ No authorization required
 > object search_snippets_search_snippets_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
 
 Search Snippets
-
-Return a list of snippets that are similar to the given search term.
-
-Returns snippets that are below the similarity threshold and match the filters.
-
-Args:
-    search_term: Search term.
-    max_number_of_results: Number of results to return.
-    similarity_threshold: Threshold to be used.
-    manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
-    lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
-
-Returns:
-    list: A list of matched snippet names and similarity scores.
 
 ### Example
 
@@ -433,18 +373,6 @@ No authorization required
 > object update_snippet_snippets_uuid_or_name_put(uuid_or_name, snippet_schema)
 
 Update Snippet
-
-Update an existing snippet by UUID or name.
-
-Args:
-    uuid_or_name: The UUID or name of the snippet to update.
-    snippet: The updated snippet schema.
-
-Returns:
-    dict: Success message.
-
-Raises:
-    HTTPException: If snippet not found (404) or update fails (500).
 
 ### Example
 
