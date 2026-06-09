@@ -22,6 +22,8 @@ jobs:
           python -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
+    - name: pull-docker-image
+      run: docker pull public.ecr.aws/docker/library/python:3.11
     - name: run-make
       run: |
           source .venv/bin/activate
