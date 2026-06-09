@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillberry-plugin-mcp-importer"
+version = "0.1.0"
+description = "Skillberry Store plugin for importing tools from a customer MCP server via SSE"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.4.1",
+]
+
+[project.entry-points."skillberry_store.plugins"]
+mcp-importer = "skillberry_plugin_mcp_importer.plugin:SkillberryPluginMcpImporter"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+]
+
+[tool.setuptools]
+packages = ["skillberry_plugin_mcp_importer"]
+package-dir = {"" = "src"}
