@@ -68,6 +68,17 @@ class StoreAPI:
             logger.error(f"Failed to update tool metadata for {uuid}: {e}")
             return False
 
+    def update_tool(self, uuid: str, tool_data: Dict[str, Any]) -> bool:
+        """Write a complete tool object to the store."""
+        if not self.tools_service:
+            return False
+        try:
+            self.tools_service.handler.write_dict(uuid, tool_data)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update tool {uuid}: {e}")
+            return False
+
     # ── Skills ─────────────────────────────────────────────────────────────
 
     def get_skill(self, uuid: str) -> Optional[Dict[str, Any]]:
@@ -116,6 +127,17 @@ class StoreAPI:
             logger.error(f"Failed to update skill metadata for {uuid}: {e}")
             return False
 
+    def update_skill(self, uuid: str, skill_data: Dict[str, Any]) -> bool:
+        """Write a complete skill object to the store."""
+        if not self.skills_service:
+            return False
+        try:
+            self.skills_service.handler.write_dict(uuid, skill_data)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update skill {uuid}: {e}")
+            return False
+
     # ── Snippets ───────────────────────────────────────────────────────────
 
     def get_snippet(self, uuid: str) -> Optional[Dict[str, Any]]:
@@ -150,6 +172,17 @@ class StoreAPI:
             return True
         except Exception as e:
             logger.error(f"Failed to update snippet tags for {uuid}: {e}")
+            return False
+
+    def update_snippet(self, uuid: str, snippet_data: Dict[str, Any]) -> bool:
+        """Write a complete snippet object to the store."""
+        if not self.snippets_service:
+            return False
+        try:
+            self.snippets_service.handler.write_dict(uuid, snippet_data)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update snippet {uuid}: {e}")
             return False
 
     def _matches_filter(self, item: Dict[str, Any], filter_criteria: Dict) -> bool:
