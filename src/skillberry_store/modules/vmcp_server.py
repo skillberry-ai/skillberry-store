@@ -578,6 +578,7 @@ class VirtualMcpServer:
             # it, causing a RuntimeError when a client connects to later servers.
             try:
                 from sse_starlette import AppStatus as _AppStatus
+
                 _AppStatus.should_exit_event = None
             except Exception:
                 pass
