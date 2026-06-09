@@ -572,6 +572,16 @@ class VirtualMcpServer:
         def run_server():
             logging.info(f"Starting FastMCP server '{self.name}' on port {self.port}")
 
+            # Reset sse_starlette's AppStatus event so it binds to this thread's
+            # event loop. Each VMCP server runs in its own thread; without this
+            # reset the singleton Event stays bound to whichever loop first used
+            # it, causing a RuntimeError when a client connects to later servers.
+            try:
+                from sse_starlette import AppStatus as _AppStatus
+                _AppStatus.should_exit_event = None
+            except Exception:
+                pass
+
             # Get the SSE app and manually add CORS middleware
             if hasattr(self, "cors_middleware"):
                 try:

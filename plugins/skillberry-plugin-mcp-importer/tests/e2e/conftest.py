@@ -4,17 +4,24 @@ E2E fixtures for MCP importer plugin tests.
 Starts two servers for the session:
   - SBS (skillberry store) on port 8000
   - Mock MCP backend on port 9500  (exposes a single 'echo' tool)
+
+The mock MCP backend runs in a SUBPROCESS to avoid the sse_starlette
+AppStatus.should_exit_event singleton being shared between two uvicorn
+servers running in different threads with different event loops.
 """
 
 import asyncio
 import logging
 import os
+import socket
+import subprocess
+import sys
+import textwrap
 import threading
+import time
 
 import httpx
 import pytest
-import uvicorn
-from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
 
@@ -71,44 +78,58 @@ def run_sbs():
     clean_test_tmp_dir()
 
 
-# ── Mock MCP backend ──────────────────────────────────────────────────────────
+# ── Socket readiness check ────────────────────────────────────────────────────
 
-def _build_mock_mcp_app() -> FastMCP:
+def _wait_for_port(host: str, port: int, timeout: int = 30) -> None:
+    """Block until the TCP port accepts connections."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                return
+        except (socket.error, ConnectionRefusedError):
+            time.sleep(0.2)
+    raise TimeoutError(f"{host}:{port} not ready within {timeout}s")
+
+
+# ── Mock MCP backend (subprocess) ────────────────────────────────────────────
+
+_MOCK_MCP_SCRIPT = textwrap.dedent("""
+    import uvicorn
+    from mcp.server.fastmcp import FastMCP
+
     mock = FastMCP("test-mcp-backend")
 
     @mock.tool()
     def echo(message: str) -> str:
-        """Echo a message back."""
+        \"\"\"Echo a message back.\"\"\"
         return message
 
-    return mock
+    uvicorn.run(mock.sse_app(), host="127.0.0.1", port={port}, log_level="error")
+""")
 
 
 @pytest.fixture(scope="session")
 def mock_mcp_backend():
-    """Start a minimal FastMCP SSE server exposing an 'echo' tool on port 9500."""
-    mock_app = _build_mock_mcp_app()
-    starlette_app = mock_app.sse_app()
+    """
+    Start a minimal FastMCP SSE server exposing an 'echo' tool on port 9500.
 
-    def _start():
-        uvicorn.run(
-            starlette_app,
-            host="127.0.0.1",
-            port=MOCK_MCP_PORT,
-            log_level="error",
-        )
+    Runs in a subprocess so that sse_starlette's AppStatus singleton is
+    isolated from the SBS process, avoiding event-loop binding conflicts.
+    """
+    script = _MOCK_MCP_SCRIPT.format(port=MOCK_MCP_PORT)
+    proc = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
-    thread = threading.Thread(target=_start, daemon=True)
-    thread.start()
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(_wait_for_http(MOCK_MCP_URL, timeout=30))
+        _wait_for_port("127.0.0.1", MOCK_MCP_PORT, timeout=30)
+        yield MOCK_MCP_URL
     finally:
-        loop.close()
-
-    yield MOCK_MCP_URL
+        proc.terminate()
+        proc.wait(timeout=5)
 
 
 # ── httpx timeout ─────────────────────────────────────────────────────────────
