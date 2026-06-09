@@ -16,6 +16,29 @@ from skillberry_store.fast_api.server_utils import mcp_content
 logger = logging.getLogger(__name__)
 
 
+def _extract_error_detail(url: str, exc: Exception) -> str:
+    """Return a human-readable error message, unwrapping ExceptionGroup if needed."""
+    # Python 3.11+ wraps anyio task-group errors in ExceptionGroup.
+    # Unwrap one level to surface the real cause.
+    inner: Exception = exc
+    subs = getattr(exc, "exceptions", None)
+    if subs:
+        inner = subs[0]
+
+    msg = str(inner)
+
+    # Give a targeted hint when the server returned 404 — the user almost
+    # certainly provided a base URL instead of the SSE endpoint path.
+    if "404" in msg:
+        return (
+            f"MCP server returned 404 for '{url}'. "
+            "Make sure the URL points to the SSE endpoint "
+            "(e.g. http://host:port/sse), not the server root."
+        )
+
+    return f"Failed to connect to MCP server: {msg}"
+
+
 class SkillberryPluginMcpImporter(PluginBase):
     """Plugin that imports all tools exposed by a customer MCP SSE server."""
 
@@ -122,10 +145,8 @@ class SkillberryPluginMcpImporter(PluginBase):
                 logger.error(
                     f"Failed to import from MCP server '{url}': {exc}", exc_info=True
                 )
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Failed to connect to MCP server: {str(exc)}",
-                )
+                detail = _extract_error_detail(url, exc)
+                raise HTTPException(status_code=502, detail=detail)
 
         return router
 

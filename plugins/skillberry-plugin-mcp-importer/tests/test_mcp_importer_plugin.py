@@ -191,6 +191,37 @@ def test_import_allows_duplicate_names():
 
 # ── Failure tests ─────────────────────────────────────────────────────────────
 
+def test_import_404_returns_502_with_sse_hint():
+    """When the server returns 404, error message should mention the SSE endpoint path."""
+    import httpx
+    client, _, _ = _make_client()
+    mock_sse_cm = MagicMock()
+    # Simulate ExceptionGroup wrapping a 404 HTTPStatusError (Python 3.11+ anyio behaviour)
+    status_error = httpx.HTTPStatusError(
+        "Client error '404 Not Found' for url 'http://host:3001/'",
+        request=MagicMock(),
+        response=MagicMock(status_code=404),
+    )
+    exc_group = Exception("unhandled errors in a TaskGroup (1 sub-exception)")
+    exc_group.exceptions = [status_error]  # type: ignore[attr-defined]
+    mock_sse_cm.__aenter__ = AsyncMock(side_effect=exc_group)
+    mock_sse_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(
+        "skillberry_plugin_mcp_importer.plugin.sse_client",
+        MagicMock(return_value=mock_sse_cm),
+    ):
+        response = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={"mcp_url": "http://host:3001/"},
+        )
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "404" in detail
+    assert "/sse" in detail or "SSE" in detail.upper()
+
+
 def test_import_sse_connection_failure_returns_502():
     client, _, _ = _make_client()
     mock_sse_cm = MagicMock()
