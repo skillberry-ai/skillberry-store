@@ -67,6 +67,11 @@ pre {
   overflow-x: auto;
 }
 
+/* Let syntax highlighter spans inherit token colors instead of the global dark override */
+pre span {
+  color: inherit;
+}
+
 code {
   font-family: 'Red Hat Mono', 'Courier New', monospace;
   font-size: 0.875rem;
