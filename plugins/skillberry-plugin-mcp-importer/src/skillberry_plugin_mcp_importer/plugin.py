@@ -153,7 +153,13 @@ class SkillberryPluginMcpImporter(PluginBase):
             except Exception as exc:
                 logger.warning(f"Failed to create skill '{name}': {exc}")
 
-        return {"imported": len(imported), "tools": imported, "failed": failed, "skill": skill}
+        return {
+            "success": len(failed) == 0 and len(imported) > 0,
+            "imported": len(imported),
+            "tools": imported,
+            "failed": failed,
+            "skill": skill,
+        }
 
     def get_router(self):
         from fastapi import APIRouter, HTTPException
@@ -213,6 +219,7 @@ class SkillberryPluginMcpImporter(PluginBase):
                             },
                             "create_skill": {
                                 "type": "boolean",
+                                "default": True,
                                 "description": "Automatically create a skill grouping all imported tools (default: true)",
                             },
                             "skill_name": {

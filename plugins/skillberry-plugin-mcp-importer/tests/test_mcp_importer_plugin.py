@@ -152,6 +152,7 @@ def test_import_creates_tools_for_each_mcp_tool():
 
     assert response.status_code == 200
     data = response.json()
+    assert data["success"] is True
     assert data["imported"] == 2
     assert len(data["tools"]) == 2
     names = {t["name"] for t in data["tools"]}

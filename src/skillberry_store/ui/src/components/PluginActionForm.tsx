@@ -65,7 +65,9 @@ export function PluginActionForm({
 
   const renderField = (propertyName: string, propertySchema: any) => {
     const isRequired = action.params_schema.required?.includes(propertyName);
-    const value = formData[propertyName] || '';
+    const value = formData[propertyName] !== undefined
+      ? formData[propertyName]
+      : (propertySchema.default ?? '');
 
     const handleChange = (newValue: string | boolean) => {
       setFormData((prev) => ({
