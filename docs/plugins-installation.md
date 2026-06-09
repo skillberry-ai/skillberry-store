@@ -34,6 +34,7 @@ This installs:
 - skillberry-plugin-evaluator (AI-powered content evaluation and tagging)
 - skillberry-plugin-security (AI-powered security evaluation)
 - skillberry-plugin-dedupe (AI-powered duplicate skill detection)
+- skillberry-plugin-mcp-importer (import tools from any MCP SSE server)
 
 ### 3. Install Specific Plugins
 
@@ -54,9 +55,14 @@ pip install skillberry-store[plugin-evaluator]
 pip install skillberry-store[plugin-dedupe]
 ```
 
+#### MCP Importer Plugin Only
+```bash
+pip install skillberry-store[plugin-mcp-importer]
+```
+
 #### Multiple Specific Plugins
 ```bash
-pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-dedupe]
+pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-mcp-importer]
 ```
 
 ### 4. Adding Plugins Later
@@ -65,7 +71,7 @@ If you initially installed skillberry-store without plugins, you can add them la
 
 ```bash
 # Add all plugins to existing installation
-pip install skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe
+pip install skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer
 
 # Or reinstall with plugins
 pip install --upgrade skillberry-store[plugins-all]
@@ -205,6 +211,50 @@ Metadata added to `extra`:
 }
 ```
 
+### MCP Importer Plugin (`skillberry-plugin-mcp-importer`)
+
+**Purpose:** Import tools from any customer MCP server into the store via SSE — no LLM required.
+
+**Features:**
+- Connects to a customer's MCP server via SSE and lists all exposed tools
+- Creates each tool in the store with `packaging_format="mcp"`, preserving the original tool's schema and description
+- Tools are immediately executable via the store's existing MCP execution path (VMCP tunnel)
+- Each import call produces fresh UUIDs — duplicate names are allowed
+- Invalid or unreachable URLs return a clear error immediately
+
+**Configuration:** None required. The MCP server URL is supplied per-request.
+
+**API Endpoints:**
+- `POST /plugins/mcp-importer/import-tools`
+
+**Request body:**
+```json
+{ "mcp_url": "http://your-mcp-server/sse" }
+```
+
+**Response:**
+```json
+{
+  "imported": 2,
+  "tools": [
+    { "name": "echo", "uuid": "abc-123" },
+    { "name": "add_numbers", "uuid": "def-456" }
+  ],
+  "failed": []
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/plugins/mcp-importer/import-tools \
+  -H "Content-Type: application/json" \
+  -d '{"mcp_url": "http://my-mcp-server:8080/sse"}'
+```
+
+**Error responses:**
+- `400` — `mcp_url` is missing or does not start with `http://` / `https://`
+- `502` — Could not connect to the MCP server (unreachable, refused, or timed out)
+
 ## LLM Configuration
 
 Both plugins use `llm-switchboard` for LLM integration. Configuration is done via environment variables.
@@ -330,7 +380,7 @@ my-plugin = { path = "plugins/my-plugin", editable = true }
 
 ```bash
 # Uninstall all plugins
-pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe
+pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer
 
 # Verify removal
 pip list | grep skillberry-plugin
