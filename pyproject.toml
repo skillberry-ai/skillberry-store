@@ -171,6 +171,10 @@ plugins-all = [
   "skillberry-plugin-dedupe>=0.1.0",
 ]
 
+test = [
+  "skillberry-store[dev,plugins-all]"
+]
+
 [tool.uv.sources]
 skillberry-store-sdk = { path = "client/python/skillberry_store_sdk", editable = true }
 skillberry-plugin-creator = { path = "plugins/skillberry-plugin-creator", editable = true }

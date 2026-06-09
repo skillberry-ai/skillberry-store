@@ -12,6 +12,7 @@ docs/HTTPValidationError.md
 docs/LifecycleState.md
 docs/LocationInner.md
 docs/ManifestState.md
+docs/PluginsApi.md
 docs/SkillSchema.md
 docs/SkillsApi.md
 docs/SnippetSchema.md
@@ -31,6 +32,7 @@ setup.py
 skillberry_store_sdk/__init__.py
 skillberry_store_sdk/api/__init__.py
 skillberry_store_sdk/api/admin_api.py
+skillberry_store_sdk/api/plugins_api.py
 skillberry_store_sdk/api/skills_api.py
 skillberry_store_sdk/api/snippets_api.py
 skillberry_store_sdk/api/tools_api.py
@@ -68,6 +70,7 @@ test/test_http_validation_error.py
 test/test_lifecycle_state.py
 test/test_location_inner.py
 test/test_manifest_state.py
+test/test_plugins_api.py
 test/test_skill_schema.py
 test/test_skills_api.py
 test/test_snippet_schema.py

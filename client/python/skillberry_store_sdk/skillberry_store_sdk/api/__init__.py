@@ -2,6 +2,7 @@
 
 # import apis into api package
 from skillberry_store_sdk.api.admin_api import AdminApi
+from skillberry_store_sdk.api.plugins_api import PluginsApi
 from skillberry_store_sdk.api.skills_api import SkillsApi
 from skillberry_store_sdk.api.snippets_api import SnippetsApi
 from skillberry_store_sdk.api.tools_api import ToolsApi

@@ -56,8 +56,13 @@ git-hooks-setup:
 show-srv-env: .stamps/srv.env	## Show service env (ports, host)
 	@cat .stamps/srv.env
 
-test: install-requirements ## Test the tools-service
+test: ## Run tests
+	@$(MAKE) install-requirements ODEPS=test SKIPOPT=1
 	pytest
+
+test-e2e: ## Run end-to-end tests
+	@$(MAKE) install-requirements ODEPS=test SKIPOPT=1
+	pytest src/skillberry_store/tests/e2e
 
 check-git-clean:
 	@changes="$$(git status --porcelain)"; \
@@ -75,7 +80,7 @@ check-git-main:
 	fi
 
 .PHONY: install-requirements verify-venv
-install-requirements: update-git-version git-hooks-setup verify-venv .stamps/install-requirements-$(ODEPS) ## Install dependencies. For opt. deps: make install-requirements ODEPS=dev,vllm
+install-requirements: update-git-version git-hooks-setup verify-venv .stamps/install-requirements-$(ODEPS) ## Install dependencies. Opt: make install-requirements ODEPS=dev [SKIPOPT=1 to allow skip]
 	@true
 
 verify-venv:
@@ -86,10 +91,18 @@ verify-venv:
 # Need to actually install only when pyproject.toml changes
 .stamps/install-requirements-$(ODEPS): pyproject.toml .venv
 	@ODEPS="$(ODEPS)"; \
+	SKIPOPT="$(SKIPOPT)"; \
 	if [ -z "$$ODEPS" ]; then \
-		uv pip install -e .; \
+		uv pip install -e . || exit 1; \
 	else \
-		uv pip install -e .[$(ODEPS)]; \
+		if uv pip install -e .[$$ODEPS]; then \
+			true; \
+		elif [ "$$SKIPOPT" = "1" ]; then \
+			echo "Optional dependency install failed for ODEPS=$$ODEPS; retrying without optional dependencies because SKIPOPT=1"; \
+			uv pip install -e . || exit 1; \
+		else \
+			exit 1; \
+		fi; \
 	fi
 	@touch .stamps/install-requirements-$(ODEPS)
 

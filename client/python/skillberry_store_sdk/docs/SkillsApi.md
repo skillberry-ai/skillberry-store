@@ -6,6 +6,7 @@ Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**create_skill_skills_post**](SkillsApi.md#create_skill_skills_post) | **POST** /skills/ | Create Skill
 [**delete_skill_skills_uuid_or_name_delete**](SkillsApi.md#delete_skill_skills_uuid_or_name_delete) | **DELETE** /skills/{uuid_or_name} | Delete Skill
+[**detect_anthropic_skills_skills_detect_anthropic_skills_post**](SkillsApi.md#detect_anthropic_skills_skills_detect_anthropic_skills_post) | **POST** /skills/detect-anthropic-skills | Detect Anthropic Skills
 [**export_anthropic_skill_skills_uuid_or_name_export_anthropic_get**](SkillsApi.md#export_anthropic_skill_skills_uuid_or_name_export_anthropic_get) | **GET** /skills/{uuid_or_name}/export-anthropic | Export Anthropic Skill
 [**get_skill_skills_uuid_or_name_get**](SkillsApi.md#get_skill_skills_uuid_or_name_get) | **GET** /skills/{uuid_or_name} | Get Skill
 [**import_anthropic_skill_skills_import_anthropic_post**](SkillsApi.md#import_anthropic_skill_skills_import_anthropic_post) | **POST** /skills/import-anthropic | Import Anthropic Skill
@@ -183,6 +184,92 @@ No authorization required
 ### HTTP request headers
 
  - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Successful Response |  -  |
+**422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **detect_anthropic_skills_skills_detect_anthropic_skills_post**
+> object detect_anthropic_skills_skills_detect_anthropic_skills_post(source_type, github_url=github_url, folder_path=folder_path)
+
+Detect Anthropic Skills
+
+Detect child skill directories in a parent directory.
+
+This endpoint scans a parent directory (from GitHub URL or local folder)
+and returns a list of subdirectories that contain SKILL.md files.
+
+Args:
+    source_type: 'url' or 'folder'
+    github_url: GitHub repository URL (required if source_type='url')
+    folder_path: Local folder path (required if source_type='folder')
+
+Returns:
+    dict: List of skill paths relative to the parent directory
+
+Raises:
+    HTTPException: If detection fails
+
+### Example
+
+
+```python
+import skillberry_store_sdk
+from skillberry_store_sdk.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = skillberry_store_sdk.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with skillberry_store_sdk.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = skillberry_store_sdk.SkillsApi(api_client)
+    source_type = 'source_type_example' # str | 
+    github_url = 'github_url_example' # str |  (optional)
+    folder_path = 'folder_path_example' # str |  (optional)
+
+    try:
+        # Detect Anthropic Skills
+        api_response = api_instance.detect_anthropic_skills_skills_detect_anthropic_skills_post(source_type, github_url=github_url, folder_path=folder_path)
+        print("The response of SkillsApi->detect_anthropic_skills_skills_detect_anthropic_skills_post:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling SkillsApi->detect_anthropic_skills_skills_detect_anthropic_skills_post: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **source_type** | **str**|  | 
+ **github_url** | **str**|  | [optional] 
+ **folder_path** | **str**|  | [optional] 
+
+### Return type
+
+**object**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/x-www-form-urlencoded
  - **Accept**: application/json
 
 ### HTTP response details
