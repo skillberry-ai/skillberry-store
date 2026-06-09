@@ -638,9 +638,7 @@ class VirtualMcpServer:
                     self._loop = None
                     self._server = None
             except Exception as e:
-                logging.error(
-                    f"VMCP server '{self.name}' crashed: {e}", exc_info=True
-                )
+                logging.error(f"VMCP server '{self.name}' crashed: {e}", exc_info=True)
 
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
