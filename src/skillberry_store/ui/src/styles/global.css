@@ -85,10 +85,18 @@ pre code {
 /* Ensure inline code blocks with light backgrounds have proper contrast */
 code[style*="backgroundColor: rgb(245, 245, 245)"],
 code[style*="backgroundColor:#f5f5f5"],
+code[style*="backgroundColor: #f5f5f5"],
 .pf-v5-c-code-block__code[style*="backgroundColor: rgb(245, 245, 245)"],
-.pf-v5-c-code-block__code[style*="backgroundColor:#f5f5f5"] {
+.pf-v5-c-code-block__code[style*="backgroundColor:#f5f5f5"],
+.pf-v5-c-code-block__code[style*="backgroundColor: #f5f5f5"] {
   color: var(--pf-v5-global--Color--100) !important;
   background-color: #f5f5f5 !important;
+}
+
+/* Force dark text color for any code element with light background */
+code[style*="backgroundColor"],
+.pf-v5-c-code-block__code[style*="backgroundColor"] {
+  color: #151515 !important;
 }
 
 /* Utility classes */
