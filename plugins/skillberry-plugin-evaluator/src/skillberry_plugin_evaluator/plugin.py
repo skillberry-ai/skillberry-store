@@ -208,11 +208,11 @@ class SkillberryPluginEvaluator(PluginBase):
         }
 
         if content_type == "tool":
-            self.store.update_tool(uuid, obj)
+            self.store.tools.write_dict(uuid, obj)
         elif content_type == "skill":
-            self.store.update_skill(uuid, obj)
+            self.store.skills.write_dict(uuid, obj)
         elif content_type == "snippet":
-            self.store.update_snippet(uuid, obj)
+            self.store.snippets.write_dict(uuid, obj)
 
     async def evaluate_object(self, uuid: str, content_type: str) -> Dict[str, Any]:
         """

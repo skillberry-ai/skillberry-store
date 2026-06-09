@@ -20,6 +20,54 @@ class StoreAPI:
         self.vnfs_service = services.get("vnfs")
         self.vmcp_service = services.get("vmcp")
 
+    @property
+    def tools(self):
+        """Expose tools handler for testing/plugin access."""
+        # For testing: check if attribute was set directly (bypassing property)
+        if '_tools' in self.__dict__:
+            return self._tools
+        # Check if we have a tools_service attribute (might be None or a service)
+        if hasattr(self, 'tools_service') and self.tools_service:
+            return self.tools_service.handler
+        return None
+
+    @tools.setter
+    def tools(self, value):
+        """Allow direct assignment for testing."""
+        self._tools = value
+
+    @property
+    def skills(self):
+        """Expose skills handler for testing/plugin access."""
+        # For testing: check if attribute was set directly (bypassing property)
+        if '_skills' in self.__dict__:
+            return self._skills
+        # Check if we have a skills_service attribute (might be None or a service)
+        if hasattr(self, 'skills_service') and self.skills_service:
+            return self.skills_service.handler
+        return None
+
+    @skills.setter
+    def skills(self, value):
+        """Allow direct assignment for testing."""
+        self._skills = value
+
+    @property
+    def snippets(self):
+        """Expose snippets handler for testing/plugin access."""
+        # For testing: check if attribute was set directly (bypassing property)
+        if '_snippets' in self.__dict__:
+            return self._snippets
+        # Check if we have a snippets_service attribute (might be None or a service)
+        if hasattr(self, 'snippets_service') and self.snippets_service:
+            return self.snippets_service.handler
+        return None
+
+    @snippets.setter
+    def snippets(self, value):
+        """Allow direct assignment for testing."""
+        self._snippets = value
+
     # ── Tools ──────────────────────────────────────────────────────────────
 
     def get_tool(self, uuid: str) -> Optional[Dict[str, Any]]:
@@ -70,10 +118,11 @@ class StoreAPI:
 
     def update_tool(self, uuid: str, tool_data: Dict[str, Any]) -> bool:
         """Write a complete tool object to the store."""
-        if not self.tools_service:
+        handler = self.tools
+        if not handler:
             return False
         try:
-            self.tools_service.handler.write_dict(uuid, tool_data)
+            handler.write_dict(uuid, tool_data)
             return True
         except Exception as e:
             logger.error(f"Failed to update tool {uuid}: {e}")
@@ -129,10 +178,11 @@ class StoreAPI:
 
     def update_skill(self, uuid: str, skill_data: Dict[str, Any]) -> bool:
         """Write a complete skill object to the store."""
-        if not self.skills_service:
+        handler = self.skills
+        if not handler:
             return False
         try:
-            self.skills_service.handler.write_dict(uuid, skill_data)
+            handler.write_dict(uuid, skill_data)
             return True
         except Exception as e:
             logger.error(f"Failed to update skill {uuid}: {e}")
@@ -176,10 +226,11 @@ class StoreAPI:
 
     def update_snippet(self, uuid: str, snippet_data: Dict[str, Any]) -> bool:
         """Write a complete snippet object to the store."""
-        if not self.snippets_service:
+        handler = self.snippets
+        if not handler:
             return False
         try:
-            self.snippets_service.handler.write_dict(uuid, snippet_data)
+            handler.write_dict(uuid, snippet_data)
             return True
         except Exception as e:
             logger.error(f"Failed to update snippet {uuid}: {e}")
