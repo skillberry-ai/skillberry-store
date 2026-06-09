@@ -335,4 +335,30 @@ def test_update_skill_metadata_returns_false_when_skills_handler_none():
     store_api = StoreAPI({"tools": None, "skills": None, "snippets": None})
     assert store_api.update_skill_metadata("any", {}) is False
 
+
+def test_create_tool(mock_services):
+    """Test creating a tool via StoreAPI delegates to tools_service.create."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    expected = {"uuid": "new-uuid", "name": "echo", "module_name": "echo.py"}
+    mock_services["tools"].create.return_value = expected
+
+    store_api = StoreAPI(mock_services)
+    data = {"name": "echo", "packaging_format": "mcp"}
+    result = store_api.create_tool(data, b"def echo(): pass", "echo.py")
+
+    assert result == expected
+    mock_services["tools"].create.assert_called_once_with(
+        data, b"def echo(): pass", "echo.py"
+    )
+
+
+def test_create_tool_raises_when_service_unavailable():
+    """Test that create_tool raises RuntimeError when tools service is None."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    store_api = StoreAPI({"tools": None, "skills": None, "snippets": None})
+    with pytest.raises(RuntimeError, match="Tools service not available"):
+        store_api.create_tool({"name": "x"}, b"", "x.py")
+
 # Made with Bob
