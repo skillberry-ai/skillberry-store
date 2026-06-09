@@ -348,7 +348,19 @@ export function VNFSServerDetailPage() {
                   <DescriptionListTerm>Additional Information</DescriptionListTerm>
                   <DescriptionListDescription>
                     <CodeBlock>
-                      <CodeBlockCode>{JSON.stringify(server.extra, null, 2)}</CodeBlockCode>
+                      <CodeBlockCode style={{
+                        fontSize: '14px',
+                        lineHeight: '1.6',
+                        padding: '1rem',
+                        backgroundColor: '#f5f5f5',
+                        color: '#151515',
+                        borderRadius: '4px',
+                        display: 'block',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word'
+                      }}>
+                        {JSON.stringify(server.extra, null, 2)}
+                      </CodeBlockCode>
                     </CodeBlock>
                   </DescriptionListDescription>
                 </DescriptionListGroup>

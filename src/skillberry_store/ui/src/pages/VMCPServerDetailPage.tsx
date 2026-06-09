@@ -426,6 +426,7 @@ export function VMCPServerDetailPage() {
                         lineHeight: '1.6',
                         padding: '1rem',
                         backgroundColor: '#f5f5f5',
+                        color: '#151515',
                         borderRadius: '4px',
                         display: 'block',
                         whiteSpace: 'pre-wrap',
