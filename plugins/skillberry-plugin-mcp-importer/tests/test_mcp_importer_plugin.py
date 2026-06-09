@@ -191,6 +191,94 @@ def test_import_allows_duplicate_names():
 
 # ── Failure tests ─────────────────────────────────────────────────────────────
 
+def test_import_creates_skill_by_default():
+    """When create_skill=True (default), a skill is created from the imported tools."""
+    tools = [_MockTool("echo"), _MockTool("add_numbers")]
+    plugin = SkillberryPluginMcpImporter()
+    mock_store = MagicMock()
+    imported_uuids = []
+
+    def _create_tool(data, module_content, module_filename):
+        uid = str(uuid.uuid4())
+        imported_uuids.append(uid)
+        return {"uuid": uid, "name": data["name"]}
+
+    mock_store.create_tool.side_effect = _create_tool
+    mock_store.create_skill.return_value = {
+        "uuid": "skill-uuid-123",
+        "name": "localhost_9500_sse",
+    }
+    plugin.set_store_api(mock_store)
+
+    app = FastAPI()
+    app.include_router(plugin.get_router(), prefix="/plugins/mcp-importer")
+    client = TestClient(app)
+
+    with _patch_mcp(tools):
+        response = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={"mcp_url": "http://localhost:9500/sse"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["imported"] == 2
+    assert data["skill"] is not None
+    assert data["skill"]["uuid"] == "skill-uuid-123"
+    assert data["skill"]["name"] == "localhost_9500_sse"
+    mock_store.create_skill.assert_called_once()
+    call_data = mock_store.create_skill.call_args[0][0]
+    assert set(call_data["tool_uuids"]) == set(imported_uuids)
+
+
+def test_import_no_skill_when_create_skill_false():
+    """When create_skill=False, no skill is created and skill is None in response."""
+    tools = [_MockTool("echo")]
+    client, _, mock_store = _make_client(tools=tools)
+
+    with _patch_mcp(tools):
+        response = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={"mcp_url": "http://mock-mcp/sse", "create_skill": False},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["skill"] is None
+    mock_store.create_skill.assert_not_called()
+
+
+def test_import_custom_skill_name():
+    """skill_name parameter overrides the auto-derived name."""
+    tools = [_MockTool("echo")]
+    plugin = SkillberryPluginMcpImporter()
+    mock_store = MagicMock()
+    mock_store.create_tool.side_effect = lambda data, **kw: {"uuid": str(uuid.uuid4()), "name": data["name"]}
+    mock_store.create_skill.return_value = {"uuid": "s1", "name": "my_custom_skill"}
+    plugin.set_store_api(mock_store)
+
+    app = FastAPI()
+    app.include_router(plugin.get_router(), prefix="/plugins/mcp-importer")
+    client = TestClient(app)
+
+    with _patch_mcp(tools):
+        response = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={"mcp_url": "http://mock/sse", "skill_name": "my_custom_skill"},
+        )
+
+    assert response.status_code == 200
+    call_data = mock_store.create_skill.call_args[0][0]
+    assert call_data["name"] == "my_custom_skill"
+
+
+def test_skill_name_derived_from_url():
+    """_skill_name_from_url produces a clean name from various URL formats."""
+    from skillberry_plugin_mcp_importer.plugin import SkillberryPluginMcpImporter as P
+    assert P._skill_name_from_url("http://localhost:3001/sse") == "localhost_3001_sse"
+    assert P._skill_name_from_url("http://my-server.example.com/sse") == "my_server_example_com_sse"
+    assert P._skill_name_from_url("http://127.0.0.1:9500/") == "127_0_0_1_9500"
+
+
 def test_import_404_returns_502_with_sse_hint():
     """When the server returns 404, error message should mention the SSE endpoint path."""
     import httpx

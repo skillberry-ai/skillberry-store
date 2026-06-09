@@ -61,14 +61,34 @@ class SkillberryPluginMcpImporter(PluginBase):
     def get_status_message(self) -> str:
         return "Ready"
 
-    async def _import_tools(self, mcp_url: str) -> Dict[str, Any]:
+    @staticmethod
+    def _skill_name_from_url(mcp_url: str) -> str:
+        """Derive a skill name from a MCP URL, e.g. 'localhost_3001_sse'."""
+        from urllib.parse import urlparse
+        parsed = urlparse(mcp_url)
+        parts = [parsed.hostname or "mcp"]
+        if parsed.port:
+            parts.append(str(parsed.port))
+        path = parsed.path.strip("/").replace("/", "_")
+        if path:
+            parts.append(path)
+        raw = "_".join(parts)
+        return "".join(c if c.isalnum() or c == "_" else "_" for c in raw)
+
+    async def _import_tools(
+        self,
+        mcp_url: str,
+        create_skill: bool = True,
+        skill_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Connect to the MCP server at mcp_url, list all tools, create each in the store.
 
         Returns a summary dict with keys:
-          - imported: int   number of successfully imported tools
-          - tools: list     [{"name": ..., "uuid": ...}, ...]
-          - failed: list    [{"name": ..., "error": ...}, ...]
+          - imported: int          number of successfully imported tools
+          - tools: list            [{"name": ..., "uuid": ...}, ...]
+          - failed: list           [{"name": ..., "error": ...}, ...]
+          - skill: dict or None    {"name": ..., "uuid": ...} if create_skill=True
         """
         async with sse_client(mcp_url, sse_read_timeout=30) as (read, write):
             async with ClientSession(read, write) as session:
@@ -117,7 +137,23 @@ class SkillberryPluginMcpImporter(PluginBase):
                 logger.warning(f"Failed to import tool '{tool.name}': {exc}")
                 failed.append({"name": tool.name, "error": str(exc)})
 
-        return {"imported": len(imported), "tools": imported, "failed": failed}
+        skill: Optional[Dict[str, Any]] = None
+        if create_skill and imported:
+            name = skill_name or self._skill_name_from_url(mcp_url)
+            tool_uuids = [t["uuid"] for t in imported]
+            try:
+                skill_result = self.store.create_skill(
+                    {
+                        "name": name,
+                        "description": f"Tools imported from {mcp_url}",
+                        "tool_uuids": tool_uuids,
+                    }
+                )
+                skill = {"name": skill_result["name"], "uuid": skill_result["uuid"]}
+            except Exception as exc:
+                logger.warning(f"Failed to create skill '{name}': {exc}")
+
+        return {"imported": len(imported), "tools": imported, "failed": failed, "skill": skill}
 
     def get_router(self):
         from fastapi import APIRouter, HTTPException
@@ -127,6 +163,8 @@ class SkillberryPluginMcpImporter(PluginBase):
 
         class ImportRequest(BaseModel):
             mcp_url: str
+            create_skill: bool = True
+            skill_name: Optional[str] = None
 
         @router.post("/import-tools")
         async def import_tools(request: ImportRequest):
@@ -140,7 +178,11 @@ class SkillberryPluginMcpImporter(PluginBase):
                     detail="mcp_url must start with http:// or https://",
                 )
             try:
-                return await self._import_tools(url)
+                return await self._import_tools(
+                    url,
+                    create_skill=request.create_skill,
+                    skill_name=request.skill_name,
+                )
             except Exception as exc:
                 logger.error(
                     f"Failed to import from MCP server '{url}': {exc}", exc_info=True
@@ -168,7 +210,15 @@ class SkillberryPluginMcpImporter(PluginBase):
                             "mcp_url": {
                                 "type": "string",
                                 "description": "SSE URL of the MCP server to import tools from",
-                            }
+                            },
+                            "create_skill": {
+                                "type": "boolean",
+                                "description": "Automatically create a skill grouping all imported tools (default: true)",
+                            },
+                            "skill_name": {
+                                "type": "string",
+                                "description": "Name for the auto-created skill (default: derived from MCP URL)",
+                            },
                         },
                         "required": ["mcp_url"],
                     },

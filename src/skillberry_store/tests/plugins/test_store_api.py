@@ -353,6 +353,30 @@ def test_create_tool(mock_services):
     )
 
 
+def test_create_skill(mock_services):
+    """Test creating a skill via StoreAPI delegates to skills_service.create."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    expected = {"uuid": "skill-uuid", "name": "my_skill", "tool_uuids": ["t1"]}
+    mock_services["skills"].create.return_value = expected
+
+    store_api = StoreAPI(mock_services)
+    data = {"name": "my_skill", "tool_uuids": ["t1"]}
+    result = store_api.create_skill(data)
+
+    assert result == expected
+    mock_services["skills"].create.assert_called_once_with(data)
+
+
+def test_create_skill_raises_when_service_unavailable():
+    """Test that create_skill raises RuntimeError when skills service is None."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    store_api = StoreAPI({"tools": None, "skills": None, "snippets": None})
+    with pytest.raises(RuntimeError, match="Skills service not available"):
+        store_api.create_skill({"name": "x"})
+
+
 def test_create_tool_raises_when_service_unavailable():
     """Test that create_tool raises RuntimeError when tools service is None."""
     from skillberry_store.plugins.store_api import StoreAPI

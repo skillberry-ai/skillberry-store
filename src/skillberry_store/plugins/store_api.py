@@ -135,6 +135,11 @@ class StoreAPI:
 
     # ── Skills ─────────────────────────────────────────────────────────────
 
+    def create_skill(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.skills_service:
+            raise RuntimeError("Skills service not available")
+        return self.skills_service.create(data)
+
     def get_skill(self, uuid: str) -> Optional[Dict[str, Any]]:
         if not self.skills_service:
             return None
