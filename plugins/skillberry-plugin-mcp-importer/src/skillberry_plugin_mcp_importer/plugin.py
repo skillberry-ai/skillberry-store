@@ -75,6 +75,12 @@ class SkillberryPluginMcpImporter(PluginBase):
         raw = "_".join(parts)
         return "".join(c if c.isalnum() or c == "_" else "_" for c in raw)
 
+    @staticmethod
+    def _hostname_from_url(mcp_url: str) -> str:
+        """Extract the hostname from a MCP URL, e.g. 'localhost', 'api.acme.com'."""
+        from urllib.parse import urlparse
+        return urlparse(mcp_url).hostname or "mcp"
+
     async def _import_tools(
         self,
         mcp_url: str,

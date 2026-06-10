@@ -5,6 +5,21 @@ from skillberry_plugin_mcp_importer.plugin import SkillberryPluginMcpImporter
 from skillberry_store.plugins.base import PluginType
 
 
+# --- _hostname_from_url ---
+
+def test_hostname_from_url_standard():
+    assert SkillberryPluginMcpImporter._hostname_from_url("http://localhost:3001/sse") == "localhost"
+
+def test_hostname_from_url_no_port():
+    assert SkillberryPluginMcpImporter._hostname_from_url("http://localhost/sse") == "localhost"
+
+def test_hostname_from_url_domain():
+    assert SkillberryPluginMcpImporter._hostname_from_url("https://api.acme.com/mcp/sse") == "api.acme.com"
+
+def test_hostname_from_url_malformed():
+    assert SkillberryPluginMcpImporter._hostname_from_url("not-a-url") == "mcp"
+
+
 def test_plugin_metadata():
     plugin = SkillberryPluginMcpImporter()
     meta = plugin.metadata
