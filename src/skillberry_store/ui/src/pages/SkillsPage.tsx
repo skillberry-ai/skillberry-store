@@ -35,6 +35,7 @@ import {
   MenuToggleElement,
   ToggleGroup,
   ToggleGroupItem,
+  Checkbox,
 } from '@patternfly/react-core';
 import type { ThProps } from '@patternfly/react-table';
 import { PlusIcon, CodeIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon, UploadIcon, ThLargeIcon, ListIcon } from '@patternfly/react-icons';
@@ -66,6 +67,8 @@ export function SkillsPage() {
   const [createError, setCreateError] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTools, setDeleteTools] = useState(true);
+  const [deleteSnippets, setDeleteSnippets] = useState(true);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importError, setImportError] = useState('');
@@ -135,7 +138,7 @@ export function SkillsPage() {
   // Delete skills mutation
   const deleteMutation = useMutation({
     mutationFn: async (names: string[]) => {
-      await Promise.all(names.map(name => skillsApi.delete(name)));
+      await Promise.all(names.map(name => skillsApi.delete(name, { deleteTools, deleteSnippets })));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
@@ -902,7 +905,7 @@ export function SkillsPage() {
         variant={ModalVariant.small}
         title="Delete Skills"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteTools(true); setDeleteSnippets(true); }}
         actions={[
           <Button
             key="delete"
@@ -930,6 +933,24 @@ export function SkillsPage() {
             <li key={name}>{name}</li>
           ))}
         </ul>
+        <div style={{ marginTop: '1rem' }}>
+          <Checkbox
+            id="bulk-delete-tools-checkbox"
+            label="Delete associated tools"
+            isChecked={deleteTools}
+            onChange={(_e, checked) => setDeleteTools(checked)}
+          />
+          <Checkbox
+            id="bulk-delete-snippets-checkbox"
+            label="Delete associated snippets"
+            isChecked={deleteSnippets}
+            onChange={(_e, checked) => setDeleteSnippets(checked)}
+            style={{ marginTop: '0.5rem' }}
+          />
+          <Text component="small" style={{ color: '#6a6e73', marginTop: '0.5rem', display: 'block' }}>
+            Tools or snippets shared with other skills will not be deleted.
+          </Text>
+        </div>
       </Modal>
 
       {/* Import Modal */}
