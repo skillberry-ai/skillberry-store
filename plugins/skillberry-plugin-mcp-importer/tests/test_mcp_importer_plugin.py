@@ -134,6 +134,49 @@ def _patch_mcp(tools):
     return stack
 
 
+# --- tool tag generation ---
+
+def test_tool_tags_include_mcp_and_hostname():
+    tools = [_MockTool("tool_a")]
+    client, _, mock_store = _make_client(tools=tools)
+    with _patch_mcp(tools):
+        resp = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={"mcp_url": "http://mock-mcp:9500/sse", "create_skill": False},
+        )
+    assert resp.status_code == 200
+    data_arg = mock_store.create_tool.call_args.args[0]
+    assert "mcp" in data_arg["tags"]
+    assert "mock-mcp" in data_arg["tags"]
+
+
+def test_tool_tags_include_skill_reference_when_skill_created():
+    tools = [_MockTool("tool_b")]
+    client, _, mock_store = _make_client(tools=tools)
+    mock_store.create_skill.return_value = {"uuid": "s-uuid", "name": "mock-mcp_9500_sse"}
+    with _patch_mcp(tools):
+        resp = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={"mcp_url": "http://mock-mcp:9500/sse", "create_skill": True},
+        )
+    assert resp.status_code == 200
+    data_arg = mock_store.create_tool.call_args.args[0]
+    assert "skill:mock_mcp_9500_sse" in data_arg["tags"]
+
+
+def test_tool_tags_no_skill_reference_when_skill_not_created():
+    tools = [_MockTool("tool_c")]
+    client, _, mock_store = _make_client(tools=tools)
+    with _patch_mcp(tools):
+        resp = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={"mcp_url": "http://mock-mcp:9500/sse", "create_skill": False},
+        )
+    assert resp.status_code == 200
+    data_arg = mock_store.create_tool.call_args.args[0]
+    assert not any(t.startswith("skill:") for t in data_arg["tags"])
+
+
 # ── Validation tests ──────────────────────────────────────────────────────────
 
 def test_import_missing_url_returns_400():

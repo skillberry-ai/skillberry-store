@@ -86,6 +86,7 @@ class SkillberryPluginMcpImporter(PluginBase):
         mcp_url: str,
         create_skill: bool = True,
         skill_name: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Connect to the MCP server at mcp_url, list all tools, create each in the store.
@@ -104,6 +105,16 @@ class SkillberryPluginMcpImporter(PluginBase):
 
         imported: List[Dict[str, Any]] = []
         failed: List[Dict[str, Any]] = []
+
+        hostname = self._hostname_from_url(mcp_url)
+        resolved_skill_name = skill_name or self._skill_name_from_url(mcp_url)
+
+        tool_tags: List[str] = ["mcp", hostname]
+        if create_skill:
+            tool_tags.append(f"skill:{resolved_skill_name}")
+        for tag in (tags or []):
+            if tag and tag not in tool_tags:
+                tool_tags.append(tag)
 
         for tool in tools:
             input_schema = tool.inputSchema or {}
@@ -130,6 +141,7 @@ class SkillberryPluginMcpImporter(PluginBase):
                 },
                 "params": params,
                 "programming_language": "python",
+                "tags": tool_tags,
             }
             stub = mcp_content(vars(tool))
             try:
@@ -145,19 +157,23 @@ class SkillberryPluginMcpImporter(PluginBase):
 
         skill: Optional[Dict[str, Any]] = None
         if create_skill and imported:
-            name = skill_name or self._skill_name_from_url(mcp_url)
             tool_uuids = [t["uuid"] for t in imported]
+            skill_tags: List[str] = ["mcp", "imported", hostname]
+            for tag in (tags or []):
+                if tag and tag not in skill_tags:
+                    skill_tags.append(tag)
             try:
                 skill_result = self.store.create_skill(
                     {
-                        "name": name,
+                        "name": resolved_skill_name,
                         "description": f"Tools imported from {mcp_url}",
                         "tool_uuids": tool_uuids,
+                        "tags": skill_tags,
                     }
                 )
                 skill = {"name": skill_result["name"], "uuid": skill_result["uuid"]}
             except Exception as exc:
-                logger.warning(f"Failed to create skill '{name}': {exc}")
+                logger.warning(f"Failed to create skill '{resolved_skill_name}': {exc}")
 
         return {
             "success": len(failed) == 0 and len(imported) > 0,
