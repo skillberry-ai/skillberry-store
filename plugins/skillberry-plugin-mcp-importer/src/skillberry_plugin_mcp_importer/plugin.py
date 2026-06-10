@@ -250,6 +250,11 @@ class SkillberryPluginMcpImporter(PluginBase):
                                 "type": "string",
                                 "description": "Name for the auto-created skill (default: derived from MCP URL)",
                             },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional extra tags to add to imported tools and skill",
+                            },
                         },
                         "required": ["mcp_url"],
                     },
