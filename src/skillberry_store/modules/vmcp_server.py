@@ -559,15 +559,16 @@ class VirtualMcpServer:
             **extras,
         )
 
-    def _start_server(self, transport="sse"):
+    def _start_server(self):
         """
-        Starts the virtual MCP server with CORS middleware.
-
-        Args:
-            transport (str): The transport to use. Defaults to "sse".
+        Starts the virtual MCP server with CORS middleware over SSE transport.
         """
+        import asyncio
         import threading
         import uvicorn
+
+        self._server: "uvicorn.Server | None" = None
+        self._loop: "asyncio.AbstractEventLoop | None" = None
 
         def run_server():
             logging.info(f"Starting FastMCP server '{self.name}' on port {self.port}")
@@ -576,54 +577,108 @@ class VirtualMcpServer:
             # event loop. Each VMCP server runs in its own thread; without this
             # reset the singleton Event stays bound to whichever loop first used
             # it, causing a RuntimeError when a client connects to later servers.
+            # Note: AppStatus is defined in sse_starlette.sse and is NOT
+            # re-exported from sse_starlette/__init__.py — importing it from
+            # the top-level package raises ImportError and silently no-ops the
+            # reset. Always import from the submodule.
             try:
-                from sse_starlette import AppStatus as _AppStatus
+                from sse_starlette.sse import AppStatus as _AppStatus
 
                 _AppStatus.should_exit_event = None
-            except Exception:
-                pass
+            except Exception as e:
+                logging.warning(
+                    f"Failed to reset sse_starlette AppStatus.should_exit_event: {e}"
+                )
 
-            # Get the SSE app and manually add CORS middleware
-            if hasattr(self, "cors_middleware"):
+            try:
+                # Get the Starlette app from FastMCP and add CORS middleware
+                app = self.mcp.sse_app()
+
+                from starlette.middleware.cors import CORSMiddleware
+
+                app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=["*"],
+                    allow_methods=["GET", "POST", "OPTIONS"],
+                    allow_headers=["*"],
+                    allow_credentials=True,
+                    expose_headers=["*"],
+                )
+
+                logging.info(
+                    f"CORS middleware added, starting server on port {self.port}"
+                )
+
+                config = uvicorn.Config(
+                    app,
+                    host="127.0.0.1",
+                    port=self.port,
+                    log_level="info",
+                )
+                server = uvicorn.Server(config)
+                # uvicorn installs SIGINT/SIGTERM handlers via signal.signal(),
+                # which raises ValueError outside the main thread. We're in a
+                # worker thread, so disable installation. stop() drives shutdown
+                # via server.should_exit instead.
+                setattr(server, "install_signal_handlers", lambda: None)
+
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._loop = loop
+                self._server = server
+
                 try:
-                    # Get the Starlette app from FastMCP
-                    app = self.mcp.sse_app()
-
-                    # Add CORS middleware to the existing app
-                    # We need to add it to app.user_middleware since the app is already created
-                    from starlette.middleware.cors import CORSMiddleware
-
-                    app.add_middleware(
-                        CORSMiddleware,
-                        allow_origins=["*"],
-                        allow_methods=["GET", "POST", "OPTIONS"],
-                        allow_headers=["*"],
-                        allow_credentials=True,
-                        expose_headers=["*"],
-                    )
-
-                    logging.info(
-                        f"CORS middleware added, starting server on port {self.port}"
-                    )
-                    # Run the app with uvicorn
-                    uvicorn.run(app, host="127.0.0.1", port=self.port, log_level="info")
-                except Exception as e:
-                    logging.error(f"Failed to start with CORS: {e}", exc_info=True)
-                    # Fallback to default
-                    self.mcp.run(transport=transport)
-            else:
-                self.mcp.run(transport=transport)
+                    loop.run_until_complete(server.serve())
+                finally:
+                    try:
+                        loop.run_until_complete(loop.shutdown_asyncgens())
+                    except Exception:
+                        pass
+                    loop.close()
+                    self._loop = None
+                    self._server = None
+            except Exception as e:
+                logging.error(f"VMCP server '{self.name}' crashed: {e}", exc_info=True)
 
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
 
     def stop(self):
         """
-        Stops the virtual MCP server.
+        Stops the virtual MCP server: signals uvicorn to exit and joins the worker thread.
         """
-        if hasattr(self, "server_thread") and self.server_thread.is_alive():
-            # FastMCP doesn't have a clean stop method, thread will terminate when process ends
-            pass
+        server = getattr(self, "_server", None)
+        loop = getattr(self, "_loop", None)
+        thread = getattr(self, "server_thread", None)
+
+        if server is not None and loop is not None and not loop.is_closed():
+            # should_exit is polled by serve()'s main loop; setting it from any
+            # thread is safe (plain attribute write). Wake the loop in case it's
+            # blocked on I/O so it observes the flag promptly.
+            try:
+                server.should_exit = True
+                loop.call_soon_threadsafe(lambda: None)
+            except Exception as e:
+                logging.warning(
+                    f"Failed to signal VMCP server '{self.name}' to exit: {e}"
+                )
+
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=5.0)
+            if thread.is_alive():
+                # Last resort: ask uvicorn to force-exit and give it a brief
+                # window to bail before giving up.
+                if server is not None:
+                    try:
+                        server.force_exit = True
+                    except Exception:
+                        pass
+                thread.join(timeout=2.0)
+                if thread.is_alive():
+                    logging.warning(
+                        f"VMCP server thread '{self.name}' did not stop within "
+                        "timeout; leaving as daemon thread."
+                    )
 
     def to_dict(self):
         """

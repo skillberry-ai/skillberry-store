@@ -20,21 +20,6 @@ Method | HTTP request | Description
 
 Create Skill
 
-Create a new skill.
-
-The form fields are dynamically generated from SkillSchema.
-Any changes to SkillSchema will automatically reflect in this API.
-
-Args:
-    skill: The skill schema with tool_uuids and snippet_uuids (auto-generated from SkillSchema).
-           If uuid is not provided, it will be automatically generated.
-
-Returns:
-    dict: Success message with the skill name and uuid.
-
-Raises:
-    HTTPException: If skill already exists (409) or creation fails (500).
-
 ### Example
 
 
@@ -60,7 +45,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
@@ -89,7 +74,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
@@ -122,17 +107,6 @@ No authorization required
 > object delete_skill_skills_uuid_or_name_delete(uuid_or_name)
 
 Delete Skill
-
-Delete a skill by UUID or name.
-
-Args:
-    uuid_or_name: The UUID or name of the skill to delete.
-
-Returns:
-    dict: Success message.
-
-Raises:
-    HTTPException: If skill not found (404) or deletion fails (500).
 
 ### Example
 
@@ -363,17 +337,6 @@ No authorization required
 
 Get Skill
 
-Get a specific skill by UUID or name with populated tool and snippet objects.
-
-Args:
-    uuid_or_name: The UUID or name of the skill.
-
-Returns:
-    dict: The skill object with full tool and snippet details.
-
-Raises:
-    HTTPException: If skill not found (404) or retrieval fails (500).
-
 ### Example
 
 
@@ -534,14 +497,6 @@ No authorization required
 
 List Skills
 
-List all skills with populated tool and snippet objects.
-
-Returns:
-    list: A list of all skill objects with full tool and snippet details.
-
-Raises:
-    HTTPException: If listing fails (500).
-
 ### Example
 
 
@@ -690,18 +645,6 @@ No authorization required
 > object update_skill_skills_uuid_or_name_put(uuid_or_name, skill_schema)
 
 Update Skill
-
-Update an existing skill by UUID or name.
-
-Args:
-    uuid_or_name: The UUID or name of the skill to update.
-    skill: The updated skill schema.
-
-Returns:
-    dict: Success message.
-
-Raises:
-    HTTPException: If skill not found (404) or update fails (500).
 
 ### Example
 

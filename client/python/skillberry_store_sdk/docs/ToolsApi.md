@@ -109,21 +109,6 @@ No authorization required
 
 Create Tool
 
-Create a new tool with required file upload.
-
-The form fields are dynamically generated from ToolSchema.
-Any changes to ToolSchema will automatically reflect in this API.
-
-Args:
-    tool: Tool schema with all fields (auto-generated from ToolSchema).
-    module: Required file upload for the tool module (e.g., Python file).
-
-Returns:
-    dict: Success message with the tool name and uuid.
-
-Raises:
-    HTTPException: If tool already exists (409) or creation fails (500).
-
 ### Example
 
 
@@ -150,7 +135,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra2() # Extra2 | Optional dictionary for additional flexible information (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
@@ -185,7 +170,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra2**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
@@ -223,18 +208,6 @@ No authorization required
 > Dict[str, object] delete_tool_tools_uuid_or_name_delete(uuid_or_name)
 
 Delete Tool
-
-Delete a tool by UUID or name.
-
-Args:
-    uuid_or_name: The UUID or name of the tool to delete.
-        Also deletes the associated module file if it exists.
-
-Returns:
-    dict: Success message.
-
-Raises:
-    HTTPException: If tool not found (404) or deletion fails (500).
 
 ### Example
 
@@ -386,21 +359,6 @@ No authorization required
 
 Get Tool Module
 
-Get the module file content for a specific tool.
-
-Note: For MCP tools, this returns the generated function signature.
-For code tools, this returns the actual module file content.
-
-Args:
-    uuid_or_name: The UUID or name of the tool.
-
-Returns:
-    PlainTextResponse: The module file content as plain text.
-
-Raises:
-    HTTPException: If tool not found (404), module not specified (404),
-                  module file not found (404), or retrieval fails (500).
-
 ### Example
 
 
@@ -467,17 +425,6 @@ No authorization required
 
 Get Tool
 
-Get a specific tool by UUID or name.
-
-Args:
-    uuid_or_name: The UUID or name of the tool.
-
-Returns:
-    dict: The tool object.
-
-Raises:
-    HTTPException: If tool not found (404) or retrieval fails (500).
-
 ### Example
 
 
@@ -540,17 +487,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **list_tools_tools_get**
-> List[Optional[Dict[str, object]]] list_tools_tools_get()
+> List[Dict[str, object]] list_tools_tools_get()
 
 List Tools
-
-List all tools.
-
-Returns:
-    list: A list of all tool objects.
-
-Raises:
-    HTTPException: If listing fails (500).
 
 ### Example
 
@@ -589,7 +528,7 @@ This endpoint does not need any parameter.
 
 ### Return type
 
-**List[Optional[Dict[str, object]]]**
+**List[Dict[str, object]]**
 
 ### Authorization
 
@@ -700,18 +639,6 @@ No authorization required
 > Dict[str, object] update_tool_tools_uuid_or_name_put(uuid_or_name, tool_schema)
 
 Update Tool
-
-Update an existing tool.
-
-Args:
-    uuid_or_name: The UUID or name of the tool to update.
-    tool: The updated tool schema.
-
-Returns:
-    dict: Success message.
-
-Raises:
-    HTTPException: If tool not found (404) or update fails (500).
 
 ### Example
 

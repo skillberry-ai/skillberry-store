@@ -48,7 +48,7 @@ class ManifestSchema(BaseModel):
         default_factory=list,
         description="List of tags for categorizing"
     )
-    extra: Dict[str, Any] | str = Field(
+    extra: Dict[str, Any] = Field(
         default_factory=dict,
         description="Optional dictionary for additional flexible information"
     )
@@ -67,7 +67,7 @@ class ManifestSchema(BaseModel):
 
     @field_validator("extra", mode="before")
     @classmethod
-    def parse_extra_json_string(cls, value):
+    def parse_extra(cls, value):
         """Accept JSON-encoded query values for flexible metadata."""
         if value in (None, ""):
             return {}

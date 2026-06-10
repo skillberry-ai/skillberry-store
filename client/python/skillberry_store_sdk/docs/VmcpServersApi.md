@@ -18,20 +18,6 @@ Method | HTTP request | Description
 
 Create Vmcp Server
 
-Create a new virtual MCP server.
-
-Creates both the persistent JSON representation and starts the runtime server.
-
-Args:
-    vmcp: The vmcp schema (auto-generated from VmcpSchema).
-    request: The incoming request object for context extraction.
-
-Returns:
-    dict: Success message with the vmcp server name, uuid, and port.
-
-Raises:
-    HTTPException: If vmcp server already exists (409) or creation fails (500).
-
 ### Example
 
 
@@ -57,7 +43,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[Optional[str]] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra() # Extra | Optional dictionary for additional flexible information (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
@@ -86,7 +72,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[Optional[str]]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 
@@ -119,19 +105,6 @@ No authorization required
 > object delete_vmcp_server_vmcp_servers_uuid_or_name_delete(uuid_or_name)
 
 Delete Vmcp Server
-
-Delete a virtual MCP server by UUID or name.
-
-Stops the runtime server and removes persistent data.
-
-Args:
-    uuid_or_name: The UUID or name of the vmcp server to delete.
-
-Returns:
-    dict: Success message.
-
-Raises:
-    HTTPException: If vmcp server not found (404) or deletion fails (500).
 
 ### Example
 
@@ -199,19 +172,6 @@ No authorization required
 
 Get Vmcp Server
 
-Get a specific virtual MCP server by UUID or name.
-
-Returns both persistent and runtime information.
-
-Args:
-    uuid_or_name: The UUID or name of the vmcp server.
-
-Returns:
-    dict: The vmcp server object with runtime details.
-
-Raises:
-    HTTPException: If vmcp server not found (404) or retrieval fails (500).
-
 ### Example
 
 
@@ -278,16 +238,6 @@ No authorization required
 
 List Vmcp Servers
 
-List all virtual MCP servers.
-
-Returns both persistent and runtime information.
-
-Returns:
-    dict: Dictionary containing a dict of virtual MCP servers with full details.
-
-Raises:
-    HTTPException: If listing fails (500).
-
 ### Example
 
 
@@ -348,20 +298,6 @@ No authorization required
 > object search_vmcp_servers_search_vmcp_servers_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
 
 Search Vmcp Servers
-
-Search for vmcp servers by description.
-
-Returns vmcp servers that are below the similarity threshold and match the filters.
-
-Args:
-    search_term: Search term.
-    max_number_of_results: Number of results to return.
-    similarity_threshold: Threshold to be used.
-    manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
-    lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
-
-Returns:
-    list: A list of matched vmcp server names and similarity scores.
 
 ### Example
 
@@ -439,19 +375,6 @@ Start Vmcp Server
 
 Start or restart a virtual MCP server.
 
-This endpoint allows starting a server that exists in persistent storage
-but is not currently running in the runtime manager.
-
-Args:
-    uuid_or_name: The UUID or name of the vmcp server to start.
-    request: The incoming request object for context extraction.
-
-Returns:
-    dict: Success message with the server port.
-
-Raises:
-    HTTPException: If vmcp server not found (404) or start fails (500).
-
 ### Example
 
 
@@ -518,21 +441,6 @@ No authorization required
 
 Update Vmcp Server
 
-Update an existing virtual MCP server.
-
-Updates both persistent data and restarts the runtime server.
-
-Args:
-    uuid_or_name: The UUID or name of the vmcp server to update.
-    vmcp: The updated vmcp schema.
-    request: The incoming request object for context extraction.
-
-Returns:
-    dict: Success message with new port.
-
-Raises:
-    HTTPException: If vmcp server not found (404) or update fails (500).
-
 ### Example
 
 
@@ -559,7 +467,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     description = 'description_example' # str | Short description (optional)
     state = skillberry_store_sdk.ManifestState() # ManifestState | Lifecycle state (optional)
     tags = ['tags_example'] # List[str] | List of tags for categorizing (optional)
-    extra = skillberry_store_sdk.Extra1() # Extra1 | Optional dictionary for additional flexible information (optional)
+    extra = None # Dict[str, object] | Optional dictionary for additional flexible information (optional)
     parent = 'parent_example' # str | UUID of the parent object (previous version with same name) (optional)
     created_at = 'created_at_example' # str | ISO 8601 timestamp when created (optional)
     modified_at = 'modified_at_example' # str | ISO 8601 timestamp when last modified (optional)
@@ -589,7 +497,7 @@ Name | Type | Description  | Notes
  **description** | **str**| Short description | [optional] 
  **state** | [**ManifestState**](.md)| Lifecycle state | [optional] 
  **tags** | [**List[str]**](str.md)| List of tags for categorizing | [optional] 
- **extra** | [**Extra1**](.md)| Optional dictionary for additional flexible information | [optional] 
+ **extra** | [**Dict[str, object]**](object.md)| Optional dictionary for additional flexible information | [optional] 
  **parent** | **str**| UUID of the parent object (previous version with same name) | [optional] 
  **created_at** | **str**| ISO 8601 timestamp when created | [optional] 
  **modified_at** | **str**| ISO 8601 timestamp when last modified | [optional] 

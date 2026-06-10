@@ -15,20 +15,25 @@
 
 import unittest
 
-from skillberry_store_sdk.models.manifest_state import ManifestState
+from skillberry_store_sdk.api.mcp_importer_api import McpImporterApi
 
-class TestManifestState(unittest.TestCase):
-    """ManifestState unit test stubs"""
 
-    def setUp(self):
+class TestMcpImporterApi(unittest.TestCase):
+    """McpImporterApi unit test stubs"""
+
+    def setUp(self) -> None:
+        self.api = McpImporterApi()
+
+    def tearDown(self) -> None:
         pass
 
-    def tearDown(self):
+    def test_import_tools_plugins_mcp_importer_import_tools_post(self) -> None:
+        """Test case for import_tools_plugins_mcp_importer_import_tools_post
+
+        Import Tools
+        """
         pass
 
-    def testManifestState(self):
-        """Test ManifestState"""
-        # inst = ManifestState()
 
 if __name__ == '__main__':
     unittest.main()
