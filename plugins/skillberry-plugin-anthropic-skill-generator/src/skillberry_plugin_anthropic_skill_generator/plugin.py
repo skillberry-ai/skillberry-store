@@ -18,6 +18,75 @@ from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 
 logger = logging.getLogger(__name__)
 
+try:
+    import runspace_agent
+    from runspace_agent import RunspaceSession, run_agent
+    from runspace_agent.workspaces import session_workspace
+except ImportError:
+    runspace_agent = None
+    RunspaceSession = None
+    run_agent = None
+    session_workspace = None
+
+try:
+    from skillberry_store.tools.anthropic.importer import import_from_anthropic_skill
+except ImportError:
+    import_from_anthropic_skill = None
+
+
+async def create_skill(prompt, skill_dir, context_dir, options, mode, plugin_instance):
+    """Create and execute a runspace-agent session to generate a skill.
+
+    Module-level so tests can patch it without reaching the real runspace layer.
+    Returns the RunspaceSession result (with .session_id attribute).
+    """
+    gen_session_id = uuid.uuid4().hex[:12]
+    workspace_root = session_workspace(gen_session_id)
+
+    session = RunspaceSession(
+        editable_dir=skill_dir,
+        context_dir=context_dir,
+        prompt=prompt,
+        agent_options=options,
+        preinstalled_skills=["skill-creator"],
+        mode=mode,
+    )
+
+    logger.info(
+        f"Running agent in {mode} mode (session {gen_session_id})"
+        + (" — container will stream logs below..." if mode == "container"
+           else " — watching workspace for progress...")
+    )
+
+    t0 = time.monotonic()
+    run_task = asyncio.create_task(run_agent(session, session_id=gen_session_id))
+    progress_task = asyncio.create_task(
+        plugin_instance._stream_progress(mode, workspace_root, run_task)
+    )
+    try:
+        result = await run_task
+    finally:
+        progress_task.cancel()
+        try:
+            await progress_task
+        except asyncio.CancelledError:
+            pass
+    elapsed = time.monotonic() - t0
+    if not result.success:
+        logger.error(
+            f"Agent failed after {elapsed:.1f}s: "
+            f"{result.agent_result.error or 'Unknown error'}"
+        )
+        raise RuntimeError(f"Agent failed: {result.agent_result.error or 'Unknown error'}")
+    logger.info(
+        f"Agent completed successfully in {elapsed:.1f}s "
+        f"(session {result.session_id}, "
+        f"{result.agent_result.total_tokens} tokens"
+        + (f", ${result.agent_result.total_cost_usd:.4f}" if result.agent_result.total_cost_usd else "")
+        + ")"
+    )
+    return result
+
 
 class SkillberryPluginAnthropicSkillGenerator(PluginBase):
     """Plugin for generating Anthropic skills from descriptions using runspace-agent."""
@@ -41,30 +110,30 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
         # Try to load Claude settings from ~/.claude/settings.json
         self._load_claude_settings()
         
-        # Try to import runspace-agent
-        try:
-            import runspace_agent
-            self._runspace_available = True
-            logger.info("runspace-agent library available")
-            
-            # Check for Anthropic credentials (env vars or settings file)
-            self._credentials_configured = self._check_credentials()
-            
-            if self._credentials_configured:
-                mode_label = f" ({self._execution_mode} mode)" if self._execution_mode else ""
-                source = " from ~/.claude/settings.json" if self._claude_settings else ""
-                self._status_message = f"Ready{mode_label}{source}"
-                logger.info(f"Plugin ready with {self._execution_mode} execution mode")
-            else:
-                self._status_message = "Missing credentials: Set ANTHROPIC_API_KEY, configure ~/.claude/settings.json, or provide ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN"
-                logger.warning("Anthropic credentials not configured")
-                
-        except ImportError:
+        # Check if runspace-agent is available (module-level import)
+        if runspace_agent is not None:
+            try:
+                self._runspace_available = True
+                logger.info("runspace-agent library available")
+
+                # Check for Anthropic credentials (env vars or settings file)
+                self._credentials_configured = self._check_credentials()
+
+                if self._credentials_configured:
+                    mode_label = f" ({self._execution_mode} mode)" if self._execution_mode else ""
+                    source = " from ~/.claude/settings.json" if self._claude_settings else ""
+                    self._status_message = f"Ready{mode_label}{source}"
+                    logger.info(f"Plugin ready with {self._execution_mode} execution mode")
+                else:
+                    self._status_message = "Missing credentials: Set ANTHROPIC_API_KEY, configure ~/.claude/settings.json, or provide ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN"
+                    logger.warning("Anthropic credentials not configured")
+
+            except Exception as e:
+                self._status_message = f"Configuration error: {str(e)}"
+                logger.error(f"Failed to initialize runspace-agent: {e}", exc_info=True)
+        else:
             self._status_message = "Missing dependency: runspace-agent not installed"
             logger.warning("runspace-agent not installed, plugin will be disabled")
-        except Exception as e:
-            self._status_message = f"Configuration error: {str(e)}"
-            logger.error(f"Failed to initialize runspace-agent: {e}", exc_info=True)
     
     def _load_claude_settings(self):
         """Load Claude settings from ~/.claude/settings.json if it exists."""
@@ -320,19 +389,17 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
         """
         if not self._runspace_available:
             raise RuntimeError("runspace-agent not available")
-        
+
+        if self._store_api is None:
+            raise RuntimeError("Store API not available")
+
         if not self._credentials_configured and not agent_env:
             raise RuntimeError(
                 "Anthropic credentials not configured. Set ANTHROPIC_API_KEY or provide agent_env"
             )
-        
-        if not self.store:
-            raise RuntimeError("Store API not available")
-        
+
         logger.info(f"Generating Anthropic skill from description: {description[:100]}...")
-        
-        # Import required modules
-        from runspace_agent import RunspaceSession, run_agent
+
         from claude_code_sdk import ClaudeCodeOptions
 
         # Build environment for Claude Code
@@ -379,74 +446,15 @@ The skill should be production-ready and well-documented."""
             
             # Generate the skill using runspace-agent
             try:
-                # Pre-generate session_id so we know the workspace path before
-                # run_agent starts — needed for concurrent progress streaming.
-                session_id = uuid.uuid4().hex[:12]
-                from runspace_agent.workspaces import session_workspace
-                workspace_root = session_workspace(session_id)
-
-                # Create a session — pass agent_options (not a pre-built agent) so
-                # both local and container backends can read credentials from it.
-                session = RunspaceSession(
-                    editable_dir=skill_dir,
-                    context_dir=context_dir,
-                    prompt=prompt,
-                    agent_options=options,
-                    preinstalled_skills=["skill-creator"],
-                    mode=mode,
-                )
-
-                logger.info(
-                    f"Running agent in {mode} mode "
-                    f"(session {session_id})"
-                    + (" — container will stream logs below..." if mode == "container"
-                       else " — watching workspace for progress...")
-                )
-                t0 = time.monotonic()
-
-                # Run agent and stream progress concurrently
-                run_task = asyncio.create_task(
-                    run_agent(session, session_id=session_id)
-                )
-                progress_task = asyncio.create_task(
-                    self._stream_progress(mode, workspace_root, run_task)
-                )
-                try:
-                    result = await run_task
-                finally:
-                    progress_task.cancel()
-                    try:
-                        await progress_task
-                    except asyncio.CancelledError:
-                        pass
-
-                elapsed = time.monotonic() - t0
-
-                if not result.success:
-                    logger.error(
-                        f"Agent failed after {elapsed:.1f}s: "
-                        f"{result.agent_result.error or 'Unknown error'}"
-                    )
-                    raise RuntimeError(f"Agent failed: {result.agent_result.error or 'Unknown error'}")
-
-                logger.info(
-                    f"Agent completed successfully in {elapsed:.1f}s "
-                    f"(session {result.session_id}, "
-                    f"{result.agent_result.total_tokens} tokens"
-                    + (f", ${result.agent_result.total_cost_usd:.4f}" if result.agent_result.total_cost_usd else "")
-                    + ")"
-                )
+                result = await create_skill(prompt, skill_dir, context_dir, options, mode, self)
                 self._log_session_details(result.session_id)
-                
+
             except Exception as e:
                 logger.error(f"Failed to generate skill with runspace-agent: {e}", exc_info=True)
                 raise RuntimeError(f"Skill generation failed: {str(e)}")
             
             # Import the generated skill into the store using the Anthropic importer
             try:
-                from skillberry_store.tools.anthropic.importer import import_from_anthropic_skill
-                from runspace_agent.workspaces import session_workspace
-
                 # Container mode does not sync files back to session.editable_dir —
                 # generated files live in the runspace session workspace instead.
                 # Local mode does sync back, so skill_dir is correct there.

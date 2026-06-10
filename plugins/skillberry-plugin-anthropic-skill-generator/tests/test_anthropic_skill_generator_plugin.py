@@ -1,7 +1,7 @@
 """Tests for the Anthropic Skill Generator plugin."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import AsyncMock, Mock, patch, MagicMock
 from pathlib import Path
 
 from skillberry_plugin_anthropic_skill_generator.plugin import SkillberryPluginAnthropicSkillGenerator
@@ -38,7 +38,7 @@ def test_plugin_metadata(plugin):
 
 def test_plugin_initialization_without_runspace():
     """Test plugin initialization when runspace-agent is not available."""
-    with patch("skillberry_plugin_anthropic_skill_generator.plugin.runspace_agent", side_effect=ImportError):
+    with patch("skillberry_plugin_anthropic_skill_generator.plugin.runspace_agent", None):
         plugin = SkillberryPluginAnthropicSkillGenerator()
         assert not plugin.is_enabled()
         assert "not installed" in plugin.get_status_message()
@@ -46,10 +46,9 @@ def test_plugin_initialization_without_runspace():
 
 def test_plugin_initialization_with_runspace():
     """Test plugin initialization when runspace-agent is available."""
-    with patch("skillberry_plugin_anthropic_skill_generator.plugin.runspace_agent"):
+    with patch("skillberry_plugin_anthropic_skill_generator.plugin.runspace_agent", MagicMock()):
         plugin = SkillberryPluginAnthropicSkillGenerator()
-        # Note: This will still fail if runspace-agent is not actually installed
-        # In a real environment with runspace-agent, this should pass
+        assert plugin._runspace_available
 
 
 def test_get_router(plugin):
@@ -98,7 +97,8 @@ async def test_generate_skill_without_runspace(plugin, mock_store):
 async def test_generate_skill_without_store(plugin):
     """Test that generate_skill raises error when store is not available."""
     plugin._runspace_available = True
-    
+    plugin._credentials_configured = True
+
     with pytest.raises(RuntimeError, match="Store API not available"):
         await plugin.generate_skill("Test skill description")
 
@@ -108,11 +108,12 @@ async def test_generate_skill_success(plugin, mock_store):
     """Test successful skill generation."""
     plugin.set_store_api(mock_store)
     plugin._runspace_available = True
-    
-    # Mock the runspace-agent create_skill function
-    mock_create_skill = Mock(return_value={"status": "success"})
-    
-    # Mock the import_from_anthropic_skill function
+    plugin._credentials_configured = True
+
+    mock_result = MagicMock()
+    mock_result.session_id = "test-session-id"
+    mock_create_skill = AsyncMock(return_value=mock_result)
+
     mock_tool = Mock()
     mock_tool.name = "test_tool"
     mock_tool.description = "Test tool"
@@ -120,13 +121,17 @@ async def test_generate_skill_success(plugin, mock_store):
     mock_tool.params = {}
     mock_tool.returns = {}
     mock_tool.content = "def test(): pass"
-    
+    mock_tool.module_content = "def test(): pass"
+    mock_tool.source_file_name = "test_tool.py"
+    mock_tool.tags = None
+
     mock_snippet = Mock()
     mock_snippet.name = "test_snippet"
     mock_snippet.content = "Test content"
     mock_snippet.language = "text"
     mock_snippet.description = "Test snippet"
-    
+    mock_snippet.tags = None
+
     mock_import = Mock(return_value=(
         "test_skill",
         "Test skill description",
@@ -134,7 +139,7 @@ async def test_generate_skill_success(plugin, mock_store):
         [mock_snippet],
         []
     ))
-    
+
     with patch("skillberry_plugin_anthropic_skill_generator.plugin.create_skill", mock_create_skill):
         with patch("skillberry_plugin_anthropic_skill_generator.plugin.import_from_anthropic_skill", mock_import):
             result = await plugin.generate_skill(
@@ -142,14 +147,12 @@ async def test_generate_skill_success(plugin, mock_store):
                 skill_name="test_skill",
                 tags=["test"]
             )
-    
-    # Verify the result
+
     assert result["success"] is True
     assert result["skill"]["uuid"] == "skill-uuid-789"
     assert result["tools_count"] == 1
     assert result["snippets_count"] == 1
-    
-    # Verify store methods were called
+
     mock_store.create_tool.assert_called_once()
     mock_store.create_snippet.assert_called_once()
     mock_store.create_skill.assert_called_once()
@@ -160,10 +163,10 @@ async def test_generate_skill_with_generation_error(plugin, mock_store):
     """Test skill generation when runspace-agent fails."""
     plugin.set_store_api(mock_store)
     plugin._runspace_available = True
-    
-    # Mock create_skill to raise an exception
-    mock_create_skill = Mock(side_effect=Exception("Generation failed"))
-    
+    plugin._credentials_configured = True
+
+    mock_create_skill = AsyncMock(side_effect=Exception("Generation failed"))
+
     with patch("skillberry_plugin_anthropic_skill_generator.plugin.create_skill", mock_create_skill):
         with pytest.raises(RuntimeError, match="Skill generation failed"):
             await plugin.generate_skill("Test skill description")
@@ -174,13 +177,14 @@ async def test_generate_skill_with_import_error(plugin, mock_store):
     """Test skill generation when import fails."""
     plugin.set_store_api(mock_store)
     plugin._runspace_available = True
-    
-    # Mock create_skill to succeed
-    mock_create_skill = Mock(return_value={"status": "success"})
-    
-    # Mock import to fail
+    plugin._credentials_configured = True
+
+    mock_result = MagicMock()
+    mock_result.session_id = "test-session-id"
+    mock_create_skill = AsyncMock(return_value=mock_result)
+
     mock_import = Mock(side_effect=Exception("Import failed"))
-    
+
     with patch("skillberry_plugin_anthropic_skill_generator.plugin.create_skill", mock_create_skill):
         with patch("skillberry_plugin_anthropic_skill_generator.plugin.import_from_anthropic_skill", mock_import):
             with pytest.raises(RuntimeError, match="Skill import failed"):
