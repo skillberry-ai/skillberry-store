@@ -234,15 +234,6 @@ class FileExecutor:
             logger.error(f"Error parsing manifest: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing manifest: {e}")
 
-        if not self.execute_python_locally:
-            try:
-                self.client = docker.from_env()
-            except ImportError:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Docker SDK for Python not found. Please install the Docker SDK for Python.",
-                )
-
     async def execute_file(self, parameters: Dict[str, Any], env_id=None) -> dict:
         """
         Executes dynamically based on manifest and parameters.
@@ -543,6 +534,19 @@ class FileExecutor:
         Executes a Python file using docker
         """
         logger.info(f"Executing python code using a Docker container")
+
+        try:
+            self.client = docker.from_env()
+        except ImportError:
+            raise HTTPException(
+                status_code=500,
+                detail="Docker SDK for Python not found. Please install the Docker SDK for Python.",
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Docker is not available: {e}. Ensure Docker is running or set EXECUTE_PYTHON_LOCALLY=true.",
+            )
 
         try:
             (
