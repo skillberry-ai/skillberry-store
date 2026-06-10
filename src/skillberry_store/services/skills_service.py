@@ -91,14 +91,25 @@ class SkillsService:
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
         uuid = self._resolve_uuid(uuid_or_name)
         skill = self._safe_read(uuid, uuid_or_name)
-        return self.populate_objects(skill)
+        try:
+            return self.populate_objects(skill)
+        except RuntimeError as e:
+            logger.warning(str(e))
+            skill.setdefault("tools", [])
+            skill.setdefault("snippets", [])
+            return skill
 
     def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
         items = self.handler.list_all_dicts()
         if filters:
             items = [i for i in items if all(i.get(k) == v for k, v in filters.items())]
         for item in items:
-            self.populate_objects(item)
+            try:
+                self.populate_objects(item)
+            except RuntimeError as e:
+                logger.warning(str(e))
+                item.setdefault("tools", [])
+                item.setdefault("snippets", [])
         items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
         return items
 
