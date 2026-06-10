@@ -53,6 +53,24 @@ def test_list_all_returns_sorted_and_populated():
     assert len(result) == 1
 
 
+def test_list_all_tolerates_skill_with_missing_tool():
+    th = MagicMock()
+    th.read_dicts.side_effect = RuntimeError("Skill 'get_time' references missing tools: 404: Tool not found")
+    sh = MagicMock()
+    sh.read_dicts.return_value = []
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {"name": "get_time", "modified_at": "2024-02-01", "tool_uuids": ["missing-uuid"], "snippet_uuids": []},
+        {"name": "other", "modified_at": "2024-01-01", "tool_uuids": [], "snippet_uuids": []},
+    ]
+    svc = SkillsService(h, tools_handler=th, snippets_handler=sh)
+    result = svc.list_all()
+    assert len(result) == 2
+    broken = next(r for r in result if r["name"] == "get_time")
+    assert broken["tools"] == []
+    assert broken["snippets"] == []
+
+
 def test_delete_updates_cache_then_deletes():
     h = _handler()
     svc = SkillsService(h, tools_handler=MagicMock(), snippets_handler=MagicMock())

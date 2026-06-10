@@ -30,7 +30,13 @@ async function handleResponse<T>(response: Response): Promise<T> {
     const error = await response.json().catch(() => ({
       detail: response.statusText,
     }));
-    throw new ApiError(error.detail || 'An error occurred', response.status);
+    const detail = error.detail;
+    const message = Array.isArray(detail)
+      ? detail.map((e: any) => e.msg || JSON.stringify(e)).join('; ')
+      : typeof detail === 'string'
+        ? detail
+        : JSON.stringify(detail);
+    throw new ApiError(message || 'An error occurred', response.status);
   }
   return response.json();
 }
@@ -146,8 +152,15 @@ export const skillsApi = {
     return handleResponse<{ message: string }>(response);
   },
 
-  delete: async (name: string): Promise<{ message: string }> => {
-    const response = await fetch(`${API_BASE}/skills/${name}`, {
+  delete: async (
+    name: string,
+    options?: { deleteTools?: boolean; deleteSnippets?: boolean }
+  ): Promise<{ message: string }> => {
+    const params = new URLSearchParams();
+    if (options?.deleteTools) params.set('delete_tools', 'true');
+    if (options?.deleteSnippets) params.set('delete_snippets', 'true');
+    const query = params.toString() ? `?${params}` : '';
+    const response = await fetch(`${API_BASE}/skills/${name}${query}`, {
       method: 'DELETE',
     });
     return handleResponse<{ message: string }>(response);

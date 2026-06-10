@@ -35,6 +35,7 @@ This installs:
 - skillberry-plugin-security (AI-powered security evaluation)
 - skillberry-plugin-dedupe (AI-powered duplicate skill detection)
 - skillberry-plugin-mcp-importer (import tools from any MCP SSE server)
+- skillberry-plugin-anthropic-skill-generator (generate Anthropic skills from descriptions using Claude Code)
 
 ### 3. Install Specific Plugins
 
@@ -60,9 +61,14 @@ pip install skillberry-store[plugin-dedupe]
 pip install skillberry-store[plugin-mcp-importer]
 ```
 
+#### Anthropic Skill Generator Plugin Only
+```bash
+pip install skillberry-store[plugin-anthropic-skill-generator]
+```
+
 #### Multiple Specific Plugins
 ```bash
-pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-mcp-importer]
+pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-mcp-importer,plugin-anthropic-skill-generator]
 ```
 
 ### 4. Adding Plugins Later
@@ -71,7 +77,7 @@ If you initially installed skillberry-store without plugins, you can add them la
 
 ```bash
 # Add all plugins to existing installation
-pip install skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer
+pip install skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer skillberry-plugin-anthropic-skill-generator
 
 # Or reinstall with plugins
 pip install --upgrade skillberry-store[plugins-all]
@@ -255,6 +261,91 @@ curl -X POST http://localhost:8000/plugins/mcp-importer/import-tools \
 - `400` — `mcp_url` is missing or does not start with `http://` / `https://`
 - `502` — Could not connect to the MCP server (unreachable, refused, or timed out)
 
+### Anthropic Skill Generator Plugin (`skillberry-plugin-anthropic-skill-generator`)
+
+**Purpose:** Generate complete Anthropic skills from natural language descriptions using Claude Code via runspace-agent.
+
+**Features:**
+- Generates complete Anthropic skills (SKILL.md, tools, documentation) from descriptions
+- Uses Claude Code AI agent for intelligent skill creation
+- Automatically imports generated skills into the store
+- Supports both local and container execution modes (container is default for safety)
+- Auto-loads credentials from `~/.claude/settings.json` if available
+- Includes skill-creator preinstalled skill for better generation quality
+
+**Configuration:**
+
+The plugin automatically loads credentials from `~/.claude/settings.json` if it exists:
+```json
+{
+  "apiKey": "sk-ant-...",
+  "model": "claude-opus-4-8",
+  "baseUrl": "https://api.anthropic.com"
+}
+```
+
+Or configure via environment variables:
+```bash
+# Option 1: Direct Anthropic API
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Option 2: Proxy/Gateway
+export ANTHROPIC_BASE_URL="https://your-gateway.example.com"
+export ANTHROPIC_AUTH_TOKEN="your-token"
+export ANTHROPIC_MODEL="claude-opus-4-8"
+
+# Execution mode (default: container - requires Docker)
+export RUNSPACE_MODE="container"  # or "local" for development
+
+# Max conversation turns (default: 300)
+export RUNSPACE_MAX_TURNS="300"
+```
+
+**Requirements:**
+- Docker (for default container mode - recommended)
+- Anthropic API credentials (API key or proxy configuration)
+
+**API Endpoints:**
+- `POST /api/plugins/anthropic-skill-generator/generate-skill`
+
+**Request body:**
+```json
+{
+  "description": "A skill for processing PDF documents and extracting text",
+  "skill_name": "pdf-processor",
+  "tags": ["pdf", "document-processing"],
+  "max_turns": 50
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Skill 'pdf-processor' generated successfully.",
+  "skill_name": "pdf-processor",
+  "skill_uuid": "550e8400-e29b-41d4-a716-446655440000",
+  "tools_count": 3,
+  "snippets_count": 2
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/api/plugins/anthropic-skill-generator/generate-skill \
+  -H "Content-Type: application/json" \
+  -d '{
+    "description": "A skill for processing PDF documents and extracting text with OCR support",
+    "skill_name": "pdf-processor",
+    "tags": ["pdf", "ocr"]
+  }'
+```
+
+**Configuration Priority:**
+1. Request-specific parameters (highest)
+2. Environment variables
+3. `~/.claude/settings.json` (lowest - automatic)
+
 ## LLM Configuration
 
 Both plugins use `llm-switchboard` for LLM integration. Configuration is done via environment variables.
@@ -380,7 +471,7 @@ my-plugin = { path = "plugins/my-plugin", editable = true }
 
 ```bash
 # Uninstall all plugins
-pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer
+pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer skillberry-plugin-anthropic-skill-generator
 
 # Verify removal
 pip list | grep skillberry-plugin

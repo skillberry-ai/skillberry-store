@@ -12,6 +12,8 @@ import {
   Checkbox,
   Button,
   Alert,
+  FormSelect,
+  FormSelectOption,
 } from '@patternfly/react-core';
 import type { PluginAction, PluginActionResult } from '@/types';
 
@@ -39,8 +41,21 @@ export function PluginActionForm({
     setError(null);
     setResult(null);
 
+    // Coerce array-typed fields from comma-separated strings to string[]
+    const coercedData: Record<string, any> = { ...formData };
+    if (action.params_schema.properties) {
+      for (const [key, schema] of Object.entries(action.params_schema.properties) as [string, any][]) {
+        if (schema.type === 'array' && typeof coercedData[key] === 'string') {
+          coercedData[key] = coercedData[key]
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean);
+        }
+      }
+    }
+
     try {
-      const response = await onSubmit(formData);
+      const response = await onSubmit(coercedData);
       setResult(response);
       
       if (response.success) {
@@ -119,7 +134,38 @@ export function PluginActionForm({
       );
     }
 
+    // Enum → native select
+    if (propertySchema.enum) {
+      return (
+        <FormGroup
+          key={propertyName}
+          label={propertyName}
+          isRequired={isRequired}
+          fieldId={propertyName}
+        >
+          {propertySchema.description && (
+            <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
+              {propertySchema.description}
+            </div>
+          )}
+          <FormSelect
+            id={propertyName}
+            value={value as string}
+            onChange={(_event, newValue) => handleChange(newValue)}
+          >
+            {propertySchema.enum.map((option: string) => (
+              <FormSelectOption key={option} value={option} label={option} />
+            ))}
+          </FormSelect>
+        </FormGroup>
+      );
+    }
+
     // Default to text input
+    const isArray = propertySchema.type === 'array';
+    const description = isArray
+      ? `${propertySchema.description || ''} (comma-separated)`.trim()
+      : propertySchema.description;
     return (
       <FormGroup
         key={propertyName}
@@ -127,9 +173,9 @@ export function PluginActionForm({
         isRequired={isRequired}
         fieldId={propertyName}
       >
-        {propertySchema.description && (
+        {description && (
           <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
-            {propertySchema.description}
+            {description}
           </div>
         )}
         <TextInput

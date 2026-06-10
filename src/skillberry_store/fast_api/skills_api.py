@@ -33,6 +33,8 @@ from skillberry_store.tools.configure import (
 from skillberry_store.fast_api.search_filters import apply_search_filters
 from skillberry_store.utils.utils import normalize_uuid, generate_or_validate_uuid
 from skillberry_store.services.skills_service import SkillsService
+from skillberry_store.services.tools_service import ToolsService
+from skillberry_store.services.snippets_service import SnippetsService
 
 if TYPE_CHECKING:
     from skillberry_store.modules.description import Description
@@ -86,6 +88,9 @@ def register_skills_api(
     skill_handler = service.handler
     tools_handler = service.tools_handler
     snippets_handler = service.snippets_handler
+    # descriptions=None: description file cleanup is skipped for cascade-deleted items (best-effort)
+    tools_service = ToolsService(handler=tools_handler)
+    snippets_service = SnippetsService(handler=snippets_handler)
 
     def populate_skill_objects(skill_dict):
         """Populate full tool and snippet objects from UUIDs."""
@@ -180,16 +185,60 @@ def register_skills_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "delete-skill"},
     )
-    async def delete_skill(uuid_or_name: str):
+    async def delete_skill(
+        uuid_or_name: str,
+        delete_tools: bool = Query(
+            False, description="Delete tools not shared with other skills"
+        ),
+        delete_snippets: bool = Query(
+            False, description="Delete snippets not shared with other skills"
+        ),
+    ):
         logger.info(f"Request to delete skill: {uuid_or_name}")
         delete_skill_counter.inc()
         try:
             skill = service.get(uuid_or_name)
             skill_uuid = skill["uuid"]
+            deleted_tools: list = []
+            deleted_snippets: list = []
+
+            if delete_tools or delete_snippets:
+                all_skills = service.handler.list_all_dicts()
+                shared_tool_uuids: set = set()
+                shared_snippet_uuids: set = set()
+                for s in all_skills:
+                    if s.get("uuid") != skill_uuid:
+                        shared_tool_uuids.update(s.get("tool_uuids") or [])
+                        shared_snippet_uuids.update(s.get("snippet_uuids") or [])
+
+                if delete_tools:
+                    for tool_uuid in skill.get("tool_uuids") or []:
+                        if tool_uuid not in shared_tool_uuids:
+                            try:
+                                tools_service.delete(tool_uuid)
+                                deleted_tools.append(tool_uuid)
+                            except Exception as e:
+                                logger.warning(
+                                    f"Could not cascade-delete tool {tool_uuid}: {e}"
+                                )
+
+                if delete_snippets:
+                    for snippet_uuid in skill.get("snippet_uuids") or []:
+                        if snippet_uuid not in shared_snippet_uuids:
+                            try:
+                                snippets_service.delete(snippet_uuid)
+                                deleted_snippets.append(snippet_uuid)
+                            except Exception as e:
+                                logger.warning(
+                                    f"Could not cascade-delete snippet {snippet_uuid}: {e}"
+                                )
+
             service.delete(uuid_or_name)
             emit_content_deleted("skill", skill_uuid)
             return {
-                "message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully."
+                "message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully.",
+                "deleted_tools": deleted_tools,
+                "deleted_snippets": deleted_snippets,
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
