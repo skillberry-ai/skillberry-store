@@ -1,0 +1,50 @@
+# Skillberry-store runtime configuration.
+#
+# Copy this file to `config.yaml` (in the directory you launch sbs-srv from),
+# or point the SBS_CONFIG_FILE env var at it:
+#
+#     SBS_CONFIG_FILE=/path/to/config.yaml sbs-srv
+#
+# It is loaded once at startup. If absent, skillberry-store falls back to the
+# API_KEY env var (or anonymous access) for outbound fetches.
+#
+# ---------------------------------------------------------------------------
+# Per-endpoint auth for importing skills from remote sources.
+#
+# The architecture is provider-agnostic: the only assumption is that the remote
+# accepts an `Authorization: Bearer <token>` API token.
+#
+# At runtime, when a URL is fetched during a skill import, the endpoint whose
+# `endpoint:` matches the URL supplies the auth. Matching is by hostname
+# equality OR URL prefix; the longest matching `endpoint` wins, so a more
+# specific org/path-scoped entry takes precedence over a bare host.
+#
+# For a matched endpoint, auth is resolved in this ORDER:
+#   1. `api_key`   - a configured key, sent as `Authorization: Bearer <key>`.
+#   2. `login_url` - forced-reauthentication: the API returns 401 with this URL;
+#                    the user logs in there to obtain a token, then retries the
+#                    import sending header  `X-Endpoint-Token: <token>`.
+#   3. (neither)   - OAuth discovery: the backend probes the provider's
+#                    `/.well-known/oauth-authorization-server` (then
+#                    `/.well-known/openid-configuration`) and uses the
+#                    discovered `authorization_endpoint` as the login URL.
+#                    Note: providers without this metadata (e.g. github.com)
+#                    yield no URL — give them an explicit `login_url` instead.
+#
+# Tokens supplied via `X-Endpoint-Token` are used for that request only and are
+# never stored.
+# ---------------------------------------------------------------------------
+endpoints:
+  # github.com has NO OAuth discovery metadata, so it is configured with an
+  # explicit login_url pointing at GitHub's token-creation page. On import the
+  # API returns 401 + this URL; the user creates a token and retries with header
+  # X-Endpoint-Token: <token>.
+  - endpoint: github.com
+    login_url: https://github.com/settings/tokens
+
+  # Example: an OIDC/enterprise provider — omit login_url to auto-discover it.
+  # - endpoint: https://idp.mycorp.com
+
+  # Example: a pre-provisioned API key for an endpoint (sent as Bearer).
+  # - endpoint: https://skills.internal.example.com
+  #   api_key: <key>

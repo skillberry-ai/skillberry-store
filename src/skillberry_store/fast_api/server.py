@@ -79,6 +79,12 @@ class SBS(FastAPI):
         self.logger = logging.getLogger(__name__)
         logger.info(f"SBSettings sbs_vdb = {self.settings.sbs_vdb}")
 
+        # Load per-endpoint auth config (config.yaml / SBS_CONFIG_FILE). Logs the
+        # path and endpoint count; harmless if no config file is present.
+        from skillberry_store.tools.endpoint_auth import get_config
+
+        get_config()
+
         # Initialize object handlers (singleton pattern)
         from skillberry_store.modules.object_handler import initialize_object_handlers
 

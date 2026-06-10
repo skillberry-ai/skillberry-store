@@ -7,7 +7,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional, Annotated, List
-from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Header
 from fastapi.responses import Response
 from prometheus_client import Counter
 from skillberry_store.plugins.events import (
@@ -17,6 +17,10 @@ from skillberry_store.plugins.events import (
 )
 
 from skillberry_store.tools.anthropic.importer import import_from_anthropic_skill
+from skillberry_store.tools.endpoint_auth import (
+    resolve_auth_headers,
+    ReauthRequired,
+)
 from skillberry_store.modules.object_handler import get_object_handler
 from skillberry_store.modules.file_executor import detect_tool_dependencies
 from skillberry_store.modules.lifecycle import LifecycleState
@@ -61,6 +65,26 @@ update_skill_counter = Counter(
 search_skills_counter = Counter(
     f"{prom_prefix}search_skills_counter", "Count number of skill search operations"
 )
+
+
+def _auth_exception_to_http(exc: ReauthRequired) -> HTTPException:
+    """Translate a forced-reauthentication exception into a 401 HTTPException.
+
+    Returns a structured ``detail`` the client uses to drive interactive login:
+    a ``login_url`` to obtain a token. The caller re-runs the request with that
+    token in the ``X-Endpoint-Token`` header.
+    """
+    return HTTPException(
+        status_code=401,
+        detail={
+            "error": "login_required",
+            "login_url": exc.login_url,
+            "message": (
+                "Authentication required. Log in at login_url, then retry this "
+                "request with header 'X-Endpoint-Token: <token>'."
+            ),
+        },
+    )
 
 
 def register_skills_api(
@@ -352,6 +376,8 @@ def register_skills_api(
         source_type: str = Form(...),
         github_url: Optional[str] = Form(None),
         folder_path: Optional[str] = Form(None),
+        anonymous: bool = Form(True),
+        x_endpoint_token: Optional[str] = Header(None),
     ):
         """Detect child skill directories in a parent directory.
 
@@ -385,6 +411,17 @@ def register_skills_api(
                         detail="github_url is required for source_type='url'",
                     )
 
+                # Resolve per-endpoint auth once for the requested URL. Raises
+                # ReauthRequired -> turned into a 401 below.
+                try:
+                    auth_headers = resolve_auth_headers(
+                        github_url,
+                        override_token=x_endpoint_token,
+                        anonymous=anonymous,
+                    )
+                except ReauthRequired as e:
+                    raise _auth_exception_to_http(e)
+
                 # Convert GitHub URL to API URL
                 api_url = github_url.replace("github.com", "api.github.com/repos")
                 api_url = re.sub(r"/tree/(main|master)/", r"/contents/", api_url)
@@ -392,7 +429,7 @@ def register_skills_api(
                 logger.info(f"Fetching directory listing from: {api_url}")
 
                 # Fetch directory contents
-                response = requests.get(api_url, timeout=30)
+                response = requests.get(api_url, headers=auth_headers, timeout=30)
                 if not response.ok:
                     raise HTTPException(
                         status_code=response.status_code,
@@ -408,7 +445,9 @@ def register_skills_api(
                         # Check if this directory contains SKILL.md
                         dir_api_url = item["url"]
                         try:
-                            dir_response = requests.get(dir_api_url, timeout=30)
+                            dir_response = requests.get(
+                                dir_api_url, headers=auth_headers, timeout=30
+                            )
                             if dir_response.ok:
                                 dir_items = dir_response.json()
                                 has_skill_md = any(
@@ -491,6 +530,8 @@ def register_skills_api(
         snippet_mode: str = Form("file"),
         treat_all_as_documents: bool = Form(False),
         tags: List[str] = Form([]),
+        anonymous: bool = Form(True),
+        x_endpoint_token: Optional[str] = Header(None),
     ):
         """Import an Anthropic skill from GitHub URL, ZIP file, or local folder.
 
@@ -541,14 +582,20 @@ def register_skills_api(
                 )
 
             # Import the skill
-            skill_name, skill_description, tools, snippets, ignored_files = (
-                import_from_anthropic_skill(
-                    source_type=source_type,
-                    source_data=source_data,
-                    snippet_mode=snippet_mode,
-                    treat_all_as_documents=treat_all_as_documents,
+            try:
+                skill_name, skill_description, tools, snippets, ignored_files = (
+                    import_from_anthropic_skill(
+                        source_type=source_type,
+                        source_data=source_data,
+                        snippet_mode=snippet_mode,
+                        treat_all_as_documents=treat_all_as_documents,
+                        override_token=x_endpoint_token,
+                        anonymous=anonymous,
+                    )
                 )
-            )
+            except ReauthRequired as e:
+                # Endpoint needs interactive auth: surface login details as 401.
+                raise _auth_exception_to_http(e)
 
             # Create tools
             created_tool_uuids = []

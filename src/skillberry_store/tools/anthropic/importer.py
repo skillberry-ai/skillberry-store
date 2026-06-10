@@ -10,6 +10,28 @@ import zipfile
 import requests
 from typing import Dict, List, Any, Optional, Tuple
 
+from skillberry_store.tools.endpoint_auth import resolve_auth_headers
+
+
+def _auth_headers(
+    url: Optional[str] = None,
+    override_token: Optional[str] = None,
+    anonymous: bool = False,
+) -> Dict[str, str]:
+    """Return Authorization headers for fetching ``url``.
+
+    When ``anonymous`` is True, returns empty headers without any auth lookup.
+    Otherwise delegates to the per-endpoint resolver (config.yaml), which for the
+    matching endpoint uses its ``api_key``, or an override token from the
+    X-Endpoint-Token header, or raises ReauthRequired with a login URL (explicit
+    ``login_url`` or one discovered via OAuth metadata). Falls back to the
+    ``API_KEY`` env var when no endpoint matches. The API layer turns
+    ReauthRequired into a 401 + login_url.
+    """
+    return resolve_auth_headers(
+        url, override_token=override_token, anonymous=anonymous
+    )
+
 
 def extract_skill_name(url: str, filename: str) -> str:
     """Extract skill name from GitHub URL or zip filename.
@@ -91,18 +113,29 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
     return None
 
 
-def fetch_from_github(url: str) -> List[Dict[str, str]]:
+def fetch_from_github(
+    url: str, override_token: Optional[str] = None, anonymous: bool = False
+) -> List[Dict[str, str]]:
     """Fetch files from GitHub repository.
 
     Args:
         url: GitHub URL
+        override_token: Optional token (e.g. from the X-Endpoint-Token header)
+            used instead of any configured token for this fetch.
 
     Returns:
         List of file dictionaries with 'name', 'path', and 'content' keys
 
     Raises:
         Exception: If fetching fails
+        ReauthRequired / OAuthRequired: If the matching endpoint requires the
+            user to authenticate before fetching.
     """
+    # Resolve auth headers once from the user-supplied URL (not the per-file
+    # raw.githubusercontent.com download_url, whose host differs). Any
+    # ReauthRequired/OAuthRequired raised here propagates to the API layer.
+    headers = _auth_headers(url, override_token=override_token, anonymous=anonymous)
+
     # Convert GitHub URL to API URL
     # From: https://github.com/anthropics/skills/tree/main/skills/pptx
     # To: https://api.github.com/repos/anthropics/skills/contents/skills/pptx
@@ -116,7 +149,7 @@ def fetch_from_github(url: str) -> List[Dict[str, str]]:
     def fetch_directory(dir_url: str, base_path: str = "") -> None:
         """Recursively fetch directory contents."""
         try:
-            response = requests.get(dir_url, timeout=30)
+            response = requests.get(dir_url, headers=headers, timeout=30)
             if not response.ok:
                 raise Exception(
                     f"GitHub API returned {response.status_code}: {response.text or response.reason}"
@@ -129,7 +162,7 @@ def fetch_from_github(url: str) -> List[Dict[str, str]]:
                     # Fetch file content
                     try:
                         content_response = requests.get(
-                            item["download_url"], timeout=30
+                            item["download_url"], headers=headers, timeout=30
                         )
                         if content_response.ok:
                             relative_path = (
@@ -243,6 +276,8 @@ def import_from_anthropic_skill(
     source_data: Any,
     snippet_mode: str = "file",
     treat_all_as_documents: bool = False,
+    override_token: Optional[str] = None,
+    anonymous: bool = False,
 ) -> Tuple[str, str, List[Any], List[Any], List[str]]:
     """Import Anthropic skill from various sources.
 
@@ -251,6 +286,7 @@ def import_from_anthropic_skill(
         source_data: URL string, ZIP bytes, or list of file dicts
         snippet_mode: 'file' or 'paragraph'
         treat_all_as_documents: If True, treat all files (including code) as document snippets
+        override_token: Optional per-request token (X-Endpoint-Token) for 'url' imports
 
     Returns:
         Tuple of (skill_name, skill_description, tools, snippets, ignored_files)
@@ -269,7 +305,9 @@ def import_from_anthropic_skill(
         if not isinstance(source_data, str):
             raise ValueError("source_data must be a URL string for 'url' source_type")
         skill_name = extract_skill_name(source_data, "")
-        files = fetch_from_github(source_data)
+        files = fetch_from_github(
+            source_data, override_token=override_token, anonymous=anonymous
+        )
     elif source_type == "zip":
         if not isinstance(source_data, bytes):
             raise ValueError("source_data must be bytes for 'zip' source_type")
