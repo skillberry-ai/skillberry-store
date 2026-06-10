@@ -187,8 +187,12 @@ def register_skills_api(
     )
     async def delete_skill(
         uuid_or_name: str,
-        delete_tools: bool = Query(False, description="Delete tools not shared with other skills"),
-        delete_snippets: bool = Query(False, description="Delete snippets not shared with other skills"),
+        delete_tools: bool = Query(
+            False, description="Delete tools not shared with other skills"
+        ),
+        delete_snippets: bool = Query(
+            False, description="Delete snippets not shared with other skills"
+        ),
     ):
         logger.info(f"Request to delete skill: {uuid_or_name}")
         delete_skill_counter.inc()
@@ -214,7 +218,9 @@ def register_skills_api(
                                 tools_service.delete(tool_uuid)
                                 deleted_tools.append(tool_uuid)
                             except Exception as e:
-                                logger.warning(f"Could not cascade-delete tool {tool_uuid}: {e}")
+                                logger.warning(
+                                    f"Could not cascade-delete tool {tool_uuid}: {e}"
+                                )
 
                 if delete_snippets:
                     for snippet_uuid in skill.get("snippet_uuids") or []:
@@ -223,7 +229,9 @@ def register_skills_api(
                                 snippets_service.delete(snippet_uuid)
                                 deleted_snippets.append(snippet_uuid)
                             except Exception as e:
-                                logger.warning(f"Could not cascade-delete snippet {snippet_uuid}: {e}")
+                                logger.warning(
+                                    f"Could not cascade-delete snippet {snippet_uuid}: {e}"
+                                )
 
             service.delete(uuid_or_name)
             emit_content_deleted("skill", skill_uuid)
