@@ -195,6 +195,62 @@ def test_skill_tags_include_mcp_imported_and_hostname():
     assert "mock-mcp" in skill_data["tags"]
 
 
+# --- user-supplied tags merging ---
+
+def test_user_tags_merged_into_tool_tags():
+    tools = [_MockTool("tool_e")]
+    client, _, mock_store = _make_client(tools=tools)
+    with _patch_mcp(tools):
+        resp = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={
+                "mcp_url": "http://mock-mcp:9500/sse",
+                "create_skill": False,
+                "tags": ["my-project", "prod"],
+            },
+        )
+    assert resp.status_code == 200
+    data_arg = mock_store.create_tool.call_args.args[0]
+    assert "my-project" in data_arg["tags"]
+    assert "prod" in data_arg["tags"]
+
+
+def test_user_tags_merged_into_skill_tags():
+    tools = [_MockTool("tool_f")]
+    client, _, mock_store = _make_client(tools=tools)
+    mock_store.create_skill.return_value = {"uuid": "s-uuid", "name": "mock_mcp_9500_sse"}
+    with _patch_mcp(tools):
+        resp = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={
+                "mcp_url": "http://mock-mcp:9500/sse",
+                "create_skill": True,
+                "tags": ["team-alpha"],
+            },
+        )
+    assert resp.status_code == 200
+    skill_data = mock_store.create_skill.call_args.args[0]
+    assert "team-alpha" in skill_data["tags"]
+
+
+def test_user_tags_deduped():
+    tools = [_MockTool("tool_g")]
+    client, _, mock_store = _make_client(tools=tools)
+    with _patch_mcp(tools):
+        resp = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={
+                "mcp_url": "http://mock-mcp:9500/sse",
+                "create_skill": False,
+                "tags": ["mcp", "unique-tag"],  # "mcp" is already auto-generated
+            },
+        )
+    assert resp.status_code == 200
+    data_arg = mock_store.create_tool.call_args.args[0]
+    assert data_arg["tags"].count("mcp") == 1
+    assert "unique-tag" in data_arg["tags"]
+
+
 # ── Validation tests ──────────────────────────────────────────────────────────
 
 def test_import_missing_url_returns_400():

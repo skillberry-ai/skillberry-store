@@ -193,6 +193,7 @@ class SkillberryPluginMcpImporter(PluginBase):
             mcp_url: str
             create_skill: bool = True
             skill_name: Optional[str] = None
+            tags: Optional[List[str]] = None
 
         @router.post("/import-tools")
         async def import_tools(request: ImportRequest):
@@ -210,6 +211,7 @@ class SkillberryPluginMcpImporter(PluginBase):
                     url,
                     create_skill=request.create_skill,
                     skill_name=request.skill_name,
+                    tags=request.tags,
                 )
             except Exception as exc:
                 logger.error(
