@@ -177,6 +177,24 @@ def test_tool_tags_no_skill_reference_when_skill_not_created():
     assert not any(t.startswith("skill:") for t in data_arg["tags"])
 
 
+# --- skill tag generation ---
+
+def test_skill_tags_include_mcp_imported_and_hostname():
+    tools = [_MockTool("tool_d")]
+    client, _, mock_store = _make_client(tools=tools)
+    mock_store.create_skill.return_value = {"uuid": "s-uuid", "name": "mock_mcp_9500_sse"}
+    with _patch_mcp(tools):
+        resp = client.post(
+            "/plugins/mcp-importer/import-tools",
+            json={"mcp_url": "http://mock-mcp:9500/sse", "create_skill": True},
+        )
+    assert resp.status_code == 200
+    skill_data = mock_store.create_skill.call_args.args[0]
+    assert "mcp" in skill_data["tags"]
+    assert "imported" in skill_data["tags"]
+    assert "mock-mcp" in skill_data["tags"]
+
+
 # ── Validation tests ──────────────────────────────────────────────────────────
 
 def test_import_missing_url_returns_400():
