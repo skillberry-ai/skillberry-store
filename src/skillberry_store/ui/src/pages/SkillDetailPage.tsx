@@ -40,6 +40,7 @@ import {
   MenuToggleElement,
   TreeView,
   TreeViewDataItem,
+  Checkbox,
 } from '@patternfly/react-core';
 import { EditIcon, TrashIcon, FolderIcon, FileIcon, FileCodeIcon, ExportIcon } from '@patternfly/react-icons';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -55,6 +56,8 @@ export function SkillDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTools, setDeleteTools] = useState(true);
+  const [deleteSnippets, setDeleteSnippets] = useState(true);
   const [activeTabKey, setActiveTabKey] = useState<string | number>(0);
   const [editedSkill, setEditedSkill] = useState({
     name: '',
@@ -134,7 +137,7 @@ export function SkillDetailPage() {
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: () => skillsApi.delete(skill?.uuid!),
+    mutationFn: () => skillsApi.delete(skill?.uuid!, { deleteTools, deleteSnippets }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
       navigate('/skills');
@@ -1089,7 +1092,7 @@ export function SkillDetailPage() {
         variant={ModalVariant.small}
         title="Delete Skill"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteTools(true); setDeleteSnippets(true); }}
         actions={[
           <Button
             key="delete"
@@ -1111,6 +1114,24 @@ export function SkillDetailPage() {
         <Text>
           Are you sure you want to delete the skill "{skill?.name}"? This action cannot be undone.
         </Text>
+        <div style={{ marginTop: '1rem' }}>
+          <Checkbox
+            id="delete-tools-checkbox"
+            label="Delete associated tools"
+            isChecked={deleteTools}
+            onChange={(_e, checked) => setDeleteTools(checked)}
+          />
+          <Checkbox
+            id="delete-snippets-checkbox"
+            label="Delete associated snippets"
+            isChecked={deleteSnippets}
+            onChange={(_e, checked) => setDeleteSnippets(checked)}
+            style={{ marginTop: '0.5rem' }}
+          />
+          <Text component="small" style={{ color: '#6a6e73', marginTop: '0.5rem', display: 'block' }}>
+            Tools or snippets shared with other skills will not be deleted.
+          </Text>
+        </div>
       </Modal>
     </>
   );
