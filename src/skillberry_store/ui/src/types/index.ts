@@ -136,6 +136,8 @@ export interface PluginUIConfig {
   color: string;
   actions: PluginAction[];
   settings_schema?: Record<string, any>;
+  /** Optional secondary capability flags (e.g. SAST's LLM fix). */
+  capabilities?: Record<string, any>;
 }
 
 export interface Plugin {

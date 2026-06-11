@@ -23,11 +23,19 @@ from .engines.base import SEVERITIES
 logger = logging.getLogger(__name__)
 
 _CONTENT_TYPES = ("tool", "skill", "snippet")
-_DEFAULT_ENGINES = "bandit"
+_DEFAULT_ENGINE = "bandit"
+
+# Env vars (both comma-separated):
+#   SBS_SAST_AVAILABLE_ENGINES - which engines are OFFERED (the dropdown set),
+#       intersected with what's actually implemented. Unset => all implemented.
+#   SBS_SAST_ACTIVE_ENGINES    - which engines are ACTIVE by default (pre-selected
+#       and used by auto-scan). Must be a subset of available; defaults to bandit.
+_ENV_AVAILABLE = "SBS_SAST_AVAILABLE_ENGINES"
+_ENV_ACTIVE = "SBS_SAST_ACTIVE_ENGINES"
 
 
 def _parse_engine_env(value: Optional[str]) -> List[str]:
-    """Parse SBS_SAST_ENGINES (comma-separated) into a clean name list."""
+    """Parse a comma-separated engine env var into a clean name list."""
     if not value:
         return []
     return [name.strip() for name in value.split(",") if name.strip()]
@@ -49,18 +57,66 @@ class SkillberryPluginSast(PluginBase):
             plugin_type=PluginType.EVALUATOR,
         )
 
-        # Default engine set used by auto-scan and as the fallback when a scan
-        # request omits `engines`.
-        self._default_engines = _parse_engine_env(
-            os.getenv("SBS_SAST_ENGINES")
-        ) or _parse_engine_env(_DEFAULT_ENGINES)
+        # AVAILABLE set: engines offered in the UI dropdown. Take the env list
+        # (if set) intersected with what's actually implemented in the registry,
+        # preserving env order; unknown names are dropped with a warning. Unset
+        # => all implemented engines.
+        implemented = available_engine_names()
+        env_available = _parse_engine_env(os.getenv(_ENV_AVAILABLE))
+        if env_available:
+            self._available_engines = [n for n in env_available if n in implemented]
+            ignored = [n for n in env_available if n not in implemented]
+            if ignored:
+                logger.warning(
+                    "%s lists engines that are not implemented and were ignored: %s",
+                    _ENV_AVAILABLE,
+                    ", ".join(ignored),
+                )
+        else:
+            self._available_engines = list(implemented)
+
+        # ACTIVE/default set: pre-selected in the UI and used by auto-scan.
+        # SBS_SAST_ACTIVE_ENGINES overrides the built-in bandit default when set;
+        # it is then constrained to the available set.
+        active = _parse_engine_env(os.getenv(_ENV_ACTIVE)) or [_DEFAULT_ENGINE]
+        self._default_engines = [n for n in active if n in self._available_engines]
+        if not self._default_engines:
+            # Active set fell outside available (or available is empty); fall back
+            # to whatever is available so the plugin isn't silently inert.
+            self._default_engines = list(self._available_engines)
 
         self._status_message = self._compute_status_message()
         logger.info("SAST plugin status: %s", self._status_message)
 
+        # Optional LLM client for the "Fix" capability. Scanning works without
+        # it; only Fix is gated on a usable model/key. Mirrors the init pattern
+        # of skillberry-plugin-security.
+        self._llm = None
+        self._llm_model = os.getenv("LLM_MODEL", "gpt-4")
+        self._llm_status = (
+            "Set OPENAI_API_KEY (and LLM_PROVIDER/LLM_MODEL) to enable Fix"
+        )
+        try:
+            from llm_switchboard import get_llm
+
+            provider = os.getenv("LLM_PROVIDER", "openai.async")
+            self._llm = get_llm(provider)(model_name=self._llm_model)
+            self._llm_status = f"Ready (fix via {provider} / {self._llm_model})"
+            logger.info("SAST Fix LLM initialized: %s / %s", provider, self._llm_model)
+        except ImportError:
+            self._llm_status = "Fix unavailable: llm-switchboard not installed"
+            logger.info("SAST Fix disabled: llm-switchboard not installed")
+        except Exception as e:  # noqa: BLE001 - missing key/config disables Fix only
+            self._llm_status = f"Fix unavailable: {e}"
+            logger.info("SAST Fix disabled: %s", e)
+
         self._register_event_handlers()
 
     # ── status / enablement ──────────────────────────────────────────────────
+
+    def _fix_available(self) -> bool:
+        """True if the LLM client is initialized (key/config present)."""
+        return self._llm is not None
 
     def _installed_default_engines(self) -> List[str]:
         """Default engines that are both known and actually installed."""
@@ -74,8 +130,8 @@ class SkillberryPluginSast(PluginBase):
         if not engines:
             return (
                 "No known SAST engines configured "
-                f"(SBS_SAST_ENGINES={self._default_engines}, "
-                f"available: {available_engine_names()})"
+                f"(active={self._default_engines}, "
+                f"available: {self._available_engines})"
             )
         if not installed:
             return (
@@ -210,27 +266,50 @@ class SkillberryPluginSast(PluginBase):
 
     # ── core scan ────────────────────────────────────────────────────────────
 
+    def _infer_type(self, uuid: str) -> Optional[str]:
+        """Infer an object's content type from its UUID by probing the store.
+
+        The store's ``get_*`` accessors return ``None`` for a wrong-type UUID
+        (they don't raise), so probing in order is safe. Returns the content
+        type ("tool"/"skill"/"snippet") or ``None`` if the UUID matches nothing.
+        """
+        if self._store_api is None:
+            return None
+        if self.store.get_tool(uuid):
+            return "tool"
+        if self.store.get_skill(uuid):
+            return "skill"
+        if self.store.get_snippet(uuid):
+            return "snippet"
+        return None
+
     async def scan_object(
         self,
         uuid: str,
-        content_type: str,
+        content_type: Optional[str] = None,
         engines: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Scan a store object's code and persist normalized findings.
 
         Args:
             uuid: UUID of the object.
-            content_type: "tool", "skill", or "snippet".
-            engines: engine names to run; defaults to the configured default set
-                (SBS_SAST_ENGINES). Requested-but-missing engines are reported
-                per-engine, not raised.
+            content_type: "tool", "skill", or "snippet". When omitted, the type
+                is inferred from the UUID.
+            engines: engine names to run; defaults to the active set
+                (SBS_SAST_ACTIVE_ENGINES). Requested-but-missing engines are
+                reported per-engine, not raised.
 
         Returns:
             {uuid, content_type, engines: {name: {findings|status}}, summary, findings}
         """
         if self._store_api is None:
             raise RuntimeError("Store API not available")
-        if content_type not in _CONTENT_TYPES:
+
+        if content_type is None:
+            content_type = self._infer_type(uuid)
+            if content_type is None:
+                raise ValueError(f"Object {uuid} not found in store")
+        elif content_type not in _CONTENT_TYPES:
             raise ValueError(f"Unknown content_type: {content_type}")
 
         requested = engines or self._default_engines
@@ -300,6 +379,7 @@ class SkillberryPluginSast(PluginBase):
 
         result = {
             "uuid": uuid,
+            "name": obj.get("name"),
             "content_type": content_type,
             "engines": engine_results,
             "summary": summary,
@@ -346,6 +426,231 @@ class SkillberryPluginSast(PluginBase):
         elif content_type == "snippet":
             self.store.snippets.write_dict(uuid, obj)
 
+    # ── batch scan (type inferred per object) ─────────────────────────────────
+
+    async def scan_objects(
+        self,
+        uuids: List[str],
+        engines: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Scan one or more objects, inferring each object's type from its UUID.
+
+        Selecting a skill fans out to the skill's referenced tools and snippets
+        (a skill has no code of its own), matching the auto-scan-on-ingest
+        behavior. UUIDs that resolve to nothing are reported in ``not_found``
+        rather than raising, so a mixed batch still scans its valid members.
+
+        Returns:
+            {results: [<scan_object result>, ...], not_found: [uuid, ...],
+             summary: {<combined severity counts>}}
+        """
+        if self._store_api is None:
+            raise RuntimeError("Store API not available")
+
+        results: List[Dict[str, Any]] = []
+        not_found: List[str] = []
+        scanned: set = set()
+
+        async def _scan(uuid: str, content_type: Optional[str]) -> None:
+            if uuid in scanned:
+                return
+            scanned.add(uuid)
+            try:
+                results.append(await self.scan_object(uuid, content_type, engines))
+            except ValueError:
+                not_found.append(uuid)
+
+        for uuid in uuids:
+            ctype = self._infer_type(uuid)
+            if ctype is None:
+                not_found.append(uuid)
+                continue
+            if ctype == "skill":
+                # Skills carry no code; fan out to referenced tools/snippets.
+                await _scan(uuid, "skill")  # records a skill-level (empty) result
+                skill_obj = self.store.get_skill(uuid) or {}
+                for tool_uuid in skill_obj.get("tool_uuids") or []:
+                    await _scan(tool_uuid, "tool")
+                for snippet_uuid in skill_obj.get("snippet_uuids") or []:
+                    await _scan(snippet_uuid, "snippet")
+            else:
+                await _scan(uuid, ctype)
+
+        summary = {sev: 0 for sev in SEVERITIES}
+        for r in results:
+            for sev, count in (r.get("summary") or {}).items():
+                if sev in summary:
+                    summary[sev] += count
+
+        return {"results": results, "not_found": not_found, "summary": summary}
+
+    # ── LLM-based fix ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _strip_code_fences(text: str) -> str:
+        """Remove a surrounding ```lang ... ``` markdown fence if present."""
+        s = text.strip()
+        if not s.startswith("```"):
+            return text
+        lines = s.splitlines()
+        # drop opening fence (``` or ```python)
+        lines = lines[1:]
+        # drop closing fence
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        return "\n".join(lines)
+
+    def _build_fix_prompt(
+        self, code: str, findings: List[Dict[str, Any]], language: str
+    ) -> str:
+        issues = "\n".join(
+            f"- [{f.get('severity')}] {f.get('rule_id')} (line {f.get('line')}): {f.get('message')}"
+            for f in findings
+        )
+        return (
+            f"You are fixing static-analysis security findings in {language or 'source'} code.\n\n"
+            f"Findings to fix:\n{issues}\n\n"
+            f"Original code:\n```\n{code}\n```\n\n"
+            "Rewrite the code to resolve every listed finding while preserving the "
+            "original behavior and public interface. Do not add commentary. Return "
+            "ONLY the complete corrected source file, with no markdown fences."
+        )
+
+    async def fix_object(
+        self,
+        uuid: str,
+        severities: Optional[List[str]] = None,
+        content_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Use the LLM to fix an object's code for findings at given severities.
+
+        Re-scans to get current findings, filters to ``severities`` (default:
+        all), asks the model to rewrite the code, overwrites the stored code in
+        place, and records the fix in extra["evaluation"]["sast_fix"].
+
+        Returns a per-object result dict with ``status`` one of: fixed,
+        no_code, no_matching_findings, error.
+        """
+        if self._store_api is None:
+            raise RuntimeError("Store API not available")
+        if self._llm is None:
+            raise RuntimeError(self._llm_status)
+
+        if content_type is None:
+            content_type = self._infer_type(uuid)
+            if content_type is None:
+                raise ValueError(f"Object {uuid} not found in store")
+
+        if content_type == "tool":
+            obj = self.store.get_tool(uuid)
+        elif content_type == "snippet":
+            obj = self.store.get_snippet(uuid)
+        else:
+            obj = None  # skills have no code of their own
+        if content_type == "skill" or not obj:
+            return {
+                "uuid": uuid,
+                "content_type": content_type,
+                "status": "no_code",
+            }
+
+        blobs = self._extract_code(obj, content_type)
+        if not blobs:
+            return {
+                "uuid": uuid,
+                "name": obj.get("name"),
+                "content_type": content_type,
+                "status": "no_code",
+            }
+        blob = blobs[0]
+
+        # Current findings, filtered to requested severities.
+        wanted = set(severities) if severities else set(SEVERITIES)
+        scan = await self.scan_object(uuid, content_type)
+        findings = [f for f in scan.get("findings", []) if f.get("severity") in wanted]
+        if not findings:
+            return {
+                "uuid": uuid,
+                "name": obj.get("name"),
+                "content_type": content_type,
+                "status": "no_matching_findings",
+            }
+
+        old_code = blob["code"]
+        prompt = self._build_fix_prompt(old_code, findings, blob["language"])
+        try:
+            raw = await self._llm.generate_async(prompt=prompt)
+        except Exception as e:  # noqa: BLE001
+            logger.error("LLM fix failed for %s %s: %s", content_type, uuid, e)
+            return {
+                "uuid": uuid,
+                "name": obj.get("name"),
+                "content_type": content_type,
+                "status": "error",
+                "error": str(e),
+            }
+        new_code = self._strip_code_fences(raw)
+
+        # Persist the fixed code in place.
+        if content_type == "tool":
+            self.store.tools.write_file(uuid, obj["module_name"], new_code)
+        else:  # snippet
+            obj["content"] = new_code
+            self.store.snippets.write_dict(uuid, obj)
+
+        # Record the fix without clobbering the existing sast block.
+        obj = (
+            self.store.get_tool(uuid)
+            if content_type == "tool"
+            else self.store.get_snippet(uuid)
+        ) or obj
+        if not isinstance(obj.get("extra"), dict):
+            obj["extra"] = {}
+        if not isinstance(obj["extra"].get("evaluation"), dict):
+            obj["extra"]["evaluation"] = {}
+        obj["extra"]["evaluation"]["sast_fix"] = {
+            "model": self._llm_model,
+            "severities": sorted(wanted),
+            "rule_ids": sorted(
+                {f.get("rule_id") for f in findings if f.get("rule_id")}
+            ),
+        }
+        if content_type == "tool":
+            self.store.tools.write_dict(uuid, obj)
+        else:
+            self.store.snippets.write_dict(uuid, obj)
+
+        return {
+            "uuid": uuid,
+            "name": obj.get("name"),
+            "content_type": content_type,
+            "status": "fixed",
+            "old_code": old_code,
+            "new_code": new_code,
+            "fixed_findings": findings,
+        }
+
+    async def fix_objects(
+        self,
+        uuids: List[str],
+        severities: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Fix several objects; type inferred per UUID. Skills are skipped
+        (no code of their own); unresolved UUIDs go to ``not_found``."""
+        if self._store_api is None:
+            raise RuntimeError("Store API not available")
+        if self._llm is None:
+            raise RuntimeError(self._llm_status)
+
+        results: List[Dict[str, Any]] = []
+        not_found: List[str] = []
+        for uuid in uuids:
+            try:
+                results.append(await self.fix_object(uuid, severities))
+            except ValueError:
+                not_found.append(uuid)
+        return {"results": results, "not_found": not_found}
+
     # ── plugin interface ──────────────────────────────────────────────────────
 
     def get_router(self):
@@ -355,38 +660,68 @@ class SkillberryPluginSast(PluginBase):
         router = APIRouter()
 
         class ScanRequest(BaseModel):
-            uuid: str
-            content_type: str  # "tool", "skill", or "snippet"
+            # One or more object UUIDs; the type of each is inferred. Selecting a
+            # skill scans the tools/snippets it references.
+            object_uuids: List[str]
             engines: Optional[List[str]] = None
+
+        class FixRequest(BaseModel):
+            # Objects to fix (tool/snippet uuids) + which severities to address.
+            object_uuids: List[str]
+            severities: Optional[List[str]] = None
 
         @router.post("/scan")
         async def scan_endpoint(request: ScanRequest):
-            """Scan a store object and persist SAST findings."""
+            """Scan one or more store objects and persist SAST findings."""
             if not self.is_enabled():
                 raise HTTPException(status_code=503, detail=self._status_message)
-            if request.content_type not in _CONTENT_TYPES:
+            if not request.object_uuids:
                 raise HTTPException(
-                    status_code=400,
-                    detail="content_type must be 'tool', 'skill', or 'snippet'",
+                    status_code=400, detail="object_uuids must not be empty"
                 )
             try:
-                result = await self.scan_object(
-                    uuid=request.uuid,
-                    content_type=request.content_type,
+                result = await self.scan_objects(
+                    uuids=request.object_uuids,
                     engines=request.engines,
                 )
-                return {"success": True, **result}
-            except ValueError as e:
-                raise HTTPException(status_code=404, detail=str(e))
             except Exception as e:
                 logger.error(
-                    "SAST scan failed for %s %s: %s",
-                    request.content_type,
-                    request.uuid,
+                    "SAST scan failed for %s: %s",
+                    request.object_uuids,
                     e,
                     exc_info=True,
                 )
                 raise HTTPException(status_code=500, detail=str(e))
+
+            # If nothing resolved, surface a 404; a mixed batch returns 200 with
+            # per-uuid not_found reported in the body.
+            if not result["results"] and result["not_found"]:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No objects found for: {', '.join(result['not_found'])}",
+                )
+            return {"success": True, **result}
+
+        @router.post("/fix")
+        async def fix_endpoint(request: FixRequest):
+            """Fix selected objects' findings (at given severities) with the LLM."""
+            if not self._fix_available():
+                raise HTTPException(status_code=503, detail=self._llm_status)
+            if not request.object_uuids:
+                raise HTTPException(
+                    status_code=400, detail="object_uuids must not be empty"
+                )
+            try:
+                result = await self.fix_objects(
+                    uuids=request.object_uuids,
+                    severities=request.severities,
+                )
+            except Exception as e:
+                logger.error(
+                    "SAST fix failed for %s: %s", request.object_uuids, e, exc_info=True
+                )
+                raise HTTPException(status_code=500, detail=str(e))
+            return {"success": True, **result}
 
         return router
 
@@ -397,6 +732,13 @@ class SkillberryPluginSast(PluginBase):
         return {
             "icon": "BugIcon",
             "color": "#8E44AD",
+            # Secondary capability flag the UI uses to enable/disable the Fix
+            # button in the scan report (LLM key required).
+            "capabilities": {
+                "fix": self._fix_available(),
+                "fix_status": self._llm_status,
+                "fix_endpoint": "/api/plugins/sast/fix",
+            },
             "actions": [
                 {
                     "label": "Scan code (SAST)",
@@ -405,28 +747,31 @@ class SkillberryPluginSast(PluginBase):
                     "params_schema": {
                         "type": "object",
                         "properties": {
-                            "uuid": {
-                                "type": "string",
-                                "description": "UUID of the object to scan",
-                            },
-                            "content_type": {
-                                "type": "string",
-                                "enum": list(_CONTENT_TYPES),
-                                "description": "Type of object to scan",
+                            "object_uuids": {
+                                "type": "object_picker",
+                                "object_types": ["skill", "tool", "snippet"],
+                                "multiple": True,
+                                "description": (
+                                    "Select one or more objects to scan. "
+                                    "Selecting a skill scans its tools and snippets."
+                                ),
                             },
                             "engines": {
                                 "type": "array",
+                                "widget": "multiselect",
                                 "items": {
                                     "type": "string",
-                                    "enum": available_engine_names(),
+                                    "enum": list(self._available_engines),
                                 },
+                                "default": list(self._default_engines),
                                 "description": (
-                                    "SAST engines to run (default: SBS_SAST_ENGINES). "
-                                    "Multiple may be selected."
+                                    "SAST engines to run. Defaults to the active "
+                                    "set; available engines are configured via "
+                                    "SBS_SAST_AVAILABLE_ENGINES."
                                 ),
                             },
                         },
-                        "required": ["uuid", "content_type"],
+                        "required": ["object_uuids"],
                     },
                 }
             ],

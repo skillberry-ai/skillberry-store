@@ -33,48 +33,108 @@ pip install -e 'plugins/skillberry-plugin-sast[bandit]'
 
 ### Selecting engines
 
-- **Per request:** `POST /api/plugins/sast/scan` with
-  `{"uuid": "...", "content_type": "tool", "engines": ["bandit"]}`.
-  Multiple engines may be selected.
-- **Default:** when `engines` is omitted (and for auto-scan on ingest), the
-  comma-separated `SBS_SAST_ENGINES` env var is used (default: `bandit`).
+Two comma-separated env vars control engines:
+
+- **`SBS_SAST_AVAILABLE_ENGINES`** — the engines *offered* (the dropdown set),
+  intersected with what's actually implemented; unknown names are ignored.
+  Unset ⇒ all implemented engines. Today only **bandit** is implemented.
+- **`SBS_SAST_ACTIVE_ENGINES`** — the engines *active* by default (pre-selected
+  in the UI and used by auto-scan-on-ingest). Constrained to the available set;
+  defaults to **bandit**.
+
+In the UI, the **Scan code (SAST)** action shows an engines **multi-select
+dropdown** populated from the available set with the active set pre-selected —
+per-request overrides come from there (no free-text).
 
 A requested engine that is unknown or not installed is **skipped and reported**
 per-engine (e.g. `"status": "not_installed"`); the scan still runs the engines
-that are available. The plugin is enabled when at least one configured engine is
+that are available. The plugin is enabled when at least one active engine is
 installed.
 
 ## What it scans
 
 - **Tools:** the module source file (`programming_language` selects the engine).
 - **Snippets:** inline content.
-- **Skills:** no own code — scans referenced tools/snippets (auto-scan fans out).
+- **Skills:** no own code — selecting a skill scans its referenced tools and
+  snippets (the same fan-out used by auto-scan on ingest).
 
+The object's type is **inferred from its UUID** — callers pass UUIDs, not types.
 Bandit covers Python today; non-Python blobs are reported as
 `language_unsupported`.
 
-## Output
+## Scanning
 
-`POST /api/plugins/sast/scan` →
+`POST /api/plugins/sast/scan` takes one or more object UUIDs (skills/tools/
+snippets); the type of each is inferred:
+
+```json
+{ "object_uuids": ["<uuid>", "<uuid>"], "engines": ["bandit"] }
+```
+
+In the UI, the **Scan code (SAST)** action shows a searchable multi-select
+browser of skills/tools/snippets — no UUID typing or type selection needed.
+
+Response:
 
 ```json
 {
   "success": true,
-  "uuid": "…",
-  "content_type": "tool",
-  "engines": {
-    "bandit": {"status": "ok", "findings": [
-      {"engine": "bandit", "rule_id": "B602", "severity": "high",
-       "message": "subprocess call with shell=True identified…",
-       "line": 12, "snippet": "…", "file": "tool.py"}
-    ]},
-    "semgrep": {"status": "not_installed"}
-  },
-  "summary": {"low": 0, "medium": 0, "high": 1, "critical": 0},
-  "findings": [ … ]
+  "results": [
+    {
+      "uuid": "…",
+      "content_type": "tool",
+      "engines": {
+        "bandit": {"status": "ok", "findings": [
+          {"engine": "bandit", "rule_id": "B602", "severity": "high",
+           "message": "subprocess call with shell=True identified…",
+           "line": 12, "snippet": "…", "file": "tool.py"}
+        ]},
+        "semgrep": {"status": "not_installed"}
+      },
+      "summary": {"low": 0, "medium": 0, "high": 1, "critical": 0},
+      "findings": [ … ]
+    }
+  ],
+  "not_found": [],
+  "summary": {"low": 0, "medium": 0, "high": 1, "critical": 0}
 }
 ```
 
-For tools and snippets the same data is persisted to
+UUIDs that resolve to nothing are reported in `not_found` rather than failing the
+whole batch. For tools and snippets the findings are persisted to
 `extra["evaluation"]["sast"]` and summarized as tags (`sast:high:1`, or
 `sast:clean`).
+
+In the UI report you can **filter findings by severity** (low/medium/high/
+critical chips) and **select objects** to fix.
+
+## Fixing (LLM, optional)
+
+The report's **Fix** button asks an LLM to rewrite the offending code. It is
+**disabled unless an LLM key is configured** — install the extra and set the
+provider/key:
+
+```bash
+pip install -e 'plugins/skillberry-plugin-sast[bandit,llm]'
+export LLM_PROVIDER=openai.async   # default
+export LLM_MODEL=gpt-4             # target model
+export OPENAI_API_KEY=sk-...       # required
+```
+
+`GET /plugins/sast` reports `ui_config.capabilities.fix` so the UI knows whether
+to enable the button.
+
+`POST /api/plugins/sast/fix` takes the selected object UUIDs and the severities
+to address:
+
+```json
+{ "object_uuids": ["<uuid>"], "severities": ["high", "critical"] }
+```
+
+For each object the plugin re-scans, filters findings to the requested
+severities, sends them plus the source to the model, and **overwrites the code
+in place** (tool module file / snippet content). The fix is recorded under
+`extra["evaluation"]["sast_fix"]` (model, severities, rule_ids) without
+clobbering the `sast` findings block. The response returns `old_code`/`new_code`
+per object so the UI can show the diff; re-scan to confirm the findings cleared.
+Skills (no own code) are skipped.

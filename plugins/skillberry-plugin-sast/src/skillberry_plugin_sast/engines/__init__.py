@@ -10,7 +10,7 @@ from .base import Finding, SastEngine
 from .bandit_engine import BanditEngine
 
 # name -> engine class. The keys are the values accepted in `engines: [...]`
-# requests and in the SBS_SAST_ENGINES env var.
+# requests and in the SBS_SAST_AVAILABLE_ENGINES / SBS_SAST_ACTIVE_ENGINES env vars.
 ENGINE_REGISTRY: Dict[str, Type[SastEngine]] = {
     BanditEngine.name: BanditEngine,
     # Future engines slot in here, e.g.:

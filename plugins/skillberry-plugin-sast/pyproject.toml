@@ -19,6 +19,10 @@ sast = "skillberry_plugin_sast.plugin:SkillberryPluginSast"
 bandit = [
     "bandit>=1.7",
 ]
+# LLM-based "Fix" capability (optional; scanning works without it).
+llm = [
+    "llm-switchboard[litellm]>=0.1.0",
+]
 # Future engines: semgrep = ["semgrep>=1.0"], all = [...]
 dev = [
     "pytest",
