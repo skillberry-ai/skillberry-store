@@ -24,6 +24,7 @@ export function PluginsPage() {
   const [selectedAction, setSelectedAction] = useState<{
     action: PluginAction;
     pluginName: string;
+    capabilities?: Record<string, any>;
   } | null>(null);
 
   // Fetch plugins
@@ -49,8 +50,17 @@ export function PluginsPage() {
     setSelectedAction({
       action,
       pluginName: plugin.slug,
+      capabilities: (plugin.ui_config as any)?.capabilities,
     });
   };
+
+  // Generic call to a secondary plugin endpoint (e.g. the SAST "fix" action),
+  // reusing executeAction's POST to /api/plugins/{name}/{action}.
+  const callPluginAction = async (
+    pluginName: string,
+    actionName: string,
+    params: Record<string, any>,
+  ) => pluginsApi.executeAction(pluginName, actionName, params);
 
   const handleActionSubmit = async (params: Record<string, any>) => {
     if (!selectedAction) {
@@ -122,9 +132,11 @@ export function PluginsPage() {
         <PluginActionForm
           action={selectedAction.action}
           pluginName={selectedAction.pluginName}
+          capabilities={selectedAction.capabilities}
           isOpen={true}
           onClose={() => setSelectedAction(null)}
           onSubmit={handleActionSubmit}
+          onCallAction={callPluginAction}
         />
       )}
     </PageSection>
