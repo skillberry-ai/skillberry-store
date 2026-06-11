@@ -16,6 +16,9 @@ import {
   FormSelectOption,
 } from '@patternfly/react-core';
 import type { PluginAction, PluginActionResult } from '@/types';
+import { ObjectPicker } from './ObjectPicker';
+import { MultiSelectField } from './MultiSelectField';
+import { ResultDetails } from './ResultDetails';
 
 interface PluginActionFormProps {
   action: PluginAction;
@@ -23,13 +26,37 @@ interface PluginActionFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (params: Record<string, any>) => Promise<PluginActionResult>;
+  /** The owning plugin's ui_config.capabilities (e.g. { fix, fix_status }). */
+  capabilities?: Record<string, any>;
+  /** Call a secondary plugin endpoint (e.g. "fix"). */
+  onCallAction?: (
+    pluginName: string,
+    actionName: string,
+    params: Record<string, any>,
+  ) => Promise<any>;
+}
+
+/** True when a result carries data the user would want to read (so the modal
+ *  should stay open instead of auto-closing). */
+function hasReadableResult(result: any): boolean {
+  if (!result || typeof result !== 'object') return false;
+  return (
+    Array.isArray(result.results) ||
+    Array.isArray(result.findings) ||
+    Array.isArray(result.not_found) ||
+    result.summary != null ||
+    result.data != null
+  );
 }
 
 export function PluginActionForm({
   action,
+  pluginName,
   isOpen,
   onClose,
   onSubmit,
+  capabilities,
+  onCallAction,
 }: PluginActionFormProps) {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,9 +84,11 @@ export function PluginActionForm({
     try {
       const response = await onSubmit(coercedData);
       setResult(response);
-      
-      if (response.success) {
-        // Auto-close on success after a brief delay
+
+      // Auto-close only for simple fire-and-forget actions. If the action
+      // returned data worth reading (e.g. scan findings), keep the modal open
+      // so the user can review it and close it themselves.
+      if (response.success && !hasReadableResult(response)) {
         setTimeout(() => {
           handleClose();
         }, 2000);
@@ -90,6 +119,33 @@ export function PluginActionForm({
         [propertyName]: newValue,
       }));
     };
+
+    // Object picker → searchable multi-select of store objects (emits UUIDs)
+    if (propertySchema.type === 'object_picker') {
+      const selected: string[] = Array.isArray(value) ? value : [];
+      return (
+        <FormGroup
+          key={propertyName}
+          label={propertyName}
+          isRequired={isRequired}
+          fieldId={propertyName}
+        >
+          {propertySchema.description && (
+            <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
+              {propertySchema.description}
+            </div>
+          )}
+          <ObjectPicker
+            objectTypes={propertySchema.object_types || ['skill', 'tool', 'snippet']}
+            multiple={propertySchema.multiple !== false}
+            value={selected}
+            onChange={(uuids) =>
+              setFormData((prev) => ({ ...prev, [propertyName]: uuids }))
+            }
+          />
+        </FormGroup>
+      );
+    }
 
     // Handle different field types
     if (propertySchema.type === 'boolean') {
@@ -129,6 +185,40 @@ export function PluginActionForm({
             value={value as string}
             onChange={(_event, newValue) => handleChange(newValue)}
             rows={4}
+          />
+        </FormGroup>
+      );
+    }
+
+    // Array with a fixed option set → multi-select dropdown (checkboxes)
+    if (
+      propertySchema.type === 'array' &&
+      (propertySchema.widget === 'multiselect' || propertySchema.items?.enum)
+    ) {
+      const options: string[] = propertySchema.items?.enum || [];
+      const selected: string[] = Array.isArray(value)
+        ? value
+        : Array.isArray(propertySchema.default)
+          ? propertySchema.default
+          : [];
+      return (
+        <FormGroup
+          key={propertyName}
+          label={propertyName}
+          isRequired={isRequired}
+          fieldId={propertyName}
+        >
+          {propertySchema.description && (
+            <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
+              {propertySchema.description}
+            </div>
+          )}
+          <MultiSelectField
+            options={options}
+            value={selected}
+            onChange={(vals) =>
+              setFormData((prev) => ({ ...prev, [propertyName]: vals }))
+            }
           />
         </FormGroup>
       );
@@ -226,6 +316,23 @@ export function PluginActionForm({
         <Alert variant="warning" title="Action completed with issues" isInline style={{ marginBottom: '1rem' }}>
           {result.message || result.error || 'Action completed but may have issues'}
         </Alert>
+      )}
+
+      {result && hasReadableResult(result) && (
+        <ResultDetails
+          result={result}
+          fixCapability={capabilities?.fix === true}
+          fixStatus={capabilities?.fix_status}
+          onFix={
+            onCallAction
+              ? (objectUuids, severities) =>
+                  onCallAction(pluginName, 'fix', {
+                    object_uuids: objectUuids,
+                    severities,
+                  })
+              : undefined
+          }
+        />
       )}
 
       <Form>
