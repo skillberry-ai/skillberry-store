@@ -66,6 +66,11 @@ pip install skillberry-store[plugin-mcp-importer]
 pip install skillberry-store[plugin-anthropic-skill-generator]
 ```
 
+#### Kagenti Approver Plugin Only
+```bash
+pip install skillberry-store[plugin-kagenti-approver]
+```
+
 #### Multiple Specific Plugins
 ```bash
 pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-mcp-importer,plugin-anthropic-skill-generator]
@@ -345,6 +350,40 @@ curl -X POST http://localhost:8000/api/plugins/anthropic-skill-generator/generat
 1. Request-specific parameters (highest)
 2. Environment variables
 3. `~/.claude/settings.json` (lowest - automatic)
+
+### Kagenti Approver Plugin (`skillberry-plugin-kagenti-approver`)
+
+**Purpose:** Automatically label skills as `kagenti-approved` when their score tags satisfy configurable criteria.
+
+**Features:**
+- Reacts to `content_added:skill` and `content_updated:skill` events — no manual trigger needed
+- Adds `kagenti-approved` tag when all criteria in any OR-group are met
+- Removes `kagenti-approved` tag when criteria are no longer met (revocation on update)
+- No-op if approval state has not changed (avoids unnecessary writes)
+- No LLM or external dependencies
+
+**Configuration:**
+```bash
+# Optional — defaults to "security-score>=9,performance-score>=8" if not set
+export KAGENTI_CRITERIA="security-score>=9,performance-score>=8"
+```
+
+**Criteria syntax:**
+- `,` = AND (all conditions in a group must pass)
+- `|` = OR (any group passing is sufficient)
+- Supported operators: `>=`, `>`, `<=`, `<`, `=`, `!=`
+- Each condition: `{tag-prefix}{operator}{number}` (e.g. `security-score>=9`)
+
+**Examples:**
+```bash
+# Default: both scores required
+KAGENTI_CRITERIA="security-score>=9,performance-score>=8"
+
+# Either a perfect security score, or both scores at lower thresholds
+KAGENTI_CRITERIA="security-score>=10|security-score>=7,performance-score>=8"
+```
+
+**No API endpoints** — operates entirely in the background via event handlers.
 
 ## LLM Configuration
 

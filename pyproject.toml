@@ -171,6 +171,10 @@ plugin-anthropic-skill-generator = [
   "skillberry-plugin-anthropic-skill-generator>=0.1.0",
 ]
 
+plugin-kagenti-approver = [
+  "skillberry-plugin-kagenti-approver>=0.1.0",
+]
+
 # Install all plugins
 plugins-all = [
   "skillberry-plugin-creator>=0.2.0",
@@ -179,6 +183,7 @@ plugins-all = [
   "skillberry-plugin-dedupe>=0.1.0",
   "skillberry-plugin-mcp-importer>=0.1.0",
   "skillberry-plugin-anthropic-skill-generator>=0.1.0",
+  "skillberry-plugin-kagenti-approver>=0.1.0",
 ]
 
 test = [
@@ -193,6 +198,7 @@ skillberry-plugin-security = { path = "plugins/skillberry-plugin-security", edit
 skillberry-plugin-dedupe = { path = "plugins/skillberry-plugin-dedupe", editable = true }
 skillberry-plugin-mcp-importer = { path = "plugins/skillberry-plugin-mcp-importer", editable = true }
 skillberry-plugin-anthropic-skill-generator = { path = "plugins/skillberry-plugin-anthropic-skill-generator", editable = true }
+skillberry-plugin-kagenti-approver = { path = "plugins/skillberry-plugin-kagenti-approver", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
 torch = { index = "pytorch-cpu" }
 
