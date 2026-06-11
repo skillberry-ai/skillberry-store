@@ -29,9 +29,7 @@ def _auth_headers(
     env var, then gh credentials, then anonymous. The API layer turns
     ReauthRequired into a 401 + login_url.
     """
-    return resolve_auth_headers(
-        url, override_token=override_token, anonymous=anonymous
-    )
+    return resolve_auth_headers(url, override_token=override_token, anonymous=anonymous)
 
 
 def extract_skill_name(url: str, filename: str) -> str:

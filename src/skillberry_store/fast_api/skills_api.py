@@ -468,13 +468,19 @@ def register_skills_api(
                         detail="folder_path is required for source_type='folder'",
                     )
 
-                if not os.path.exists(folder_path):
+                # Normalize the user-supplied path to a canonical absolute path
+                # before any filesystem access. Resolving symlinks and ".."
+                # segments here gives a single sanitized value to use for every
+                # path operation below, instead of touching the raw input.
+                safe_root = os.path.realpath(folder_path)
+
+                if not os.path.exists(safe_root):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Folder does not exist: {folder_path}",
                     )
 
-                if not os.path.isdir(folder_path):
+                if not os.path.isdir(safe_root):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Path is not a directory: {folder_path}",
@@ -482,14 +488,22 @@ def register_skills_api(
 
                 # List subdirectories
                 try:
-                    for entry in os.listdir(folder_path):
-                        entry_path = os.path.join(folder_path, entry)
-                        if os.path.isdir(entry_path):
+                    for entry in os.listdir(safe_root):
+                        # Only accept plain directory names (no separators or
+                        # traversal) and confine the join to the sanitized root.
+                        if entry != os.path.basename(entry):
+                            continue
+                        entry_path = os.path.join(safe_root, entry)
+                        if os.path.realpath(entry_path).startswith(
+                            safe_root + os.sep
+                        ) and os.path.isdir(entry_path):
                             # Check if this directory contains SKILL.md
                             skill_md_path = os.path.join(entry_path, "SKILL.md")
                             if os.path.isfile(skill_md_path):
                                 skill_paths.append(entry)
                                 logger.info(f"Found skill directory: {entry}")
+                except HTTPException:
+                    raise
                 except Exception as e:
                     raise HTTPException(
                         status_code=500,

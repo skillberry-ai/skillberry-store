@@ -133,13 +133,17 @@ def load_endpoint_auth_config(path: Optional[str] = None) -> EndpointAuthConfig:
         return EndpointAuthConfig()
 
     if not isinstance(data, dict):
-        logger.warning("Config file %s is not a host-keyed mapping; ignoring.", cfg_path)
+        logger.warning(
+            "Config file %s is not a host-keyed mapping; ignoring.", cfg_path
+        )
         return EndpointAuthConfig()
 
     entries: List[EndpointAuth] = []
     for host, raw in data.items():
         if not host or not isinstance(raw, dict):
-            logger.warning("Skipping invalid host entry in %s: %r: %r", cfg_path, host, raw)
+            logger.warning(
+                "Skipping invalid host entry in %s: %r: %r", cfg_path, host, raw
+            )
             continue
         entries.append(
             EndpointAuth(
