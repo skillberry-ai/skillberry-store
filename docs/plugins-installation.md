@@ -8,7 +8,7 @@ The skillberry-store supports a flexible plugin architecture that allows extendi
 
 ### 1. Install Without Plugins (Minimal Installation)
 
-When you install skillberry-store without any extras, you get the core functionality only:
+When you install skillberry-store, two plugins are included by default:
 
 ```bash
 pip install skillberry-store
@@ -16,9 +16,14 @@ pip install skillberry-store
 
 This installs:
 - Core skillberry-store functionality
-- No plugins (plugins can be added later)
+- skillberry-plugin-dedupe (AI-powered duplicate skill detection) — **default**
+- skillberry-plugin-kagenti-approver (automatic kagenti-approved labeling) — **default**
 
-The store will start normally without any plugins. Plugin-related API endpoints will be available but will return empty lists.
+Both default plugins can be uninstalled individually if not needed:
+```bash
+pip uninstall skillberry-plugin-dedupe
+pip uninstall skillberry-plugin-kagenti-approver
+```
 
 ### 2. Install All Plugins
 
@@ -33,9 +38,10 @@ This installs:
 - skillberry-plugin-creator (AI-powered content creation)
 - skillberry-plugin-evaluator (AI-powered content evaluation and tagging)
 - skillberry-plugin-security (AI-powered security evaluation)
-- skillberry-plugin-dedupe (AI-powered duplicate skill detection)
+- skillberry-plugin-dedupe (AI-powered duplicate skill detection) — also a default plugin
 - skillberry-plugin-mcp-importer (import tools from any MCP SSE server)
 - skillberry-plugin-anthropic-skill-generator (generate Anthropic skills from descriptions using Claude Code)
+- skillberry-plugin-kagenti-approver (automatic kagenti-approved labeling) — also a default plugin
 
 ### 3. Install Specific Plugins
 

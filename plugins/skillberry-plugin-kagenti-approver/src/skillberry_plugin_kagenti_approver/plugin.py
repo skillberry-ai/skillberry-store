@@ -10,7 +10,7 @@ from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 logger = logging.getLogger(__name__)
 
 APPROVED_TAG = "kagenti-approved"
-DEFAULT_CRITERIA = "security-score>=9,performance-score>=8"
+DEFAULT_CRITERIA = "security-score>=9,performance-score>=8,quality-score>=8"
 
 _OPERATOR_RE = re.compile(r"^(.+?)(>=|>|<=|<|!=|=)(\S+)$")
 
@@ -149,7 +149,7 @@ class SkillberryPluginKagentiApprover(PluginBase):
         from skillberry_store.plugins.events import _event_handlers
 
         for event_name in ("content_added:skill", "content_updated:skill"):
-            async def _handle(uuid: str, _event=event_name):
+            async def _handle(uuid: str):
                 if self._store_api is None:
                     return
                 await self._evaluate_skill(uuid)
