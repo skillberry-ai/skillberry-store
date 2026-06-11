@@ -21,11 +21,12 @@ def _auth_headers(
     """Return Authorization headers for fetching ``url``.
 
     When ``anonymous`` is True, returns empty headers without any auth lookup.
-    Otherwise delegates to the per-endpoint resolver (config.yaml), which for the
-    matching endpoint uses its ``api_key``, or an override token from the
-    X-Endpoint-Token header, or raises ReauthRequired with a login URL (explicit
-    ``login_url`` or one discovered via OAuth metadata). Falls back to the
-    ``API_KEY`` env var when no endpoint matches. The API layer turns
+    Otherwise delegates to the per-endpoint resolver (import_auth_config.yaml),
+    which for the matching endpoint uses its ``api_key``, or an override token
+    from the X-Endpoint-Token header, or raises ReauthRequired with the
+    configured ``login_url``, or falls back to the GitHub CLI credentials in
+    ~/.config/gh/hosts.yml. With no matching endpoint it uses the ``API_KEY``
+    env var, then gh credentials, then anonymous. The API layer turns
     ReauthRequired into a 401 + login_url.
     """
     return resolve_auth_headers(

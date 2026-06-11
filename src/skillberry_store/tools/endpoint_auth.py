@@ -3,33 +3,34 @@
 
 """Per-endpoint authentication for outbound skill-import fetches.
 
-Configuration lives in a YAML file (``config.yaml`` by default, overridable via
-the ``SBS_CONFIG_FILE`` env var) holding a list of endpoint entries. When a URL
-is fetched during a skill import, the entry whose ``endpoint`` matches the URL
-supplies the auth. For a matched endpoint, auth is resolved in this order:
+Configuration lives in a YAML file (``import_auth_config.yaml`` by default,
+overridable via the ``SBS_IMPORT_AUTH_CONFIG`` env var). It mirrors the shape of
+``gh``'s ``~/.config/gh/hosts.yml``: a mapping keyed by hostname, each value a
+dict of ``user`` / ``oauth_token`` / ``git_protocol`` (plus an optional
+``login_url``). When a URL is fetched during a skill import, the entry whose host
+matches the URL's hostname supplies the auth. For a matched host, auth is
+resolved in this order:
 
-1. ``api_key``  - a configured API key/token, sent as ``Authorization: Bearer``.
+1. ``oauth_token`` - a configured token, sent as ``Authorization: Bearer``.
 2. ``login_url`` (forced-reauthentication) - no stored token; the API returns
    this URL and the caller retries with an ``X-Endpoint-Token`` header carrying
    a token they obtained from the provider.
-3. **OAuth discovery** - if neither of the above is set, try to discover the
-   provider's login endpoint via RFC 8414 / OpenID Connect well-known metadata
-   and use that as the login URL (forced-reauthentication).
+3. **GitHub CLI credentials** - if neither of the above is set, fall back to the
+   token stored by the ``gh`` CLI in ``~/.config/gh/hosts.yml`` (skill import
+   currently supports GitHub only). If none is found, the fetch is anonymous.
 
-The architecture is provider-agnostic: the only assumption is that the remote
-accepts an ``Authorization: Bearer <token>`` API token.
+The remote is assumed to accept an ``Authorization: Bearer <token>`` API token.
 
-When no endpoint entry matches, falls back to the ``API_KEY`` env var so simple
-deployments can set one global key.
+When no endpoint entry matches, falls back to the ``API_KEY`` env var, then to
+GitHub CLI credentials, then to anonymous access.
 """
 
 import logging
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
-import requests
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -38,13 +39,7 @@ logger = logging.getLogger(__name__)
 MODE_API_KEY = "api_key"
 MODE_FORCED_REAUTH = "forced-reauthentication"
 
-_DEFAULT_CONFIG_FILENAME = "config.yaml"
-
-# RFC 8414 / OIDC well-known discovery paths, tried in order.
-_DISCOVERY_PATHS = (
-    "/.well-known/oauth-authorization-server",
-    "/.well-known/openid-configuration",
-)
+_DEFAULT_CONFIG_FILENAME = "import_auth_config.yaml"
 
 
 # --------------------------------------------------------------------------- #
@@ -67,13 +62,23 @@ class ReauthRequired(Exception):
 # --------------------------------------------------------------------------- #
 @dataclass
 class EndpointAuth:
-    endpoint: str
-    api_key: Optional[str] = None
+    """Auth for a single host, mirroring the shape of ``gh``'s hosts.yml.
+
+    ``host`` is the YAML key (e.g. ``github.com``). ``oauth_token`` is the
+    stored token, sent as ``Authorization: Bearer``. ``user`` and
+    ``git_protocol`` are carried for parity with ``gh`` but are advisory only.
+    ``login_url`` is the forced-reauthentication target when no token is stored.
+    """
+
+    host: str
+    user: Optional[str] = None
+    oauth_token: Optional[str] = None
+    git_protocol: Optional[str] = None
     login_url: Optional[str] = None
 
     @property
     def mode(self) -> str:
-        if self.api_key:
+        if self.oauth_token:
             return MODE_API_KEY
         return MODE_FORCED_REAUTH
 
@@ -83,24 +88,20 @@ class EndpointAuthConfig:
     endpoints: List[EndpointAuth] = field(default_factory=list)
 
     def resolve(self, url: str) -> Optional[EndpointAuth]:
-        """Return the best-matching endpoint entry for ``url``, or None.
+        """Return the host entry matching ``url``'s hostname, or None.
 
-        An entry matches when its ``endpoint`` equals the URL host, or the URL
-        (string) starts with the ``endpoint`` value (prefix match). The entry
-        with the longest ``endpoint`` string wins, so more specific configs
-        (org/path scoped) take precedence over a bare host.
+        Matching is by hostname equality (case-insensitive), the same shape as
+        ``gh``'s hosts.yml where each top-level key is a bare host.
         """
         if not url or not self.endpoints:
             return None
         host = (urlparse(url).hostname or "").lower()
-        best: Optional[EndpointAuth] = None
+        if not host:
+            return None
         for entry in self.endpoints:
-            ep = entry.endpoint.rstrip("/")
-            ep_host = (urlparse(ep).hostname or ep).lower()
-            matched = host == ep_host or url.startswith(entry.endpoint)
-            if matched and (best is None or len(entry.endpoint) > len(best.endpoint)):
-                best = entry
-        return best
+            if entry.host.lower() == host:
+                return entry
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -111,7 +112,7 @@ _config_path_loaded: Optional[str] = None
 
 
 def _resolve_config_path(path: Optional[str]) -> str:
-    return path or os.environ.get("SBS_CONFIG_FILE") or _DEFAULT_CONFIG_FILENAME
+    return path or os.environ.get("SBS_IMPORT_AUTH_CONFIG") or _DEFAULT_CONFIG_FILENAME
 
 
 def load_endpoint_auth_config(path: Optional[str] = None) -> EndpointAuthConfig:
@@ -131,15 +132,21 @@ def load_endpoint_auth_config(path: Optional[str] = None) -> EndpointAuthConfig:
         logger.warning("Failed to read config file %s: %s", cfg_path, e)
         return EndpointAuthConfig()
 
+    if not isinstance(data, dict):
+        logger.warning("Config file %s is not a host-keyed mapping; ignoring.", cfg_path)
+        return EndpointAuthConfig()
+
     entries: List[EndpointAuth] = []
-    for raw in (data.get("endpoints") or []):
-        if not isinstance(raw, dict) or not raw.get("endpoint"):
-            logger.warning("Skipping invalid endpoint entry in %s: %r", cfg_path, raw)
+    for host, raw in data.items():
+        if not host or not isinstance(raw, dict):
+            logger.warning("Skipping invalid host entry in %s: %r: %r", cfg_path, host, raw)
             continue
         entries.append(
             EndpointAuth(
-                endpoint=str(raw["endpoint"]),
-                api_key=raw.get("api_key"),
+                host=str(host),
+                user=raw.get("user"),
+                oauth_token=raw.get("oauth_token"),
+                git_protocol=raw.get("git_protocol"),
                 login_url=raw.get("login_url"),
             )
         )
@@ -169,60 +176,53 @@ def reset_config_cache() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# OAuth login-endpoint discovery (RFC 8414 / OIDC), cached per host
+# GitHub CLI credential fallback (~/.config/gh/hosts.yml)
 # --------------------------------------------------------------------------- #
-_discovery_cache: Dict[str, Optional[str]] = {}
+# Default location of the GitHub CLI's stored hosts/credentials. Skill imports
+# currently support GitHub only, so this reads the github.com token if `gh` has
+# stored one in plaintext there.
+_GH_HOSTS_PATH = os.path.expanduser("~/.config/gh/hosts.yml")
+_GH_HOST = "github.com"
 
 
-def discover_login_url(url: str) -> Optional[str]:
-    """Discover a provider's login (authorization) endpoint for ``url``'s host.
+def gh_cli_token(host: str = _GH_HOST) -> Optional[str]:
+    """Return the GitHub CLI's stored token for ``host``, or None.
 
-    Tries the RFC 8414 and OIDC well-known metadata documents and returns the
-    ``authorization_endpoint`` if present. Result (including a None "no
-    discovery" answer) is cached per host. Network/parse failures => None;
-    providers without metadata (e.g. github.com) simply return None.
+    Reads ``~/.config/gh/hosts.yml`` and returns the ``oauth_token`` for the
+    given host if present. Note: when `gh` stores tokens in the OS keyring
+    (the default on many systems), hosts.yml has no ``oauth_token`` field and
+    this returns None — there is no token to read from the file in that case.
+    Missing/unreadable file => None (so resolution falls through to anonymous).
     """
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").lower()
-    if not host:
+    if not os.path.isfile(_GH_HOSTS_PATH):
         return None
-    if host in _discovery_cache:
-        return _discovery_cache[host]
-
-    base = (parsed.scheme or "https", parsed.netloc, "", "", "", "")
-    found: Optional[str] = None
-    for path in _DISCOVERY_PATHS:
-        well_known = urlunparse(
-            (base[0], base[1], path, "", "", "")
+    try:
+        with open(_GH_HOSTS_PATH, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    except Exception as e:  # noqa: BLE001 - best-effort, never break imports
+        logger.debug("Could not read %s: %s", _GH_HOSTS_PATH, e)
+        return None
+    host_cfg = data.get(host)
+    if not isinstance(host_cfg, dict):
+        logger.info(
+            "No GitHub CLI credentials for %s in %s; falling back to anonymous.",
+            host,
+            _GH_HOSTS_PATH,
         )
-        try:
-            resp = requests.get(
-                well_known, headers={"Accept": "application/json"}, timeout=10
-            )
-            if not resp.ok:
-                continue
-            meta = resp.json()
-            endpoint = meta.get("authorization_endpoint")
-            if endpoint:
-                found = endpoint
-                logger.info(
-                    "Discovered authorization_endpoint for %s via %s: %s",
-                    host,
-                    path,
-                    endpoint,
-                )
-                break
-        except Exception as e:  # noqa: BLE001 - discovery is best-effort
-            logger.debug("Discovery probe %s failed: %s", well_known, e)
-            continue
-
-    _discovery_cache[host] = found
-    return found
-
-
-def reset_discovery_cache() -> None:
-    """Clear the per-host discovery cache (test helper)."""
-    _discovery_cache.clear()
+        return None
+    token = host_cfg.get("oauth_token")
+    if not token:
+        # `gh` keeps the token in the OS keyring (its default), so hosts.yml has
+        # no plaintext oauth_token to read. Surface it and fall back to anonymous.
+        logger.warning(
+            "GitHub CLI token for %s is not in %s (likely stored in the OS "
+            "keyring); cannot read it from the file — falling back to anonymous.",
+            host,
+            _GH_HOSTS_PATH,
+        )
+        return None
+    logger.info("Using GitHub CLI credentials from %s for %s", _GH_HOSTS_PATH, host)
+    return token
 
 
 # --------------------------------------------------------------------------- #
@@ -242,18 +242,19 @@ def resolve_auth_headers(
     """Resolve Authorization headers for fetching ``url``.
 
     If ``anonymous`` is True, no authentication is attempted at all: returns
-    empty headers without consulting the config, env key, or discovery, and
-    never raises ReauthRequired. This is the default for interactive imports
-    so that public sources work with zero setup.
+    empty headers without consulting the config, env key, or gh credentials,
+    and never raises ReauthRequired. This is the default for interactive
+    imports so that public sources work with zero setup.
 
     Otherwise, resolution for a matched endpoint, in order:
-      1. ``api_key``                -> Bearer api_key
+      1. ``oauth_token``            -> Bearer oauth_token
       2. caller ``override_token``  -> Bearer override_token (the retry path)
       3. ``login_url``              -> raise ReauthRequired(login_url)
-      4. OAuth discovery            -> raise ReauthRequired(discovered_url)
-                                       (or, if nothing is discovered, with None)
+      4. GitHub CLI credentials     -> Bearer token from ~/.config/gh/hosts.yml
+      5. otherwise                  -> anonymous ({})
 
-    No matching endpoint -> ``API_KEY`` env fallback (or anonymous ``{}``).
+    No matching endpoint -> ``API_KEY`` env, then GitHub CLI credentials, then
+    anonymous ({}).
 
     Raises:
         ReauthRequired
@@ -265,12 +266,13 @@ def resolve_auth_headers(
     entry = cfg.resolve(url) if url else None
 
     if entry is None:
-        # Legacy/simple behavior: single global key, or anonymous.
-        return _bearer(os.environ.get("API_KEY"))
+        # No endpoint configured: a global API_KEY, then gh credentials, then
+        # anonymous.
+        return _bearer(os.environ.get("API_KEY") or gh_cli_token())
 
-    # 1. Configured API key wins.
-    if entry.api_key:
-        return _bearer(entry.api_key)
+    # 1. Configured oauth_token wins.
+    if entry.oauth_token:
+        return _bearer(entry.oauth_token)
 
     # 2. A token supplied on the retry (X-Endpoint-Token) is used as-is.
     if override_token:
@@ -280,6 +282,10 @@ def resolve_auth_headers(
     if entry.login_url:
         raise ReauthRequired(entry.login_url)
 
-    # 4. No explicit URL: try to auto-discover the provider's login endpoint.
-    discovered = discover_login_url(url) if url else None
-    raise ReauthRequired(discovered)
+    # 4. Fall back to the GitHub CLI's stored credentials, if any.
+    gh_token = gh_cli_token()
+    if gh_token:
+        return _bearer(gh_token)
+
+    # 5. Nothing available -> anonymous.
+    return {}
