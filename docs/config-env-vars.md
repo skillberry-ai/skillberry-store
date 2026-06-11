@@ -73,3 +73,33 @@ To enable debug logging when running tests with make:
 
 ```bash
 SBS_TEST_DEBUG=true make test
+```
+
+## Skill-import authentication
+
+Importing skills from remote sources (currently GitHub) can require auth. This
+is the **only** thing configured via a file — everything else uses env vars.
+
+The file uses the same shape as `gh`'s `~/.config/gh/hosts.yml`: a mapping keyed
+by hostname.
+
+| Configuration | Default value             | Environment Variable Override | Notes                                              |
+|---------------|---------------------------|-------------------------------|----------------------------------------------------|
+| Import auth   | `./import_auth_config.yaml` | `SBS_IMPORT_AUTH_CONFIG`    | Loaded once at startup; missing/empty => anonymous |
+
+```yaml
+github.com:
+  user: eranra
+  oauth_token: gho_xxxxxxxx
+  git_protocol: https
+```
+
+By default imports are **anonymous** (public sources need no config). For a
+non-anonymous import, the host matching the fetched URL is resolved in order:
+
+1. `oauth_token` — sent as `Authorization: Bearer <token>`.
+2. `login_url` — forced re-auth: the API returns `401` + this URL; the user logs
+   in to get a token, then retries sending header `X-Endpoint-Token: <token>`.
+3. Neither — fall back to the `gh` CLI token in `~/.config/gh/hosts.yml`, if
+   present (when `gh` stores it in the OS keyring it is not in the file, so this
+   falls through to anonymous).

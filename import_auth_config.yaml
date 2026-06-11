@@ -1,0 +1,14 @@
+# Skill-import authentication. Same shape as ~/.config/gh/hosts.yml.
+# Override path with SBS_IMPORT_AUTH_CONFIG. See docs/config-env-vars.md.
+#
+# No hosts -> imports are anonymous. Per matched host, in order:
+#   oauth_token -> sent as `Authorization: Bearer`
+#   login_url   -> 401 + URL; user logs in, retries with `X-Endpoint-Token`
+#   neither     -> token from `gh` (~/.config/gh/hosts.yml), else anonymous
+
+{}
+
+# github.com:
+#   user: eranra
+#   oauth_token: gho_xxxxxxxx
+#   git_protocol: https
