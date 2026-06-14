@@ -31,12 +31,13 @@ def build_runspace_prompt(
     """Build the optimization prompt for RunspaceAgent."""
     # context/knowledge/ is always present — it's bundled with the optimizer
     inventory_lines = [
-        "- context/knowledge/ — READ ALL FIVE FILES BEFORE MAKING ANY CHANGES:\n"
+        "- context/knowledge/ — READ ALL FILES BEFORE MAKING ANY CHANGES:\n"
         "    01-skillberry-store-format.md        — format rules the SkillBerry Store importer enforces\n"
         "    02-skill-best-practices.md           — how to write high-quality skill instructions\n"
         "    03-skill-description-optimization.md — how to write descriptions that trigger reliably\n"
         "    04-snippet-optimization.md           — how to diagnose and improve textual snippets\n"
-        "    05-tool-optimization.md              — correctness, discoverability, and usability for tools",
+        "    05-tool-optimization.md              — correctness, discoverability, and usability for tools\n"
+        "    06-trajectory-based-optimization.md  — how to read trajectories and translate findings into skill changes",
     ]
     if has_metadata:
         inventory_lines.append(
@@ -58,18 +59,19 @@ def build_runspace_prompt(
     if has_trajectories:
         analyze_block = """\
 HOW TO ANALYZE TRAJECTORIES:
-1. Read the trajectories and their `reward` values. Higher reward = better outcome.
-2. Study SUCCESSFUL trajectories (high reward) — understand what to preserve.
-3. Study FAILED trajectories (low reward) — find WHERE and WHY the agent went wrong
-   (wrong tool, wrong arguments, unnecessary steps, policy violations, etc.).
-4. Cluster strengths (preserve) and weaknesses (fix).
-5. Improve the skill GENERICALLY so it transfers to unseen/production tasks.
-   Do NOT overfit to the specific trajectories — fix the underlying behavior:
-   - Remove tools made redundant by better ones.
-   - Add guardrails/checks to prevent the failure modes you found.
-   - Add helper/composite tools that simplify the agent's job.
-   - Clarify tool descriptions/signatures so the agent picks the right tool
-     with correct arguments.
+Read context/knowledge/06-trajectory-based-optimization.md for the complete guide.
+Summary of the process:
+
+1. Stratify by reward: high (>=0.8) = study to preserve; low (<=0.3) = diagnose to fix.
+2. Sample representatively — 5-10 low-reward and 3-5 high-reward trajectories is enough.
+3. Cluster failures by root cause: wrong tool selected, bad parameters, missing tool,
+   wrong sequence, policy violation, error not recovered, redundant calls.
+4. Verify each finding appears in >=2 trajectories before changing anything.
+5. Prioritise: high frequency × total task failure × high generality × low fix complexity.
+6. Improve GENERICALLY — fix the underlying behavior, not individual task instances.
+   Do NOT overfit to specific trajectories.
+7. Use the finding→fix translation table in 06-trajectory-based-optimization.md
+   to route each finding to the right file (tool docstring, SKILL.md, new function).
 """
     else:
         analyze_block = """\
