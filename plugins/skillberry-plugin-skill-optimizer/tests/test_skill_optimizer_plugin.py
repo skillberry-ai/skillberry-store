@@ -402,11 +402,10 @@ def test_router_is_not_none(plugin):
 
 
 def test_router_has_optimize_skill_endpoint(plugin):
-    from fastapi import FastAPI
-    app = FastAPI()
-    app.include_router(plugin.get_router())
-    routes = [r.path for r in app.routes]
-    assert "/optimize-skill" in routes
+    from fastapi.routing import APIRoute
+    router = plugin.get_router()
+    paths = [r.path for r in router.routes if isinstance(r, APIRoute)]
+    assert "/optimize-skill" in paths
 
 
 def test_router_returns_503_when_disabled():

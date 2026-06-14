@@ -216,6 +216,48 @@ Returns:
 
 ---
 
+## Code vs. Instructions for Critical Validations
+
+When a skill needs the agent to perform a validation before taking an action, there are two options: write an instruction in `SKILL.md`, or write a tool (Python function) that performs the check.
+
+**The rule of thumb:**
+
+> Code is deterministic; language interpretation isn't.
+
+For critical pre-conditions — compliance checks, data format validation, referential integrity before a write — a Python tool that runs the check and raises an explicit error is more reliable than an instruction that tells the agent to "verify X before proceeding."
+
+Instruction (fragile for critical checks):
+```markdown
+CRITICAL: Before calling create_order, verify that the customer exists
+and has a valid payment method.
+```
+
+Tool (deterministic):
+```python
+def validate_order_preconditions(customer_id: str, order_total: float) -> dict:
+    """Verify a customer exists and has a valid payment method before creating an order.
+
+    Args:
+        customer_id: UUID of the customer to validate.
+        order_total: Total order value in dollars. Must be positive.
+
+    Returns:
+        Dict with keys: 'valid' (bool), 'errors' (list[str]).
+
+    Raises:
+        ValueError: If customer_id is empty or order_total is not positive.
+    """
+```
+
+When to use a tool instead of an instruction:
+- The check involves external state (database lookup, API call, file existence)
+- Failure to check would cause data corruption, double-charges, or security issues
+- The check has specific format/range constraints that prose can't express precisely
+
+See the `allowed-tools` frontmatter field (in `01-skillberry-store-format.md`) if you need to restrict which tools a skill is permitted to call.
+
+---
+
 ## When to Split vs. Consolidate Functions
 
 **Split** a function when:

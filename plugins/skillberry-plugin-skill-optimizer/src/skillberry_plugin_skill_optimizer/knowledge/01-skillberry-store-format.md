@@ -62,6 +62,45 @@ description: Extracts structured data from invoices. Use when working with PDF o
 - Include specific keywords that help agents recognise relevant tasks
 - Err on the side of being specific about scope boundaries
 
+### Optional frontmatter fields
+
+Beyond `name` and `description`, the importer also recognises these optional fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `license` | string | SPDX identifier for open-source skills (e.g. `MIT`, `Apache-2.0`) |
+| `compatibility` | string | 1–500 chars. Describes environment requirements: intended product, required system packages, network access needs. |
+| `allowed-tools` | string | Space-separated list of tool patterns the skill is allowed to use (e.g. `"Bash(python:*) WebFetch"`). Restricts tool access to only what the skill needs. |
+| `metadata` | mapping | Free-form key-value pairs. Suggested keys: `author`, `version`, `mcp-server`, `category`, `tags`, `documentation`, `support`. |
+
+Example of a fully populated frontmatter:
+
+```yaml
+---
+name: invoice-parser
+description: >
+  Extracts text, tables, and totals from PDF invoices. Use when the user
+  uploads an invoice, receipt, or billing document.
+license: MIT
+compatibility: Requires pdf2image and pytesseract for scanned documents.
+allowed-tools: "Bash(python:*) WebFetch"
+metadata:
+  author: Acme Corp
+  version: 1.2.0
+  mcp-server: acme-billing
+  category: finance
+  tags: [pdf, invoices, extraction]
+  documentation: https://docs.acme.com/skills/invoice-parser
+  support: skills@acme.com
+---
+```
+
+### Security restrictions on frontmatter
+
+**XML angle brackets (`< >`) are forbidden** anywhere in the frontmatter. Frontmatter is injected into Claude's system prompt — malicious angle-bracket content could inject instructions.
+
+Skills whose `name` starts with `claude` or `anthropic` are reserved and will be rejected by the importer.
+
 **Good example:**
 ```yaml
 description: >
@@ -161,6 +200,7 @@ directory will be re-imported after you finish. Follow these rules:
 - **Do NOT leave temporary files** in the directory — everything gets imported.
 - **Do NOT add `__init__.py`** or any Python packaging files.
 - Keep `SKILL.md` at the **top level** of the skill directory at all times.
+- **Do NOT add a `README.md`** inside the skill folder. All documentation goes in `SKILL.md` or `references/`. A README in the skill folder is imported as a snippet and clutters the store.
 
 ---
 
