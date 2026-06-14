@@ -112,6 +112,37 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
     return None
 
 
+def parse_github_origin(url: str) -> Optional[Dict[str, str]]:
+    """Parse a github.com URL into ``{owner, repo, ref, path}``.
+
+    Records where an imported skill came from so it can be looked up later (the
+    provenance plugin reads this from the skill's ``extra["origin"]``). ``ref``
+    defaults to "main" and ``path`` to "" for a bare repo URL; a trailing
+    ".git" on the repo is stripped. Returns ``None`` for non-github URLs.
+    """
+    if not url:
+        return None
+    m = re.search(
+        r"github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
+        r"(?:/tree/(?P<ref>[^/]+)(?:/(?P<path>.*))?)?",
+        url,
+        re.IGNORECASE,
+    )
+    if not m:
+        return None
+    repo = (m.group("repo") or "")
+    if repo.endswith(".git"):
+        repo = repo[: -len(".git")]
+    if not repo:
+        return None
+    return {
+        "owner": m.group("owner"),
+        "repo": repo,
+        "ref": m.group("ref") or "main",
+        "path": (m.group("path") or "").strip("/"),
+    }
+
+
 def fetch_from_github(
     url: str, override_token: Optional[str] = None, anonymous: bool = False
 ) -> List[Dict[str, str]]:
