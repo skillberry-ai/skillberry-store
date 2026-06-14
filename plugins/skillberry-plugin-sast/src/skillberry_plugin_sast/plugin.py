@@ -689,7 +689,7 @@ class SkillberryPluginSast(PluginBase):
                 )
                 raise HTTPException(status_code=500, detail=str(e))
 
-            return {"success": True, **result}
+            return {"success": True, "data": result}
 
         @router.post("/fix")
         async def fix_endpoint(request: FixRequest):

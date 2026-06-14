@@ -59,8 +59,8 @@ export function PluginActionForm({
       const response = await onSubmit(coercedData);
       setResult(response);
 
-      if (response.success) {
-        // Auto-close on success after a brief delay
+      if (response.success && response.data == null) {
+        // Auto-close on success only when there's no data to display
         setTimeout(() => {
           handleClose();
         }, 2000);
@@ -221,6 +221,21 @@ export function PluginActionForm({
         <Alert variant="success" title="Success" isInline style={{ marginBottom: '1rem' }}>
           {result.message || 'Action completed successfully'}
         </Alert>
+      )}
+
+      {result?.data != null && (
+        <pre style={{
+          marginBottom: '1rem',
+          maxHeight: '20rem',
+          overflow: 'auto',
+          background: '#f5f5f5',
+          padding: '0.75rem',
+          borderRadius: '3px',
+          fontSize: '0.8em',
+          whiteSpace: 'pre-wrap',
+        }}>
+          {JSON.stringify(result.data, null, 2)}
+        </pre>
       )}
 
       {result && !result.success && (

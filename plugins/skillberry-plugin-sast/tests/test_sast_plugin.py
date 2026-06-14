@@ -410,7 +410,7 @@ def test_router_scan_ok_infers_type_200():
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        assert body["content_type"] == "tool"
+        assert body["data"]["content_type"] == "tool"
 
 
 # ── ui_config ─────────────────────────────────────────────────────────────────
