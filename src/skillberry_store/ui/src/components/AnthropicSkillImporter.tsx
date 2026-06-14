@@ -25,6 +25,20 @@ import {
 } from '@patternfly/react-core';
 import { skillsApi } from '@/services/api';
 
+/**
+ * Thrown when an import is rejected with 401 login_required, meaning the target
+ * endpoint needs a token. Carries the login_url the user should visit to obtain
+ * one; the import is then retried with that token in the X-Endpoint-Token header.
+ */
+class LoginRequiredError extends Error {
+  loginUrl: string;
+  constructor(loginUrl: string, message?: string) {
+    super(message || 'Authentication required');
+    this.name = 'LoginRequiredError';
+    this.loginUrl = loginUrl;
+  }
+}
+
 interface AnthropicSkillImporterProps {
   isOpen: boolean;
   onClose: () => void;
@@ -56,6 +70,10 @@ export function AnthropicSkillImporter({
 }: AnthropicSkillImporterProps) {
   const [importSource, setImportSource] = useState<'url' | 'zip' | 'folder'>('url');
   const [githubUrl, setGithubUrl] = useState('');
+  // Anonymous login (default): skip per-endpoint auth (no API key / no forced
+  // reauthentication) and fetch the source anonymously. Unchecking enables the
+  // configured auth flow (and the login-required retry).
+  const [anonymousLogin, setAnonymousLogin] = useState(true);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [zipFileName, setZipFileName] = useState('');
   const [folderPath, setFolderPath] = useState('');
@@ -67,7 +85,12 @@ export function AnthropicSkillImporter({
   const [result, setResult] = useState<ImportResult | null>(null);
   const [batchResult, setBatchResult] = useState<BatchImportResult | null>(null);
   const [currentSkillImporting, setCurrentSkillImporting] = useState<string>('');
-  
+
+  // Endpoint auth (forced-reauthentication): when an import returns 401
+  // login_required, we surface the login URL and collect a token to retry with.
+  const [authPrompt, setAuthPrompt] = useState<{ loginUrl: string } | null>(null);
+  const [endpointToken, setEndpointToken] = useState('');
+
   // Namespace selection state
   const [selectedNamespaces, setSelectedNamespaces] = useState<string[]>([]);
   const [existingNamespaces, setExistingNamespaces] = useState<string[]>([]);
@@ -113,6 +136,9 @@ export function AnthropicSkillImporter({
     setSelectedNamespaces([]);
     setNamespaceInput('');
     setBatchMode(false);
+    setAuthPrompt(null);
+    setEndpointToken('');
+    setAnonymousLogin(true);
   };
 
   const handleClose = () => {
@@ -174,13 +200,15 @@ export function AnthropicSkillImporter({
     sourceType: 'url' | 'zip' | 'folder',
     snippetMode: 'file' | 'paragraph',
     treatAllAsDocuments: boolean,
-    selectedNamespaces: string[]
+    selectedNamespaces: string[],
+    anonymous: boolean
   ): FormData => {
     const formData = new FormData();
     formData.append('source_type', sourceType);
     formData.append('snippet_mode', snippetMode);
     formData.append('treat_all_as_documents', treatAllAsDocuments.toString());
-    
+    formData.append('anonymous', anonymous.toString());
+
     // Add namespaces as additional tags with namespace: prefix
     const namespacesToUse = selectedNamespaces.length > 0 ? selectedNamespaces : ['default'];
     namespacesToUse.forEach(namespace => {
@@ -194,32 +222,56 @@ export function AnthropicSkillImporter({
    * Detects child skill directories from a parent directory URL or path
    */
   const detectChildSkills = async (
-    sourceType: 'url' | 'folder',
-    sourcePath: string
+    sourceType: 'url' | 'zip' | 'folder',
+    sourcePath: string,
+    overrideToken?: string
   ): Promise<string[]> => {
     try {
       const formData = new FormData();
       formData.append('source_type', sourceType);
-      
+      // Override token (retry) implies non-anonymous.
+      formData.append('anonymous', (anonymousLogin && !overrideToken).toString());
+
       if (sourceType === 'url') {
         formData.append('github_url', sourcePath);
       } else {
         formData.append('folder_path', sourcePath);
       }
-      
+
+      const headers: Record<string, string> = {};
+      if (overrideToken) {
+        headers['X-Endpoint-Token'] = overrideToken;
+      }
+
       const response = await fetch('/api/skills/detect-anthropic-skills', {
         method: 'POST',
         body: formData,
+        headers,
       });
 
       if (!response.ok) {
         const errorText = await response.text();
+        // Surface the structured login_required 401 so batch import can prompt
+        // for a token and retry (same contract as single import).
+        if (response.status === 401) {
+          try {
+            const parsed = JSON.parse(errorText);
+            const detail = parsed?.detail;
+            if (detail?.error === 'login_required' && detail?.login_url) {
+              throw new LoginRequiredError(detail.login_url, detail.message);
+            }
+          } catch (e) {
+            if (e instanceof LoginRequiredError) throw e;
+          }
+        }
         throw new Error(errorText || `Detection failed: ${response.statusText}`);
       }
 
       const data = await response.json();
       return data.skill_paths || [];
     } catch (error) {
+      // Re-throw LoginRequiredError untouched; log+rethrow others.
+      if (error instanceof LoginRequiredError) throw error;
       console.error('Failed to detect child skills:', error);
       throw error;
     }
@@ -231,10 +283,20 @@ export function AnthropicSkillImporter({
   const importSingleSkill = async (
     sourceType: 'url' | 'zip' | 'folder',
     sourcePath: string,
-    skillPath?: string
+    skillPath?: string,
+    overrideToken?: string
   ): Promise<ImportResult> => {
+    // A supplied override token means the user is authenticating, so this is
+    // not an anonymous request regardless of the checkbox.
+    const useAnonymous = anonymousLogin && !overrideToken;
     // Prepare common FormData fields
-    const formData = prepareFormData(sourceType, snippetMode, treatAllAsDocuments, selectedNamespaces);
+    const formData = prepareFormData(
+      sourceType,
+      snippetMode,
+      treatAllAsDocuments,
+      selectedNamespaces,
+      useAnonymous
+    );
 
     // Add source-specific fields
     if (sourceType === 'url') {
@@ -251,13 +313,33 @@ export function AnthropicSkillImporter({
       formData.append('folder_path', fullPath);
     }
 
+    const headers: Record<string, string> = {};
+    if (overrideToken) {
+      headers['X-Endpoint-Token'] = overrideToken;
+    }
+
     const response = await fetch('/api/skills/import-anthropic', {
       method: 'POST',
       body: formData,
+      headers,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
+      // Detect the structured "login required" 401 so callers can prompt for
+      // a token and retry, rather than just surfacing raw JSON.
+      if (response.status === 401) {
+        try {
+          const parsed = JSON.parse(errorText);
+          const detail = parsed?.detail;
+          if (detail?.error === 'login_required' && detail?.login_url) {
+            throw new LoginRequiredError(detail.login_url, detail.message);
+          }
+        } catch (e) {
+          if (e instanceof LoginRequiredError) throw e;
+          // fall through to generic error below
+        }
+      }
       throw new Error(errorText || `Import failed: ${response.statusText}`);
     }
 
@@ -275,9 +357,10 @@ export function AnthropicSkillImporter({
   /**
    * Handles batch import of multiple skills
    */
-  const handleBatchImport = async () => {
+  const handleBatchImport = async (overrideToken?: string) => {
     setIsImporting(true);
     setBatchResult(null);
+    setAuthPrompt(null);
     setProgress(5);
 
     try {
@@ -285,11 +368,11 @@ export function AnthropicSkillImporter({
       validateImportInputs(importSource, githubUrl, zipFile, folderPath, true);
 
       const sourcePath = importSource === 'url' ? githubUrl : folderPath;
-      
-      // Step 1: Detect child skills
+
+      // Step 1: Detect child skills (may raise LoginRequiredError)
       setProgress(10);
-      const skillPaths = await detectChildSkills(importSource, sourcePath);
-      
+      const skillPaths = await detectChildSkills(importSource, sourcePath, overrideToken);
+
       if (skillPaths.length === 0) {
         throw new Error('No skills detected in the parent directory. Make sure subdirectories contain SKILL.md files.');
       }
@@ -304,16 +387,27 @@ export function AnthropicSkillImporter({
       for (let i = 0; i < skillPaths.length; i++) {
         const skillPath = skillPaths[i];
         setCurrentSkillImporting(skillPath);
-        
+
         // Update progress: 20% to 90% for imports
         const importProgress = 20 + ((i / skillPaths.length) * 70);
         setProgress(Math.round(importProgress));
 
         try {
-          const result = await importSingleSkill(importSource, sourcePath, skillPath);
+          const result = await importSingleSkill(
+            importSource,
+            sourcePath,
+            skillPath,
+            overrideToken
+          );
           results.push(result);
           successCount++;
         } catch (error) {
+          // A login_required mid-batch means the endpoint needs a token; abort
+          // and prompt (retry re-runs the whole batch with the token) rather
+          // than recording it as a per-skill failure.
+          if (error instanceof LoginRequiredError) {
+            throw error;
+          }
           const errorResult: ImportResult = {
             success: false,
             message: `Failed to import ${skillPath}: ${(error as Error).message}`,
@@ -341,14 +435,22 @@ export function AnthropicSkillImporter({
         onImportComplete();
       }
     } catch (error) {
-      setBatchResult({
-        success: false,
-        message: `Batch import failed: ${(error as Error).message}`,
-        total_skills: 0,
-        successful_imports: 0,
-        failed_imports: 0,
-        results: [],
-      });
+      setCurrentSkillImporting('');
+      if (error instanceof LoginRequiredError) {
+        // Auto-open the login page and prompt for a token; retry re-runs batch.
+        window.open(error.loginUrl, '_blank', 'noopener,noreferrer');
+        setAuthPrompt({ loginUrl: error.loginUrl });
+        setProgress(0);
+      } else {
+        setBatchResult({
+          success: false,
+          message: `Batch import failed: ${(error as Error).message}`,
+          total_skills: 0,
+          successful_imports: 0,
+          failed_imports: 0,
+          results: [],
+        });
+      }
     } finally {
       setIsImporting(false);
     }
@@ -357,9 +459,10 @@ export function AnthropicSkillImporter({
   /**
    * Handles single skill import
    */
-  const handleSingleImport = async () => {
+  const handleSingleImport = async (overrideToken?: string) => {
     setIsImporting(true);
     setResult(null);
+    setAuthPrompt(null);
     setProgress(10);
 
     try {
@@ -369,18 +472,40 @@ export function AnthropicSkillImporter({
       setProgress(30);
 
       const sourcePath = importSource === 'url' ? githubUrl : importSource === 'folder' ? folderPath : '';
-      const importResult = await importSingleSkill(importSource, sourcePath);
+      const importResult = await importSingleSkill(
+        importSource,
+        sourcePath,
+        undefined,
+        overrideToken
+      );
 
       setProgress(100);
       setResult(importResult);
       onImportComplete();
     } catch (error) {
-      setResult({
-        success: false,
-        message: `Import failed: ${(error as Error).message}`,
-      });
+      if (error instanceof LoginRequiredError) {
+        // Auto-open the provider's login/token page in a new tab, then prompt
+        // the user to paste the token they obtain and retry.
+        window.open(error.loginUrl, '_blank', 'noopener,noreferrer');
+        setAuthPrompt({ loginUrl: error.loginUrl });
+        setProgress(0);
+      } else {
+        setResult({
+          success: false,
+          message: `Import failed: ${(error as Error).message}`,
+        });
+      }
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleRetryWithToken = async () => {
+    if (!endpointToken.trim()) return;
+    if (batchMode) {
+      await handleBatchImport(endpointToken.trim());
+    } else {
+      await handleSingleImport(endpointToken.trim());
     }
   };
 
@@ -622,11 +747,34 @@ export function AnthropicSkillImporter({
               type="text"
               value={githubUrl}
               onChange={(_event, value) => setGithubUrl(value)}
-              placeholder={batchMode 
+              placeholder={batchMode
                 ? 'https://github.com/anthropics/skills/tree/main/skills'
                 : 'https://github.com/anthropics/skills/tree/main/skills/pptx'}
               isDisabled={isImporting}
             />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginTop: '0.5rem',
+              }}
+            >
+              <input
+                type="checkbox"
+                id="anonymous-login"
+                checked={anonymousLogin}
+                onChange={(e) => setAnonymousLogin(e.target.checked)}
+                disabled={isImporting}
+                style={{ cursor: isImporting ? 'not-allowed' : 'pointer' }}
+              />
+              <label
+                htmlFor="anonymous-login"
+                style={{ cursor: isImporting ? 'not-allowed' : 'pointer', userSelect: 'none' }}
+              >
+                Anonymous login (no token; uncheck to use configured authentication)
+              </label>
+            </div>
           </FormGroup>
         ) : importSource === 'zip' ? (
           <FormGroup label="ZIP File" isRequired fieldId="zip-file-upload">
@@ -695,6 +843,51 @@ export function AnthropicSkillImporter({
               measureLocation={ProgressMeasureLocation.top}
             />
           </div>
+        )}
+
+        {/* Login required (forced-reauthentication): the target endpoint needs
+            a token. We opened the login page in a new tab; the user pastes the
+            token they obtain and retries. */}
+        {authPrompt && (
+          <Alert
+            variant="warning"
+            title="Authentication required"
+            style={{ marginTop: '1rem' }}
+            isInline
+          >
+            <p>
+              This source requires a token. A login page has been opened in a new
+              tab — if it didn't open,{' '}
+              <a href={authPrompt.loginUrl} target="_blank" rel="noopener noreferrer">
+                open it here
+              </a>
+              . Create or copy a token there, paste it below, and retry.
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                alignItems: 'center',
+                marginTop: '0.5rem',
+              }}
+            >
+              <TextInput
+                type="password"
+                value={endpointToken}
+                onChange={(_e, v) => setEndpointToken(v)}
+                placeholder="Paste endpoint token"
+                aria-label="Endpoint token"
+                isDisabled={isImporting}
+              />
+              <Button
+                variant="primary"
+                onClick={handleRetryWithToken}
+                isDisabled={isImporting || !endpointToken.trim()}
+              >
+                {isImporting ? <Spinner size="md" /> : 'Retry import'}
+              </Button>
+            </div>
+          </Alert>
         )}
 
         {/* Single import result */}
