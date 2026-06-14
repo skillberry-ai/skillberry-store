@@ -204,9 +204,15 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                 if container:
                     break
             if not container:
+                logger.debug("  [container] container not found within timeout")
                 return
             cid = container.short_id
-            logger.info(f"  [container:{cid}] Attaching to container logs...")
+            logger.info(
+                f"  [container] id={container.id}  short={cid}  workspace={workspace_root}\n"
+                f"  [container] Live inspect: docker exec {cid} ls /workspace/agent_workspace/editable\n"
+                f"  [container] NOTE: Claude runs in-memory — docker logs will be sparse until the "
+                f"run completes, then conversation.json is written to {workspace_root}"
+            )
             for chunk in container.logs(stream=True, follow=True, stderr=True, stdout=True):
                 if stop.is_set():
                     break
@@ -218,9 +224,63 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         except Exception as e:
             logger.debug(f"Docker log streaming ended: {e}")
 
+    def _replay_conversation(self, conv_path: Path) -> None:
+        """Parse conversation.json and emit a full verbose log of every agent step."""
+        try:
+            conv = json.loads(conv_path.read_text(encoding="utf-8"))
+            if not isinstance(conv, list):
+                return
+            logger.info(f"  [replay] conversation.json ready — {len(conv)} messages:")
+            for msg in conv:
+                msg_type = msg.get("type", "")
+                data = msg.get("data", msg)
+                if msg_type == "assistant":
+                    for block in (data.get("content") or []):
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get("type") == "text":
+                            text = block["text"].strip()
+                            if text:
+                                logger.info(f"  [agent] {text}")
+                        elif block.get("type") == "tool_use":
+                            tool_name = block.get("name", "?")
+                            inp = block.get("input", {})
+                            if "command" in inp:
+                                detail = inp["command"]
+                            elif "file_path" in inp or "path" in inp:
+                                fpath = inp.get("file_path") or inp.get("path", "")
+                                content_len = len(str(inp.get("content", "")))
+                                detail = f"{fpath} ({content_len} chars)" if "content" in inp else fpath
+                            else:
+                                detail = json.dumps(inp, ensure_ascii=False)[:300]
+                            logger.info(f"  [tool:{tool_name}] {detail}")
+                elif msg_type == "tool":
+                    content = data.get("content", "")
+                    if isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                logger.info(f"  [result] {item['text'][:400]}")
+                    elif content:
+                        logger.info(f"  [result] {str(content)[:400]}")
+                elif msg_type == "result":
+                    turns = data.get("num_turns", "?")
+                    cost = data.get("total_cost_usd")
+                    usage = data.get("usage", {})
+                    out_tok = usage.get("output_tokens", "?")
+                    cache_r = usage.get("cache_read_input_tokens", 0)
+                    cost_str = f" ${cost:.4f}" if cost is not None else ""
+                    logger.info(
+                        f"  [done] {turns} turns, {out_tok} output tokens"
+                        f", {cache_r} cache-read tokens{cost_str}"
+                    )
+        except Exception as e:
+            logger.debug(f"Could not replay conversation from {conv_path}: {e}")
+
     async def _stream_progress(self, mode: str, workspace_root: Path, run_task: "asyncio.Task") -> None:
         editable = workspace_root / "agent_workspace" / "editable"
+        conv_path = workspace_root / "conversation.json"
         seen: set = set()
+        conv_replayed = False
         stop = threading.Event()
         if mode == "container":
             t = threading.Thread(
@@ -230,57 +290,32 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         try:
             while not run_task.done():
                 await asyncio.sleep(5)
-                if not editable.exists():
-                    continue
-                current = {str(p) for p in editable.rglob("*") if p.is_file()}
-                for f in sorted(current - seen):
-                    logger.info(f"  [progress] created: {Path(f).relative_to(editable)}")
-                seen = current
+                # Poll editable/ for new files the agent is writing
+                if editable.exists():
+                    current = {str(p) for p in editable.rglob("*") if p.is_file()}
+                    for f in sorted(current - seen):
+                        logger.info(f"  [progress] created: {Path(f).relative_to(editable)}")
+                    seen = current
+                # conversation.json is written to the shared workspace volume just before
+                # the container/process exits — replay it immediately when it appears
+                if not conv_replayed and conv_path.exists():
+                    conv_replayed = True
+                    self._replay_conversation(conv_path)
         finally:
             stop.set()
 
     def _log_session_details(self, session_id: str) -> None:
+        """Log session summary and (if not already replayed during streaming) conversation."""
         try:
             workspace = session_workspace(session_id)
             summary_path = workspace / "summary.md"
             if summary_path.exists():
                 logger.info(f"Session summary:\n{summary_path.read_text(encoding='utf-8').strip()}")
+            # conversation.json is replayed live in _stream_progress when it first appears;
+            # replay again here only if the file wasn't caught during polling (e.g. very fast runs)
             conv_path = workspace / "conversation.json"
-            if not conv_path.exists():
-                return
-            conv = json.loads(conv_path.read_text(encoding="utf-8"))
-            if not isinstance(conv, list):
-                return
-            logger.info(f"Agent conversation replay ({len(conv)} messages):")
-            for msg in conv:
-                t = msg.get("type", "")
-                data = msg.get("data", msg)
-                if t == "assistant":
-                    for block in (data.get("content") or []):
-                        if not isinstance(block, dict):
-                            continue
-                        if block.get("type") == "text":
-                            text = block["text"].strip().replace("\n", " ")
-                            if text:
-                                logger.info(f"  [agent] {text[:200]}")
-                        elif block.get("type") == "tool_use":
-                            inp = block.get("input", {})
-                            detail = (
-                                inp.get("command") or inp.get("file_path")
-                                or inp.get("path") or str(inp)[:80]
-                            )
-                            logger.info(f"  [tool]  {block['name']}: {str(detail)[:120]}")
-                elif t == "result":
-                    turns = data.get("num_turns", "?")
-                    cost = data.get("total_cost_usd")
-                    usage = data.get("usage", {})
-                    out_tok = usage.get("output_tokens", "?")
-                    cache_r = usage.get("cache_read_input_tokens", 0)
-                    cost_str = f" ${cost:.4f}" if cost is not None else ""
-                    logger.info(
-                        f"  [done]  {turns} turns, {out_tok} output tokens"
-                        f", {cache_r} cache-read tokens{cost_str}"
-                    )
+            if conv_path.exists():
+                self._replay_conversation(conv_path)
         except Exception as e:
             logger.debug(f"Could not read session details for {session_id}: {e}")
 
