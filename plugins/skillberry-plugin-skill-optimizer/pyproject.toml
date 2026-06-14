@@ -24,5 +24,8 @@ skill-optimizer = "skillberry_plugin_skill_optimizer.plugin:SkillberryPluginSkil
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+skillberry_plugin_skill_optimizer = ["knowledge/*.md"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

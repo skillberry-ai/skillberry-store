@@ -29,7 +29,13 @@ def build_runspace_prompt(
     has_additional_context: bool = False,
 ) -> str:
     """Build the optimization prompt for RunspaceAgent."""
-    inventory_lines = []
+    # context/knowledge/ is always present — it's bundled with the optimizer
+    inventory_lines = [
+        "- context/knowledge/ — READ THIS FIRST. Contains three files:\n"
+        "    01-skillberry-store-format.md  — complete format rules for the SkillBerry Store importer\n"
+        "    02-skill-best-practices.md     — how to write high-quality skill instructions and tools\n"
+        "    03-skill-description-optimization.md — how to write descriptions that trigger reliably",
+    ]
     if has_metadata:
         inventory_lines.append(
             "- context/skill_metadata.json — skill tags, extra metadata, "
@@ -45,7 +51,7 @@ def build_runspace_prompt(
             "- context/additional_context/ — additional context "
             "(documentation, requirements, examples, domain knowledge, etc.)."
         )
-    inventory = "\n".join(inventory_lines) if inventory_lines else "(No additional context provided.)"
+    inventory = "\n".join(inventory_lines)
 
     if has_trajectories:
         analyze_block = """\

@@ -431,6 +431,12 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             if additional_context_dir:
                 shutil.copytree(additional_context_dir, str(context_dir / "additional_context"))
 
+            # Always stage the bundled knowledge base into context/knowledge/
+            knowledge_src = Path(__file__).parent / "knowledge"
+            if knowledge_src.exists():
+                shutil.copytree(str(knowledge_src), str(context_dir / "knowledge"))
+                logger.info(f"Staged knowledge base ({len(list(knowledge_src.iterdir()))} files) into context/knowledge/")
+
             prompt = build_runspace_prompt(
                 has_metadata=include_metadata,
                 has_trajectories=bool(trajectories_dir),
