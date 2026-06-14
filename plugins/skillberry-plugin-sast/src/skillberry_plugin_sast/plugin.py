@@ -660,10 +660,8 @@ class SkillberryPluginSast(PluginBase):
         router = APIRouter()
 
         class ScanRequest(BaseModel):
-            # One or more object UUIDs; the type of each is inferred. Selecting a
-            # skill scans the tools/snippets it references.
-            object_uuids: List[str]
-            engines: Optional[List[str]] = None
+            uuid: str
+            content_type: Optional[str] = None
 
         class FixRequest(BaseModel):
             # Objects to fix (tool/snippet uuids) + which severities to address.
@@ -672,34 +670,25 @@ class SkillberryPluginSast(PluginBase):
 
         @router.post("/scan")
         async def scan_endpoint(request: ScanRequest):
-            """Scan one or more store objects and persist SAST findings."""
+            """Scan a store object and persist SAST findings."""
             if not self.is_enabled():
                 raise HTTPException(status_code=503, detail=self._status_message)
-            if not request.object_uuids:
-                raise HTTPException(
-                    status_code=400, detail="object_uuids must not be empty"
-                )
             try:
-                result = await self.scan_objects(
-                    uuids=request.object_uuids,
-                    engines=request.engines,
+                result = await self.scan_object(
+                    uuid=request.uuid,
+                    content_type=request.content_type,
                 )
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e))
             except Exception as e:
                 logger.error(
                     "SAST scan failed for %s: %s",
-                    request.object_uuids,
+                    request.uuid,
                     e,
                     exc_info=True,
                 )
                 raise HTTPException(status_code=500, detail=str(e))
 
-            # If nothing resolved, surface a 404; a mixed batch returns 200 with
-            # per-uuid not_found reported in the body.
-            if not result["results"] and result["not_found"]:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No objects found for: {', '.join(result['not_found'])}",
-                )
             return {"success": True, **result}
 
         @router.post("/fix")
@@ -732,13 +721,6 @@ class SkillberryPluginSast(PluginBase):
         return {
             "icon": "BugIcon",
             "color": "#8E44AD",
-            # Secondary capability flag the UI uses to enable/disable the Fix
-            # button in the scan report (LLM key required).
-            "capabilities": {
-                "fix": self._fix_available(),
-                "fix_status": self._llm_status,
-                "fix_endpoint": "/api/plugins/sast/fix",
-            },
             "actions": [
                 {
                     "label": "Scan code (SAST)",
@@ -747,31 +729,17 @@ class SkillberryPluginSast(PluginBase):
                     "params_schema": {
                         "type": "object",
                         "properties": {
-                            "object_uuids": {
-                                "type": "object_picker",
-                                "object_types": ["skill", "tool", "snippet"],
-                                "multiple": True,
-                                "description": (
-                                    "Select one or more objects to scan. "
-                                    "Selecting a skill scans its tools and snippets."
-                                ),
+                            "uuid": {
+                                "type": "string",
+                                "description": "UUID of the object to scan",
                             },
-                            "engines": {
-                                "type": "array",
-                                "widget": "multiselect",
-                                "items": {
-                                    "type": "string",
-                                    "enum": list(self._available_engines),
-                                },
-                                "default": list(self._default_engines),
-                                "description": (
-                                    "SAST engines to run. Defaults to the active "
-                                    "set; available engines are configured via "
-                                    "SBS_SAST_AVAILABLE_ENGINES."
-                                ),
+                            "content_type": {
+                                "type": "string",
+                                "enum": ["tool", "skill", "snippet"],
+                                "description": "Type of object to scan",
                             },
                         },
-                        "required": ["object_uuids"],
+                        "required": ["uuid"],
                     },
                 }
             ],

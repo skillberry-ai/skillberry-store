@@ -144,14 +144,13 @@ def test_active_constrained_to_available():
         assert plugin._default_engines == ["bandit"]
 
 
-def test_ui_config_engines_dropdown_reflects_available_and_active():
+def test_ui_config_has_simple_uuid_and_content_type_fields():
     with _make_plugin() as plugin:
         cfg = plugin.get_ui_config()
-    engines = cfg["actions"][0]["params_schema"]["properties"]["engines"]
-    assert engines["type"] == "array"
-    assert engines["widget"] == "multiselect"
-    assert engines["items"]["enum"] == ["bandit"]
-    assert engines["default"] == ["bandit"]
+    props = cfg["actions"][0]["params_schema"]["properties"]
+    assert props["uuid"]["type"] == "string"
+    assert props["content_type"]["enum"] == ["tool", "skill", "snippet"]
+    assert cfg["actions"][0]["params_schema"]["required"] == ["uuid"]
 
 
 # ── scan_object ──────────────────────────────────────────────────────────────
@@ -375,26 +374,24 @@ def _client(plugin):
     return TestClient(app)
 
 
-def test_router_scan_empty_uuids_400():
+def test_router_scan_missing_uuid_422():
     with _make_plugin(_FakeEngine(available=True)) as plugin:
         plugin.set_store_api(_mock_store(tool={"uuid": "t"}))
-        resp = _client(plugin).post("/plugins/sast/scan", json={"object_uuids": []})
-        assert resp.status_code == 400
+        resp = _client(plugin).post("/plugins/sast/scan", json={})
+        assert resp.status_code == 422
 
 
 def test_router_scan_disabled_503():
     with _make_plugin(_FakeEngine(available=False)) as plugin:
         plugin.set_store_api(_mock_store(tool={"uuid": "t"}))
-        resp = _client(plugin).post("/plugins/sast/scan", json={"object_uuids": ["t"]})
+        resp = _client(plugin).post("/plugins/sast/scan", json={"uuid": "t"})
         assert resp.status_code == 503
 
 
-def test_router_scan_all_missing_404():
+def test_router_scan_missing_object_404():
     with _make_plugin(_FakeEngine(available=True)) as plugin:
         plugin.set_store_api(_mock_store())  # nothing resolves
-        resp = _client(plugin).post(
-            "/plugins/sast/scan", json={"object_uuids": ["missing"]}
-        )
+        resp = _client(plugin).post("/plugins/sast/scan", json={"uuid": "missing"})
         assert resp.status_code == 404
 
 
@@ -409,26 +406,16 @@ def test_router_scan_ok_infers_type_200():
     }
     with _make_plugin(_FakeEngine(available=True, findings=[])) as plugin:
         plugin.set_store_api(_mock_store(tool=tool))
-        resp = _client(plugin).post("/plugins/sast/scan", json={"object_uuids": ["t"]})
+        resp = _client(plugin).post("/plugins/sast/scan", json={"uuid": "t"})
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        assert body["results"][0]["content_type"] == "tool"
+        assert body["content_type"] == "tool"
 
 
 # ── ui_config ─────────────────────────────────────────────────────────────────
 
 
-def test_ui_config_uses_object_picker_no_content_type():
-    with _make_plugin() as plugin:
-        cfg = plugin.get_ui_config()
-    props = cfg["actions"][0]["params_schema"]["properties"]
-    assert props["object_uuids"]["type"] == "object_picker"
-    assert props["object_uuids"]["multiple"] is True
-    assert set(props["object_uuids"]["object_types"]) == {"skill", "tool", "snippet"}
-    # the old uuid / content_type fields are gone
-    assert "uuid" not in props
-    assert "content_type" not in props
 
 
 # ── LLM fix ───────────────────────────────────────────────────────────────────
@@ -449,15 +436,6 @@ def test_fix_unavailable_without_llm():
     # llm-switchboard is not installed in the test env, so _llm is None.
     with _make_plugin() as plugin:
         assert plugin._fix_available() is False
-        cfg = plugin.get_ui_config()
-        assert cfg["capabilities"]["fix"] is False
-
-
-def test_ui_config_capabilities_fix_true_when_llm_present():
-    with _make_plugin() as plugin:
-        plugin._llm = MagicMock()  # simulate a configured client
-        cfg = plugin.get_ui_config()
-        assert cfg["capabilities"]["fix"] is True
 
 
 @pytest.mark.asyncio
