@@ -4,12 +4,19 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
 from sentence_transformers import SentenceTransformer
-encoder = SentenceTransformer('all-MiniLM-L6-v2')
+
+_encoder = None
+
+def _get_encoder() -> SentenceTransformer:
+    global _encoder
+    if _encoder is None:
+        _encoder = SentenceTransformer('all-MiniLM-L6-v2')
+    return _encoder
 
 def text_to_vector(text: str) -> List[float]:
     """Convert text to vector embedding"""
     # TODO specify dimension to use for embedding
-    return encoder.encode(text).tolist()
+    return _get_encoder().encode(text).tolist()
 
 
 class VectorDBInterface(ABC):
