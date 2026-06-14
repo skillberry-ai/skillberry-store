@@ -189,6 +189,142 @@ Join the `orders` table to `customers` on `customer_id`, filter where
 
 ---
 
+## Choosing a Framing: Problem-First vs. Tool-First
+
+Before writing instructions, decide which way the skill faces:
+
+- **Problem-first**: The user describes an outcome ("set up a project workspace") and the skill orchestrates the right tool calls in the right sequence. Users don't need to know which tools exist.
+- **Tool-first**: The user has a service connected (via MCP) and the skill teaches Claude the optimal workflows and best practices for using it. Users have access; the skill provides expertise.
+
+Most skills lean one direction. Naming this upfront makes the instruction structure obvious.
+
+---
+
+## Proven Workflow Patterns
+
+These patterns recur across well-performing skills. Match your skill's instruction structure to the pattern that fits.
+
+### 1. Sequential workflow orchestration
+
+For multi-step processes where order and dependencies matter:
+
+```markdown
+## Workflow: Onboard New Customer
+
+### Step 1: Create account
+Call `create_customer` with: name, email, company.
+
+### Step 2: Set up payment
+Call `setup_payment_method`. Wait for payment verification before continuing.
+
+### Step 3: Create subscription
+Call `create_subscription` with: plan_id, customer_id (from Step 1).
+
+### Step 4: Send welcome email
+Call `send_email` with template: welcome_email_template.
+```
+
+Key: explicit step numbering, stated dependencies, rollback instructions for failures.
+
+### 2. Multi-MCP coordination
+
+For workflows that span multiple services. Use phases — each phase owns one service:
+
+```markdown
+## Phase 1: Export (Figma MCP)
+1. Export design assets and specifications
+
+## Phase 2: Store (Drive MCP)
+1. Create project folder; upload assets; generate shareable links
+
+## Phase 3: Create tasks (Linear MCP)
+1. Create development tasks; attach asset links
+
+## Phase 4: Notify (Slack MCP)
+1. Post handoff summary to #engineering
+```
+
+Key: clear phase separation, explicit data passing between phases, validation gate before advancing.
+
+### 3. Iterative refinement
+
+For output that improves in passes (reports, documents, code):
+
+```markdown
+## Initial draft
+1. Fetch data; generate draft; save to file
+
+## Quality check
+Run: `python scripts/check_output.py`
+Issues to flag: missing sections, formatting errors, data validation failures
+
+## Refinement loop
+1. Fix each identified issue
+2. Re-run validation
+3. Repeat until validation passes
+
+## Finalization
+Apply formatting; generate summary; save final version.
+```
+
+Key: explicit quality criteria, a validation script, a clear stopping condition.
+
+### 4. Context-aware tool selection
+
+For tasks where the right tool depends on input properties:
+
+```markdown
+## File storage decision tree
+1. Check file type and size
+2. Choose storage:
+   - Large files (>10 MB) → cloud storage MCP
+   - Collaborative docs → Notion/Docs MCP
+   - Code files → GitHub MCP
+   - Temporary → local storage
+3. Apply service-specific metadata; generate access link
+4. Tell the user which storage was chosen and why.
+```
+
+Key: explicit decision criteria, fallback options, transparency to the user.
+
+### 5. Domain-specific intelligence
+
+For skills that embed compliance, governance, or business rules before acting:
+
+```markdown
+## Before processing (compliance check)
+1. Fetch transaction details
+2. Apply compliance rules: check sanctions list; verify jurisdiction; assess risk
+3. Document compliance decision
+
+## Processing
+If compliance passed: call payment MCP, apply fraud checks, process.
+If compliance failed: flag for review, create compliance case.
+
+## Audit trail
+Log all checks; record decisions; generate audit report.
+```
+
+Key: domain rules execute before action, all decisions are logged, governance is non-optional.
+
+---
+
+## Defining Success Before Optimizing
+
+Before changing a skill, define what "working" looks like. Rough benchmarks:
+
+**Triggering**: skill loads automatically on 90%+ of relevant queries. Measure by running 10–20 test queries and tracking automatic vs. manual invocation.
+
+**Efficiency**: task completes in fewer tool calls and tokens than without the skill. Run the same request with and without the skill; count tool calls and total tokens.
+
+**Reliability**: 0 failed API/tool calls per workflow during test runs. Monitor tool call results; track retry rates.
+
+**Consistency**: a new user can complete the task on first try without redirection. Run the same request 3–5 times; compare outputs for structural consistency.
+
+When optimizing, establish a baseline measurement first — otherwise it's impossible to tell whether a change helped.
+
+---
+
 ## Designing Coherent Units
 
 Skills scoped too narrowly force multiple skills to load for a single task.
