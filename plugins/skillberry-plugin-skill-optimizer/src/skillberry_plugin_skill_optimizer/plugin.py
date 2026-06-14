@@ -286,7 +286,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
 
     def _generate_output_skill_name(self, original_name: str, override: Optional[str] = None) -> str:
         """Generate the output skill name, appending numeric suffix if needed."""
-        if override:
+        if override is not None:
             return override
         existing_names = {s["name"] for s in self.store.list_skills()}
         base = f"{original_name}_optimized"
@@ -311,8 +311,16 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         """Optimize an existing skill and import the result as a new skill."""
         if not self._runspace_available:
             raise RuntimeError("runspace-agent not available")
+        if export_skill_to_directory is None:
+            raise RuntimeError("skillberry_store exporter not available")
+        if import_from_anthropic_skill is None:
+            raise RuntimeError("skillberry_store importer not available")
         if self._store_api is None:
             raise RuntimeError("Store API not available")
+        if not self._credentials_configured and not agent_env:
+            raise RuntimeError(
+                "Anthropic credentials not configured. Set ANTHROPIC_API_KEY or provide agent_env"
+            )
 
         skill = self.store.get_skill(skill_uuid)
         if skill is None:
@@ -481,6 +489,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                     "name": final_name,
                     "description": skill_description,
                     "tool_uuids": tool_uuids,
+                    "snippet_uuids": snippet_uuids,
                     "tags": list({"optimized"} | set(inherited_tags)),
                 }
                 created_skill = self.store.create_skill(skill_data)
