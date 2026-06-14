@@ -98,6 +98,20 @@ description: >
 
 ---
 
+## Debugging a Description That Isn't Triggering
+
+The fastest diagnostic: **ask Claude directly**.
+
+```
+"When would you use the [skill name] skill?"
+```
+
+Claude will quote the description back and explain when it would reach for the skill. Read its answer — if the trigger conditions it names don't match the tasks you intended, the description is the problem. Adjust and repeat.
+
+This single technique can save many cycles of trial-and-error testing.
+
+---
+
 ## Common Description Failures
 
 ### Too narrow — misses indirect phrasing
@@ -110,7 +124,17 @@ description only mentions "CSV analysis." The agent doesn't connect the dots.
 A database query skill triggers when the user asks to "write a Python script
 that reads a CSV and uploads rows to Postgres" — not what the skill is for.
 
-**Fix:** Add specificity about what the skill does *not* do, or clarify boundaries.
+**Fix:** Add **negative triggers** that explicitly name what the skill does not cover. When an alternative skill exists, name it:
+
+```yaml
+description: >
+  Advanced statistical analysis and machine learning on CSV and tabular data.
+  Use when the user needs modeling, regression, clustering, or statistical
+  summaries. Do NOT use for simple data exploration or chart generation
+  (use the data-viz skill instead).
+```
+
+Negative triggers are especially useful when two related skills share keywords and compete for the same queries. Naming the alternative in the "Do NOT use" clause gives the agent a concrete redirect.
 
 ### Implementation focus instead of user intent
 "Uses pdfplumber to extract text via AST parsing" — the agent doesn't match
