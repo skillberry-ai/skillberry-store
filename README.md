@@ -46,8 +46,11 @@ pip install skillberry-store[plugin-evaluator]
 # Dedupe plugin only (AI-powered duplicate skill detection)
 pip install skillberry-store[plugin-dedupe]
 
+# Skill Optimizer plugin only (optimize existing skills using Claude Code)
+pip install skillberry-store[plugin-skill-optimizer]
+
 # Multiple specific plugins
-pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-dedupe]
+pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-skill-optimizer]
 ```
 
 For detailed plugin installation options and configuration, see the [Plugin Installation Guide](docs/plugins-installation.md).

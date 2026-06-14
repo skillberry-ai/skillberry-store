@@ -41,6 +41,7 @@ This installs:
 - skillberry-plugin-dedupe (AI-powered duplicate skill detection) — also a default plugin
 - skillberry-plugin-mcp-importer (import tools from any MCP SSE server)
 - skillberry-plugin-anthropic-skill-generator (generate Anthropic skills from descriptions using Claude Code)
+- skillberry-plugin-skill-optimizer (optimize existing skills using Claude Code via runspace-agent)
 - skillberry-plugin-kagenti-approver (automatic kagenti-approved labeling) — also a default plugin
 
 ### 3. Install Specific Plugins
@@ -72,6 +73,11 @@ pip install skillberry-store[plugin-mcp-importer]
 pip install skillberry-store[plugin-anthropic-skill-generator]
 ```
 
+#### Skill Optimizer Plugin Only
+```bash
+pip install skillberry-store[plugin-skill-optimizer]
+```
+
 #### Kagenti Approver Plugin Only
 ```bash
 pip install skillberry-store[plugin-kagenti-approver]
@@ -79,7 +85,7 @@ pip install skillberry-store[plugin-kagenti-approver]
 
 #### Multiple Specific Plugins
 ```bash
-pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-mcp-importer,plugin-anthropic-skill-generator]
+pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-mcp-importer,plugin-anthropic-skill-generator,plugin-skill-optimizer]
 ```
 
 ### 4. Adding Plugins Later
@@ -88,7 +94,7 @@ If you initially installed skillberry-store without plugins, you can add them la
 
 ```bash
 # Add all plugins to existing installation
-pip install skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer skillberry-plugin-anthropic-skill-generator
+pip install skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer skillberry-plugin-anthropic-skill-generator skillberry-plugin-skill-optimizer
 
 # Or reinstall with plugins
 pip install --upgrade skillberry-store[plugins-all]
@@ -357,6 +363,101 @@ curl -X POST http://localhost:8000/api/plugins/anthropic-skill-generator/generat
 2. Environment variables
 3. `~/.claude/settings.json` (lowest - automatic)
 
+### Skill Optimizer Plugin (`skillberry-plugin-skill-optimizer`)
+
+**Purpose:** Optimize existing skills in the store using a RunSpace-powered Claude Code session.
+
+**Features:**
+- Exports a selected skill to a temporary directory in Anthropic format
+- Stages optional context: skill metadata, execution trajectories, additional context folder
+- Runs a RunSpace optimization session (Claude Code in container or local mode)
+- Imports the optimized result as a new skill with `<name>_optimized` naming
+- Attaches full optimization metadata (rationale, tools/snippets changed, issues addressed) to the new skill's `extra` field
+- Bundled knowledge base guides the agent on skill format, best practices, description optimization, snippet quality, tool quality, and trajectory-based analysis
+
+**Configuration:**
+
+The plugin automatically loads credentials from `~/.claude/settings.json` if it exists:
+```json
+{
+  "apiKey": "sk-ant-...",
+  "model": "claude-opus-4-8",
+  "baseUrl": "https://api.anthropic.com"
+}
+```
+
+Or configure via environment variables:
+```bash
+# Option 1: Direct Anthropic API
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Option 2: Proxy/Gateway
+export ANTHROPIC_BASE_URL="https://your-gateway.example.com"
+export ANTHROPIC_AUTH_TOKEN="your-token"
+export ANTHROPIC_MODEL="claude-opus-4-8"
+
+# Execution mode (default: container - requires Docker)
+export RUNSPACE_MODE="container"  # or "local" for development
+
+# Max conversation turns (default: 300)
+export RUNSPACE_MAX_TURNS="300"
+```
+
+**Requirements:**
+- Docker (for default container mode — recommended)
+- Anthropic API credentials (API key or proxy configuration)
+
+**API Endpoints:**
+- `POST /api/plugins/skill-optimizer/optimize-skill`
+
+**Request body:**
+```json
+{
+  "skill_uuid": "550e8400-e29b-41d4-a716-446655440000",
+  "output_skill_name": "my-skill-v2",
+  "include_metadata": true,
+  "trajectories_dir": "/path/to/trajectories",
+  "additional_context_dir": "/path/to/context",
+  "execution_mode": "container",
+  "max_turns": 100
+}
+```
+
+Only `skill_uuid` is required. All other fields are optional.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Skill 'my-skill_optimized' optimized successfully.",
+  "skill_name": "my-skill_optimized",
+  "skill_uuid": "661f9511-f30c-52e5-b827-557766551111",
+  "tools_count": 3,
+  "snippets_count": 1,
+  "optimization_rationale": "Improved tool descriptions and added input validation."
+}
+```
+
+**Output naming:**
+- Default: `<original_name>_optimized`
+- If name taken: `<original_name>_optimized(1)`, `(2)`, ...
+- Override with `output_skill_name`
+
+**Example:**
+```bash
+curl -X POST http://localhost:8000/api/plugins/skill-optimizer/optimize-skill \
+  -H "Content-Type: application/json" \
+  -d '{
+    "skill_uuid": "550e8400-e29b-41d4-a716-446655440000",
+    "include_metadata": true
+  }'
+```
+
+**Configuration Priority:**
+1. Request-specific parameters (highest)
+2. Environment variables
+3. `~/.claude/settings.json` (lowest — automatic)
+
 ### Kagenti Approver Plugin (`skillberry-plugin-kagenti-approver`)
 
 **Purpose:** Automatically label skills as `kagenti-approved` when their score tags satisfy configurable criteria.
@@ -516,7 +617,7 @@ my-plugin = { path = "plugins/my-plugin", editable = true }
 
 ```bash
 # Uninstall all plugins
-pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer skillberry-plugin-anthropic-skill-generator
+pip uninstall -y skillberry-plugin-creator skillberry-plugin-evaluator skillberry-plugin-security skillberry-plugin-dedupe skillberry-plugin-mcp-importer skillberry-plugin-anthropic-skill-generator skillberry-plugin-skill-optimizer
 
 # Verify removal
 pip list | grep skillberry-plugin
