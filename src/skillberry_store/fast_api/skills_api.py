@@ -468,11 +468,24 @@ def register_skills_api(
                         detail="folder_path is required for source_type='folder'",
                     )
 
-                # Normalize the user-supplied path to a canonical absolute path
-                # before any filesystem access. Resolving symlinks and ".."
-                # segments here gives a single sanitized value to use for every
-                # path operation below, instead of touching the raw input.
+                # Resolve symlinks and normalise "..". Then validate the result
+                # against the user's home directory so that untrusted input
+                # cannot be used to enumerate system paths (/etc, /proc, …).
+                # The startswith guard is the point at which CodeQL considers
+                # the taint broken — every filesystem operation below uses
+                # safe_root only after that guard has passed.
                 safe_root = os.path.realpath(folder_path)
+                home_dir = os.path.realpath(os.path.expanduser("~"))
+                if not (
+                    safe_root == home_dir or safe_root.startswith(home_dir + os.sep)
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "folder_path must be within the current user's home"
+                            f" directory ({home_dir})"
+                        ),
+                    )
 
                 if not os.path.exists(safe_root):
                     raise HTTPException(
