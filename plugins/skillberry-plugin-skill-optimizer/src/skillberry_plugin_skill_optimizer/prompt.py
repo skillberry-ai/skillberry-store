@@ -31,10 +31,12 @@ def build_runspace_prompt(
     """Build the optimization prompt for RunspaceAgent."""
     # context/knowledge/ is always present — it's bundled with the optimizer
     inventory_lines = [
-        "- context/knowledge/ — READ THIS FIRST. Contains three files:\n"
-        "    01-skillberry-store-format.md  — complete format rules for the SkillBerry Store importer\n"
-        "    02-skill-best-practices.md     — how to write high-quality skill instructions and tools\n"
-        "    03-skill-description-optimization.md — how to write descriptions that trigger reliably",
+        "- context/knowledge/ — READ ALL FIVE FILES BEFORE MAKING ANY CHANGES:\n"
+        "    01-skillberry-store-format.md        — format rules the SkillBerry Store importer enforces\n"
+        "    02-skill-best-practices.md           — how to write high-quality skill instructions\n"
+        "    03-skill-description-optimization.md — how to write descriptions that trigger reliably\n"
+        "    04-snippet-optimization.md           — how to diagnose and improve textual snippets\n"
+        "    05-tool-optimization.md              — correctness, discoverability, and usability for tools",
     ]
     if has_metadata:
         inventory_lines.append(
