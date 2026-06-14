@@ -189,9 +189,12 @@ class SkillberryPluginSast(PluginBase):
                     except Exception:
                         skill_obj = None
                     if skill_obj:
+                        child_results: List[Dict[str, Any]] = []
                         for tool_uuid in skill_obj.get("tool_uuids") or []:
                             try:
-                                await self.scan_object(tool_uuid, "tool")
+                                child_results.append(
+                                    await self.scan_object(tool_uuid, "tool")
+                                )
                             except Exception as e:
                                 logger.error(
                                     "Auto-SAST-scan failed for tool %s: %s",
@@ -201,7 +204,9 @@ class SkillberryPluginSast(PluginBase):
                                 )
                         for snippet_uuid in skill_obj.get("snippet_uuids") or []:
                             try:
-                                await self.scan_object(snippet_uuid, "snippet")
+                                child_results.append(
+                                    await self.scan_object(snippet_uuid, "snippet")
+                                )
                             except Exception as e:
                                 logger.error(
                                     "Auto-SAST-scan failed for snippet %s: %s",
@@ -209,6 +214,15 @@ class SkillberryPluginSast(PluginBase):
                                     e,
                                     exc_info=True,
                                 )
+                        try:
+                            self._write_skill_aggregate(uuid, skill_obj, child_results)
+                        except Exception as e:
+                            logger.error(
+                                "Auto-SAST-scan: failed to write skill aggregate for %s: %s",
+                                uuid,
+                                e,
+                                exc_info=True,
+                            )
 
             event_name = f"content_added:{content_type}"
             if event_name not in _event_handlers:
@@ -425,6 +439,40 @@ class SkillberryPluginSast(PluginBase):
             self.store.tools.write_dict(uuid, obj)
         elif content_type == "snippet":
             self.store.snippets.write_dict(uuid, obj)
+        elif content_type == "skill":
+            self.store.skills.write_dict(uuid, obj)
+
+    def _write_skill_aggregate(
+        self,
+        skill_uuid: str,
+        skill_obj: Dict[str, Any],
+        child_results: List[Dict[str, Any]],
+    ) -> None:
+        """Aggregate children's findings and write summary tags + extra to the skill.
+
+        Called after a skill's referenced tools/snippets have been scanned so
+        the skill itself reflects a consolidated SAST posture, matching the
+        pattern used by skillberry-plugin-security for skills.
+        """
+        agg_findings: List[Dict[str, Any]] = []
+        agg_summary = {sev: 0 for sev in SEVERITIES}
+        agg_engines: set = set()
+
+        for r in child_results:
+            agg_findings.extend(r.get("findings") or [])
+            for sev, cnt in (r.get("summary") or {}).items():
+                if sev in agg_summary:
+                    agg_summary[sev] += cnt
+            for name, er in (r.get("engines") or {}).items():
+                if er.get("status") == "ok":
+                    agg_engines.add(name)
+
+        aggregate = {
+            "engines": {name: {"status": "ok"} for name in agg_engines},
+            "summary": agg_summary,
+            "findings": agg_findings,
+        }
+        self._write_findings_to_store(skill_uuid, "skill", skill_obj, aggregate)
 
     # ── batch scan (type inferred per object) ─────────────────────────────────
 
@@ -469,10 +517,23 @@ class SkillberryPluginSast(PluginBase):
                 # Skills carry no code; fan out to referenced tools/snippets.
                 await _scan(uuid, "skill")  # records a skill-level (empty) result
                 skill_obj = self.store.get_skill(uuid) or {}
+                child_uuids = set(
+                    (skill_obj.get("tool_uuids") or [])
+                    + (skill_obj.get("snippet_uuids") or [])
+                )
                 for tool_uuid in skill_obj.get("tool_uuids") or []:
                     await _scan(tool_uuid, "tool")
                 for snippet_uuid in skill_obj.get("snippet_uuids") or []:
                     await _scan(snippet_uuid, "snippet")
+                # Aggregate children's findings and write back to the skill.
+                child_results = [r for r in results if r.get("uuid") in child_uuids]
+                try:
+                    self._write_skill_aggregate(uuid, skill_obj, child_results)
+                except Exception as e:
+                    logger.error(
+                        "Failed to write skill aggregate for %s: %s", uuid, e,
+                        exc_info=True,
+                    )
             else:
                 await _scan(uuid, ctype)
 

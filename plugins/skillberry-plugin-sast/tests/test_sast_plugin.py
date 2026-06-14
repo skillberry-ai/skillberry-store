@@ -340,6 +340,58 @@ async def test_scan_objects_skill_fans_out_to_children():
     scanned_types = sorted(r["content_type"] for r in result["results"])
     # skill itself (no code) + its tool + its snippet
     assert scanned_types == ["skill", "snippet", "tool"]
+    # skill aggregate written back
+    assert store.skills.write_dict.called
+
+
+@pytest.mark.asyncio
+async def test_scan_objects_writes_skill_aggregate_tags_and_extra():
+    """After scanning a skill's children, the skill gets sast tags and extra."""
+    skill = {
+        "uuid": "sk",
+        "name": "s",
+        "tool_uuids": ["t1"],
+        "snippet_uuids": [],
+        "tags": [],
+        "extra": {},
+    }
+    finding = Finding(
+        engine="bandit",
+        rule_id="B101",
+        severity="high",
+        message="assert used",
+        line=1,
+    )
+    tool = {
+        "uuid": "t1",
+        "name": "tool",
+        "programming_language": "python",
+        "module_name": "tool.py",
+        "tags": [],
+        "extra": {},
+    }
+
+    store = MagicMock()
+    store.get_skill.side_effect = lambda u: skill if u == "sk" else None
+    store.get_tool.side_effect = lambda u: tool if u == "t1" else None
+    store.get_snippet.return_value = None
+    store.tools = MagicMock()
+    store.tools.read_file.return_value = "assert False\n"
+    store.tools.write_dict.return_value = {"success": True}
+    store.snippets = MagicMock()
+    store.snippets.write_dict.return_value = {"success": True}
+    store.skills = MagicMock()
+    store.skills.write_dict.return_value = {"success": True}
+
+    with _make_plugin(_FakeEngine(findings=[finding])) as plugin:
+        plugin.set_store_api(store)
+        await plugin.scan_objects(["sk"])
+
+    # skills.write_dict must have been called with the skill's uuid
+    assert store.skills.write_dict.called
+    written_obj = store.skills.write_dict.call_args[0][1]
+    assert written_obj["extra"]["evaluation"]["sast"]["summary"]["high"] == 1
+    assert any(t.startswith("sast:high:") for t in written_obj["tags"])
 
 
 # ── event handlers ───────────────────────────────────────────────────────────
