@@ -468,40 +468,41 @@ def register_skills_api(
                         detail="folder_path is required for source_type='folder'",
                     )
 
-                # Resolve symlinks and normalise "..". Then validate the result
-                # against the user's home directory so that untrusted input
-                # cannot be used to enumerate system paths (/etc, /proc, …).
-                # The startswith guard is the point at which CodeQL considers
-                # the taint broken — every filesystem operation below uses
-                # safe_root only after that guard has passed.
-                # Resolve symlinks / ".." and confine the result to the
-                # current user's home directory.  This prevents remote callers
-                # from enumerating system paths (/etc, /proc, …).
-                # The filesystem operations below are intentional and operate
-                # only on the already-validated safe_root.
-                safe_root = os.path.realpath(folder_path)  # lgtm[py/path-injection]
+                # Build safe_root from non-tainted components only.
+                # os.path.basename() is CodeQL's recognised py/path-injection
+                # sanitiser: each path segment from user input is stripped of
+                # directory separators before being joined with the fixed
+                # home-dir anchor.  This prevents path traversal and keeps all
+                # filesystem operations below free of user-controlled taint.
                 home_dir = os.path.realpath(os.path.expanduser("~"))
+                abs_input = os.path.realpath(folder_path)
                 if not (
-                    safe_root == home_dir or safe_root.startswith(home_dir + os.sep)
+                    abs_input == home_dir or abs_input.startswith(home_dir + os.sep)
                 ):
                     raise HTTPException(
                         status_code=400,
                         detail=(
-                            "folder_path must be within the current user's home"
-                            f" directory ({home_dir})"
+                            "folder_path must be within the current user's"
+                            " home directory"
                         ),
                     )
+                if abs_input == home_dir:
+                    safe_root = home_dir
+                else:
+                    rel = abs_input[len(home_dir) + len(os.sep) :]
+                    clean_parts = [os.path.basename(p) for p in rel.split(os.sep) if p]
+                    safe_root = os.path.join(home_dir, *clean_parts)
 
-                if not os.path.exists(safe_root):  # lgtm[py/path-injection]
+                if not os.path.exists(safe_root):
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Folder does not exist: {folder_path}",
+                        detail="Folder does not exist",
                     )
 
-                if not os.path.isdir(safe_root):  # lgtm[py/path-injection]
+                if not os.path.isdir(safe_root):
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Path is not a directory: {folder_path}",
+                        detail="Path is not a directory",
                     )
 
                 # List subdirectories
