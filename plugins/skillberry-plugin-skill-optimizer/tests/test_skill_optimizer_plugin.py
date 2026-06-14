@@ -405,8 +405,17 @@ def test_router_has_optimize_skill_endpoint(plugin):
     from fastapi import FastAPI
     app = FastAPI()
     app.include_router(plugin.get_router())
-    routes = [r.path for r in app.routes if hasattr(r, "path")]
-    assert "/optimize-skill" in routes
+
+    def collect_paths(routes):
+        paths = []
+        for r in routes:
+            if hasattr(r, "path"):
+                paths.append(r.path)
+            if hasattr(r, "routes"):
+                paths.extend(collect_paths(r.routes))
+        return paths
+
+    assert "/optimize-skill" in collect_paths(app.routes)
 
 
 def test_router_returns_503_when_disabled():
