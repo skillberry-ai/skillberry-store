@@ -405,7 +405,7 @@ def test_router_has_optimize_skill_endpoint(plugin):
     from fastapi import FastAPI
     app = FastAPI()
     app.include_router(plugin.get_router())
-    routes = [r.path for r in app.routes]
+    routes = [r.path for r in app.routes if hasattr(r, "path")]
     assert "/optimize-skill" in routes
 
 
