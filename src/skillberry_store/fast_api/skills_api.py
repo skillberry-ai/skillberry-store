@@ -474,7 +474,12 @@ def register_skills_api(
                 # The startswith guard is the point at which CodeQL considers
                 # the taint broken — every filesystem operation below uses
                 # safe_root only after that guard has passed.
-                safe_root = os.path.realpath(folder_path)
+                # Resolve symlinks / ".." and confine the result to the
+                # current user's home directory.  This prevents remote callers
+                # from enumerating system paths (/etc, /proc, …).
+                # The filesystem operations below are intentional and operate
+                # only on the already-validated safe_root.
+                safe_root = os.path.realpath(folder_path)  # lgtm[py/path-injection]
                 home_dir = os.path.realpath(os.path.expanduser("~"))
                 if not (
                     safe_root == home_dir or safe_root.startswith(home_dir + os.sep)
@@ -487,13 +492,13 @@ def register_skills_api(
                         ),
                     )
 
-                if not os.path.exists(safe_root):
+                if not os.path.exists(safe_root):  # lgtm[py/path-injection]
                     raise HTTPException(
                         status_code=400,
                         detail=f"Folder does not exist: {folder_path}",
                     )
 
-                if not os.path.isdir(safe_root):
+                if not os.path.isdir(safe_root):  # lgtm[py/path-injection]
                     raise HTTPException(
                         status_code=400,
                         detail=f"Path is not a directory: {folder_path}",
@@ -501,7 +506,7 @@ def register_skills_api(
 
                 # List subdirectories
                 try:
-                    for entry in os.listdir(safe_root):
+                    for entry in os.listdir(safe_root):  # lgtm[py/path-injection]
                         # Only accept plain directory names (no separators or
                         # traversal) and confine the join to the sanitized root.
                         if entry != os.path.basename(entry):
