@@ -3,6 +3,7 @@
 
 """Importer for converting Anthropic skills to Skillberry format."""
 
+import logging
 import re
 import io
 import os
@@ -11,6 +12,8 @@ import requests
 from typing import Dict, List, Any, Optional, Tuple
 
 from skillberry_store.tools.endpoint_auth import resolve_auth_headers
+
+logger = logging.getLogger(__name__)
 
 
 def _auth_headers(
@@ -95,6 +98,7 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
         parsed = yaml.safe_load(frontmatter_text)
 
         if not isinstance(parsed, dict):
+            logger.warning("SKILL.md frontmatter parsed to non-dict type: %s", type(parsed))
             return None
 
         name = str(parsed.get("name", "") or "").strip()
@@ -103,7 +107,7 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
         if name or description:
             return {"name": name, "description": description}
     except Exception as e:
-        print(f"Failed to parse SKILL.md metadata: {e}")
+        logger.warning("Failed to parse SKILL.md frontmatter with yaml.safe_load: %s", e)
 
     return None
 

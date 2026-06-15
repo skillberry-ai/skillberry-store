@@ -526,7 +526,11 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                         logger.error(f"Failed to create snippet '{snippet.name}': {e}", exc_info=True)
 
                 inherited_tags = [t for t in skill.get("tags", []) if t]
-                effective_description = skill_description or opt_metadata.get("skill_description", "")
+                # opt_metadata["skill_description"] is the authoritative source — it's what
+                # the optimizer agent explicitly wrote in required_outputs.json. The importer's
+                # skill_description may be empty or a generic placeholder when YAML parsing of
+                # SKILL.md frontmatter fails (e.g. colon-containing plain scalars).
+                effective_description = opt_metadata.get("skill_description") or skill_description or ""
                 skill_data = {
                     "name": final_name,
                     "description": effective_description,
