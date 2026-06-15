@@ -58,6 +58,36 @@ non-200 status code" — rather than a generic "see references/ for details."
 
 ---
 
+## Writing Style: Explain WHY, Not Just WHAT
+
+The most effective skill instructions explain the *reason* behind constraints instead
+of issuing commands. An agent that understands the purpose makes better
+context-dependent decisions and generalises to situations the skill author didn't
+anticipate.
+
+**Prefer explaining why:**
+```markdown
+Validate the customer ID before creating a ticket — the support API silently
+creates orphaned tickets if the ID doesn't exist, which are invisible in the UI.
+```
+
+**Over issuing commands:**
+```markdown
+ALWAYS validate customer ID first. NEVER skip this step.
+```
+
+Both get the job done in simple cases, but the first form helps the agent recover
+gracefully when something unexpected happens. Reserve hard prohibitions for cases
+where the reason is already obvious from context, or where the risk of deviation
+is genuinely severe.
+
+**Generalise from specific examples.** When improving based on observed failures,
+fix the underlying behaviour pattern rather than adding an instruction for that
+exact scenario. A skill that only works for the examples you tested is useless at
+scale.
+
+---
+
 ## Calibrating Control
 
 Not every part of a skill needs the same level of prescriptiveness.

@@ -61,6 +61,16 @@ description: Extracts structured data from invoices. Use when working with PDF o
 - Use imperative phrasing: "Use this skill when…" or "Extracts… when the user…"
 - Include specific keywords that help agents recognise relevant tasks
 - Err on the side of being specific about scope boundaries
+- **Both single-line and YAML folded block scalar (`>`) are supported:**
+  ```yaml
+  # Single-line (preferred for short descriptions)
+  description: Extracts structured data from invoices. Use when working with PDF invoices.
+
+  # Folded block scalar (fine for longer descriptions)
+  description: >
+    Extracts structured data from invoices. Use when working with PDF invoices,
+    receipts, or any billing document the user uploads.
+  ```
 
 ### Optional frontmatter fields
 
