@@ -109,10 +109,13 @@ class ToolsService:
             raise RuntimeError(f"Invalid module content type for tool '{uuid_or_name}'")
         return content
 
-    def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
+    def list_all(self, filters: Optional[Dict] = None, include_simulation: bool = False) -> List[Dict[str, Any]]:
+        from skillberry_store.fast_api.search_filters import exclude_simulation
         items = self.handler.list_all_dicts()
         if filters:
             items = [i for i in items if all(i.get(k) == v for k, v in filters.items())]
+        if not include_simulation:
+            items = exclude_simulation(items)
         items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
         return items
 
