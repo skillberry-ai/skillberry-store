@@ -2,6 +2,7 @@
 from typing import Any, Dict, Optional
 
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_plugin_simulate.config import SimulateConfig
 
 
 class SkillberryPluginSimulate(PluginBase):
@@ -9,6 +10,8 @@ class SkillberryPluginSimulate(PluginBase):
 
     def __init__(self):
         super().__init__()
+        self._config = SimulateConfig.from_env()
+        self._orchestrator = None
         self._metadata = PluginMetadata(
             name="Simulate This",
             version="0.1.0",
@@ -23,8 +26,23 @@ class SkillberryPluginSimulate(PluginBase):
     def metadata(self) -> PluginMetadata:
         return self._metadata
 
+    def _docker_available(self) -> bool:
+        try:
+            import docker
+            docker.from_env().ping()
+            return True
+        except Exception:
+            return False
+
     def is_enabled(self) -> bool:
-        return True  # refined in Task 3
+        return self._config.is_configured() and self._docker_available()
+
+    def get_status_message(self) -> str:
+        if not self._config.is_configured():
+            return "Disabled: set SIMULATE_LLM_API_KEY"
+        if not self._docker_available():
+            return "Disabled: Docker runtime not reachable"
+        return "Ready"
 
     def get_cli_commands(self) -> Optional[Dict[str, Any]]:
         return None
