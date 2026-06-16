@@ -246,6 +246,60 @@ class StoreAPI:
             logger.error(f"Failed to update snippet {uuid}: {e}")
             return False
 
+    # ── vMCP ───────────────────────────────────────────────────────────────
+
+    def create_vmcp(self, data: Dict[str, Any], env_id: str = "") -> Dict[str, Any]:
+        if not self.vmcp_service:
+            raise RuntimeError("vMCP service not available")
+        return self.vmcp_service.create(data, env_id=env_id)
+
+    def get_vmcp(self, uuid_or_name: str) -> Optional[Dict[str, Any]]:
+        if not self.vmcp_service:
+            return None
+        try:
+            return self.vmcp_service.get(uuid_or_name)
+        except KeyError:
+            return None
+
+    def list_vmcps(self) -> List[Dict[str, Any]]:
+        if not self.vmcp_service:
+            return []
+        result = self.vmcp_service.list_all()
+        return list(result.get("virtual_mcp_servers", {}).values())
+
+    def start_vmcp(self, uuid_or_name: str, env_id: str = "") -> bool:
+        if not self.vmcp_service:
+            return False
+        try:
+            uuid = self.vmcp_service._resolve_uuid(uuid_or_name)
+            d = self.vmcp_service.handler.read_dict(uuid)
+            tool_uuids, snippet_uuids = self.vmcp_service._resolve_skill_uuids(
+                d.get("skill_uuid")
+            )
+            self.vmcp_service.server_manager.add_server(
+                name=d.get("name", ""),
+                uuid=d.get("uuid", ""),
+                description=d.get("description", ""),
+                port=d.get("port"),
+                tools=tool_uuids,
+                snippets=snippet_uuids,
+                env_id=env_id,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to start vMCP {uuid_or_name}: {e}")
+            return False
+
+    def delete_vmcp(self, uuid_or_name: str) -> bool:
+        if not self.vmcp_service:
+            return False
+        try:
+            self.vmcp_service.delete(uuid_or_name)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete vMCP {uuid_or_name}: {e}")
+            return False
+
     def _matches_filter(self, item: Dict[str, Any], filter_criteria: Dict) -> bool:
         return all(item.get(k) == v for k, v in filter_criteria.items())
 
