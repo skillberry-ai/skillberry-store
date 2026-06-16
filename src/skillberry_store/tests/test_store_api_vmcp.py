@@ -42,3 +42,17 @@ def test_vmcp_methods_safe_without_service():
     assert store.get_vmcp("x") is None
     assert store.list_vmcps() == []
     assert store.delete_vmcp("x") is False
+
+
+def test_delete_tool_delegates():
+    tools_service = MagicMock()
+    store = StoreAPI({"tools": tools_service})
+    store.delete_tool("t1")
+    tools_service.delete.assert_called_once_with("t1")
+
+
+def test_delete_skill_delegates():
+    skills_service = MagicMock()
+    store = StoreAPI({"skills": skills_service})
+    store.delete_skill("s1")
+    skills_service.delete.assert_called_once_with("s1")

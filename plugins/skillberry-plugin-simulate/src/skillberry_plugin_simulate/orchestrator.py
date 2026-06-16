@@ -126,3 +126,58 @@ class SimulateOrchestrator:
             "sim_skill_uuid": sim_skill["uuid"],
             "harness_mcp_url": harness_mcp_url,
         }
+
+    def resolve(self, skill_uuid: str) -> Dict[str, Any]:
+        active_uuid = self._registry.active_vmcp_uuid(skill_uuid)
+        if active_uuid is None:
+            raise KeyError(skill_uuid)
+        entry = self._registry.get(skill_uuid)
+        vmcp = self._store.get_vmcp(active_uuid)
+        if not vmcp:
+            raise ValueError(f"active vMCP {active_uuid} not found")
+        port = vmcp.get("port")
+        return {
+            "skill_uuid": skill_uuid,
+            "mode": entry["active"],
+            "vmcp_uuid": active_uuid,
+            "mcp_url": f"http://127.0.0.1:{port}/sse",
+        }
+
+    def toggle(self, skill_uuid: str) -> Dict[str, Any]:
+        new_active = self._registry.toggle(skill_uuid)
+        return {"success": True, "skill_uuid": skill_uuid, "active": new_active}
+
+    def teardown(self, skill_uuid: str) -> Dict[str, Any]:
+        entry = self._registry.get(skill_uuid)
+        if entry is None:
+            raise KeyError(skill_uuid)
+        sim_vmcp_uuid = entry.get("sim_vmcp_uuid")
+        if sim_vmcp_uuid:
+            sim_vmcp = self._store.get_vmcp(sim_vmcp_uuid)
+            extra = (sim_vmcp or {}).get("extra", {})
+            sim_skill_uuid = extra.get("sim_skill_uuid")
+            container_id = (extra.get("harness") or {}).get("container_id")
+            # delete sim vMCP first so the skill/tools are no longer referenced
+            self._store.delete_vmcp(sim_vmcp_uuid)
+            if sim_skill_uuid:
+                sim_skill = self._store.get_skill(sim_skill_uuid)
+                for tool_uuid in (sim_skill or {}).get("tool_uuids", []):
+                    self._store.delete_tool(tool_uuid)
+                self._store.delete_skill(sim_skill_uuid)
+            if container_id:
+                self._harness_manager.stop(container_id)
+        self._registry.remove(skill_uuid)
+        return {"success": True, "skill_uuid": skill_uuid}
+
+    def check_drift(self, skill_uuid: str) -> Dict[str, Any]:
+        entry = self._registry.get(skill_uuid)
+        if entry is None:
+            raise KeyError(skill_uuid)
+        sim_vmcp = self._store.get_vmcp(entry["sim_vmcp_uuid"])
+        recorded = (sim_vmcp or {}).get("extra", {}).get("tools_fingerprint")
+        skill = self._store.get_skill(skill_uuid)
+        tools = [self._store.get_tool(u) for u in (skill or {}).get("tool_uuids", [])]
+        tools = [t for t in tools if t]
+        current = tools_fingerprint(tools)
+        return {"skill_uuid": skill_uuid, "drifted": recorded != current,
+                "recorded": recorded, "current": current}

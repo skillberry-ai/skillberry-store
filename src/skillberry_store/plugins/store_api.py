@@ -133,6 +133,16 @@ class StoreAPI:
             logger.error(f"Failed to update tool {uuid}: {e}")
             return False
 
+    def delete_tool(self, uuid_or_name: str) -> bool:
+        if not self.tools_service:
+            return False
+        try:
+            self.tools_service.delete(uuid_or_name)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete tool {uuid_or_name}: {e}")
+            return False
+
     # ── Skills ─────────────────────────────────────────────────────────────
 
     def create_skill(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -196,6 +206,16 @@ class StoreAPI:
             return True
         except Exception as e:
             logger.error(f"Failed to update skill {uuid}: {e}")
+            return False
+
+    def delete_skill(self, uuid_or_name: str) -> bool:
+        if not self.skills_service:
+            return False
+        try:
+            self.skills_service.delete(uuid_or_name)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete skill {uuid_or_name}: {e}")
             return False
 
     # ── Snippets ───────────────────────────────────────────────────────────
