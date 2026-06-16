@@ -1,8 +1,11 @@
 """Simulate This plugin: parallel simulated vMCP + real/sim routing registry."""
+import logging
 import os
 from typing import Any, Dict, Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 from skillberry_plugin_simulate.config import SimulateConfig
@@ -92,7 +95,12 @@ class SkillberryPluginSimulate(PluginBase):
             except ValueError as e:
                 raise HTTPException(status_code=404, detail=str(e))
             except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
+                import traceback as _tb
+                logger.error(
+                    "simulate failed: type=%s str=%r\n%s",
+                    type(e).__name__, str(e), _tb.format_exc(),
+                )
+                raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
         @router.post("/toggle")
         async def toggle(request: SkillRequest):

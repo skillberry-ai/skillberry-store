@@ -26,12 +26,34 @@ class HarnessClient:
         self._last_spec: Optional[Dict[str, Any]] = None
         self._last_mcp_port: Optional[int] = None
 
-    async def create_simulation(self, openapi_spec: Dict[str, Any], mcp_port: int) -> None:
+    async def create_simulation(
+        self,
+        openapi_spec: Dict[str, Any],
+        mcp_port: int,
+        *,
+        startup_retries: int = 10,
+        startup_delay: float = 2.0,
+    ) -> None:
+        """POST the simulation spec, retrying on connection errors to handle harness startup lag."""
         self._last_spec = openapi_spec
         self._last_mcp_port = mcp_port
-        resp = await self._client.post(
-            SIM_PATH, json={"openapi": openapi_spec, "mcp_port": mcp_port}
-        )
+        for attempt in range(startup_retries + 1):
+            try:
+                resp = await self._client.post(
+                    SIM_PATH, json={"openapi_spec": openapi_spec, "mcp_port": mcp_port}
+                )
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadError) as exc:
+                if attempt == startup_retries:
+                    raise HarnessError(
+                        f"create_simulation: harness not reachable after "
+                        f"{startup_retries} retries: {exc}"
+                    ) from exc
+                logger.debug(
+                    "Harness not yet reachable (attempt %d/%d): %s – retrying in %.1fs",
+                    attempt + 1, startup_retries, exc, startup_delay,
+                )
+                await asyncio.sleep(startup_delay)
         if resp.status_code >= 400:
             raise HarnessError(f"create_simulation failed: {resp.status_code} {resp.text}")
 
@@ -54,11 +76,15 @@ class HarnessClient:
         elapsed = 0.0
         while True:
             status = await self.get_status()
-            if status.get("status") == "ready":
+            sim_status = status.get("status")
+            if sim_status == "ready":
                 mcp_url = status.get("mcp_url")
                 if not mcp_url:
                     raise HarnessError("Harness ready but returned no mcp_url")
                 return mcp_url
+            if sim_status == "failed":
+                error = status.get("error") or "unknown error"
+                raise HarnessError(f"Harness simulation failed: {error}")
             if elapsed >= timeout:
                 raise HarnessTimeout(f"Harness not ready after {timeout}s")
             await asyncio.sleep(interval)

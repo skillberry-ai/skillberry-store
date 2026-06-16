@@ -1,4 +1,5 @@
-from unittest.mock import MagicMock
+import socket
+from unittest.mock import MagicMock, patch
 
 from skillberry_plugin_simulate.config import SimulateConfig
 from skillberry_plugin_simulate.harness_manager import HarnessManager, find_free_port
@@ -17,7 +18,15 @@ def test_find_free_port_in_range():
 
 
 def test_find_free_port_skips_excluded():
-    port = find_free_port((8600, 8601), exclude={8600})
+    # Mock socket so the test is independent of real port availability.
+    # The exclude set already skips 8600; the mock makes 8601 appear free.
+    mock_sock = MagicMock()
+    mock_sock.__enter__ = lambda s: s
+    mock_sock.__exit__ = MagicMock(return_value=False)
+    mock_sock.bind = MagicMock()  # succeeds (no OSError) → port is free
+
+    with patch("skillberry_plugin_simulate.harness_manager.socket.socket", return_value=mock_sock):
+        port = find_free_port((8600, 8601), exclude={8600})
     assert port == 8601
 
 
