@@ -41,6 +41,50 @@ export function PluginActionForm({
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollErrorCountRef = useRef(0);
 
+  // Dynamic dropdown state: field name → [{label, value}]
+  const [dynamicOptions, setDynamicOptions] = useState<Record<string, { label: string; value: string }[]>>({});
+  const [optionsLoading, setOptionsLoading] = useState<Record<string, boolean>>({});
+
+  const extractItems = (data: unknown): unknown[] => {
+    if (Array.isArray(data)) return data;
+    if (data && typeof data === 'object') {
+      const vals = Object.values(data as object);
+      if (vals.length === 1) {
+        const v = vals[0];
+        if (Array.isArray(v)) return v;
+        if (v && typeof v === 'object') return Object.values(v as object);
+      }
+    }
+    return [];
+  };
+
+  const interpolateUrl = (template: string, data: Record<string, any>) =>
+    template.replace(/\{(\w+)\}/g, (_, key) => encodeURIComponent(data[key] ?? ''));
+
+  const fetchOptions = async (propertyName: string, schema: any, currentFormData: Record<string, any>) => {
+    const url = interpolateUrl(schema['x-options-from'], currentFormData);
+    const labelKey: string = schema['x-option-label'] ?? 'label';
+    const valueKey: string = schema['x-option-value'] ?? 'value';
+    const excludeTags: string[] = schema['x-exclude-tags'] ?? [];
+    setOptionsLoading((prev) => ({ ...prev, [propertyName]: true }));
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const raw = await resp.json();
+      const items = extractItems(raw) as any[];
+      const filtered = items.filter(
+        (item) => !excludeTags.some((tag) => (item.tags ?? []).includes(tag))
+      );
+      const options = filtered.map((item) => ({ label: item[labelKey], value: item[valueKey] }));
+      setDynamicOptions((prev) => ({ ...prev, [propertyName]: options }));
+      if (options.length === 1) {
+        setFormData((prev) => ({ ...prev, [propertyName]: options[0].value }));
+      }
+    } finally {
+      setOptionsLoading((prev) => ({ ...prev, [propertyName]: false }));
+    }
+  };
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
@@ -142,6 +186,38 @@ export function PluginActionForm({
     return () => { stop(); };
   }, [result?.data?.job_id, result?.data?.status, pluginName]);
 
+  // Fetch options for non-dependent fields on open
+  useEffect(() => {
+    if (!isOpen || !action.params_schema.properties) return;
+    for (const [name, schema] of Object.entries(action.params_schema.properties) as [string, any][]) {
+      if (schema['x-options-from'] && !schema['x-depends-on']) {
+        fetchOptions(name, schema, formData);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // Refetch dependent dropdowns when their parent value changes
+  useEffect(() => {
+    if (!action.params_schema.properties) return;
+    for (const [name, schema] of Object.entries(action.params_schema.properties) as [string, any][]) {
+      const parentField = schema['x-depends-on'];
+      if (schema['x-options-from'] && parentField) {
+        if (formData[parentField]) {
+          fetchOptions(name, schema, formData);
+        } else {
+          // Clear dependent field and its options when parent is cleared
+          setDynamicOptions((prev) => ({ ...prev, [name]: [] }));
+          setFormData((prev) => { const next = { ...prev }; delete next[name]; return next; });
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Object.entries(action.params_schema.properties ?? {})
+      .filter(([, s]: [string, any]) => s['x-depends-on'])
+      .map(([, s]: [string, any]) => formData[s['x-depends-on']])
+      .join(',')]);
+
   const renderField = (propertyName: string, propertySchema: any) => {
     const isRequired = action.params_schema.required?.includes(propertyName);
     const value = formData[propertyName] !== undefined
@@ -219,6 +295,39 @@ export function PluginActionForm({
           >
             {propertySchema.enum.map((option: string) => (
               <FormSelectOption key={option} value={option} label={option} />
+            ))}
+          </FormSelect>
+        </FormGroup>
+      );
+    }
+
+    // Dynamic dropdown (x-options-from)
+    if (propertySchema['x-options-from']) {
+      const parentField = propertySchema['x-depends-on'];
+      const isDisabled = !!parentField && !formData[parentField];
+      const options = dynamicOptions[propertyName] ?? [];
+      const loading = optionsLoading[propertyName] ?? false;
+      const title: string = propertySchema.title ?? propertyName;
+      return (
+        <FormGroup
+          key={propertyName}
+          label={title}
+          isRequired={isRequired}
+          fieldId={propertyName}
+        >
+          <FormSelect
+            id={propertyName}
+            value={(value as string) || ''}
+            onChange={(_event, newValue) => handleChange(newValue)}
+            isDisabled={isDisabled || loading}
+          >
+            <FormSelectOption
+              value=""
+              label={loading ? 'Loading…' : isDisabled ? `Select a ${parentField} first` : `Select ${title.toLowerCase()}`}
+              isDisabled
+            />
+            {options.map((opt) => (
+              <FormSelectOption key={opt.value} value={opt.value} label={opt.label} />
             ))}
           </FormSelect>
         </FormGroup>
