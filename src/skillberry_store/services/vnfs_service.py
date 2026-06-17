@@ -129,32 +129,35 @@ class VnfsService:
         old_name = existing.get("name")
         old_parent = existing.get("parent")
         server_uuid = existing.get("uuid")
-        data["modified_at"] = datetime.now(timezone.utc).isoformat()
-        if not data.get("uuid"):
-            data["uuid"] = server_uuid
-        new_name = data.get("name")
+        
+        # Merge existing data with new data
+        merged = {**existing, **data}
+        merged["modified_at"] = datetime.now(timezone.utc).isoformat()
+        merged["uuid"] = server_uuid
+        
+        new_name = merged.get("name")
         if new_name:
-            data["parent"] = self.handler.get_cache_parent_for_head(
-                data["uuid"] or "", new_name
+            merged["parent"] = self.handler.get_cache_parent_for_head(
+                server_uuid or "", new_name
             )
         try:
             self.server_manager.remove_server(old_name or "", server_uuid or "")
         except Exception as e:
             logger.warning(f"Could not stop old runtime server: {e}")
-        server = self.server_manager.add_server(_to_ns(data))
-        data["port"] = server.port
-        self.handler.write_dict(data["uuid"] or "", data)
+        server = self.server_manager.add_server(_to_ns(merged))
+        merged["port"] = server.port
+        self.handler.write_dict(server_uuid or "", merged)
         if new_name and old_name:
             self.handler.update_cache(
-                data["uuid"] or "",
+                server_uuid or "",
                 new_name=new_name,
                 old_name=old_name,
                 old_parent=old_parent,
             )
-        if self.descriptions and data.get("description") and data.get("uuid"):
-            self.descriptions.write_description(data["uuid"], data["description"])
+        if self.descriptions and merged.get("description") and server_uuid:
+            self.descriptions.write_description(server_uuid, merged["description"])
         logger.info(f"vNFS server '{new_name}' updated on port {server.port}")
-        return data
+        return merged
 
     def delete(self, uuid_or_name: str) -> None:
         uuid = self._resolve_uuid(uuid_or_name)
