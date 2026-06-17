@@ -3,6 +3,7 @@
 
 """Importer for converting Anthropic skills to Skillberry format."""
 
+import logging
 import re
 import io
 import os
@@ -11,6 +12,8 @@ import requests
 from typing import Dict, List, Any, Optional, Tuple
 
 from skillberry_store.tools.endpoint_auth import resolve_auth_headers
+
+logger = logging.getLogger(__name__)
 
 
 def _auth_headers(
@@ -73,41 +76,42 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
         return None
 
     try:
+        import yaml
+
         content = skill_file["content"]
         lines = content.split("\n")
-        name = ""
-        description = ""
-        in_header = False
 
-        for i, line in enumerate(lines):
-            line_stripped = line.strip()
+        if not lines or lines[0].strip() != "---":
+            return None
 
-            # Check for YAML front matter
-            if i == 0 and line_stripped == "---":
-                in_header = True
-                continue
+        # Find the closing ---
+        end_idx = None
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                end_idx = i
+                break
 
-            if in_header:
-                if line_stripped == "---":
-                    # End of header
-                    break
+        if end_idx is None:
+            return None
 
-                # Parse name field
-                name_match = re.match(r"^name:\s*(.+)$", line_stripped, re.IGNORECASE)
-                if name_match:
-                    name = name_match.group(1).strip().strip("\"'")
+        frontmatter_text = "\n".join(lines[1:end_idx])
+        parsed = yaml.safe_load(frontmatter_text)
 
-                # Parse description field
-                desc_match = re.match(
-                    r"^description:\s*(.+)$", line_stripped, re.IGNORECASE
-                )
-                if desc_match:
-                    description = desc_match.group(1).strip().strip("\"'")
+        if not isinstance(parsed, dict):
+            logger.warning(
+                "SKILL.md frontmatter parsed to non-dict type: %s", type(parsed)
+            )
+            return None
+
+        name = str(parsed.get("name", "") or "").strip()
+        description = str(parsed.get("description", "") or "").strip()
 
         if name or description:
             return {"name": name, "description": description}
     except Exception as e:
-        print(f"Failed to parse SKILL.md metadata: {e}")
+        logger.warning(
+            "Failed to parse SKILL.md frontmatter with yaml.safe_load: %s", e
+        )
 
     return None
 
