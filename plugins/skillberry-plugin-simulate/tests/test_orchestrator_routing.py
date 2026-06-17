@@ -35,6 +35,27 @@ def test_resolve_returns_active_url_and_mode(tmp_path):
     assert out["mcp_url"] == "http://127.0.0.1:10002/sse"
 
 
+def test_resolve_sim_vmcp_uses_harness_mcp_url(tmp_path):
+    """resolve() must return harness mcp_url for sim vMCPs (port is None for those)."""
+    store = MagicMock()
+    harness_mcp_url = "http://127.0.0.1:8700/sse"
+    store.get_vmcp.return_value = {
+        "uuid": "sim-vmcp",
+        "port": None,
+        "extra": {
+            "simulation": True,
+            "harness": {"mcp_url": harness_mcp_url},
+        },
+    }
+    orch, reg = _orch(tmp_path, store)
+    reg.upsert("skill-1", real_vmcp_uuid="real-vmcp", sim_vmcp_uuid="sim-vmcp")
+    reg.set_active("skill-1", "sim")
+
+    out = orch.resolve("skill-1")
+    assert out["mode"] == "sim"
+    assert out["mcp_url"] == harness_mcp_url
+
+
 def test_resolve_unknown_skill_raises(tmp_path):
     orch, _ = _orch(tmp_path, MagicMock())
     with pytest.raises(KeyError):

@@ -69,7 +69,10 @@ export function PluginActionForm({
     setOptionsLoading((prev) => ({ ...prev, [propertyName]: true }));
     try {
       const resp = await fetch(url);
-      if (!resp.ok) return;
+      if (!resp.ok) {
+        console.warn(`PluginActionForm: failed to fetch options for ${propertyName}: HTTP ${resp.status}`);
+        return;
+      }
       const raw = await resp.json();
       const items = extractItems(raw) as any[];
       const filtered = items.filter(
@@ -376,7 +379,7 @@ export function PluginActionForm({
           isLoading={isSubmitting || isPolling}
           isDisabled={isSubmitting || isPolling}
         >
-          {isSubmitting || isPolling ? 'Starting simulation…' : result?.success ? 'Done' : 'Execute'}
+          {isSubmitting || isPolling ? 'Working…' : result?.success ? 'Done' : 'Execute'}
         </Button>,
         <Button key="cancel" variant="link" onClick={handleClose}>
           Cancel

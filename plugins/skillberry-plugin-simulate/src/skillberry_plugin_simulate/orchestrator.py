@@ -54,6 +54,8 @@ class SimulateOrchestrator:
                 raise ValueError(
                     f"vMCP {vmcp_uuid} does not belong to skill {skill_uuid}"
                 )
+            if SIMULATION_TAG in vmcp.get("tags", []):
+                raise ValueError(f"vMCP {vmcp_uuid} is a simulation vMCP; provide the real vMCP UUID")
             return vmcp
         all_vmcps = self._store.list_vmcps()
         real = [
@@ -159,12 +161,15 @@ class SimulateOrchestrator:
         vmcp = self._store.get_vmcp(active_uuid)
         if not vmcp:
             raise ValueError(f"active vMCP {active_uuid} not found")
+        extra = vmcp.get("extra", {}) or {}
+        harness_url = (extra.get("harness") or {}).get("mcp_url")
         port = vmcp.get("port")
+        mcp_url = harness_url if harness_url else f"http://127.0.0.1:{port}/sse"
         return {
             "skill_uuid": skill_uuid,
             "mode": entry["active"],
             "vmcp_uuid": active_uuid,
-            "mcp_url": f"http://127.0.0.1:{port}/sse",
+            "mcp_url": mcp_url,
         }
 
     def toggle(self, skill_uuid: str) -> Dict[str, Any]:

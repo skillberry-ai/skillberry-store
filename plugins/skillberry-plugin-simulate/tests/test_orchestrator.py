@@ -8,6 +8,7 @@ from skillberry_plugin_simulate.harness_client import HarnessClient
 from skillberry_plugin_simulate.openapi_synth import OpenApiSynthesizer
 from skillberry_plugin_simulate.orchestrator import SimulateOrchestrator
 from skillberry_plugin_simulate.registry import ActiveVmcpRegistry
+from skillberry_plugin_simulate.sim_manifests import SIMULATION_TAG
 
 
 def _store(extra_vmcps=None):
@@ -134,3 +135,20 @@ async def test_simulate_unknown_skill_raises(tmp_path):
 
     with pytest.raises(ValueError, match="not found"):
         await orch.simulate("missing-skill")
+
+
+@pytest.mark.asyncio
+async def test_simulate_explicit_sim_vmcp_raises(tmp_path):
+    """_resolve_real_vmcp must reject a simulation-tagged vMCP passed as vmcp_uuid."""
+    store = _store()
+    sim_vmcp = {
+        "uuid": "sim-vmcp",
+        "name": "weather-sim",
+        "skill_uuid": "skill-1",
+        "tags": [SIMULATION_TAG],
+    }
+    store.get_vmcp.return_value = sim_vmcp
+    orch, _, _ = _orch(tmp_path, store)
+
+    with pytest.raises(ValueError, match="is a simulation vMCP"):
+        await orch.simulate("skill-1", vmcp_uuid="sim-vmcp")
