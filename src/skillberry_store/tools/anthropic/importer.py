@@ -98,7 +98,9 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
         parsed = yaml.safe_load(frontmatter_text)
 
         if not isinstance(parsed, dict):
-            logger.warning("SKILL.md frontmatter parsed to non-dict type: %s", type(parsed))
+            logger.warning(
+                "SKILL.md frontmatter parsed to non-dict type: %s", type(parsed)
+            )
             return None
 
         name = str(parsed.get("name", "") or "").strip()
@@ -107,7 +109,9 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
         if name or description:
             return {"name": name, "description": description}
     except Exception as e:
-        logger.warning("Failed to parse SKILL.md frontmatter with yaml.safe_load: %s", e)
+        logger.warning(
+            "Failed to parse SKILL.md frontmatter with yaml.safe_load: %s", e
+        )
 
     return None
 
