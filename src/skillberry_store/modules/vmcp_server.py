@@ -11,6 +11,39 @@ from mcp.server.fastmcp import FastMCP
 from skillberry_store.modules.object_handler import get_object_handler
 
 
+def _patch_sse_starlette_for_multi_loop() -> None:
+    """
+    sse_starlette.EventSourceResponse._listen_for_exit_signal awaits a
+    process-wide AppStatus.should_exit_event. anyio.Event binds to the
+    first event loop that awaits it, so once one VMCP server's SSE
+    handler creates that Event in its loop, every other VMCP server's
+    SSE handler — running in its own thread+loop — fails with
+    "RuntimeError: ... bound to a different event loop".
+
+    Replace the listener with a poll on AppStatus.should_exit. We
+    disable uvicorn's signal handlers in worker threads anyway, so the
+    Event-based fast-path provides no value here, and the SSE task
+    group is cancelled via _listen_for_disconnect when the connection
+    closes during stop().
+    """
+    try:
+        import anyio
+        from sse_starlette.sse import AppStatus, EventSourceResponse
+    except ImportError:
+        return
+
+    async def _listen_for_exit_signal_per_loop() -> None:
+        while not AppStatus.should_exit:
+            await anyio.sleep(0.5)
+
+    EventSourceResponse._listen_for_exit_signal = staticmethod(
+        _listen_for_exit_signal_per_loop
+    )
+
+
+_patch_sse_starlette_for_multi_loop()
+
+
 class VirtualMcpServer:
     """
     Represents a virtual MCP server.
@@ -572,23 +605,6 @@ class VirtualMcpServer:
 
         def run_server():
             logging.info(f"Starting FastMCP server '{self.name}' on port {self.port}")
-
-            # Reset sse_starlette's AppStatus event so it binds to this thread's
-            # event loop. Each VMCP server runs in its own thread; without this
-            # reset the singleton Event stays bound to whichever loop first used
-            # it, causing a RuntimeError when a client connects to later servers.
-            # Note: AppStatus is defined in sse_starlette.sse and is NOT
-            # re-exported from sse_starlette/__init__.py — importing it from
-            # the top-level package raises ImportError and silently no-ops the
-            # reset. Always import from the submodule.
-            try:
-                from sse_starlette.sse import AppStatus as _AppStatus
-
-                _AppStatus.should_exit_event = None
-            except Exception as e:
-                logging.warning(
-                    f"Failed to reset sse_starlette AppStatus.should_exit_event: {e}"
-                )
 
             try:
                 # Get the Starlette app from FastMCP and add CORS middleware

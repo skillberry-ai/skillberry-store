@@ -179,6 +179,7 @@ plugin-kagenti-approver = [
 
 plugin-sast = [
   "skillberry-plugin-sast>=0.1.0",
+  "llm-switchboard"
 ]
 
 plugin-skill-optimizer = [
