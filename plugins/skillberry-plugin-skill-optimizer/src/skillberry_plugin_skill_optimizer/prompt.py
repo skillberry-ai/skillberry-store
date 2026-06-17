@@ -134,18 +134,23 @@ PYTHON FILE FORMAT RULES:
 - Runtime helpers are INJECTED into execution scope — call them directly,
   do NOT import them.
 
-PRESERVE STRUCTURE:
-- Do NOT rename, move, or delete existing files.
-- Keep the output directory structure the same as the input.
-- Do NOT leave temporary files in the directory — they will be imported.
-- Keep SKILL.md frontmatter valid at all times.
+FILE & DIRECTORY RULES:
+- SKILL.md must remain at the top level of the editable directory — never move it.
+- Do NOT rename the editable directory itself.
+- Do NOT leave temporary or scratch files — every file present will be imported.
+- Everything else is fair game: rename files, move files between directories, create
+  or remove subdirectories, add new files, delete files — as long as the result is
+  correct and store-compatible:
+    * Python files must remain self-contained (no cross-file imports introduced).
+    * All `def` functions you want as tools must still be top-level in their file.
+    * Non-Python files you want as snippets must still be reachable (not lost in an
+      ignored location).
+    * SKILL.md frontmatter must remain valid at all times.
 
 SKILL NAME:
 - If you made meaningful changes, update SKILL.md `name` to a new kebab-case
   name (max 64 characters) that hints at what changed.
 - Put the SAME value in `skill_name` in required_outputs.json.
-- IMPORTANT: only change the NAME VALUE inside SKILL.md — do NOT create
-  subdirectories, do NOT move SKILL.md, do NOT rename the editable directory.
 
 === REQUIRED OUTPUT CONTRACT ===
 The editable directory contains a file named `{REQUIRED_OUTPUTS_FILENAME}`. You MUST
