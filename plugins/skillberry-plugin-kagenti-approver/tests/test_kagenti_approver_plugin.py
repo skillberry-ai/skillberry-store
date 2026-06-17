@@ -13,10 +13,10 @@ from skillberry_plugin_kagenti_approver.plugin import (
 
 # ── parse_criteria ────────────────────────────────────────────────────────────
 
-def test_parse_criteria_default_produces_one_or_group_three_conditions():
+def test_parse_criteria_default_produces_one_or_group_one_condition():
     groups = parse_criteria(DEFAULT_CRITERIA)
     assert len(groups) == 1
-    assert len(groups[0]) == 3
+    assert len(groups[0]) == 1
 
 
 def test_parse_criteria_default_security_score():
@@ -27,12 +27,6 @@ def test_parse_criteria_default_security_score():
     assert threshold == 9.0
 
 
-def test_parse_criteria_default_performance_score():
-    groups = parse_criteria(DEFAULT_CRITERIA)
-    tag, op, threshold = groups[0][1]
-    assert tag == "performance-score"
-    assert op == ">="
-    assert threshold == 8.0
 
 
 def test_parse_criteria_or_splits_into_two_groups():
@@ -259,7 +253,7 @@ def _mock_store(skill=None):
 @pytest.mark.asyncio
 async def test_evaluate_skill_approves_when_criteria_met():
     plugin = _make_plugin()
-    skill = {"uuid": "s-1", "tags": ["security-score:9", "performance-score:8", "quality-score:8"], "name": "x"}
+    skill = {"uuid": "s-1", "tags": ["security-score:9"], "name": "x"}
     store = _mock_store(skill)
     plugin.set_store_api(store)
 
@@ -286,7 +280,7 @@ async def test_evaluate_skill_no_duplicate_tag_when_already_approved():
     plugin = _make_plugin()
     skill = {
         "uuid": "s-1",
-        "tags": ["security-score:9", "performance-score:8", "quality-score:8", APPROVED_TAG],
+        "tags": ["security-score:9", APPROVED_TAG],
         "name": "x",
     }
     store = _mock_store(skill)
@@ -449,6 +443,6 @@ def test_missing_env_var_falls_back_to_default(monkeypatch):
     monkeypatch.delenv("KAGENTI_CRITERIA", raising=False)
     plugin = _make_plugin()
     groups = plugin._load_criteria()
-    # Default: security-score>=9,performance-score>=8,quality-score>=8 → 1 OR-group, 3 conditions
+    # Default: security-score>=9 → 1 OR-group, 1 condition
     assert len(groups) == 1
-    assert len(groups[0]) == 3
+    assert len(groups[0]) == 1
