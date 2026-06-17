@@ -10,10 +10,13 @@ from skillberry_plugin_simulate.orchestrator import SimulateOrchestrator
 from skillberry_plugin_simulate.registry import ActiveVmcpRegistry
 
 
-def _store():
+def _store(extra_vmcps=None):
     store = MagicMock()
-    store.get_vmcp.return_value = {"uuid": "real-vmcp", "name": "weather", "skill_uuid": "skill-1"}
+    real_vmcp = {"uuid": "real-vmcp", "name": "weather", "skill_uuid": "skill-1", "tags": []}
+    all_vmcps = [real_vmcp] + (extra_vmcps or [])
+    store.get_vmcp.return_value = real_vmcp
     store.get_skill.return_value = {"uuid": "skill-1", "name": "weather", "tool_uuids": ["t1"]}
+    store.list_vmcps.return_value = all_vmcps
     store.get_tool.return_value = {
         "uuid": "t1", "name": "get_weather", "description": "real",
         "params": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]},
@@ -50,40 +53,84 @@ def _orch(tmp_path, store):
     ), harness_mgr, reg
 
 
+# --- existing happy-path test, updated for new signature ---
+
 @pytest.mark.asyncio
 async def test_simulate_creates_sim_tools_skill_vmcp_and_registers(tmp_path):
     store = _store()
     orch, harness_mgr, reg = _orch(tmp_path, store)
 
-    result = await orch.simulate("real-vmcp")
+    result = await orch.simulate("skill-1")
 
-    # sim tool created as mcp-packaged pointing at harness
     tool_call = store.create_tool.call_args
     assert tool_call.args[0]["packaging_format"] == "mcp"
     assert tool_call.args[0]["packaging_params"]["mcp_url"] == "http://127.0.0.1:8700/sse"
 
-    # sim skill references the new sim tool uuid and is tagged simulation
     skill_data = store.create_skill.call_args.args[0]
     assert skill_data["tool_uuids"] == ["sim-t1"]
     assert "simulation" in skill_data["tags"]
 
-    # sim vMCP references the sim skill and records pairing in extra
     vmcp_data = store.create_vmcp.call_args.args[0]
     assert vmcp_data["skill_uuid"] == "sim-skill"
     assert vmcp_data["extra"]["simulation_of"] == "real-vmcp"
     assert vmcp_data["extra"]["simulation_of_skill"] == "skill-1"
     assert vmcp_data["extra"]["harness"]["container_id"] == "c1"
 
-    # registry paired, default active=real
     entry = reg.get("skill-1")
     assert entry == {"active": "real", "real_vmcp_uuid": "real-vmcp", "sim_vmcp_uuid": "sim-vmcp"}
     assert result["sim_vmcp_uuid"] == "sim-vmcp"
 
 
+# --- new resolution-logic tests ---
+
 @pytest.mark.asyncio
-async def test_simulate_unknown_vmcp_raises(tmp_path):
+async def test_simulate_with_explicit_vmcp_uuid(tmp_path):
     store = _store()
-    store.get_vmcp.return_value = None
+    orch, _, reg = _orch(tmp_path, store)
+
+    result = await orch.simulate("skill-1", vmcp_uuid="real-vmcp")
+
+    assert result["real_vmcp_uuid"] == "real-vmcp"
+    entry = reg.get("skill-1")
+    assert entry["real_vmcp_uuid"] == "real-vmcp"
+
+
+@pytest.mark.asyncio
+async def test_simulate_explicit_vmcp_wrong_skill_raises(tmp_path):
+    store = _store()
+    wrong_vmcp = {"uuid": "other-vmcp", "name": "other", "skill_uuid": "skill-99", "tags": []}
+    store.get_vmcp.return_value = wrong_vmcp
     orch, _, _ = _orch(tmp_path, store)
-    with pytest.raises(ValueError):
-        await orch.simulate("missing")
+
+    with pytest.raises(ValueError, match="does not belong to skill"):
+        await orch.simulate("skill-1", vmcp_uuid="other-vmcp")
+
+
+@pytest.mark.asyncio
+async def test_simulate_no_real_vmcp_raises(tmp_path):
+    store = _store()
+    store.list_vmcps.return_value = []
+    orch, _, _ = _orch(tmp_path, store)
+
+    with pytest.raises(ValueError, match="has no running vMCP"):
+        await orch.simulate("skill-1")
+
+
+@pytest.mark.asyncio
+async def test_simulate_multiple_real_vmcps_raises(tmp_path):
+    second = {"uuid": "real-vmcp-2", "name": "weather2", "skill_uuid": "skill-1", "tags": []}
+    store = _store(extra_vmcps=[second])
+    orch, _, _ = _orch(tmp_path, store)
+
+    with pytest.raises(ValueError, match="multiple vMCPs"):
+        await orch.simulate("skill-1")
+
+
+@pytest.mark.asyncio
+async def test_simulate_unknown_skill_raises(tmp_path):
+    store = _store()
+    store.get_skill.return_value = None
+    orch, _, _ = _orch(tmp_path, store)
+
+    with pytest.raises(ValueError, match="not found"):
+        await orch.simulate("missing-skill")

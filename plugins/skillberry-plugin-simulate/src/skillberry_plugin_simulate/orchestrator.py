@@ -43,25 +43,49 @@ class SimulateOrchestrator:
         self._harness_manager = harness_manager
         self._harness_client_factory = harness_client_factory
 
-    def _real_tools(self, vmcp: Dict[str, Any]):
-        skill_uuid = vmcp.get("skill_uuid")
-        if not skill_uuid:
-            raise ValueError(f"vMCP {vmcp.get('uuid')} has no skill_uuid; nothing to simulate")
+    def _resolve_real_vmcp(
+        self, skill_uuid: str, vmcp_uuid: Optional[str] = None
+    ) -> Dict[str, Any]:
+        if vmcp_uuid:
+            vmcp = self._store.get_vmcp(vmcp_uuid)
+            if not vmcp:
+                raise ValueError(f"vMCP {vmcp_uuid} not found")
+            if vmcp.get("skill_uuid") != skill_uuid:
+                raise ValueError(
+                    f"vMCP {vmcp_uuid} does not belong to skill {skill_uuid}"
+                )
+            return vmcp
+        all_vmcps = self._store.list_vmcps()
+        real = [
+            v for v in all_vmcps
+            if v.get("skill_uuid") == skill_uuid
+            and SIMULATION_TAG not in v.get("tags", [])
+        ]
+        if not real:
+            raise ValueError(
+                f"skill {skill_uuid} has no running vMCP to simulate against"
+            )
+        if len(real) > 1:
+            raise ValueError(
+                f"skill {skill_uuid} has multiple vMCPs — provide vmcp_uuid to specify which is 'real'"
+            )
+        return real[0]
+
+    async def simulate(
+        self, skill_uuid: str, vmcp_uuid: Optional[str] = None, env_id: str = ""
+    ) -> Dict[str, Any]:
         skill = self._store.get_skill(skill_uuid)
         if not skill:
             raise ValueError(f"skill {skill_uuid} not found")
+
         tools = [self._store.get_tool(u) for u in skill.get("tool_uuids", [])]
         tools = [t for t in tools if t]
         if not tools:
             raise ValueError(f"skill {skill_uuid} has no tools to simulate")
-        return skill_uuid, tools
 
-    async def simulate(self, real_vmcp_uuid: str, env_id: str = "") -> Dict[str, Any]:
-        vmcp = self._store.get_vmcp(real_vmcp_uuid)
-        if not vmcp:
-            raise ValueError(f"vMCP {real_vmcp_uuid} not found")
-        real_skill_uuid, tools = self._real_tools(vmcp)
-        base_name = vmcp.get("name") or real_vmcp_uuid
+        vmcp = self._resolve_real_vmcp(skill_uuid, vmcp_uuid)
+        real_vmcp_uuid = vmcp["uuid"]
+        base_name = vmcp.get("name") or skill.get("name") or skill_uuid
 
         spec = self._synth.synthesize(tools, title=base_name)
         rest_port, mcp_port = self._harness_manager.allocate_ports()
@@ -87,7 +111,7 @@ class SimulateOrchestrator:
                 "name": f"{base_name}-sim",
                 "tool_uuids": sim_tool_uuids,
                 "tags": [SIMULATION_TAG],
-                "extra": {"simulation": True, "simulation_of_skill": real_skill_uuid},
+                "extra": {"simulation": True, "simulation_of_skill": skill_uuid},
             }
         )
 
@@ -99,7 +123,7 @@ class SimulateOrchestrator:
                 "extra": {
                     "simulation": True,
                     "simulation_of": real_vmcp_uuid,
-                    "simulation_of_skill": real_skill_uuid,
+                    "simulation_of_skill": skill_uuid,
                     "sim_skill_uuid": sim_skill["uuid"],
                     "tools_fingerprint": tools_fingerprint(tools),
                     "harness": {
@@ -115,12 +139,12 @@ class SimulateOrchestrator:
         )
 
         self._registry.upsert(
-            real_skill_uuid, real_vmcp_uuid=real_vmcp_uuid, sim_vmcp_uuid=sim_vmcp["uuid"]
+            skill_uuid, real_vmcp_uuid=real_vmcp_uuid, sim_vmcp_uuid=sim_vmcp["uuid"]
         )
-        logger.info("Simulated vMCP %s created for skill %s", sim_vmcp["uuid"], real_skill_uuid)
+        logger.info("Simulated vMCP %s created for skill %s", sim_vmcp["uuid"], skill_uuid)
         return {
             "success": True,
-            "skill_uuid": real_skill_uuid,
+            "skill_uuid": skill_uuid,
             "real_vmcp_uuid": real_vmcp_uuid,
             "sim_vmcp_uuid": sim_vmcp["uuid"],
             "sim_skill_uuid": sim_skill["uuid"],
@@ -157,7 +181,6 @@ class SimulateOrchestrator:
             extra = (sim_vmcp or {}).get("extra", {})
             sim_skill_uuid = extra.get("sim_skill_uuid")
             container_id = (extra.get("harness") or {}).get("container_id")
-            # delete sim vMCP first so the skill/tools are no longer referenced
             self._store.delete_vmcp(sim_vmcp_uuid)
             if sim_skill_uuid:
                 sim_skill = self._store.get_skill(sim_skill_uuid)
