@@ -12,7 +12,7 @@ from skillberry_plugin_simulate.plugin import SkillberryPluginSimulate
 def _make_app(orchestrator):
     plugin = SkillberryPluginSimulate()
     plugin.set_store_api(MagicMock())
-    plugin._orchestrator = orchestrator  # inject test double
+    plugin._orchestrator = orchestrator
     app = FastAPI()
     app.include_router(plugin.get_router(), prefix="/plugins/simulate")
     return app
@@ -26,13 +26,24 @@ def test_simulate_endpoint_returns_pending_job():
     orch = MagicMock()
     orch.simulate = AsyncMock(return_value={"success": True, "sim_vmcp_uuid": "sim-1"})
     client = _app_with_plugin(orch)
-    resp = client.post("/plugins/simulate/simulate", json={"vmcp_uuid": "real-1"})
+    resp = client.post("/plugins/simulate/simulate", json={"skill_uuid": "skill-1"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
     assert body["message"] == "Simulation is starting..."
     assert body["data"]["status"] == "pending"
     assert "job_id" in body["data"]
+
+
+def test_simulate_endpoint_passes_optional_vmcp_uuid():
+    orch = MagicMock()
+    orch.simulate = AsyncMock(return_value={"success": True, "sim_vmcp_uuid": "sim-1"})
+    client = _app_with_plugin(orch)
+    resp = client.post(
+        "/plugins/simulate/simulate",
+        json={"skill_uuid": "skill-1", "vmcp_uuid": "real-vmcp"},
+    )
+    assert resp.status_code == 200
 
 
 def test_active_endpoint_returns_mode_and_url():
@@ -71,15 +82,11 @@ def test_teardown_endpoint():
     assert resp.json()["success"] is True
 
 
-# --- Async job pattern tests ---
+# --- async job pattern tests ---
 
 
 @pytest.mark.asyncio
 async def test_simulate_returns_pending_job_immediately():
-    """POST /simulate must return {job_id, status:pending} without waiting for orchestrator.
-
-    If the endpoint blocks (old behaviour), asyncio.wait_for raises TimeoutError → test fails.
-    """
     blocked = asyncio.Event()
 
     async def hanging_simulate(*a, **kw):
@@ -92,10 +99,10 @@ async def test_simulate_returns_pending_job_immediately():
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await asyncio.wait_for(
-            client.post("/plugins/simulate/simulate", json={"vmcp_uuid": "real-1"}),
+            client.post("/plugins/simulate/simulate", json={"skill_uuid": "skill-1"}),
             timeout=2.0,
         )
-        blocked.set()  # unblock background task after confirming the response arrived
+        blocked.set()
 
     assert resp.status_code == 200
     body = resp.json()
@@ -120,11 +127,11 @@ async def test_simulate_status_returns_ready_with_result():
     app = _make_app(orch)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        post_resp = await client.post("/plugins/simulate/simulate", json={"vmcp_uuid": "real-1"})
+        post_resp = await client.post("/plugins/simulate/simulate", json={"skill_uuid": "skill-1"})
         assert post_resp.status_code == 200
         job_id = post_resp.json()["data"]["job_id"]
 
-        await asyncio.sleep(0)  # yield so background task can complete
+        await asyncio.sleep(0)
 
         status_resp = await client.get(f"/plugins/simulate/status/{job_id}")
 
@@ -141,7 +148,7 @@ async def test_simulate_status_returns_failed_on_orchestrator_error():
     app = _make_app(orch)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        post_resp = await client.post("/plugins/simulate/simulate", json={"vmcp_uuid": "real-1"})
+        post_resp = await client.post("/plugins/simulate/simulate", json={"skill_uuid": "skill-1"})
         job_id = post_resp.json()["data"]["job_id"]
 
         await asyncio.sleep(0)

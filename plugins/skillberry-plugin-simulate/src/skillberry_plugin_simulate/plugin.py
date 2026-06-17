@@ -86,7 +86,8 @@ class SkillberryPluginSimulate(PluginBase):
         router = APIRouter()
 
         class SimulateRequest(BaseModel):
-            vmcp_uuid: str
+            skill_uuid: str
+            vmcp_uuid: Optional[str] = None
 
         class SkillRequest(BaseModel):
             skill_uuid: str
@@ -95,7 +96,7 @@ class SkillberryPluginSimulate(PluginBase):
         async def simulate(request: SimulateRequest):
             job_id = str(uuid.uuid4())
             task = asyncio.create_task(
-                self._get_orchestrator().simulate(request.vmcp_uuid),
+                self._get_orchestrator().simulate(request.skill_uuid, request.vmcp_uuid),
                 name=f"simulate-{job_id}",
             )
             self._jobs[job_id] = task
@@ -158,9 +159,25 @@ class SkillberryPluginSimulate(PluginBase):
                     "params_schema": {
                         "type": "object",
                         "properties": {
-                            "vmcp_uuid": {"type": "string", "description": "UUID of the real vMCP to simulate"}
+                            "skill_uuid": {
+                                "type": "string",
+                                "title": "Skill",
+                                "x-options-from": "/api/skills/",
+                                "x-option-label": "name",
+                                "x-option-value": "uuid",
+                                "x-exclude-tags": ["simulation"],
+                            },
+                            "vmcp_uuid": {
+                                "type": "string",
+                                "title": "vMCP Server",
+                                "x-options-from": "/api/vmcp_servers/?skill_uuid={skill_uuid}",
+                                "x-depends-on": "skill_uuid",
+                                "x-option-label": "name",
+                                "x-option-value": "uuid",
+                                "x-exclude-tags": ["simulation"],
+                            },
                         },
-                        "required": ["vmcp_uuid"],
+                        "required": ["skill_uuid"],
                     },
                 },
                 {
