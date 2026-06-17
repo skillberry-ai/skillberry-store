@@ -177,19 +177,21 @@ async def test_multiple_vmcp_servers_sse_connections_sdk(
             exceptions_caught.append(("server2", str(e), type(e).__name__))
             print(f"✗ Server 2 SSE connection failed: {type(e).__name__}: {e}")
         
-        # Get server logs to check for RuntimeError
+        # Look for the specific event-loop binding error in server logs.
+        # capture_server_logs is wired to a session-scoped root-logger handler,
+        # so a broad "RuntimeError" substring match catches unrelated tracebacks
+        # from other session-scoped plugins (e.g. mock-driven dedupe/evaluator
+        # handlers triggered when this test creates a skill). Match the exact
+        # phrase from the bug instead.
         logs = capture_server_logs.get_logs()
-        
-        # Check if the bug manifested in the logs
         has_event_loop_error = "bound to a different event loop" in logs
-        has_runtime_error = "RuntimeError" in logs
-        
+
         # Check if server 2 timed out (primary indicator of the bug)
         server2_timed_out = any(
             server == "server2" and error_type == "TimeoutError"
             for server, error, error_type in exceptions_caught
         )
-        
+
         # Report findings
         print(f"\n{'='*80}")
         print(f"Test Results:")
@@ -199,17 +201,16 @@ async def test_multiple_vmcp_servers_sse_connections_sdk(
             print(f"      {error[:200]}")
         print(f"  Server 2 timed out: {server2_timed_out}")
         print(f"  Event loop error in logs: {has_event_loop_error}")
-        print(f"  RuntimeError in logs: {has_runtime_error}")
         print(f"{'='*80}\n")
-        
+
         # The test documents the bug - it will fail until the bug is fixed
         # The bug manifests as a timeout on the second server's SSE connection
-        if server2_timed_out or has_event_loop_error or has_runtime_error:
+        if server2_timed_out or has_event_loop_error:
             pytest.fail(
                 "BUG REPRODUCED: Second VMCP server's SSE connection timed out due to event loop bug. "
                 "The server-side RuntimeError 'bound to a different event loop' prevents proper SSE stream setup. "
-                "This is the expected behavior until the bug is fixed. "
-                "See src/skillberry_store/modules/vmcp_server.py lines 584-591 for attempted fix."
+                "See src/skillberry_store/modules/vmcp_server.py "
+                "_patch_sse_starlette_for_multi_loop for the fix."
             )
         
     finally:
