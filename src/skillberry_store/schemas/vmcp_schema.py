@@ -28,7 +28,7 @@ class VmcpSchema(ManifestSchema):
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert the vmcp schema to a dictionary."""
-        return self.model_dump(exclude_none=True)
+        return self.model_dump(exclude_none=False)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "VmcpSchema":
