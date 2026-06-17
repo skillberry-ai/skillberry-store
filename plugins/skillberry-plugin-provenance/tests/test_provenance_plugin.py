@@ -149,7 +149,7 @@ async def test_behavior_detects_domains_and_ops():
 
     beh = data["behavior"]
     assert beh["status"] == "ok"
-    assert "evil.example.com" in beh["external_domains"]
+    assert beh["external_domains"] == ["evil.example.com"]
     assert "network" in beh["sensitive_operations"]
     assert "subprocess" in beh["sensitive_operations"]
     assert beh["sast_summary"] == {"high": 1}
