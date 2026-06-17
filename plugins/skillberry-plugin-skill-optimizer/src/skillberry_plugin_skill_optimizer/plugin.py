@@ -528,6 +528,24 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                     except Exception as e:
                         logger.error(f"Failed to create snippet '{snippet.name}': {e}", exc_info=True)
 
+                # Compute the actual structural diff from the import results.
+                # Claude's self-reported tools_added/removed/snippets_added/removed in
+                # required_outputs.json is often incomplete — override with ground truth.
+                original_tool_names = {t["name"] for t in tools}
+                imported_tool_names = {t.name for t in imported_tools}
+                original_snippet_names = {s["name"] for s in snippets}
+                imported_snippet_names = {s.name for s in imported_snippets}
+                opt_metadata["tools_removed"] = sorted(original_tool_names - imported_tool_names)
+                opt_metadata["tools_added"] = sorted(imported_tool_names - original_tool_names)
+                opt_metadata["snippets_removed"] = sorted(original_snippet_names - imported_snippet_names)
+                opt_metadata["snippets_added"] = sorted(imported_snippet_names - original_snippet_names)
+                logger.info(
+                    f"Diff — tools added: {opt_metadata['tools_added']}, "
+                    f"removed: {opt_metadata['tools_removed']}; "
+                    f"snippets added: {opt_metadata['snippets_added']}, "
+                    f"removed: {opt_metadata['snippets_removed']}"
+                )
+
                 inherited_tags = [t for t in skill.get("tags", []) if t]
                 # opt_metadata["skill_description"] is the authoritative source — it's what
                 # the optimizer agent explicitly wrote in required_outputs.json. The importer's

@@ -164,9 +164,22 @@ Field meanings:
 - skill_description: the skill description from SKILL.md frontmatter.
 - optimization_rationale: a concise explanation of what you changed and why.
 - issues_addressed: list of the failure modes / issues you fixed.
-- tools_added / tools_modified / tools_removed: function names added, changed, removed.
-- snippets_added / snippets_modified / snippets_removed: non-code files changed.
+- tools_added: exact function names (`def` names) of NEW functions you added that did
+  not exist before. Empty list if none.
+- tools_modified: exact function names you changed in place. Empty list if none.
+- tools_removed: exact function names you deleted from any .py file. Empty list if
+  none. THIS MUST BE ACCURATE — if you removed a `def`, list its name here.
+- snippets_added: filenames (relative paths) of NEW non-Python files you created.
+  Empty list if none.
+- snippets_modified: filenames of existing non-Python files whose content you changed.
+  Empty list if none.
+- snippets_removed: filenames (relative paths) of non-Python files you deleted. Empty
+  list if none. THIS MUST BE ACCURATE — if you deleted a file, list it here.
 - ready_for_deployment: true if the skill is valid and ready to upload.
+
+ACCURACY REQUIREMENT: fill tools_removed and snippets_removed as you go — do NOT
+leave them empty if you actually deleted functions or files. The store uses these
+fields to audit what changed; wrong values mislead operators.
 
 `{REQUIRED_OUTPUTS_FILENAME}` is a temporary contract file — the optimizer removes it
 before importing the skill back into the store.
