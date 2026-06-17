@@ -16,6 +16,7 @@ from typing import Any, Dict, Literal, Optional
 
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 from skillberry_plugin_skill_optimizer.prompt import (
+    DEFAULT_OPTIMIZATION_GOAL,
     REQUIRED_OUTPUTS_FILENAME,
     REQUIRED_OUTPUTS_TEMPLATE,
     build_runspace_prompt,
@@ -641,7 +642,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                             },
                             "optimization_goal": {
                                 "type": "string",
-                                "default": "Optimize this skill for correctness, robustness, consistency, and no hallucinations. Improve instruction following, edge-case handling, and calibrated uncertainty without changing the intended functionality. Use any provided trajectories as ground truth, but do not overfit to them.",
+                                "default": DEFAULT_OPTIMIZATION_GOAL,
                                 "description": "Free text description of the optimization goal",
                             },
                             "include_metadata": {

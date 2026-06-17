@@ -7,6 +7,13 @@ from typing import Any, Dict
 
 REQUIRED_OUTPUTS_FILENAME = "required_outputs.json"
 
+DEFAULT_OPTIMIZATION_GOAL = (
+    "Optimize this skill for correctness, robustness, consistency, and no hallucinations. "
+    "Improve instruction following, edge-case handling, and calibrated uncertainty without "
+    "changing the intended functionality. Use any provided trajectories as ground truth, "
+    "but do not overfit to them."
+)
+
 REQUIRED_OUTPUTS_TEMPLATE: Dict[str, Any] = {
     "skill_name": "",
     "skill_description": "",
@@ -31,12 +38,7 @@ def build_runspace_prompt(
 ) -> str:
     """Build the optimization prompt for RunspaceAgent."""
     if optimization_goal is None:
-        optimization_goal = (
-            "Optimize this skill for correctness, robustness, consistency, and no hallucinations. "
-            "Improve instruction following, edge-case handling, and calibrated uncertainty without "
-            "changing the intended functionality. Use any provided trajectories as ground truth, "
-            "but do not overfit to them."
-        )
+        optimization_goal = DEFAULT_OPTIMIZATION_GOAL
     # context/knowledge/ is always present — it's bundled with the optimizer
     inventory_lines = [
         "- context/knowledge/ — READ ALL FILES BEFORE MAKING ANY CHANGES:\n"
