@@ -185,6 +185,10 @@ plugin-skill-optimizer = [
   "skillberry-plugin-skill-optimizer>=0.1.0",
 ]
 
+plugin-provenance = [
+  "skillberry-plugin-provenance>=0.1.0",
+]
+
 # Install all plugins
 plugins-all = [
   "skillberry-plugin-creator>=0.2.0",
@@ -196,6 +200,7 @@ plugins-all = [
   "skillberry-plugin-kagenti-approver>=0.1.0",
   "skillberry-plugin-sast>=0.1.0",
   "skillberry-plugin-skill-optimizer>=0.1.0",
+  "skillberry-plugin-provenance>=0.1.0",
 ]
 
 test = [
@@ -213,6 +218,7 @@ skillberry-plugin-anthropic-skill-generator = { path = "plugins/skillberry-plugi
 skillberry-plugin-kagenti-approver = { path = "plugins/skillberry-plugin-kagenti-approver", editable = true }
 skillberry-plugin-sast = { path = "plugins/skillberry-plugin-sast", editable = true }
 skillberry-plugin-skill-optimizer = { path = "plugins/skillberry-plugin-skill-optimizer", editable = true }
+skillberry-plugin-provenance = { path = "plugins/skillberry-plugin-provenance", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
 torch = { index = "pytorch-cpu" }
 
