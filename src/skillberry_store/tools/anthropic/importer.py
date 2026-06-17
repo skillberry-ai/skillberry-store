@@ -130,7 +130,7 @@ def parse_github_origin(url: str) -> Optional[Dict[str, str]]:
     )
     if not m:
         return None
-    repo = (m.group("repo") or "")
+    repo = m.group("repo") or ""
     if repo.endswith(".git"):
         repo = repo[: -len(".git")]
     if not repo:

@@ -13,6 +13,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import requests
 
@@ -253,7 +254,8 @@ class GitHubSource(ProvenanceSource):
         if origin.get("type") == "github":
             return True
         url = origin.get("url") or ""
-        return "github.com" in url
+        host = (urlparse(url).hostname or "").lower()
+        return host == "github.com" or host.endswith(".github.com")
 
     def _normalize_origin(self, origin: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Ensure owner/repo/ref/path are present, parsing from url if needed."""

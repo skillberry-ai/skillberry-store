@@ -176,6 +176,9 @@ def test_github_source_matches():
     assert src.matches({"type": "github"})
     assert src.matches({"url": "https://github.com/a/b"})
     assert not src.matches({"url": "https://gitlab.com/a/b"})
+    # host must be parsed, not substring-matched: reject look-alike / path tricks
+    assert not src.matches({"url": "https://evil.example.com/github.com/a/b"})
+    assert not src.matches({"url": "https://github.com.attacker.com/a/b"})
 
 
 def test_github_source_gather_with_mocked_requests(monkeypatch):
