@@ -1,29 +1,38 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 from skillberry_plugin_simulate.plugin import SkillberryPluginSimulate
 
 
-def _app_with_plugin(orchestrator):
+def _make_app(orchestrator):
     plugin = SkillberryPluginSimulate()
     plugin.set_store_api(MagicMock())
     plugin._orchestrator = orchestrator  # inject test double
     app = FastAPI()
     app.include_router(plugin.get_router(), prefix="/plugins/simulate")
-    return TestClient(app)
+    return app
 
 
-def test_simulate_endpoint_invokes_orchestrator():
+def _app_with_plugin(orchestrator):
+    return TestClient(_make_app(orchestrator))
+
+
+def test_simulate_endpoint_returns_pending_job():
     orch = MagicMock()
     orch.simulate = AsyncMock(return_value={"success": True, "sim_vmcp_uuid": "sim-1"})
     client = _app_with_plugin(orch)
     resp = client.post("/plugins/simulate/simulate", json={"vmcp_uuid": "real-1"})
     assert resp.status_code == 200
-    assert resp.json()["sim_vmcp_uuid"] == "sim-1"
-    orch.simulate.assert_awaited_once()
+    body = resp.json()
+    assert body["success"] is True
+    assert body["message"] == "Simulation is starting..."
+    assert body["data"]["status"] == "pending"
+    assert "job_id" in body["data"]
 
 
 def test_active_endpoint_returns_mode_and_url():
@@ -60,3 +69,86 @@ def test_teardown_endpoint():
     resp = client.post("/plugins/simulate/teardown", json={"skill_uuid": "skill-1"})
     assert resp.status_code == 200
     assert resp.json()["success"] is True
+
+
+# --- Async job pattern tests ---
+
+
+@pytest.mark.asyncio
+async def test_simulate_returns_pending_job_immediately():
+    """POST /simulate must return {job_id, status:pending} without waiting for orchestrator.
+
+    If the endpoint blocks (old behaviour), asyncio.wait_for raises TimeoutError → test fails.
+    """
+    blocked = asyncio.Event()
+
+    async def hanging_simulate(*a, **kw):
+        await blocked.wait()
+        return {"success": True}
+
+    orch = MagicMock()
+    orch.simulate = hanging_simulate
+    app = _make_app(orch)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await asyncio.wait_for(
+            client.post("/plugins/simulate/simulate", json={"vmcp_uuid": "real-1"}),
+            timeout=2.0,
+        )
+        blocked.set()  # unblock background task after confirming the response arrived
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["success"] is True
+    assert body["data"]["status"] == "pending"
+    assert "job_id" in body["data"]
+
+
+@pytest.mark.asyncio
+async def test_simulate_status_404_for_unknown_job():
+    app = _make_app(MagicMock())
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/plugins/simulate/status/no-such-job")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_simulate_status_returns_ready_with_result():
+    sim_result = {"success": True, "sim_vmcp_uuid": "sim-1", "harness_mcp_url": "http://h/sse"}
+    orch = MagicMock()
+    orch.simulate = AsyncMock(return_value=sim_result)
+    app = _make_app(orch)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        post_resp = await client.post("/plugins/simulate/simulate", json={"vmcp_uuid": "real-1"})
+        assert post_resp.status_code == 200
+        job_id = post_resp.json()["data"]["job_id"]
+
+        await asyncio.sleep(0)  # yield so background task can complete
+
+        status_resp = await client.get(f"/plugins/simulate/status/{job_id}")
+
+    assert status_resp.status_code == 200
+    body = status_resp.json()
+    assert body["status"] == "ready"
+    assert body["sim_vmcp_uuid"] == "sim-1"
+
+
+@pytest.mark.asyncio
+async def test_simulate_status_returns_failed_on_orchestrator_error():
+    orch = MagicMock()
+    orch.simulate = AsyncMock(side_effect=RuntimeError("harness boom"))
+    app = _make_app(orch)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        post_resp = await client.post("/plugins/simulate/simulate", json={"vmcp_uuid": "real-1"})
+        job_id = post_resp.json()["data"]["job_id"]
+
+        await asyncio.sleep(0)
+
+        status_resp = await client.get(f"/plugins/simulate/status/{job_id}")
+
+    assert status_resp.status_code == 200
+    body = status_resp.json()
+    assert body["status"] == "failed"
+    assert "boom" in body["detail"]

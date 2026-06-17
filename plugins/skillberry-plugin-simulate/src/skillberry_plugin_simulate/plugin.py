@@ -1,6 +1,8 @@
 """Simulate This plugin: parallel simulated vMCP + real/sim routing registry."""
+import asyncio
 import logging
 import os
+import uuid
 from typing import Any, Dict, Optional
 
 import httpx
@@ -23,6 +25,7 @@ class SkillberryPluginSimulate(PluginBase):
         super().__init__()
         self._config = SimulateConfig.from_env()
         self._orchestrator = None
+        self._jobs: Dict[str, asyncio.Task] = {}
         self._metadata = PluginMetadata(
             name="Simulate This",
             version="0.1.0",
@@ -90,17 +93,30 @@ class SkillberryPluginSimulate(PluginBase):
 
         @router.post("/simulate")
         async def simulate(request: SimulateRequest):
-            try:
-                return await self._get_orchestrator().simulate(request.vmcp_uuid)
-            except ValueError as e:
-                raise HTTPException(status_code=404, detail=str(e))
-            except Exception as e:
-                import traceback as _tb
-                logger.error(
-                    "simulate failed: type=%s str=%r\n%s",
-                    type(e).__name__, str(e), _tb.format_exc(),
-                )
-                raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+            job_id = str(uuid.uuid4())
+            task = asyncio.create_task(
+                self._get_orchestrator().simulate(request.vmcp_uuid),
+                name=f"simulate-{job_id}",
+            )
+            self._jobs[job_id] = task
+            return {
+                "success": True,
+                "message": "Simulation is starting...",
+                "data": {"job_id": job_id, "status": "pending"},
+            }
+
+        @router.get("/status/{job_id}")
+        async def simulate_status(job_id: str):
+            task = self._jobs.get(job_id)
+            if task is None:
+                raise HTTPException(status_code=404, detail=f"Unknown job {job_id}")
+            if not task.done():
+                return {"job_id": job_id, "status": "pending"}
+            exc = task.exception()
+            if exc is not None:
+                logger.error("simulate job %s failed: %s", job_id, exc)
+                return {"job_id": job_id, "status": "failed", "detail": str(exc)}
+            return {"job_id": job_id, "status": "ready", **task.result()}
 
         @router.post("/toggle")
         async def toggle(request: SkillRequest):
