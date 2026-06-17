@@ -485,14 +485,18 @@ def _tool(uuid="t1", tags=None):
 
 
 def test_fix_unavailable_without_llm():
-    # llm-switchboard is not installed in the test env, so _llm is None.
+    # Force LLM unavailable regardless of whether llm-switchboard is installed
+    # in the host env: AsyncOpenAIClient initializes without validating the API
+    # key, so _llm ends up non-None whenever the package is importable.
     with _make_plugin() as plugin:
+        plugin._llm = None
         assert plugin._fix_available() is False
 
 
 @pytest.mark.asyncio
 async def test_router_fix_disabled_503_without_llm():
     with _make_plugin(_FakeEngine(available=True)) as plugin:
+        plugin._llm = None
         plugin.set_store_api(_mock_store(tool=_tool()))
         resp = _client(plugin).post("/plugins/sast/fix", json={"object_uuids": ["t1"]})
         assert resp.status_code == 503
