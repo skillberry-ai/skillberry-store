@@ -342,6 +342,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         agent_env: Optional[Dict[str, str]] = None,
         execution_mode: Optional[str] = None,
         max_turns: Optional[int] = None,
+        optimization_goal: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Optimize an existing skill and import the result as a new skill."""
         if not self._runspace_available:
@@ -441,6 +442,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                 has_metadata=include_metadata,
                 has_trajectories=bool(trajectories_dir),
                 has_additional_context=bool(additional_context_dir),
+                optimization_goal=optimization_goal,
             )
 
             try:
@@ -563,7 +565,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         """Register plugin API routes."""
         from fastapi import APIRouter, HTTPException
         from pydantic import BaseModel
-        from typing import List, Optional
+        from typing import Optional
 
         router = APIRouter()
 
@@ -576,6 +578,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             agent_env: Optional[Dict[str, str]] = None
             execution_mode: Optional[str] = None
             max_turns: Optional[int] = None
+            optimization_goal: Optional[str] = None
 
         @router.post("/optimize-skill")
         async def optimize_skill_endpoint(request: OptimizeSkillRequest):
@@ -593,6 +596,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                     agent_env=request.agent_env,
                     execution_mode=request.execution_mode,
                     max_turns=request.max_turns,
+                    optimization_goal=request.optimization_goal,
                 )
                 return {
                     "success": True,
@@ -634,6 +638,11 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                             "output_skill_name": {
                                 "type": "string",
                                 "description": "Name for the optimized skill (auto-generated if not set)",
+                            },
+                            "optimization_goal": {
+                                "type": "string",
+                                "default": "Optimize this skill for correctness, robustness, consistency, and no hallucinations. Improve instruction following, edge-case handling, and calibrated uncertainty without changing the intended functionality. Use any provided trajectories as ground truth, but do not overfit to them.",
+                                "description": "Free text description of the optimization goal",
                             },
                             "include_metadata": {
                                 "type": "boolean",

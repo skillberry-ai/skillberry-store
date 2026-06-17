@@ -10,7 +10,7 @@ from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 logger = logging.getLogger(__name__)
 
 APPROVED_TAG = "kagenti-approved"
-DEFAULT_CRITERIA = "security-score>=9"
+DEFAULT_CRITERIA = "security-score>=7"
 
 _OPERATOR_RE = re.compile(r"^(.+?)(>=|>|<=|<|!=|=)(\S+)$")
 
