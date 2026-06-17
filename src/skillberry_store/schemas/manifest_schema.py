@@ -83,7 +83,7 @@ class ManifestSchema(BaseModel):
         
     def to_dict(self) -> Dict[str, Any]:
         """Convert the manifest schema to a dictionary."""
-        return self.model_dump(exclude_none=False)
+        return self.model_dump(exclude_none=True)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ManifestSchema":

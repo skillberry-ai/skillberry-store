@@ -145,7 +145,7 @@ class ToolSchema(ManifestSchema):
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert the tool schema to a dictionary."""
-        return self.model_dump(exclude_none=False)
+        return self.model_dump(exclude_none=True)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ToolSchema":
