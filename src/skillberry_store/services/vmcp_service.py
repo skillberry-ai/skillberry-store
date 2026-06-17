@@ -104,8 +104,6 @@ class VmcpService:
 
     def list_all(self) -> Dict[str, Any]:
         items = self.handler.list_all_dicts()
-        from skillberry_store.fast_api.search_filters import exclude_simulation
-        items = exclude_simulation(items)
         servers = []
         for item in items:
             try:

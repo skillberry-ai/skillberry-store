@@ -253,7 +253,6 @@ def register_vmcp_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
-        include_simulation: bool = False,
     ):
         logger.info(f"Request to search vmcp servers for: {search_term}")
         search_vmcp_counter.inc()
@@ -286,9 +285,6 @@ def register_vmcp_api(
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
             )
-            if not include_simulation:
-                from skillberry_store.fast_api.search_filters import exclude_simulation
-                result_items = exclude_simulation(result_items)
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
             return [
                 {

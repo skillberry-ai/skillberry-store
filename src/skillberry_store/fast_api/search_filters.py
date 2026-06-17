@@ -8,21 +8,6 @@ from skillberry_store.modules.lifecycle import LifecycleState, LifecycleManager
 
 logger = logging.getLogger(__name__)
 
-SIMULATION_TAG = "simulation"
-
-
-def is_simulation_artifact(entity: dict) -> bool:
-    """True if the entity is a plugin-created simulation artifact (O8)."""
-    if SIMULATION_TAG in (entity.get("tags") or []):
-        return True
-    extra = entity.get("extra") or {}
-    return bool(extra.get("simulation"))
-
-
-def exclude_simulation(entities):
-    """Drop simulation artifacts from a list of entity dicts."""
-    return [e for e in entities if not is_simulation_artifact(e)]
-
 
 def apply_search_filters(
     entities: List[Dict[str, Any]],

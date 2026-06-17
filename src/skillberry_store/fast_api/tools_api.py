@@ -193,7 +193,7 @@ def register_tools_api(
         logger.info("Request to list tools")
         list_tools_counter.inc()
         try:
-            return service.list_all(include_simulation=True)
+            return service.list_all()
         except Exception as e:
             error_traceback = traceback.format_exc()
             logger.error(f"Error listing tools: {e}\n{error_traceback}")
@@ -386,7 +386,6 @@ def register_tools_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
-        include_simulation: bool = False,
     ) -> List:
         """Return a list of tools that are similar to the given search term.
 
@@ -436,9 +435,6 @@ def register_tools_api(
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
             )
-            if not include_simulation:
-                from skillberry_store.fast_api.search_filters import exclude_simulation
-                filtered_tools = exclude_simulation(filtered_tools)
             filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
             return [
                 {
