@@ -112,7 +112,10 @@ class SkillberryPluginSimulate(PluginBase):
                 raise HTTPException(status_code=404, detail=f"Unknown job {job_id}")
             if not task.done():
                 return {"job_id": job_id, "status": "pending"}
-            exc = task.exception()
+            try:
+                exc = task.exception()
+            except asyncio.CancelledError:
+                return {"job_id": job_id, "status": "failed", "detail": "Job was cancelled"}
             if exc is not None:
                 logger.error("simulate job %s failed: %s", job_id, exc)
                 return {"job_id": job_id, "status": "failed", "detail": str(exc)}
