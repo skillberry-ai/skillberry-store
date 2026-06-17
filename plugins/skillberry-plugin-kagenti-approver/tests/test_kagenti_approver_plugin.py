@@ -24,7 +24,7 @@ def test_parse_criteria_default_security_score():
     tag, op, threshold = groups[0][0]
     assert tag == "security-score"
     assert op == ">="
-    assert threshold == 9.0
+    assert threshold == 7.0
 
 
 
@@ -265,7 +265,7 @@ async def test_evaluate_skill_approves_when_criteria_met():
 @pytest.mark.asyncio
 async def test_evaluate_skill_does_not_approve_when_criteria_not_met():
     plugin = _make_plugin()
-    skill = {"uuid": "s-1", "tags": ["security-score:7", "performance-score:8"], "name": "x"}
+    skill = {"uuid": "s-1", "tags": ["security-score:6", "performance-score:8"], "name": "x"}
     store = _mock_store(skill)
     plugin.set_store_api(store)
 
