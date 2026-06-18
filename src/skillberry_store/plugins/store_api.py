@@ -198,6 +198,18 @@ class StoreAPI:
             logger.error(f"Failed to update skill {uuid}: {e}")
             return False
 
+    def delete_skill(self, uuid: str) -> bool:
+        if not self.skills_service:
+            return False
+        try:
+            self.skills_service.delete(uuid)
+            return True
+        except KeyError:
+            return False
+        except Exception as e:
+            logger.error(f"Failed to delete skill {uuid}: {e}")
+            return False
+
     # ── Snippets ───────────────────────────────────────────────────────────
 
     def get_snippet(self, uuid: str) -> Optional[Dict[str, Any]]:

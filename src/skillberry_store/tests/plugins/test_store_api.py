@@ -385,4 +385,32 @@ def test_create_tool_raises_when_service_unavailable():
     with pytest.raises(RuntimeError, match="Tools service not available"):
         store_api.create_tool({"name": "x"}, b"", "x.py")
 
+
+def test_delete_skill_calls_service_delete(mock_services):
+    from skillberry_store.plugins.store_api import StoreAPI
+    store_api = StoreAPI(mock_services)
+    result = store_api.delete_skill("skill-uuid-1")
+    mock_services["skills"].delete.assert_called_once_with("skill-uuid-1")
+    assert result is True
+
+
+def test_delete_skill_returns_false_when_service_unavailable():
+    from skillberry_store.plugins.store_api import StoreAPI
+    store_api = StoreAPI({})
+    assert store_api.delete_skill("any-uuid") is False
+
+
+def test_delete_skill_returns_false_on_key_error(mock_services):
+    from skillberry_store.plugins.store_api import StoreAPI
+    mock_services["skills"].delete.side_effect = KeyError("not found")
+    store_api = StoreAPI(mock_services)
+    assert store_api.delete_skill("missing-uuid") is False
+
+
+def test_delete_skill_returns_false_on_unexpected_error(mock_services):
+    from skillberry_store.plugins.store_api import StoreAPI
+    mock_services["skills"].delete.side_effect = RuntimeError("disk full")
+    store_api = StoreAPI(mock_services)
+    assert store_api.delete_skill("some-uuid") is False
+
 # Made with Bob
