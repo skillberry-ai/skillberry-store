@@ -43,49 +43,38 @@ def get_distribution(module_name: str) -> str:
 
 
 def arg_convert(arg_name, arg_type):
-    arg_str = str(arg_name)  # Ensure the argument is treated as a string
-    if arg_type is not None:
-        if arg_type == "str":
-            return f'"{arg_str}"'
-        elif arg_type == "int":
-            try:
-                int_val = int(arg_str)
-                # Check if the string representation matches to avoid float->int conversion
-                if str(int_val) == arg_str:
-                    return int_val
-            except Exception as e:
-                raise ValueError(f"Cannot convert '{arg_str}' to int {e}")
+    """Coerce a parameter value to the JSON-native type declared in the tool schema.
 
-    try:
-        int_val = int(arg_str)
-        # Check if the string representation matches to avoid float->int conversion
-        if str(int_val) == arg_str:
-            return int_val
-    except ValueError:
-        pass
-
-    # Try to convert to float
-    try:
-        float_val = float(arg_str)
-        return float_val
-    except ValueError:
-        pass
-
-    try:
-        return float(arg_str)
-    except ValueError:
-        pass
-
-    try:
-        parts = arg_str.split(":")
-        if len(parts) == 2:
-            return datetime.datetime.strptime(arg_str, "%H:%M").time()
-        elif len(parts) == 3:
-            return datetime.datetime.strptime(arg_str, "%H:%M:%S").time()
-    except ValueError:
-        pass
-
-    return f'"{arg_str}"'
+    This is used to build the ``arguments`` dict for an MCP ``call_tool`` request,
+    so the returned value must be a JSON-serializable Python object
+    (str/int/float/bool/list/dict) — NOT a source-code literal. The accepted type
+    names cover both the JSON-schema vocabulary the store stores and emits in the
+    MCP stub ("string", "integer", "number", "boolean", "array", "object") and the
+    Python-style aliases ("str", "int", "float", "bool"). Unknown types and
+    container types are passed through unchanged, since the value already arrived
+    as a native JSON type in the request body.
+    """
+    if arg_type in ("str", "string"):
+        return str(arg_name)
+    if arg_type in ("int", "integer"):
+        try:
+            return int(arg_name)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Cannot convert '{arg_name}' to int: {e}")
+    if arg_type in ("float", "number"):
+        try:
+            return float(arg_name)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"Cannot convert '{arg_name}' to float: {e}")
+    if arg_type in ("bool", "boolean"):
+        if isinstance(arg_name, bool):
+            return arg_name
+        if isinstance(arg_name, str):
+            return arg_name.strip().lower() in ("true", "1", "yes")
+        return bool(arg_name)
+    # array / object / null / unknown: the value already arrived as a native JSON
+    # type in the request body — pass it through unchanged.
+    return arg_name
 
 
 def extract_function_and_imports(
