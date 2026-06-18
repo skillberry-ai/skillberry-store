@@ -4,6 +4,7 @@ import os
 import re
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
@@ -16,6 +17,9 @@ class SkillberryPluginDedupe(PluginBase):
 
     def __init__(self):
         super().__init__()
+
+        self._mode = os.getenv("DEDUPE_MODE", "interactive")
+        self._pending_decisions: Dict[str, dict] = {}
 
         self._metadata = PluginMetadata(
             name="Skill Deduplicator",
@@ -63,7 +67,30 @@ class SkillberryPluginDedupe(PluginBase):
         return None
 
     def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return None
+        return {
+            "color": "#C9190B",
+            "notifications": {
+                "poll_endpoint": "/api/plugins/dedupe/decisions",
+                "item_schema": {
+                    "title_field": "skill_name",
+                    "body_fields": ["duplicates"],
+                    "actions": [
+                        {
+                            "label": "Keep",
+                            "endpoint": "/api/plugins/dedupe/decisions/{uuid}/keep",
+                            "method": "POST",
+                            "variant": "primary",
+                        },
+                        {
+                            "label": "Delete",
+                            "endpoint": "/api/plugins/dedupe/decisions/{uuid}/delete",
+                            "method": "POST",
+                            "variant": "danger",
+                        },
+                    ],
+                },
+            },
+        }
 
     def _register_event_handlers(self) -> None:
         from skillberry_store.plugins.events import _event_handlers
@@ -186,6 +213,13 @@ class SkillberryPluginDedupe(PluginBase):
 
         if findings:
             await self._apply_duplicate_findings(uuid, findings)
+            if self._mode == "interactive":
+                self._pending_decisions[uuid] = {
+                    "uuid": uuid,
+                    "skill_name": skill.get("name", uuid),
+                    "duplicates": findings,
+                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                }
             logger.info(
                 f"Skill {uuid} tagged with {len(findings)} duplicate(s): "
                 f"{[f['name'] for f in findings]}"
