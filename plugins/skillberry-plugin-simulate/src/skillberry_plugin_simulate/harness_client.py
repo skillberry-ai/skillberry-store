@@ -72,7 +72,7 @@ class HarnessClient:
             raise HarnessError(f"get_status failed: {resp.status_code} {resp.text}")
         return resp.json()
 
-    async def wait_until_ready(self, timeout: float = 120.0, interval: float = 2.0) -> str:
+    async def wait_until_ready(self, timeout: float = 600.0, interval: float = 2.0) -> str:
         elapsed = 0.0
         while True:
             status = await self.get_status()
