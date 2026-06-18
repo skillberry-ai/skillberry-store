@@ -10,12 +10,13 @@ The JSON -> Background mapping is kept in standalone, network-free functions
 """
 
 import logging
-import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 import requests
+
+from skillberry_store.tools.anthropic.importer import parse_github_origin
 
 from .base import (
     Background,
@@ -33,36 +34,6 @@ logger = logging.getLogger(__name__)
 
 _API = "https://api.github.com"
 _TIMEOUT = 30  # match importer.py's GitHub timeout
-
-# github.com/<owner>/<repo>[/tree/<ref>/<path...>]
-_URL_RE = re.compile(
-    r"github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
-    r"(?:/tree/(?P<ref>[^/]+)(?:/(?P<path>.*))?)?",
-    re.IGNORECASE,
-)
-
-
-def parse_github_origin(url: str) -> Optional[Dict[str, Any]]:
-    """Parse a github.com URL into ``{owner, repo, ref, path}``.
-
-    ``ref`` defaults to "main" and ``path`` to "" when the URL is a bare repo.
-    A trailing ".git" on the repo is stripped. Returns ``None`` when the URL is
-    not a recognizable github.com URL.
-    """
-    if not url:
-        return None
-    m = _URL_RE.search(url)
-    if not m:
-        return None
-    repo = (m.group("repo") or "").removesuffix(".git")
-    if not repo:
-        return None
-    return {
-        "owner": m.group("owner"),
-        "repo": repo,
-        "ref": m.group("ref") or "main",
-        "path": (m.group("path") or "").strip("/"),
-    }
 
 
 def _age_days(iso_ts: Optional[str]) -> Optional[int]:

@@ -15,6 +15,7 @@ Like the SAST plugin, this is flag-only and never blocks an import: results are
 written to tags + ``extra["provenance"]`` and surfaced in the generic plugin UI.
 """
 
+import asyncio
 import hashlib
 import logging
 import re
@@ -271,8 +272,9 @@ class SkillberryPluginProvenance(PluginBase):
             }
             return bg.to_dict()
 
-        # Remote sections (network; degrades per-section on failure).
-        bg = source.gather(origin)
+        # Remote sections (network; offloaded to a thread to avoid blocking the
+        # event loop — source.gather() uses synchronous requests.get()).
+        bg = await asyncio.to_thread(source.gather, origin)
 
         # Local sections the plugin owns (content it can see in the store).
         bg.behavior = self._gather_behavior(uuid)
