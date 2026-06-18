@@ -49,9 +49,7 @@ from skillberry_store.utils.utils import (
 )
 from skillberry_store.utils.python_utils import extract_docstring
 from skillberry_store.fast_api.server_utils import (
-    get_mcp_tools,
     mcp_json_converter,
-    mcp_content,
     mcp_content_from_manifest,
 )
 from skillberry_store.fast_api.search_filters import apply_search_filters
@@ -232,13 +230,8 @@ def register_tools_api(
         try:
             tool_dict = service.get(uuid_or_name)
             if tool_dict.get("packaging_format") == "mcp":
-                tools = await get_mcp_tools(tool_dict)
-                if not tools:
-                    raise HTTPException(
-                        status_code=404, detail=f"MCP tool '{uuid_or_name}' not found."
-                    )
                 return PlainTextResponse(
-                    content=mcp_content(vars(tools[0])), media_type="text/plain"
+                    content=mcp_content_from_manifest(tool_dict), media_type="text/plain"
                 )
             content = service.get_module(uuid_or_name)
             return PlainTextResponse(content=content, media_type="text/plain")
