@@ -1,0 +1,39 @@
+from unittest.mock import MagicMock
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from skillberry_store.fast_api.vmcp_api import register_vmcp_api
+
+def _app(servers):
+    app = FastAPI()
+    svc = MagicMock()
+    svc.list_all.return_value = {
+        "virtual_mcp_servers": {s["uuid"]: s for s in servers}
+    }
+    register_vmcp_api(app, sts_url="http://test", service=svc)
+    return TestClient(app)
+
+SERVERS = [
+    {"uuid": "v1", "name": "a", "skill_uuid": "sk1", "tags": [], "port": 9001,
+     "description": None, "version": None, "state": None, "modified_at": ""},
+    {"uuid": "v2", "name": "b", "skill_uuid": "sk2", "tags": [], "port": 9002,
+     "description": None, "version": None, "state": None, "modified_at": ""},
+]
+
+def test_list_vmcp_servers_no_filter_returns_all():
+    client = _app(SERVERS)
+    resp = client.get("/vmcp_servers/")
+    assert resp.status_code == 200
+    assert len(resp.json()["virtual_mcp_servers"]) == 2
+
+def test_list_vmcp_servers_skill_uuid_filter():
+    client = _app(SERVERS)
+    resp = client.get("/vmcp_servers/?skill_uuid=sk1")
+    assert resp.status_code == 200
+    uuids = list(resp.json()["virtual_mcp_servers"].keys())
+    assert uuids == ["v1"]
+
+def test_list_vmcp_servers_skill_uuid_no_match_returns_empty():
+    client = _app(SERVERS)
+    resp = client.get("/vmcp_servers/?skill_uuid=unknown")
+    assert resp.status_code == 200
+    assert resp.json()["virtual_mcp_servers"] == {}

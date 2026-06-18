@@ -116,11 +116,20 @@ def register_vmcp_api(
     @app.get(
         "/vmcp_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vmcp-servers"}
     )
-    def list_vmcp_servers():
+    def list_vmcp_servers(skill_uuid: Optional[str] = None):
         logger.info("Request to list vmcp servers")
         list_vmcp_counter.inc()
         try:
-            return service.list_all()
+            result = service.list_all()
+            if skill_uuid:
+                servers = result["virtual_mcp_servers"]
+                result = {
+                    "virtual_mcp_servers": {
+                        k: v for k, v in servers.items()
+                        if v.get("skill_uuid") == skill_uuid
+                    }
+                }
+            return result
         except Exception as e:
             logger.error(f"Error listing vmcp servers: {e}")
             raise HTTPException(
