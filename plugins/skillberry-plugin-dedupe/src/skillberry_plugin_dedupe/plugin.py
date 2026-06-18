@@ -61,7 +61,39 @@ class SkillberryPluginDedupe(PluginBase):
         return self.llm_client is not None
 
     def get_router(self):
-        return None
+        from fastapi import APIRouter, HTTPException
+
+        router = APIRouter()
+
+        @router.get("/decisions")
+        async def list_decisions():
+            return list(self._pending_decisions.values())
+
+        @router.post("/decisions/{uuid}/keep")
+        async def keep_decision(uuid: str):
+            decision = self._pending_decisions.pop(uuid, None)
+            if decision is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No pending decision for skill {uuid}",
+                )
+            return {
+                "message": f"Skill '{decision['skill_name']}' marked as kept. Duplicate tags remain."
+            }
+
+        @router.post("/decisions/{uuid}/delete")
+        async def delete_decision(uuid: str):
+            decision = self._pending_decisions.pop(uuid, None)
+            if decision is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No pending decision for skill {uuid}",
+                )
+            if not self.store.delete_skill(uuid):
+                logger.error(f"Failed to delete skill {uuid} during dedupe decision")
+            return {"message": f"Skill '{decision['skill_name']}' deleted."}
+
+        return router
 
     def get_cli_commands(self) -> Optional[Dict[str, Any]]:
         return None
