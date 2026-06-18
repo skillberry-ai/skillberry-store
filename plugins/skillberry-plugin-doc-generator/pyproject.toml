@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillberry-plugin-doc-generator"
+version = "0.1.0"
+description = "Skillberry Store plugin that generates, enriches and drift-checks documentation for skills, tools and snippets"
+readme = "README.md"
+requires-python = ">=3.10"
+# No heavy deps: the default generator is deterministic and dependency-free.
+# An LLM generator can be injected by the host without adding deps here.
+dependencies = []
+
+[project.entry-points."skillberry_store.plugins"]
+doc_generator = "skillberry_plugin_doc_generator.plugin:SkillberryPluginDocGenerator"
+
+# The default generator is deterministic and needs nothing. Installing the
+# `llm` extra enables the optional frontier-model backend (used automatically
+# only when the provider's API key is configured in the environment).
+[project.optional-dependencies]
+llm = [
+    "llm-switchboard[litellm]>=0.1.0",
+]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "fastapi",
+]
+
+[tool.setuptools]
+packages = [
+    "skillberry_plugin_doc_generator",
+    "skillberry_plugin_doc_generator.generators",
+]
+package-dir = {"" = "src"}
