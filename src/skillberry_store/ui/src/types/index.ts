@@ -131,11 +131,28 @@ export interface PluginAction {
   };
 }
 
+export interface PluginNotificationAction {
+  label: string;
+  endpoint: string;
+  method: string;
+  variant: 'primary' | 'secondary' | 'danger';
+}
+
+export interface PluginNotificationsConfig {
+  poll_endpoint: string;
+  item_schema: {
+    title_field: string;
+    body_fields: string[];
+    actions: PluginNotificationAction[];
+  };
+}
+
 export interface PluginUIConfig {
   icon: string;
   color: string;
   actions: PluginAction[];
   settings_schema?: Record<string, any>;
+  notifications?: PluginNotificationsConfig;
 }
 
 export interface Plugin {
