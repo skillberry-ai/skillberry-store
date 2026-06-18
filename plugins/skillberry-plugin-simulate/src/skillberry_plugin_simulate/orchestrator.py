@@ -89,60 +89,71 @@ class SimulateOrchestrator:
         real_vmcp_uuid = vmcp["uuid"]
         base_name = vmcp.get("name") or skill.get("name") or skill_uuid
 
+        if self._registry.get(skill_uuid):
+            logger.info("Tearing down existing simulation for skill %s before re-simulating", skill_uuid)
+            self.teardown(skill_uuid)
+
         spec = self._synth.synthesize(tools, title=base_name)
         rest_port, mcp_port = self._harness_manager.allocate_ports()
         harness = self._harness_manager.start(rest_port=rest_port, mcp_port=mcp_port)
+        container_id = harness["container_id"]
 
-        client = self._harness_client_factory(harness["rest_url"])
-        await client.create_simulation(spec, mcp_port=mcp_port)
-        harness_mcp_url = await client.wait_until_ready(
-            timeout=self._config.ready_timeout_seconds,
-            interval=self._config.poll_interval_seconds,
-        )
-
-        sim_tool_uuids: List[str] = []
-        for tool in tools:
-            manifest = build_simulated_tool_manifest(tool, harness_mcp_url=harness_mcp_url)
-            created = self._store.create_tool(
-                manifest, module_content=_SIM_STUB, module_filename=f"{manifest['name']}.py"
+        try:
+            client = self._harness_client_factory(harness["rest_url"])
+            await client.create_simulation(spec, mcp_port=mcp_port)
+            harness_mcp_url = await client.wait_until_ready(
+                timeout=self._config.ready_timeout_seconds,
+                interval=self._config.poll_interval_seconds,
             )
-            sim_tool_uuids.append(created["uuid"])
 
-        sim_skill = self._store.create_skill(
-            {
-                "name": f"{base_name}-sim",
-                "tool_uuids": sim_tool_uuids,
-                "tags": [SIMULATION_TAG],
-                "extra": {"simulation": True, "simulation_of_skill": skill_uuid},
-            }
-        )
+            sim_tool_uuids: List[str] = []
+            for tool in tools:
+                manifest = build_simulated_tool_manifest(tool, harness_mcp_url=harness_mcp_url)
+                created = self._store.create_tool(
+                    manifest, module_content=_SIM_STUB, module_filename=f"{manifest['name']}.py"
+                )
+                sim_tool_uuids.append(created["uuid"])
 
-        sim_vmcp = self._store.create_vmcp(
-            {
-                "name": f"{base_name}-sim",
-                "skill_uuid": sim_skill["uuid"],
-                "tags": [SIMULATION_TAG],
-                "extra": {
-                    "simulation": True,
-                    "simulation_of": real_vmcp_uuid,
-                    "simulation_of_skill": skill_uuid,
-                    "sim_skill_uuid": sim_skill["uuid"],
-                    "tools_fingerprint": tools_fingerprint(tools),
-                    "harness": {
-                        "container_id": harness["container_id"],
-                        "rest_url": harness["rest_url"],
-                        "rest_port": harness["rest_port"],
-                        "mcp_port": harness["mcp_port"],
-                        "mcp_url": harness_mcp_url,
+            sim_skill = self._store.create_skill(
+                {
+                    "name": f"{base_name}-sim",
+                    "tool_uuids": sim_tool_uuids,
+                    "tags": [SIMULATION_TAG],
+                    "extra": {"simulation": True, "simulation_of_skill": skill_uuid},
+                }
+            )
+
+            sim_vmcp = self._store.create_vmcp(
+                {
+                    "name": f"{base_name}-sim",
+                    "skill_uuid": sim_skill["uuid"],
+                    "tags": [SIMULATION_TAG],
+                    "extra": {
+                        "simulation": True,
+                        "simulation_of": real_vmcp_uuid,
+                        "simulation_of_skill": skill_uuid,
+                        "sim_skill_uuid": sim_skill["uuid"],
+                        "tools_fingerprint": tools_fingerprint(tools),
+                        "harness": {
+                            "container_id": container_id,
+                            "rest_url": harness["rest_url"],
+                            "rest_port": harness["rest_port"],
+                            "mcp_port": harness["mcp_port"],
+                            "mcp_url": harness_mcp_url,
+                        },
                     },
                 },
-            },
-            env_id=env_id,
-        )
+                env_id=env_id,
+            )
 
-        self._registry.upsert(
-            skill_uuid, real_vmcp_uuid=real_vmcp_uuid, sim_vmcp_uuid=sim_vmcp["uuid"]
-        )
+            self._registry.upsert(
+                skill_uuid, real_vmcp_uuid=real_vmcp_uuid, sim_vmcp_uuid=sim_vmcp["uuid"]
+            )
+        except Exception:
+            logger.warning("simulate() failed after harness start — stopping container %s", container_id)
+            self._harness_manager.stop(container_id)
+            raise
+
         logger.info("Simulated vMCP %s created for skill %s", sim_vmcp["uuid"], skill_uuid)
         return {
             "success": True,

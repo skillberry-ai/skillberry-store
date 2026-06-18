@@ -152,3 +152,64 @@ async def test_simulate_explicit_sim_vmcp_raises(tmp_path):
 
     with pytest.raises(ValueError, match="is a simulation vMCP"):
         await orch.simulate("skill-1", vmcp_uuid="sim-vmcp")
+
+
+# --- container lifecycle / re-simulate safety ---
+
+@pytest.mark.asyncio
+async def test_simulate_stops_container_when_harness_setup_fails(tmp_path):
+    """Container must be stopped when simulate() raises after harness start."""
+    store = _store()
+    orch, harness_mgr, reg = _orch(tmp_path, store)
+
+    def failing_factory(rest_url):
+        def boom(request):
+            return httpx.Response(500, json={"error": "harness exploded"})
+        return HarnessClient(httpx.AsyncClient(transport=httpx.MockTransport(boom), base_url=rest_url))
+
+    orch._harness_client_factory = failing_factory
+
+    with pytest.raises(Exception):
+        await orch.simulate("skill-1")
+
+    harness_mgr.stop.assert_called_once_with("c1")
+    assert reg.get("skill-1") is None
+
+
+@pytest.mark.asyncio
+async def test_simulate_tears_down_existing_simulation_before_starting_new(tmp_path):
+    """Re-simulating a skill that already has an active simulation must tear the old one down first."""
+    store = _store()
+    orch, harness_mgr, reg = _orch(tmp_path, store)
+
+    reg.upsert("skill-1", real_vmcp_uuid="real-vmcp", sim_vmcp_uuid="old-sim-vmcp")
+
+    old_sim_vmcp = {
+        "uuid": "old-sim-vmcp",
+        "extra": {
+            "sim_skill_uuid": "old-sim-skill",
+            "harness": {"container_id": "old-container"},
+        },
+    }
+    old_sim_skill = {"uuid": "old-sim-skill", "tool_uuids": ["old-sim-t1"]}
+
+    def get_vmcp_side(uuid):
+        if uuid == "old-sim-vmcp":
+            return old_sim_vmcp
+        return {"uuid": "real-vmcp", "name": "weather", "skill_uuid": "skill-1", "tags": []}
+
+    def get_skill_side(uuid):
+        if uuid == "old-sim-skill":
+            return old_sim_skill
+        return {"uuid": "skill-1", "name": "weather", "tool_uuids": ["t1"]}
+
+    store.get_vmcp.side_effect = get_vmcp_side
+    store.get_skill.side_effect = get_skill_side
+
+    await orch.simulate("skill-1")
+
+    harness_mgr.stop.assert_any_call("old-container")
+    store.delete_vmcp.assert_any_call("old-sim-vmcp")
+    store.delete_skill.assert_any_call("old-sim-skill")
+    store.delete_tool.assert_any_call("old-sim-t1")
+    assert reg.get("skill-1") is not None  # new simulation registered
