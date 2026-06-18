@@ -231,7 +231,8 @@ def register_tools_api(
             tool_dict = service.get(uuid_or_name)
             if tool_dict.get("packaging_format") == "mcp":
                 return PlainTextResponse(
-                    content=mcp_content_from_manifest(tool_dict), media_type="text/plain"
+                    content=mcp_content_from_manifest(tool_dict),
+                    media_type="text/plain",
                 )
             content = service.get_module(uuid_or_name)
             return PlainTextResponse(content=content, media_type="text/plain")

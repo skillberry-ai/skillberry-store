@@ -125,7 +125,8 @@ def register_vmcp_api(
                 servers = result["virtual_mcp_servers"]
                 result = {
                     "virtual_mcp_servers": {
-                        k: v for k, v in servers.items()
+                        k: v
+                        for k, v in servers.items()
                         if v.get("skill_uuid") == skill_uuid
                     }
                 }
