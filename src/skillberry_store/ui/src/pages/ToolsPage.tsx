@@ -418,12 +418,12 @@ export function ToolsPage() {
                     isSelected: selectedTools.length === filteredTools.length && filteredTools.length > 0,
                   }}
                 />
-                <Th sort={getSortParams(0)}>Name</Th>
-                <Th sort={getSortParams(1)}>Description</Th>
-                <Th sort={getSortParams(2)}>State</Th>
-                <Th>Tags</Th>
-                <Th sort={getSortParams(3)}>Module Name</Th>
-                <Th sort={getSortParams(4)}>Version</Th>
+                <Th sort={getSortParams(0)} width={20}>Name</Th>
+                <Th sort={getSortParams(1)} width={40} modifier="truncate">Description</Th>
+                <Th sort={getSortParams(2)} width={10}>State</Th>
+                <Th width={10}>Tags</Th>
+                <Th sort={getSortParams(3)} width={10}>Module Name</Th>
+                <Th sort={getSortParams(4)} width={10}>Version</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -445,6 +445,7 @@ export function ToolsPage() {
                   </Td>
                   <Td
                     dataLabel="Description"
+                    modifier="truncate"
                     onClick={() => navigate(`/tools/${tool.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >

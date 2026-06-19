@@ -34,12 +34,12 @@ export function SkillListView({
               isSelected: selectedSkills.length === skills.length && skills.length > 0,
             }}
           />
-          <Th sort={getSortParams(0)}>Name</Th>
-          <Th sort={getSortParams(1)}>Description</Th>
-          <Th>Tags</Th>
-          <Th>Tools</Th>
-          <Th>Snippets</Th>
-          <Th sort={getSortParams(2)}>Version</Th>
+          <Th sort={getSortParams(0)} width={20}>Name</Th>
+          <Th sort={getSortParams(1)} width={35} modifier="truncate">Description</Th>
+          <Th width={15}>Tags</Th>
+          <Th width={10}>Tools</Th>
+          <Th width={10}>Snippets</Th>
+          <Th sort={getSortParams(2)} width={10}>Version</Th>
         </Tr>
       </Thead>
       <Tbody>
@@ -61,6 +61,7 @@ export function SkillListView({
             </Td>
             <Td
               dataLabel="Description"
+              modifier="truncate"
               onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >

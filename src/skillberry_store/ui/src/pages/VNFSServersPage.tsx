@@ -342,14 +342,14 @@ export function VNFSServersPage() {
             <Thead>
               <Tr>
                 <Th select={{ onSelect: (_e, isSelected) => handleSelectAll(isSelected), isSelected: selectedServers.length === filteredServers.length && filteredServers.length > 0 }} />
-                <Th sort={getSortParams(0)}>Name</Th>
-                <Th sort={getSortParams(1)}>Description</Th>
-                <Th sort={getSortParams(2)}>State</Th>
-                <Th>Tags</Th>
-                <Th sort={getSortParams(3)}>Port</Th>
-                <Th>Protocol</Th>
-                <Th>Status</Th>
-                <Th sort={getSortParams(4)}>Version</Th>
+                <Th sort={getSortParams(0)} width={15}>Name</Th>
+                <Th sort={getSortParams(1)} width={25} modifier="truncate">Description</Th>
+                <Th sort={getSortParams(2)} width={10}>State</Th>
+                <Th width={10}>Tags</Th>
+                <Th sort={getSortParams(3)} width={10}>Port</Th>
+                <Th width={10}>Protocol</Th>
+                <Th width={10}>Status</Th>
+                <Th sort={getSortParams(4)} width={10}>Version</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -357,7 +357,7 @@ export function VNFSServersPage() {
                 <Tr key={server.uuid}>
                   <Td select={{ rowIndex: index, onSelect: (_e, isSelected) => handleSelectServer(server.name, isSelected), isSelected: selectedServers.includes(server.name) }} />
                   <Td dataLabel="Name" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>{server.name}</Td>
-                  <Td dataLabel="Description" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>{server.description || 'No description'}</Td>
+                  <Td dataLabel="Description" modifier="truncate" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>{server.description || 'No description'}</Td>
                   <Td dataLabel="State" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>{server.state || '-'}</Td>
                   <Td dataLabel="Tags" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>
                     {server.tags && server.tags.length > 0 ? (
