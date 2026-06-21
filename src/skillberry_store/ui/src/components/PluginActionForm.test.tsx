@@ -130,6 +130,21 @@ describe('PluginActionForm — generic async actions', () => {
     );
   });
 
+  it('renders a textarea for format: textarea fields', () => {
+    const action = {
+      label: 'Run task',
+      endpoint: '/plugins/ask-runspace/run',
+      method: 'POST',
+      params_schema: {
+        type: 'object',
+        properties: { request: { type: 'string', format: 'textarea', title: 'Your request' } },
+        required: ['request'],
+      },
+    } as any;
+    renderForm(action, async () => ({ success: true }));
+    expect(document.querySelector('textarea')).toBeTruthy();
+  });
+
   it('behaves synchronously for actions without async_action (no polling)', async () => {
     const syncAction: PluginAction = {
       label: 'Plain action',

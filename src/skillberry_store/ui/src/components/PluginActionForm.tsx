@@ -3,6 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   Modal,
   ModalVariant,
@@ -322,6 +324,30 @@ export function PluginActionForm({
       );
     }
 
+    if (propertySchema.type === 'string' && propertySchema.format === 'textarea') {
+      return (
+        <FormGroup
+          key={propertyName}
+          label={propertySchema.title ?? propertyName}
+          isRequired={isRequired}
+          fieldId={propertyName}
+        >
+          {propertySchema.description && (
+            <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
+              {propertySchema.description}
+            </div>
+          )}
+          <TextArea
+            id={propertyName}
+            value={(value as string) ?? ''}
+            onChange={(_event, newValue) => handleChange(newValue)}
+            rows={6}
+            aria-label={propertySchema.title ?? propertyName}
+          />
+        </FormGroup>
+      );
+    }
+
     // Default to text input
     const isArray = propertySchema.type === 'array';
     const description = isArray
@@ -395,6 +421,15 @@ export function PluginActionForm({
               {statusQuery.data?.message}
             </Alert>
           )}
+          {jobStatus === 'ready' &&
+            asyncConfig.result_markdown_field &&
+            (statusQuery.data as any)?.[asyncConfig.result_markdown_field] && (
+              <div className="pf-v6-c-content" style={{ marginTop: '0.5rem' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {(statusQuery.data as any)[asyncConfig.result_markdown_field] as string}
+                </ReactMarkdown>
+              </div>
+            )}
           {jobStatus === 'failed' && (
             <Alert variant="danger" title={asyncConfig.labels.failed} isInline style={{ marginBottom: '1rem' }}>
               {statusQuery.data?.detail ?? 'Unknown error'}
