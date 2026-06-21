@@ -8,6 +8,7 @@ dependencies = [
     "pydantic>=2.11.1",
     "httpx>=0.28.1",
     "docker>=7.1.0",
+    "python-dotenv>=1.0.1",
 ]
 
 [project.entry-points."skillberry_store.plugins"]

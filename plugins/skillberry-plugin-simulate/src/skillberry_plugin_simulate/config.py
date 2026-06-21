@@ -1,7 +1,17 @@
 """Environment-driven configuration for the Simulate This plugin."""
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
+
+from dotenv import load_dotenv
+
+# Load this plugin's own .env. The host store only loads its root .env, so a
+# plugin that ships a .env (unlike the other plugins, which rely on host env
+# vars / ~/.claude/settings.json) must load it itself. override=False keeps
+# host-provided environment variables authoritative over the file.
+_PLUGIN_ENV = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(_PLUGIN_ENV, override=False)
 
 
 @dataclass
