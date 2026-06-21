@@ -1,36 +1,27 @@
 import os
 from unittest.mock import Mock, patch
 
-from skillberry_plugin_ask_runspace.presets import PRESETS, compose_prompt
+from skillberry_plugin_ask_runspace.presets import PRESETS
 from skillberry_plugin_ask_runspace.plugin import SkillberryPluginAskRunspace
 
 
-def test_presets_have_id_label_guidance():
+def test_presets_have_id_label_prompt_skills():
     assert PRESETS
     for p in PRESETS:
-        assert {"id", "label", "guidance"} <= set(p)
+        assert {"id", "label", "prompt", "skills"} <= set(p)
+        assert isinstance(p["skills"], list)
 
 
-def test_compose_prompt_combines_guidance_and_request():
-    # Use a preset that actually has guidance (the first one is the generic
-    # empty-guidance option).
-    preset = next(p for p in PRESETS if p["guidance"].strip())
-    out = compose_prompt(preset["id"], "do the thing")
-    assert "do the thing" in out
-    assert preset["guidance"] in out
+def test_preset_skills_prefilled():
+    by_id = {p["id"]: p for p in PRESETS}
+    assert any("evo-graph" in s for s in by_id["optimize"]["skills"])
+    assert any("skill-creator" in s for s in by_id["skill"]["skills"])
 
 
-def test_compose_prompt_request_only():
-    assert compose_prompt(None, "just this").strip().endswith("just this")
-
-
-def test_compose_prompt_generic_preset_is_request_only():
-    # The generic "custom" preset has empty guidance -> request used verbatim.
-    assert compose_prompt("custom", "just this") == "just this"
-
-
-def test_optimize_preset_present():
-    assert any(p["id"] == "optimize" for p in PRESETS)
+def test_generic_custom_preset_is_empty():
+    by_id = {p["id"]: p for p in PRESETS}
+    assert by_id["custom"]["prompt"] == ""
+    assert by_id["custom"]["skills"] == []
 
 
 def _plugin(env):
@@ -71,17 +62,20 @@ def test_presets_endpoint():
 
 def test_run_then_status_ready(monkeypatch):
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    seen = {}
 
-    async def fake_run(prompt, editable_dir, context_dir, options, mode):
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None):
+        seen["remote_skills"] = remote_skills
         class R: session_id = "sess123"
         return R()
 
     monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
     monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
-                        lambda session_id, editable_dir, mode: "# Done\nall good")
+                        lambda session_id, editable_dir, mode: "# Done")
 
     client = _client(p)
-    resp = client.post("/plugins/ask-runspace/run", json={"request": "do x", "execution_mode": "local"})
+    resp = client.post("/plugins/ask-runspace/run",
+                       json={"request": "do x", "skills": ["https://x/y"], "execution_mode": "local"})
     assert resp.status_code == 200
     job_id = resp.json()["data"]["job_id"]
 
@@ -91,15 +85,17 @@ def test_run_then_status_ready(monkeypatch):
         if s["status"] != "pending":
             break
     assert s["status"] == "ready"
-    assert s["summary_md"] == "# Done\nall good"
+    assert s["summary_md"] == "# Done"
     assert s["session_id"] == "sess123"
+    assert seen["remote_skills"] == ["https://x/y"]
+    assert "Loaded skills" in s["message"]
 
 
 def test_run_cleans_up_temp_dir(monkeypatch):
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
     seen = {}
 
-    async def fake_run(prompt, editable_dir, context_dir, options, mode):
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None):
         seen["editable_dir"] = editable_dir  # inside the scratch temp dir
         class R: session_id = "sess123"
         return R()
@@ -122,7 +118,7 @@ def test_run_cleans_up_temp_dir(monkeypatch):
 def test_status_ready_shows_message_when_no_summary(monkeypatch):
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
 
-    async def fake_run(prompt, editable_dir, context_dir, options, mode):
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None):
         class R: session_id = "sess123"
         return R()
 
@@ -144,7 +140,7 @@ def test_status_ready_shows_message_when_no_summary(monkeypatch):
 def test_keep_workspace_retains_dir_and_cleanup_endpoint_deletes_it(monkeypatch):
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
 
-    async def fake_run(prompt, editable_dir, context_dir, options, mode):
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None):
         class R: session_id = "sess123"
         return R()
 
@@ -177,6 +173,8 @@ def test_ui_config_shape():
     assert props["request"]["format"] == "textarea"
     assert action["params_schema"]["required"] == ["request"]
     assert props["preset_id"]["x-options-from"].endswith("/presets")
+    assert props["preset_id"]["x-prefill"] == {"request": "prompt", "skills": "skills"}
+    assert props["skills"]["type"] == "array"
     assert props["keep_workspace"]["type"] == "boolean"
     assert props["keep_workspace"].get("default") is False
     assert action["async_action"]["cleanup_action"]["when_field"] == "workspace_dir"

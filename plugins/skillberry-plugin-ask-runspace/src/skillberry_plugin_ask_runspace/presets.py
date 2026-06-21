@@ -1,37 +1,34 @@
-"""Example task presets that seed the free-text request."""
-from typing import List, Dict, Optional
+"""Example task presets that prefill the free-text request and skills list.
 
-PRESETS: List[Dict[str, str]] = [
+A preset is just a starting point: selecting one fills the textarea (``prompt``)
+and the skills list (``skills``) on the client, both fully editable. There is no
+server-side prompt composition — the free-text field IS the whole prompt.
+"""
+from typing import List, Dict, Union
+
+PRESETS: List[Dict[str, Union[str, List[str]]]] = [
     # Generic option first: no guidance, the request is used verbatim.
     {"id": "custom", "label": "Anything — describe the task yourself",
-     "guidance": ""},
+     "prompt": "", "skills": []},
     {"id": "tool", "label": "Create a tool that…",
-     "guidance": "Create a new tool. Implement it cleanly with a clear interface and a short usage note."},
+     "prompt": "Create a new tool that <describe it>. Implement it cleanly with a clear interface and a short usage note.",
+     "skills": []},
     {"id": "skill", "label": "Create a skill that…",
-     "guidance": "Create a new skill: a SKILL.md plus any supporting files, following the Anthropic skill format."},
+     "prompt": "Create a new skill that <describe it>, following the Anthropic skill format (a SKILL.md plus supporting files).",
+     "skills": ["https://github.com/anthropics/skills/tree/main/skills/skill-creator"]},
     {"id": "optimize", "label": "Optimize a skill…",
-     "guidance": "Optimize the described skill: improve its instructions, structure, and tooling for reliability and clarity. Explain what you changed and why."},
+     "prompt": ("Optimize the skill in the editable directory for correctness, robustness, and clarity without "
+                "changing its intended functionality. Read all reference material first, fix ambiguous tool "
+                "descriptions and missing guardrails, and keep the result store-compatible (valid SKILL.md "
+                "frontmatter, self-contained Python tools). Explain what you changed and why."),
+     "skills": ["https://github.com/skillberry-ai/evo-graph"]},
     {"id": "research", "label": "Research and summarize…",
-     "guidance": "Research the topic and produce a concise, well-structured written summary."},
-    {"id": "improve", "label": "Refactor / improve…",
-     "guidance": "Improve the described code or content; explain what you changed and why."},
+     "prompt": "Research <topic> and produce a concise, well-structured written summary.",
+     "skills": []},
     {"id": "document", "label": "Write documentation for…",
-     "guidance": "Write clear, accurate documentation for the described subject, with examples where helpful."},
+     "prompt": "Write clear, accurate documentation for <subject>, with examples where helpful.",
+     "skills": []},
     {"id": "debug", "label": "Debug / fix…",
-     "guidance": "Investigate the described problem, find the root cause, fix it, and explain the fix."},
+     "prompt": "Investigate <problem>, find the root cause, fix it, and explain the fix.",
+     "skills": []},
 ]
-
-_BY_ID = {p["id"]: p for p in PRESETS}
-
-
-def compose_prompt(preset_id: Optional[str], request: str) -> str:
-    """Combine an optional preset's guidance with the user's free-text request.
-
-    A preset with empty guidance (e.g. the generic "custom" option) — or no
-    preset at all — uses the request verbatim.
-    """
-    request = (request or "").strip()
-    preset = _BY_ID.get(preset_id or "")
-    if preset and preset.get("guidance", "").strip():
-        return f"{preset['guidance']}\n\nUser request:\n{request}"
-    return request

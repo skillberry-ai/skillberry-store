@@ -7,7 +7,8 @@ logger = logging.getLogger(__name__)
 
 
 async def run_task_session(prompt: str, editable_dir: str, context_dir: str,
-                           options: Any, mode: str):
+                           options: Any, mode: str,
+                           remote_skills: Optional[list[str]] = None):
     """Run a single Runspace agent session and return its RunspaceResult."""
     from runspace_agent import RunspaceSession, run_agent
 
@@ -17,6 +18,7 @@ async def run_task_session(prompt: str, editable_dir: str, context_dir: str,
         prompt=prompt,
         agent_options=options,
         mode="container" if mode == "container" else "local",
+        remote_skills=remote_skills or None,
     )
     result = await run_agent(session)
     if not result.success:

@@ -75,14 +75,14 @@ class SkillberryPluginAskRunspace(PluginBase):
         from pydantic import BaseModel
         from claude_code_sdk import ClaudeCodeOptions
 
-        from skillberry_plugin_ask_runspace.presets import PRESETS, compose_prompt
+        from skillberry_plugin_ask_runspace.presets import PRESETS
         from skillberry_plugin_ask_runspace import runner
 
         router = APIRouter()
 
         class RunRequest(BaseModel):
             request: str
-            preset_id: Optional[str] = None
+            skills: list[str] = []
             execution_mode: Optional[str] = None
             agent_env: Optional[Dict[str, str]] = None
             keep_workspace: bool = False
@@ -104,15 +104,19 @@ class SkillberryPluginAskRunspace(PluginBase):
             try:
                 editable = Path(tmp) / "editable"; editable.mkdir()
                 context = Path(tmp) / "context"; context.mkdir()
-                prompt = compose_prompt(req.preset_id, req.request)
                 mode = req.execution_mode or self._execution_mode
                 options = ClaudeCodeOptions(env=self._build_claude_env(req.agent_env))
-                result = await runner.run_task_session(prompt, str(editable), str(context), options, mode)
+                result = await runner.run_task_session(
+                    req.request, str(editable), str(context), options, mode,
+                    remote_skills=req.skills,
+                )
                 summary = runner.read_summary(result.session_id, str(editable), mode)
                 payload = {
                     "session_id": result.session_id,
                     "summary_md": summary or "_The agent finished but did not produce a summary._",
                 }
+                if req.skills:
+                    payload["message"] = "Loaded skills: " + ", ".join(req.skills)
                 if req.keep_workspace:
                     payload["workspace_dir"] = tmp
                 return payload
@@ -173,12 +177,22 @@ class SkillberryPluginAskRunspace(PluginBase):
                                 "x-options-from": "/api/plugins/ask-runspace/presets",
                                 "x-option-label": "label",
                                 "x-option-value": "id",
+                                "x-prefill": {"request": "prompt", "skills": "skills"},
                             },
                             "request": {
                                 "type": "string",
                                 "title": "Your request",
                                 "format": "textarea",
                                 "description": "Describe what you want the agent to do.",
+                            },
+                            "skills": {
+                                "type": "array",
+                                "title": "Skills to load (npx)",
+                                "description": (
+                                    "Remote skill sources installed into the agent via npx "
+                                    "(GitHub URLs or owner/repo). Selecting an example fills "
+                                    "this in; edit freely."
+                                ),
                             },
                             "execution_mode": {
                                 "type": "string",
