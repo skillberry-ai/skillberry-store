@@ -38,3 +38,47 @@ def test_disabled_without_credentials():
 def test_enabled_with_api_key():
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
     assert p.is_enabled() is True
+
+
+import asyncio
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+def _client(plugin):
+    app = FastAPI()
+    app.include_router(plugin.get_router(), prefix="/plugins/ask-runspace")
+    return TestClient(app)
+
+
+def test_presets_endpoint():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    r = _client(p).get("/plugins/ask-runspace/presets")
+    assert r.status_code == 200
+    assert any(item["id"] == "tool" for item in r.json())
+
+
+def test_run_then_status_ready(monkeypatch):
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+
+    async def fake_run(prompt, editable_dir, context_dir, options, mode):
+        class R: session_id = "sess123"
+        return R()
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
+                        lambda session_id, editable_dir, mode: "# Done\nall good")
+
+    client = _client(p)
+    resp = client.post("/plugins/ask-runspace/run", json={"request": "do x", "execution_mode": "local"})
+    assert resp.status_code == 200
+    job_id = resp.json()["data"]["job_id"]
+
+    # Drain the background task, then poll status.
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    assert s["summary_md"] == "# Done\nall good"
+    assert s["session_id"] == "sess123"
