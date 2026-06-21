@@ -150,75 +150,61 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
         else:
             logger.debug(f"Claude settings file not found at {settings_path}")
     
-    def _check_credentials(self) -> bool:
-        """Check if Anthropic credentials are configured."""
-        # Check for direct API key in environment
-        if os.getenv("ANTHROPIC_API_KEY"):
+    @staticmethod
+    def _has_api_access(source: Any) -> bool:
+        """True if `source` (a mapping) carries Anthropic API credentials."""
+        if source.get("ANTHROPIC_API_KEY"):
             return True
-        
-        # Check for proxy/gateway configuration in environment
-        if os.getenv("ANTHROPIC_BASE_URL") and os.getenv("ANTHROPIC_AUTH_TOKEN"):
+        if source.get("ANTHROPIC_BASE_URL") and source.get("ANTHROPIC_AUTH_TOKEN"):
             return True
-        
-        # Check for credentials in Claude settings file
-        if self._claude_settings:
-            # Check for API key in settings
-            if self._claude_settings.get("apiKey"):
-                return True
-            
-            # Check for proxy configuration in settings
-            if self._claude_settings.get("baseUrl") and self._claude_settings.get("authToken"):
-                return True
-        
         return False
-    
+
+    def _claude_settings_env(self) -> Dict[str, str]:
+        """The ``env`` block from ~/.claude/settings.json (Claude Code schema)."""
+        if not self._claude_settings:
+            return {}
+        settings_env = self._claude_settings.get("env")
+        return settings_env if isinstance(settings_env, dict) else {}
+
+    def _check_credentials(self) -> bool:
+        """Check if Anthropic credentials are configured.
+
+        Credentials may come from the process environment or from the
+        ~/.claude/settings.json ``env`` block. Both use the standard
+        ANTHROPIC_* variable names.
+        """
+        return self._has_api_access(os.environ) or self._has_api_access(self._claude_settings_env())
+
     def _build_claude_env(self, override_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-        """Build environment variables for Claude Code agent.
-        
-        Priority order (highest to lowest):
-        1. override_env (request-specific)
-        2. System environment variables
-        3. ~/.claude/settings.json
-        
+        """Build environment variables for the Claude Code agent.
+
+        Priority order (lowest to highest):
+        1. Every key in the ~/.claude/settings.json ``env`` block.
+        2. ANTHROPIC_*/CLAUDE_* variables from the current process environment.
+        3. Request-specific ``override_env``.
+
         Args:
             override_env: Optional environment variables to override defaults
-            
+
         Returns:
             Dictionary of environment variables for Claude Code
         """
-        env = {}
-        
-        # Start with Claude settings file (lowest priority)
-        if self._claude_settings:
-            if self._claude_settings.get("apiKey"):
-                env["ANTHROPIC_API_KEY"] = self._claude_settings["apiKey"]
-            
-            if self._claude_settings.get("baseUrl"):
-                env["ANTHROPIC_BASE_URL"] = self._claude_settings["baseUrl"]
-            
-            if self._claude_settings.get("authToken"):
-                env["ANTHROPIC_AUTH_TOKEN"] = self._claude_settings["authToken"]
-            
-            if self._claude_settings.get("model"):
-                env["ANTHROPIC_MODEL"] = self._claude_settings["model"]
-        
-        # Override with system environment variables (medium priority)
-        if os.getenv("ANTHROPIC_API_KEY"):
-            env["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
-        
-        if os.getenv("ANTHROPIC_BASE_URL"):
-            env["ANTHROPIC_BASE_URL"] = os.getenv("ANTHROPIC_BASE_URL")
-        
-        if os.getenv("ANTHROPIC_AUTH_TOKEN"):
-            env["ANTHROPIC_AUTH_TOKEN"] = os.getenv("ANTHROPIC_AUTH_TOKEN")
-        
-        if os.getenv("ANTHROPIC_MODEL"):
-            env["ANTHROPIC_MODEL"] = os.getenv("ANTHROPIC_MODEL")
-        
-        # Override with request-specific values (highest priority)
+        env: Dict[str, str] = {}
+
+        # 1. Forward the entire settings.json env block as-is (lowest priority).
+        for key, value in self._claude_settings_env().items():
+            if value is not None:
+                env[key] = str(value)
+
+        # 2. Real environment vars take precedence over the settings file.
+        for key, value in os.environ.items():
+            if value and (key.startswith("ANTHROPIC_") or key.startswith("CLAUDE_")):
+                env[key] = value
+
+        # 3. Request-specific overrides win.
         if override_env:
             env.update(override_env)
-        
+
         return env
 
     @property
@@ -637,7 +623,13 @@ The skill should be production-ready and well-documented."""
                             },
                             "agent_env": {
                                 "type": "object",
-                                "description": "Optional environment variables for Claude Code (e.g., ANTHROPIC_API_KEY)"
+                                "title": "Environment overrides (optional)",
+                                "description": (
+                                    "Per-run overrides for the Claude Code agent environment. "
+                                    "Your ~/.claude/settings.json env block and the server's "
+                                    "ANTHROPIC_*/CLAUDE_* variables are already loaded automatically; "
+                                    "only set this to override them."
+                                )
                             },
                             "execution_mode": {
                                 "type": "string",
