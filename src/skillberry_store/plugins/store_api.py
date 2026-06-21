@@ -133,6 +133,16 @@ class StoreAPI:
             logger.error(f"Failed to update tool {uuid}: {e}")
             return False
 
+    def delete_tool(self, uuid_or_name: str) -> bool:
+        if not self.tools_service:
+            return False
+        try:
+            self.tools_service.delete(uuid_or_name)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete tool {uuid_or_name}: {e}")
+            return False
+
     # ── Skills ─────────────────────────────────────────────────────────────
 
     def create_skill(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -198,6 +208,16 @@ class StoreAPI:
             logger.error(f"Failed to update skill {uuid}: {e}")
             return False
 
+    def delete_skill(self, uuid_or_name: str) -> bool:
+        if not self.skills_service:
+            return False
+        try:
+            self.skills_service.delete(uuid_or_name)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete skill {uuid_or_name}: {e}")
+            return False
+
     # ── Snippets ───────────────────────────────────────────────────────────
 
     def get_snippet(self, uuid: str) -> Optional[Dict[str, Any]]:
@@ -244,6 +264,60 @@ class StoreAPI:
             return True
         except Exception as e:
             logger.error(f"Failed to update snippet {uuid}: {e}")
+            return False
+
+    # ── vMCP ───────────────────────────────────────────────────────────────
+
+    def create_vmcp(self, data: Dict[str, Any], env_id: str = "") -> Dict[str, Any]:
+        if not self.vmcp_service:
+            raise RuntimeError("vMCP service not available")
+        return self.vmcp_service.create(data, env_id=env_id)
+
+    def get_vmcp(self, uuid_or_name: str) -> Optional[Dict[str, Any]]:
+        if not self.vmcp_service:
+            return None
+        try:
+            return self.vmcp_service.get(uuid_or_name)
+        except KeyError:
+            return None
+
+    def list_vmcps(self) -> List[Dict[str, Any]]:
+        if not self.vmcp_service:
+            return []
+        result = self.vmcp_service.list_all()
+        return list(result.get("virtual_mcp_servers", {}).values())
+
+    def start_vmcp(self, uuid_or_name: str, env_id: str = "") -> bool:
+        if not self.vmcp_service:
+            return False
+        try:
+            uuid = self.vmcp_service._resolve_uuid(uuid_or_name)
+            d = self.vmcp_service.handler.read_dict(uuid)
+            tool_uuids, snippet_uuids = self.vmcp_service._resolve_skill_uuids(
+                d.get("skill_uuid")
+            )
+            self.vmcp_service.server_manager.add_server(
+                name=d.get("name", ""),
+                uuid=d.get("uuid", ""),
+                description=d.get("description", ""),
+                port=d.get("port"),
+                tools=tool_uuids,
+                snippets=snippet_uuids,
+                env_id=env_id,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to start vMCP {uuid_or_name}: {e}")
+            return False
+
+    def delete_vmcp(self, uuid_or_name: str) -> bool:
+        if not self.vmcp_service:
+            return False
+        try:
+            self.vmcp_service.delete(uuid_or_name)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete vMCP {uuid_or_name}: {e}")
             return False
 
     def _matches_filter(self, item: Dict[str, Any], filter_criteria: Dict) -> bool:
