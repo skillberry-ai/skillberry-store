@@ -67,6 +67,7 @@ class SkillberryPluginAskRunspace(PluginBase):
 
     def get_router(self):
         import asyncio
+        import shutil
         import tempfile
         import uuid
         from fastapi import APIRouter, HTTPException
@@ -89,15 +90,26 @@ class SkillberryPluginAskRunspace(PluginBase):
             return PRESETS
 
         async def _execute(job_id: str, req: RunRequest):
+            # The scratch workspace only needs to live for the duration of the
+            # run: read_summary returns the summary as a string (from the
+            # runspace-managed session workspace in container mode, or from the
+            # editable dir in local mode), so we can delete the temp dir once
+            # we have it. Clean up in a finally to avoid leaking dirs per run.
             tmp = tempfile.mkdtemp(prefix="ask-runspace-")
-            editable = Path(tmp) / "editable"; editable.mkdir()
-            context = Path(tmp) / "context"; context.mkdir()
-            prompt = compose_prompt(req.preset_id, req.request)
-            mode = req.execution_mode or self._execution_mode
-            options = ClaudeCodeOptions(env=self._build_claude_env(req.agent_env))
-            result = await runner.run_task_session(prompt, str(editable), str(context), options, mode)
-            summary = runner.read_summary(result.session_id, str(editable), mode)
-            return {"session_id": result.session_id, "summary_md": summary}
+            try:
+                editable = Path(tmp) / "editable"; editable.mkdir()
+                context = Path(tmp) / "context"; context.mkdir()
+                prompt = compose_prompt(req.preset_id, req.request)
+                mode = req.execution_mode or self._execution_mode
+                options = ClaudeCodeOptions(env=self._build_claude_env(req.agent_env))
+                result = await runner.run_task_session(prompt, str(editable), str(context), options, mode)
+                summary = runner.read_summary(result.session_id, str(editable), mode)
+                return {
+                    "session_id": result.session_id,
+                    "summary_md": summary or "_The agent finished but did not produce a summary._",
+                }
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
 
         @router.post("/run")
         async def run(req: RunRequest):

@@ -84,6 +84,52 @@ def test_run_then_status_ready(monkeypatch):
     assert s["session_id"] == "sess123"
 
 
+def test_run_cleans_up_temp_dir(monkeypatch):
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    seen = {}
+
+    async def fake_run(prompt, editable_dir, context_dir, options, mode):
+        seen["editable_dir"] = editable_dir  # inside the scratch temp dir
+        class R: session_id = "sess123"
+        return R()
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
+                        lambda session_id, editable_dir, mode: "# Done")
+
+    client = _client(p)
+    job_id = client.post("/plugins/ask-runspace/run", json={"request": "do x"}).json()["data"]["job_id"]
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    # The scratch workspace (parent of editable/) must be removed after the run.
+    assert not os.path.exists(os.path.dirname(seen["editable_dir"]))
+
+
+def test_status_ready_shows_message_when_no_summary(monkeypatch):
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+
+    async def fake_run(prompt, editable_dir, context_dir, options, mode):
+        class R: session_id = "sess123"
+        return R()
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
+                        lambda session_id, editable_dir, mode: None)
+
+    client = _client(p)
+    job_id = client.post("/plugins/ask-runspace/run", json={"request": "do x"}).json()["data"]["job_id"]
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    assert s["summary_md"]  # non-empty fallback message, not None
+    assert "summary" in s["summary_md"].lower()
+
+
 def test_ui_config_shape():
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
     cfg = p.get_ui_config()
