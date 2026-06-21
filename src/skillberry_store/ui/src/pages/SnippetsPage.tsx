@@ -450,12 +450,12 @@ export function SnippetsPage() {
                     isSelected: selectedSnippets.length === filteredSnippets.length && filteredSnippets.length > 0,
                   }}
                 />
-                <Th sort={getSortParams(0)}>Name</Th>
-                <Th sort={getSortParams(1)}>Description</Th>
-                <Th sort={getSortParams(2)}>State</Th>
-                <Th>Tags</Th>
-                <Th sort={getSortParams(3)}>Content Type</Th>
-                <Th sort={getSortParams(4)}>Version</Th>
+                <Th sort={getSortParams(0)} width={20}>Name</Th>
+                <Th sort={getSortParams(1)} width={35} modifier="truncate">Description</Th>
+                <Th sort={getSortParams(2)} width={10}>State</Th>
+                <Th width={15}>Tags</Th>
+                <Th sort={getSortParams(3)} width={10}>Content Type</Th>
+                <Th sort={getSortParams(4)} width={10}>Version</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -477,6 +477,7 @@ export function SnippetsPage() {
                   </Td>
                   <Td
                     dataLabel="Description"
+                    modifier="truncate"
                     onClick={() => navigate(`/snippets/${snippet.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >

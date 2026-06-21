@@ -468,13 +468,13 @@ export function VMCPServersPage() {
                     isSelected: selectedServers.length === filteredServers.length && filteredServers.length > 0,
                   }}
                 />
-                <Th sort={getSortParams(0)}>Name</Th>
-                <Th sort={getSortParams(1)}>Description</Th>
-                <Th sort={getSortParams(2)}>State</Th>
-                <Th>Tags</Th>
-                <Th sort={getSortParams(3)}>Port</Th>
-                <Th>Status</Th>
-                <Th sort={getSortParams(4)}>Version</Th>
+                <Th sort={getSortParams(0)} width={15}>Name</Th>
+                <Th sort={getSortParams(1)} width={30} modifier="truncate">Description</Th>
+                <Th sort={getSortParams(2)} width={10}>State</Th>
+                <Th width={15}>Tags</Th>
+                <Th sort={getSortParams(3)} width={10}>Port</Th>
+                <Th width={10}>Status</Th>
+                <Th sort={getSortParams(4)} width={10}>Version</Th>
               </Tr>
             </Thead>
             <Tbody>
@@ -496,6 +496,7 @@ export function VMCPServersPage() {
                   </Td>
                   <Td
                     dataLabel="Description"
+                    modifier="truncate"
                     onClick={() => navigate(`/vmcp-servers/${server.uuid}`)}
                     style={{ cursor: 'pointer' }}
                   >

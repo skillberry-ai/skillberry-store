@@ -338,12 +338,12 @@ export function ToolDetailPage() {
                         <Table aria-label="Dependencies table" variant="compact">
                           <Thead>
                             <Tr>
-                              <Th>Name</Th>
-                              <Th>Description</Th>
-                              <Th>State</Th>
-                              <Th>Tags</Th>
-                              <Th>Module Name</Th>
-                              <Th>Version</Th>
+                              <Th width={20}>Name</Th>
+                              <Th width={40} modifier="truncate">Description</Th>
+                              <Th width={10}>State</Th>
+                              <Th width={10}>Tags</Th>
+                              <Th width={10}>Module Name</Th>
+                              <Th width={10}>Version</Th>
                             </Tr>
                           </Thead>
                           <Tbody>
@@ -371,6 +371,7 @@ export function ToolDetailPage() {
                                   </Td>
                                   <Td
                                     dataLabel="Description"
+                                    modifier="truncate"
                                     onClick={() => navigate(`/tools/${depUuid}`)}
                                     style={{ cursor: 'pointer' }}
                                   >
