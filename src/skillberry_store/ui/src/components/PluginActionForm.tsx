@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Modal,
   ModalVariant,
@@ -27,7 +28,7 @@ interface PluginActionFormProps {
 
 export function PluginActionForm({
   action,
-  pluginName: _pluginName,
+  pluginName,
   isOpen,
   onClose,
   onSubmit,
@@ -36,6 +37,12 @@ export function PluginActionForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PluginActionResult | null>(null);
+
+  // Async-job polling (opt-in via action.async_action). `jobId` drives the poll;
+  // `timedOut` is set once the configured deadline passes.
+  const asyncConfig = action.async_action;
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
 
   // Dynamic dropdown state: field name → [{label, value}]
   const [dynamicOptions, setDynamicOptions] = useState<Record<string, { label: string; value: string }[]>>({});
@@ -81,10 +88,45 @@ export function PluginActionForm({
     }
   };
 
+  // Poll the plugin-declared status endpoint while a job is pending. React Query
+  // stops polling (refetchInterval → false) once the job is ready or failed.
+  const statusQuery = useQuery({
+    queryKey: ['plugin-action-status', pluginName, jobId],
+    enabled: !!jobId && !!asyncConfig,
+    refetchInterval: (query) => {
+      const status = (query.state.data as { status?: string } | undefined)?.status;
+      if (status === 'ready' || status === 'failed') return false;
+      return asyncConfig?.poll_interval_ms ?? 2000;
+    },
+    queryFn: async () => {
+      const url = interpolateUrl(asyncConfig!.status_endpoint, { job_id: jobId! });
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json() as Promise<{ status?: string; detail?: string; message?: string }>;
+    },
+  });
+
+  const jobStatus = statusQuery.data?.status;
+  const isPolling = !!jobId && !timedOut && jobStatus !== 'ready' && jobStatus !== 'failed';
+  const inAsyncJob = !!asyncConfig && (jobId !== null || timedOut);
+
+  // Start a timeout deadline whenever a new job begins polling.
+  useEffect(() => {
+    if (!jobId || !asyncConfig) return;
+    setTimedOut(false);
+    const handle = setTimeout(() => {
+      setTimedOut(true);
+      setJobId(null); // disables the query
+    }, asyncConfig.timeout_ms ?? 180_000);
+    return () => clearTimeout(handle);
+  }, [jobId, asyncConfig]);
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
     setResult(null);
+    setJobId(null);
+    setTimedOut(false);
 
     // Coerce array-typed fields from comma-separated strings to string[]
     const coercedData: Record<string, any> = { ...formData };
@@ -103,7 +145,15 @@ export function PluginActionForm({
       const response = await onSubmit(coercedData);
       setResult(response);
 
-      if (response.success && response.data == null) {
+      const pendingJobId =
+        asyncConfig && response.success && response.data?.status === 'pending'
+          ? (response.data.job_id as string | undefined)
+          : undefined;
+
+      if (pendingJobId) {
+        // Async job: begin polling instead of treating the response as final.
+        setJobId(pendingJobId);
+      } else if (response.success && response.data == null) {
         // Auto-close on success only when there's no data to display
         setTimeout(() => {
           handleClose();
@@ -117,6 +167,8 @@ export function PluginActionForm({
   };
 
   const handleClose = () => {
+    setJobId(null);
+    setTimedOut(false);
     setFormData({});
     setError(null);
     setResult(null);
@@ -308,11 +360,15 @@ export function PluginActionForm({
         <Button
           key="submit"
           variant="primary"
-          onClick={handleSubmit}
-          isLoading={isSubmitting}
-          isDisabled={isSubmitting}
+          onClick={jobStatus === 'ready' ? handleClose : handleSubmit}
+          isLoading={isSubmitting || isPolling}
+          isDisabled={isSubmitting || isPolling}
         >
-          Execute
+          {jobStatus === 'ready'
+            ? asyncConfig?.labels.done ?? 'Done'
+            : isSubmitting || isPolling
+            ? 'Working…'
+            : 'Execute'}
         </Button>,
         <Button key="cancel" variant="link" onClick={handleClose}>
           Cancel
@@ -325,13 +381,38 @@ export function PluginActionForm({
         </Alert>
       )}
 
-      {result && result.success && (
+      {/* Async-job lifecycle (opt-in via action.async_action). All strings come
+          from the plugin's async_action.labels — nothing plugin-specific here. */}
+      {inAsyncJob && asyncConfig && (
+        <>
+          {isPolling && (
+            <Alert variant="info" title={asyncConfig.labels.pending} isInline style={{ marginBottom: '1rem' }}>
+              {result?.message}
+            </Alert>
+          )}
+          {jobStatus === 'ready' && (
+            <Alert variant="success" title={asyncConfig.labels.ready} isInline style={{ marginBottom: '1rem' }}>
+              {statusQuery.data?.message}
+            </Alert>
+          )}
+          {jobStatus === 'failed' && (
+            <Alert variant="danger" title={asyncConfig.labels.failed} isInline style={{ marginBottom: '1rem' }}>
+              {statusQuery.data?.detail ?? 'Unknown error'}
+            </Alert>
+          )}
+          {timedOut && (
+            <Alert variant="warning" title={asyncConfig.labels.timeout} isInline style={{ marginBottom: '1rem' }} />
+          )}
+        </>
+      )}
+
+      {!inAsyncJob && result && result.success && (
         <Alert variant="success" title="Success" isInline style={{ marginBottom: '1rem' }}>
           {result.message || 'Action completed successfully'}
         </Alert>
       )}
 
-      {result?.data != null && (
+      {!inAsyncJob && result?.data != null && (
         <pre style={{
           marginBottom: '1rem',
           maxHeight: '20rem',
@@ -346,10 +427,14 @@ export function PluginActionForm({
         </pre>
       )}
 
-      {result && !result.success && (
-        <Alert variant="warning" title="Action completed with issues" isInline style={{ marginBottom: '1rem' }}>
-          {result.message || result.error || 'Action completed but may have issues'}
+      {!inAsyncJob && result && !result.success && result.error && (
+        <Alert variant="danger" title={result.message || 'Action failed'} isInline style={{ marginBottom: '1rem' }}>
+          {result.error}
         </Alert>
+      )}
+
+      {!inAsyncJob && result && !result.success && !result.error && (
+        <Alert variant="warning" title={result.message || 'Action completed with issues'} isInline style={{ marginBottom: '1rem' }} />
       )}
 
       <Form>
