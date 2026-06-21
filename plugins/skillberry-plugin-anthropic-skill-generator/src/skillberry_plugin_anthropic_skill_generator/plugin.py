@@ -15,6 +15,12 @@ from typing import Dict, Any, Literal, Optional
 from pathlib import Path
 
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.claude_credentials import (
+    load_claude_settings,
+    settings_env,
+    has_api_access,
+    build_agent_env,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,76 +142,20 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
             logger.warning("runspace-agent not installed, plugin will be disabled")
     
     def _load_claude_settings(self):
-        """Load Claude settings from ~/.claude/settings.json if it exists."""
-        settings_path = Path.home() / ".claude" / "settings.json"
-        
-        if settings_path.exists():
-            try:
-                with open(settings_path, 'r') as f:
-                    self._claude_settings = json.load(f)
-                logger.info(f"Loaded Claude settings from {settings_path}")
-            except Exception as e:
-                logger.warning(f"Failed to load Claude settings from {settings_path}: {e}")
-                self._claude_settings = None
-        else:
-            logger.debug(f"Claude settings file not found at {settings_path}")
-    
-    @staticmethod
-    def _has_api_access(source: Any) -> bool:
-        """True if `source` (a mapping) carries Anthropic API credentials."""
-        if source.get("ANTHROPIC_API_KEY"):
-            return True
-        if source.get("ANTHROPIC_BASE_URL") and source.get("ANTHROPIC_AUTH_TOKEN"):
-            return True
-        return False
+        self._claude_settings = load_claude_settings()
 
-    def _claude_settings_env(self) -> Dict[str, str]:
-        """The ``env`` block from ~/.claude/settings.json (Claude Code schema)."""
-        if not self._claude_settings:
-            return {}
-        settings_env = self._claude_settings.get("env")
-        return settings_env if isinstance(settings_env, dict) else {}
+    @staticmethod
+    def _has_api_access(source) -> bool:
+        return has_api_access(source)
+
+    def _claude_settings_env(self):
+        return settings_env(self._claude_settings)
 
     def _check_credentials(self) -> bool:
-        """Check if Anthropic credentials are configured.
-
-        Credentials may come from the process environment or from the
-        ~/.claude/settings.json ``env`` block. Both use the standard
-        ANTHROPIC_* variable names.
-        """
         return self._has_api_access(os.environ) or self._has_api_access(self._claude_settings_env())
 
     def _build_claude_env(self, override_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-        """Build environment variables for the Claude Code agent.
-
-        Priority order (lowest to highest):
-        1. Every key in the ~/.claude/settings.json ``env`` block.
-        2. ANTHROPIC_*/CLAUDE_* variables from the current process environment.
-        3. Request-specific ``override_env``.
-
-        Args:
-            override_env: Optional environment variables to override defaults
-
-        Returns:
-            Dictionary of environment variables for Claude Code
-        """
-        env: Dict[str, str] = {}
-
-        # 1. Forward the entire settings.json env block as-is (lowest priority).
-        for key, value in self._claude_settings_env().items():
-            if value is not None:
-                env[key] = str(value)
-
-        # 2. Real environment vars take precedence over the settings file.
-        for key, value in os.environ.items():
-            if value and (key.startswith("ANTHROPIC_") or key.startswith("CLAUDE_")):
-                env[key] = value
-
-        # 3. Request-specific overrides win.
-        if override_env:
-            env.update(override_env)
-
-        return env
+        return build_agent_env(self._claude_settings, override_env)
 
     @property
     def metadata(self) -> PluginMetadata:
