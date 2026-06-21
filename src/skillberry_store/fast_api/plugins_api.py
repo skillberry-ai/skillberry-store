@@ -3,8 +3,14 @@
 import logging
 from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class PluginEnabledUpdate(BaseModel):
+    """Body for toggling a plugin's admin enablement."""
+    enabled: bool
 
 
 def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"):
@@ -81,6 +87,33 @@ def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"
             raise HTTPException(
                 status_code=500, detail=f"Failed to get plugin info: {str(e)}"
             )
+
+    @app.patch(
+        "/plugins/{plugin_name}",
+        tags=[tags],
+        summary="Enable or disable a plugin",
+        response_model=Dict[str, Any],
+    )
+    async def update_plugin(plugin_name: str, body: PluginEnabledUpdate):
+        """Toggle a plugin's admin enablement (global, persisted, live).
+
+        Args:
+            plugin_name: Name/slug of the plugin
+            body: {"enabled": bool}
+
+        Returns:
+            The updated plugin info dictionary.
+
+        Raises:
+            HTTPException: 404 if plugin not found
+        """
+        if plugin_loader.get_plugin_info(plugin_name) is None:
+            raise HTTPException(status_code=404, detail=f"Plugin '{plugin_name}' not found")
+        try:
+            plugin_loader.set_enabled(plugin_name, body.enabled)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Plugin '{plugin_name}' not found")
+        return plugin_loader.get_plugin_info(plugin_name)
 
 
 # Made with Bob

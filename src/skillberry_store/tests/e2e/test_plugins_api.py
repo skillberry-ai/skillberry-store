@@ -143,4 +143,47 @@ async def test_plugins_api_returns_valid_json(run_sbs):
         data = response.json()  # Will raise if not valid JSON
         assert isinstance(data, dict)
 
+
+def test_patch_toggles_plugin_enabled(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from unittest.mock import Mock
+    from skillberry_store.fast_api.plugins_api import register_plugins_api
+    from skillberry_store.plugins.loader import PluginLoader
+    from skillberry_store.plugins.config import PluginConfigStore
+    from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    class P(PluginBase):
+        @property
+        def metadata(self):
+            return PluginMetadata(name="p", description="d", version="1.0",
+                                  plugin_type=PluginType.CREATOR)
+        def is_enabled(self):
+            return True
+        def get_router(self):
+            return None
+        def get_cli_commands(self):
+            return None
+        def get_ui_config(self):
+            return None
+
+    cfg = PluginConfigStore(path=tmp_path / "plugins.json")
+    loader = PluginLoader(store_api=Mock(spec=StoreAPI), config_store=cfg)
+    loader.plugins["p"] = P()
+
+    app = FastAPI()
+    register_plugins_api(app, plugin_loader=loader)
+    client = TestClient(app)
+
+    resp = client.patch("/plugins/p", json={"enabled": False})
+    assert resp.status_code == 200
+    assert resp.json()["admin_enabled"] is False
+    assert resp.json()["enabled"] is False
+
+    resp = client.patch("/plugins/p", json={"enabled": True})
+    assert resp.json()["admin_enabled"] is True
+
+    assert client.patch("/plugins/does-not-exist", json={"enabled": False}).status_code == 404
+
 # Made with Bob
