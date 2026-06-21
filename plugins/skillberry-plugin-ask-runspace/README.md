@@ -5,19 +5,28 @@ preset — then render the agent's `summary.md` back to you as Markdown.
 
 ## How it works
 
-- **Run task** takes a free-text `request` describing what you want done. You may
-  optionally pick a `preset_id` (e.g. "Create a tool that…", "Create a skill that…",
-  "Research and summarize…", "Refactor / improve…"); the preset's guidance is
-  prepended to your request to seed the prompt. Presets are advertised at
-  `GET /plugins/ask-runspace/presets` and surface as a dropdown in the UI.
+- **Run task** takes a free-text `request` — that text **is** the whole prompt sent to
+  the agent (no server-side composition). The UI offers an **example dropdown** that, on
+  selection, prefills the request textarea with a starter prompt and prefills the
+  **skills** list; both stay fully editable. Examples include "Create a tool that…",
+  "Create a skill that…", "Optimize a skill…", "Research and summarize…", "Write
+  documentation for…", "Debug / fix…", and a generic "Anything — describe the task
+  yourself". They're advertised at `GET /plugins/ask-runspace/presets` (each returns
+  `id`, `label`, `prompt`, `skills`).
+- **Skills**: the optional `skills` list is a set of remote skill sources loaded into the
+  agent via `npx skills add` (runspace `remote_skills`) — GitHub URLs or `owner/repo`.
+  Selecting an example fills these in (e.g. the skill-creator or evo-graph repos); you can
+  add or remove sources before running.
 - The plugin spins up a Runspace agent session (with fresh `editable` and `context`
-  working directories), runs the agent against the composed prompt, and waits for it
-  to finish.
+  working directories), installs any `skills`, runs the agent on your `request`, and waits.
 - **Async + status**: `POST /plugins/ask-runspace/run` returns a `job_id` immediately.
   Poll `GET /plugins/ask-runspace/status/{job_id}` for `pending` → `ready` / `failed`.
-  When `ready`, the response includes `session_id` and `summary_md`.
-- **Summary**: when the agent produces a `summary.md`, the plugin reads it and the UI
-  renders it as Markdown.
+  When `ready`, the response includes `session_id` and `summary_md` (and, when skills were
+  loaded, a `Loaded skills: …` message).
+- **Summary**: the agent's `summary.md` is read and rendered as Markdown in the UI (a short
+  notice is shown if the agent produced none).
+- **Workspace**: by default the scratch workspace is deleted after the run. Tick **Keep
+  workspace folder** to retain it; the result then offers a **Delete workspace** button.
 
 ## Installation
 
