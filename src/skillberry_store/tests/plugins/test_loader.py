@@ -449,7 +449,85 @@ def test_plugin_loader_list_plugins_empty():
     loader = PluginLoader(store_api=mock_store_api)
     
     all_plugins = loader.list_plugins()
-    
+
     assert all_plugins == []
+
+
+def _make_plugin_class(name, capability=True):
+    from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+    from skillberry_store.plugins.events import _event_handlers
+
+    class _P(PluginBase):
+        def __init__(self):
+            super().__init__()
+            async def _handler(uuid: str):
+                pass
+            _event_handlers.setdefault("content_added:skill", []).append(_handler)
+            self._handler = _handler
+
+        @property
+        def metadata(self):
+            return PluginMetadata(name=name, description="d", version="1.0",
+                                  plugin_type=PluginType.EVALUATOR)
+
+        def is_enabled(self):
+            return capability
+
+        def get_router(self):
+            return None
+
+        def get_cli_commands(self):
+            return None
+
+        def get_ui_config(self):
+            return None
+
+    return _P
+
+
+def test_set_enabled_persists_and_affects_is_active(tmp_path):
+    from skillberry_store.plugins.loader import PluginLoader
+    from skillberry_store.plugins.config import PluginConfigStore
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    cfg = PluginConfigStore(path=tmp_path / "plugins.json")
+    loader = PluginLoader(store_api=Mock(spec=StoreAPI), config_store=cfg)
+    loader.plugins["plugin-a"] = _make_plugin_class("plugin-a")()
+
+    assert loader.is_active("plugin-a") is True
+    loader.set_enabled("plugin-a", False)
+    assert loader.is_active("plugin-a") is False
+    assert cfg.is_enabled("plugin-a") is False  # persisted
+
+
+def test_is_active_false_when_capability_off(tmp_path):
+    from skillberry_store.plugins.loader import PluginLoader
+    from skillberry_store.plugins.config import PluginConfigStore
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    cfg = PluginConfigStore(path=tmp_path / "plugins.json")
+    loader = PluginLoader(store_api=Mock(spec=StoreAPI), config_store=cfg)
+    loader.plugins["plugin-a"] = _make_plugin_class("plugin-a", capability=False)()
+
+    assert loader.is_active("plugin-a") is False  # admin on, capability off
+
+
+def test_get_plugin_info_reports_admin_enabled(tmp_path):
+    from skillberry_store.plugins.loader import PluginLoader
+    from skillberry_store.plugins.config import PluginConfigStore
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    cfg = PluginConfigStore(path=tmp_path / "plugins.json")
+    loader = PluginLoader(store_api=Mock(spec=StoreAPI), config_store=cfg)
+    loader.plugins["plugin-a"] = _make_plugin_class("plugin-a")()
+
+    info = loader.get_plugin_info("plugin-a")
+    assert info["admin_enabled"] is True
+    assert info["enabled"] is True
+
+    loader.set_enabled("plugin-a", False)
+    info = loader.get_plugin_info("plugin-a")
+    assert info["admin_enabled"] is False
+    assert info["enabled"] is False
 
 # Made with Bob
