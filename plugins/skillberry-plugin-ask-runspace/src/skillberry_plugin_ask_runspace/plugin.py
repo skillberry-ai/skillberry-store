@@ -28,7 +28,11 @@ class SkillberryPluginAskRunspace(PluginBase):
         self._metadata = PluginMetadata(
             name="Ask Runspace",
             version="0.1.0",
-            description="Run the Runspace agent on a free-text task and view its summary.",
+            description=(
+                "Run the Runspace agent on any free-text task — create tools & skills, "
+                "build MCP servers, optimize skills, research, document, or debug — with "
+                "optional starter examples, then view the agent's summary."
+            ),
             plugin_type=PluginType.CREATOR,
         )
         self._execution_mode = os.getenv("RUNSPACE_MODE", "container")
