@@ -1,7 +1,8 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Modal,
   ModalVariant,
@@ -36,10 +37,12 @@ export function PluginActionForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PluginActionResult | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollErrorCountRef = useRef(0);
+
+  // Async-job polling (opt-in via action.async_action). `jobId` drives the poll;
+  // `timedOut` is set once the configured deadline passes.
+  const asyncConfig = action.async_action;
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
 
   // Dynamic dropdown state: field name → [{label, value}]
   const [dynamicOptions, setDynamicOptions] = useState<Record<string, { label: string; value: string }[]>>({});
@@ -88,10 +91,45 @@ export function PluginActionForm({
     }
   };
 
+  // Poll the plugin-declared status endpoint while a job is pending. React Query
+  // stops polling (refetchInterval → false) once the job is ready or failed.
+  const statusQuery = useQuery({
+    queryKey: ['plugin-action-status', pluginName, jobId],
+    enabled: !!jobId && !!asyncConfig,
+    refetchInterval: (query) => {
+      const status = (query.state.data as { status?: string } | undefined)?.status;
+      if (status === 'ready' || status === 'failed') return false;
+      return asyncConfig?.poll_interval_ms ?? 2000;
+    },
+    queryFn: async () => {
+      const url = interpolateUrl(asyncConfig!.status_endpoint, { job_id: jobId! });
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json() as Promise<{ status?: string; detail?: string; message?: string }>;
+    },
+  });
+
+  const jobStatus = statusQuery.data?.status;
+  const isPolling = !!jobId && !timedOut && jobStatus !== 'ready' && jobStatus !== 'failed';
+  const inAsyncJob = !!asyncConfig && (jobId !== null || timedOut);
+
+  // Start a timeout deadline whenever a new job begins polling.
+  useEffect(() => {
+    if (!jobId || !asyncConfig) return;
+    setTimedOut(false);
+    const handle = setTimeout(() => {
+      setTimedOut(true);
+      setJobId(null); // disables the query
+    }, asyncConfig.timeout_ms ?? 180_000);
+    return () => clearTimeout(handle);
+  }, [jobId, asyncConfig]);
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
     setResult(null);
+    setJobId(null);
+    setTimedOut(false);
 
     // Coerce array-typed fields from comma-separated strings to string[]
     const coercedData: Record<string, any> = { ...formData };
@@ -110,7 +148,15 @@ export function PluginActionForm({
       const response = await onSubmit(coercedData);
       setResult(response);
 
-      if (response.success && response.data == null) {
+      const pendingJobId =
+        asyncConfig && response.success && response.data?.status === 'pending'
+          ? (response.data.job_id as string | undefined)
+          : undefined;
+
+      if (pendingJobId) {
+        // Async job: begin polling instead of treating the response as final.
+        setJobId(pendingJobId);
+      } else if (response.success && response.data == null) {
         // Auto-close on success only when there's no data to display
         setTimeout(() => {
           handleClose();
@@ -124,70 +170,13 @@ export function PluginActionForm({
   };
 
   const handleClose = () => {
-    if (pollIntervalRef.current !== null) clearInterval(pollIntervalRef.current);
-    if (pollTimeoutRef.current !== null) clearTimeout(pollTimeoutRef.current);
-    pollIntervalRef.current = null;
-    pollTimeoutRef.current = null;
-    setIsPolling(false);
+    setJobId(null);
+    setTimedOut(false);
     setFormData({});
     setError(null);
     setResult(null);
     onClose();
   };
-
-  useEffect(() => {
-    const jobId = result?.data?.job_id;
-    const pendingStatus = result?.data?.status;
-    if (!jobId || pendingStatus !== 'pending') return;
-
-    let stopped = false;
-    setIsPolling(true);
-    pollErrorCountRef.current = 0;
-
-    const stop = (nextResult?: PluginActionResult) => {
-      if (stopped) return;
-      stopped = true;
-      clearInterval(pollIntervalRef.current!);
-      clearTimeout(pollTimeoutRef.current!);
-      pollIntervalRef.current = null;
-      pollTimeoutRef.current = null;
-      setIsPolling(false);
-      if (nextResult !== undefined) setResult(nextResult);
-    };
-
-    pollTimeoutRef.current = setTimeout(
-      () => stop({ success: false, message: 'Could not confirm simulation status — check the plugin logs' }),
-      180_000
-    );
-
-    pollIntervalRef.current = setInterval(async () => {
-      if (stopped) return;
-      try {
-        const resp = await fetch(`/api/plugins/${pluginName}/status/${jobId}`);
-        if (stopped) return;
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const statusData = await resp.json();
-        pollErrorCountRef.current = 0;
-        if (statusData.status === 'ready') {
-          stop({ success: true, message: 'Simulation is ready', data: statusData });
-        } else if (statusData.status === 'failed') {
-          stop({
-            success: false,
-            message: 'Simulation failed',
-            error: statusData.detail ?? 'Unknown error',
-          });
-        }
-      } catch {
-        if (stopped) return;
-        pollErrorCountRef.current += 1;
-        if (pollErrorCountRef.current >= 3) {
-          stop({ success: false, message: 'Could not confirm simulation status — check the plugin logs' });
-        }
-      }
-    }, 2000);
-
-    return () => { stop(); };
-  }, [result?.data?.job_id, result?.data?.status, pluginName]);
 
   // Fetch options for non-dependent fields on open
   useEffect(() => {
@@ -375,11 +364,15 @@ export function PluginActionForm({
         <Button
           key="submit"
           variant="primary"
-          onClick={result?.success ? handleClose : handleSubmit}
+          onClick={jobStatus === 'ready' ? handleClose : handleSubmit}
           isLoading={isSubmitting || isPolling}
           isDisabled={isSubmitting || isPolling}
         >
-          {isSubmitting || isPolling ? 'Working…' : result?.success ? 'Done' : 'Execute'}
+          {jobStatus === 'ready'
+            ? asyncConfig?.labels.done ?? 'Done'
+            : isSubmitting || isPolling
+            ? 'Working…'
+            : 'Execute'}
         </Button>,
         <Button key="cancel" variant="link" onClick={handleClose}>
           Cancel
@@ -392,19 +385,38 @@ export function PluginActionForm({
         </Alert>
       )}
 
-      {isPolling && result?.data?.job_id && (
-        <Alert variant="info" title="Simulation is starting…" isInline style={{ marginBottom: '1rem' }}>
-          Job {result.data.job_id} — checking status…
-        </Alert>
+      {/* Async-job lifecycle (opt-in via action.async_action). All strings come
+          from the plugin's async_action.labels — nothing plugin-specific here. */}
+      {inAsyncJob && asyncConfig && (
+        <>
+          {isPolling && (
+            <Alert variant="info" title={asyncConfig.labels.pending} isInline style={{ marginBottom: '1rem' }}>
+              {result?.message}
+            </Alert>
+          )}
+          {jobStatus === 'ready' && (
+            <Alert variant="success" title={asyncConfig.labels.ready} isInline style={{ marginBottom: '1rem' }}>
+              {statusQuery.data?.message}
+            </Alert>
+          )}
+          {jobStatus === 'failed' && (
+            <Alert variant="danger" title={asyncConfig.labels.failed} isInline style={{ marginBottom: '1rem' }}>
+              {statusQuery.data?.detail ?? 'Unknown error'}
+            </Alert>
+          )}
+          {timedOut && (
+            <Alert variant="warning" title={asyncConfig.labels.timeout} isInline style={{ marginBottom: '1rem' }} />
+          )}
+        </>
       )}
 
-      {result && result.success && !isPolling && (
+      {!inAsyncJob && result && result.success && (
         <Alert variant="success" title="Success" isInline style={{ marginBottom: '1rem' }}>
           {result.message || 'Action completed successfully'}
         </Alert>
       )}
 
-      {result?.data != null && !isPolling && (
+      {!inAsyncJob && result?.data != null && (
         <pre style={{
           marginBottom: '1rem',
           maxHeight: '20rem',
@@ -419,13 +431,13 @@ export function PluginActionForm({
         </pre>
       )}
 
-      {result && !result.success && result.error && (
+      {!inAsyncJob && result && !result.success && result.error && (
         <Alert variant="danger" title={result.message || 'Action failed'} isInline style={{ marginBottom: '1rem' }}>
           {result.error}
         </Alert>
       )}
 
-      {result && !result.success && !result.error && (
+      {!inAsyncJob && result && !result.success && !result.error && (
         <Alert variant="warning" title={result.message || 'Action completed with issues'} isInline style={{ marginBottom: '1rem' }} />
       )}
 
