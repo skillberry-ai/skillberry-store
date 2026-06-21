@@ -16,6 +16,9 @@ PRESETS: List[Dict[str, Union[str, List[str]]]] = [
     {"id": "skill", "label": "Create a skill that…",
      "prompt": "Create a new skill that <describe it>, following the Anthropic skill format (a SKILL.md plus supporting files).",
      "skills": ["https://github.com/anthropics/skills/tree/main/skills/skill-creator"]},
+    {"id": "mcp", "label": "Build an MCP server that…",
+     "prompt": "Build an MCP server that <describe it>, following the mcp-builder skill's conventions.",
+     "skills": ["https://github.com/anthropics/skills/tree/main/skills/mcp-builder"]},
     {"id": "optimize", "label": "Optimize a skill…",
      "prompt": ("Optimize the skill in the editable directory for correctness, robustness, and clarity without "
                 "changing its intended functionality. Read all reference material first, fix ambiguous tool "

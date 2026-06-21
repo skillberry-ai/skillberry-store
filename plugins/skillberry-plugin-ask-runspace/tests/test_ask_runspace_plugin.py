@@ -16,6 +16,7 @@ def test_preset_skills_prefilled():
     by_id = {p["id"]: p for p in PRESETS}
     assert any("evo-graph" in s for s in by_id["optimize"]["skills"])
     assert any("skill-creator" in s for s in by_id["skill"]["skills"])
+    assert any("mcp-builder" in s for s in by_id["mcp"]["skills"])
 
 
 def test_generic_custom_preset_is_empty():
