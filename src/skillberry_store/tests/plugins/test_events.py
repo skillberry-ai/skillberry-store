@@ -226,4 +226,64 @@ async def test_handler_receives_correct_kwargs():
     assert received_kwargs["uuid"] == "test-uuid"
     assert received_kwargs["extra_data"] == "extra"
 
+
+@pytest.mark.asyncio
+async def test_emit_skips_disabled_owner():
+    from skillberry_store.plugins.events import (
+        emit_event, register_handler_owner, set_enabled_resolver,
+        _event_handlers, _background_tasks, _handler_owners,
+    )
+
+    _event_handlers.clear()
+    _background_tasks.clear()
+    _handler_owners.clear()
+
+    ran = []
+
+    async def enabled_handler(uuid: str):
+        ran.append(("enabled", uuid))
+
+    async def disabled_handler(uuid: str):
+        ran.append(("disabled", uuid))
+
+    _event_handlers["content_added:skill"] = [enabled_handler, disabled_handler]
+    register_handler_owner(enabled_handler, "plugin-on")
+    register_handler_owner(disabled_handler, "plugin-off")
+    set_enabled_resolver(lambda slug: slug != "plugin-off")
+
+    emit_event("content_added:skill", uuid="abc")
+    await asyncio.gather(*list(_background_tasks))
+
+    assert ("enabled", "abc") in ran
+    assert ("disabled", "abc") not in ran
+
+    set_enabled_resolver(None)  # reset global
+
+
+@pytest.mark.asyncio
+async def test_untagged_handler_always_runs():
+    from skillberry_store.plugins.events import (
+        emit_event, set_enabled_resolver,
+        _event_handlers, _background_tasks, _handler_owners,
+    )
+
+    _event_handlers.clear()
+    _background_tasks.clear()
+    _handler_owners.clear()
+
+    ran = []
+
+    async def orphan_handler(uuid: str):
+        ran.append(uuid)
+
+    _event_handlers["content_added:skill"] = [orphan_handler]
+    # No owner recorded; resolver would disable everything if consulted.
+    set_enabled_resolver(lambda slug: False)
+
+    emit_event("content_added:skill", uuid="xyz")
+    await asyncio.gather(*list(_background_tasks))
+
+    assert ran == ["xyz"]
+    set_enabled_resolver(None)  # reset global
+
 # Made with Bob
