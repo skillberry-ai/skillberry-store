@@ -20,6 +20,7 @@ import {
   Divider,
 } from '@patternfly/react-core';
 import { BarsIcon, CodeIcon } from '@patternfly/react-icons';
+import { PluginNotifications } from '@/components/PluginNotifications';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -172,6 +173,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       sidebar={isSidebarOpen ? sidebar : undefined}
     >
       <PageSection>{children}</PageSection>
+      <PluginNotifications />
     </Page>
   );
 }

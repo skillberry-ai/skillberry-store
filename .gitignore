@@ -178,3 +178,6 @@ src/skillberry_store/fast_api/git_version.py
 
 # skills-sh-importer output folders
 src/skillberry_store/contrib/examples/skills-sh-importer/*/
+
+# project-specific Claude Code instructions (kept local, not tracked)
+CLAUDE.md

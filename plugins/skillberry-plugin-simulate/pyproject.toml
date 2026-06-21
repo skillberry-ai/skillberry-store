@@ -1,0 +1,28 @@
+[project]
+name = "skillberry-plugin-simulate"
+version = "0.1.0"
+description = "Stand up a simulated parallel vMCP backed by the simulation-harness and toggle real/sim per skill"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.12",
+    "pydantic>=2.11.1",
+    "httpx>=0.28.1",
+    "docker>=7.1.0",
+    "python-dotenv>=1.0.1",
+]
+
+[project.entry-points."skillberry_store.plugins"]
+simulate = "skillberry_plugin_simulate.plugin:SkillberryPluginSimulate"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.0",
+    "pytest-asyncio>=1.4.0",
+]

@@ -61,9 +61,9 @@ def test_plugin_enabled_when_llm_available():
     assert plugin.is_enabled()
 
 
-def test_plugin_no_router():
+def test_plugin_router_is_not_none():
     plugin = _make_plugin_with_mock_llm()
-    assert plugin.get_router() is None
+    assert plugin.get_router() is not None
 
 
 def test_plugin_no_cli_commands():
@@ -71,9 +71,10 @@ def test_plugin_no_cli_commands():
     assert plugin.get_cli_commands() is None
 
 
-def test_plugin_no_ui_config():
+def test_plugin_ui_config_has_notifications():
     plugin = _make_plugin_with_mock_llm()
-    assert plugin.get_ui_config() is None
+    assert plugin.get_ui_config() is not None
+    assert "notifications" in plugin.get_ui_config()
 
 
 # ── event handler registration ────────────────────────────────────────────────
@@ -469,3 +470,251 @@ async def test_check_for_duplicates_logs_error_on_parse_failure():
     await plugin._check_for_duplicates("s-new")  # must not raise
 
     mock_store.update_skill_tags.assert_not_called()
+
+
+import os
+
+
+def _make_plugin_in_mode(mode: str):
+    """Return a plugin with a mocked LLM client and the given DEDUPE_MODE."""
+    mock_client = MagicMock()
+    mock_llm_class = MagicMock(return_value=mock_client)
+    mock_module = MagicMock()
+    mock_module.get_llm.return_value = mock_llm_class
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        with patch.dict(os.environ, {"DEDUPE_MODE": mode}):
+            from skillberry_plugin_dedupe.plugin import SkillberryPluginDedupe
+            plugin = SkillberryPluginDedupe()
+    return plugin
+
+
+# ── mode ─────────────────────────────────────────────────────────────────────
+
+def test_plugin_defaults_to_interactive_mode():
+    with patch.dict(os.environ, {}, clear=True):
+        os.environ.pop("DEDUPE_MODE", None)
+        plugin = _make_plugin_with_mock_llm()
+    assert plugin._mode == "interactive"
+
+
+def test_plugin_uses_non_blocking_mode_when_env_set():
+    plugin = _make_plugin_in_mode("non_blocking")
+    assert plugin._mode == "non_blocking"
+
+
+def test_plugin_has_pending_decisions_dict():
+    plugin = _make_plugin_with_mock_llm()
+    assert isinstance(plugin._pending_decisions, dict)
+    assert len(plugin._pending_decisions) == 0
+
+
+# ── get_ui_config ─────────────────────────────────────────────────────────────
+
+def test_get_ui_config_returns_notifications_config():
+    plugin = _make_plugin_with_mock_llm()
+    config = plugin.get_ui_config()
+    assert config is not None
+    assert "notifications" in config
+    notifications = config["notifications"]
+    assert "poll_endpoint" in notifications
+    assert "/decisions" in notifications["poll_endpoint"]
+
+
+def test_get_ui_config_notifications_has_keep_and_delete_actions():
+    plugin = _make_plugin_with_mock_llm()
+    actions = plugin.get_ui_config()["notifications"]["item_schema"]["actions"]
+    labels = [a["label"] for a in actions]
+    assert "Keep" in labels
+    assert "Delete" in labels
+
+
+def test_get_ui_config_notifications_item_schema_has_required_fields():
+    plugin = _make_plugin_with_mock_llm()
+    schema = plugin.get_ui_config()["notifications"]["item_schema"]
+    assert schema["title_field"] == "skill_name"
+    assert "duplicates" in schema["body_fields"]
+
+
+# ── _check_for_duplicates — interactive mode ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_creates_pending_decision_in_interactive_mode():
+    plugin = _make_plugin_in_mode("interactive")
+    trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
+    candidate = _skill("s-old", "search tool", "performs web searches and returns ranked results")
+    mock_store = _make_mock_store(skills=[trigger, candidate])
+    mock_store.get_skill.return_value = trigger
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(
+        return_value='[{"name": "search tool", "reason": "Both describe web search"}]'
+    )
+
+    await plugin._check_for_duplicates("s-new")
+
+    assert "s-new" in plugin._pending_decisions
+    decision = plugin._pending_decisions["s-new"]
+    assert decision["uuid"] == "s-new"
+    assert decision["skill_name"] == "web searcher"
+    assert len(decision["duplicates"]) == 1
+    assert decision["duplicates"][0]["name"] == "search tool"
+    assert "detected_at" in decision
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_does_not_create_pending_decision_in_non_blocking_mode():
+    plugin = _make_plugin_in_mode("non_blocking")
+    trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
+    candidate = _skill("s-old", "search tool", "performs web searches and returns ranked results")
+    mock_store = _make_mock_store(skills=[trigger, candidate])
+    mock_store.get_skill.return_value = trigger
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(
+        return_value='[{"name": "search tool", "reason": "Both describe web search"}]'
+    )
+
+    await plugin._check_for_duplicates("s-new")
+
+    assert "s-new" not in plugin._pending_decisions
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_tags_skill_in_both_modes():
+    for mode in ("interactive", "non_blocking"):
+        plugin = _make_plugin_in_mode(mode)
+        trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
+        candidate = _skill("s-old", "search tool", "performs web searches and returns ranked results")
+        mock_store = _make_mock_store(skills=[trigger, candidate])
+        mock_store.get_skill.return_value = trigger
+        plugin.set_store_api(mock_store)
+        plugin.llm_client.generate_async = AsyncMock(
+            return_value='[{"name": "search tool", "reason": "Both describe web search"}]'
+        )
+
+        await plugin._check_for_duplicates("s-new")
+
+        mock_store.update_skill_tags.assert_called_with("s-new", ["duplicate:search tool"])
+
+
+@pytest.mark.asyncio
+async def test_check_for_duplicates_no_pending_decision_when_no_duplicates_found():
+    plugin = _make_plugin_in_mode("interactive")
+    trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
+    candidate = _skill("s-old", "other skill", "completely unrelated capability for managing files")
+    mock_store = _make_mock_store(skills=[trigger, candidate])
+    mock_store.get_skill.return_value = trigger
+    plugin.set_store_api(mock_store)
+    plugin.llm_client.generate_async = AsyncMock(return_value="[]")
+
+    await plugin._check_for_duplicates("s-new")
+
+    assert "s-new" not in plugin._pending_decisions
+
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+
+def _make_router_client(plugin) -> TestClient:
+    """Mount the plugin's router on a bare FastAPI app for endpoint testing."""
+    app = FastAPI()
+    router = plugin.get_router()
+    app.include_router(router)
+    return TestClient(app)
+
+
+# ── GET /decisions ────────────────────────────────────────────────────────────
+
+def test_get_decisions_returns_empty_list_when_none_pending():
+    plugin = _make_plugin_with_mock_llm()
+    client = _make_router_client(plugin)
+    response = client.get("/decisions")
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_get_decisions_returns_pending_decisions():
+    plugin = _make_plugin_with_mock_llm()
+    plugin._pending_decisions["s-1"] = {
+        "uuid": "s-1",
+        "skill_name": "My Skill",
+        "duplicates": [{"name": "other", "reason": "same"}],
+        "detected_at": "2026-06-18T10:00:00Z",
+    }
+    client = _make_router_client(plugin)
+    response = client.get("/decisions")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["uuid"] == "s-1"
+    assert data[0]["skill_name"] == "My Skill"
+
+
+# ── POST /decisions/{uuid}/keep ───────────────────────────────────────────────
+
+def test_keep_decision_removes_it_from_pending():
+    plugin = _make_plugin_with_mock_llm()
+    plugin._pending_decisions["s-1"] = {
+        "uuid": "s-1",
+        "skill_name": "My Skill",
+        "duplicates": [],
+        "detected_at": "2026-06-18T10:00:00Z",
+    }
+    client = _make_router_client(plugin)
+    response = client.post("/decisions/s-1/keep")
+    assert response.status_code == 200
+    assert "s-1" not in plugin._pending_decisions
+    assert "kept" in response.json()["message"].lower()
+
+
+def test_keep_decision_returns_404_for_unknown_uuid():
+    plugin = _make_plugin_with_mock_llm()
+    client = _make_router_client(plugin)
+    response = client.post("/decisions/nonexistent/keep")
+    assert response.status_code == 404
+
+
+# ── POST /decisions/{uuid}/delete ─────────────────────────────────────────────
+
+def test_delete_decision_calls_store_delete_and_removes_pending():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    mock_store.delete_skill = MagicMock(return_value=True)
+    plugin.set_store_api(mock_store)
+    plugin._pending_decisions["s-2"] = {
+        "uuid": "s-2",
+        "skill_name": "Duplicate Skill",
+        "duplicates": [],
+        "detected_at": "2026-06-18T10:00:00Z",
+    }
+    client = _make_router_client(plugin)
+    response = client.post("/decisions/s-2/delete")
+    assert response.status_code == 200
+    mock_store.delete_skill.assert_called_once_with("s-2")
+    assert "s-2" not in plugin._pending_decisions
+    assert "deleted" in response.json()["message"].lower()
+
+
+def test_delete_decision_returns_404_for_unknown_uuid():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    plugin.set_store_api(mock_store)
+    client = _make_router_client(plugin)
+    response = client.post("/decisions/nonexistent/delete")
+    assert response.status_code == 404
+
+
+def test_delete_decision_removes_pending_even_when_store_delete_fails():
+    plugin = _make_plugin_with_mock_llm()
+    mock_store = _make_mock_store()
+    mock_store.delete_skill = MagicMock(return_value=False)
+    plugin.set_store_api(mock_store)
+    plugin._pending_decisions["s-3"] = {
+        "uuid": "s-3",
+        "skill_name": "Some Skill",
+        "duplicates": [],
+        "detected_at": "2026-06-18T10:00:00Z",
+    }
+    client = _make_router_client(plugin)
+    response = client.post("/decisions/s-3/delete")
+    assert response.status_code == 200
+    assert "s-3" not in plugin._pending_decisions

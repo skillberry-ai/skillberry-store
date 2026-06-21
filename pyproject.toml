@@ -6,7 +6,8 @@ authors = [{ name = "Eran Raichstein", email = "eranra@il.ibm.com" },
             { name = "David Breitgand", email = "davidbr@il.ibm.com" }, 
             { name = "Avi Weit", email = "weit@il.ibm.com" }, 
             { name = "Erez Hadad", email = "erezh@il.ibm.com" },
-            { name = "Osher Elhadad", email = "Osher.Elhadad@ibm.com" }]
+            { name = "Osher Elhadad", email = "Osher.Elhadad@ibm.com" },
+            { name = "Priel Hazan", email = "priel.hazan@ibm.com" }]
 requires-python = ">=3.11"
 dependencies = [
   "annotated-types>=0.7.0",
@@ -138,6 +139,7 @@ dependencies = [
   "shenanigaNFS @ git+https://github.com/JordanMilne/ShenanigaNFS.git",
   "skillberry-plugin-dedupe>=0.1.0",
   "skillberry-plugin-kagenti-approver>=0.1.0",
+  "skillberry-plugin-simulate>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -186,8 +188,16 @@ plugin-skill-optimizer = [
   "skillberry-plugin-skill-optimizer>=0.1.0",
 ]
 
+plugin-simulate = [
+  "skillberry-plugin-simulate>=0.1.0",
+]
+
 plugin-provenance = [
   "skillberry-plugin-provenance>=0.1.0",
+]
+
+plugin-doc-generator = [
+  "skillberry-plugin-doc-generator>=0.1.0",
 ]
 
 plugin-dependency-tracker = [
@@ -205,7 +215,9 @@ plugins-all = [
   "skillberry-plugin-kagenti-approver>=0.1.0",
   "skillberry-plugin-sast>=0.1.0",
   "skillberry-plugin-skill-optimizer>=0.1.0",
+  "skillberry-plugin-simulate>=0.1.0",
   "skillberry-plugin-provenance>=0.1.0",
+  "skillberry-plugin-doc-generator>=0.1.0",
   "skillberry-plugin-dependency-tracker>=0.1.0",
 ]
 
@@ -224,7 +236,9 @@ skillberry-plugin-anthropic-skill-generator = { path = "plugins/skillberry-plugi
 skillberry-plugin-kagenti-approver = { path = "plugins/skillberry-plugin-kagenti-approver", editable = true }
 skillberry-plugin-sast = { path = "plugins/skillberry-plugin-sast", editable = true }
 skillberry-plugin-skill-optimizer = { path = "plugins/skillberry-plugin-skill-optimizer", editable = true }
+skillberry-plugin-simulate = { path = "plugins/skillberry-plugin-simulate", editable = true }
 skillberry-plugin-provenance = { path = "plugins/skillberry-plugin-provenance", editable = true }
+skillberry-plugin-doc-generator = { path = "plugins/skillberry-plugin-doc-generator", editable = true }
 skillberry-plugin-dependency-tracker = { path = "plugins/skillberry-plugin-dependency-tracker", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
 torch = { index = "pytorch-cpu" }

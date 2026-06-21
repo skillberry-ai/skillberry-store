@@ -1,6 +1,37 @@
 import pytest
 
-from skillberry_store.modules.file_executor import FileExecutor
+from skillberry_store.modules.file_executor import FileExecutor, mcp_arg_convert
+
+
+@pytest.mark.parametrize(
+    "value,arg_type,expected",
+    [
+        # JSON-schema type names (what the store actually stores & the MCP stub emits)
+        ("sara_doe_496", "string", "sara_doe_496"),  # must NOT be quoted
+        ("496", "string", "496"),  # numeric-looking string must stay a string
+        ("12:30", "string", "12:30"),  # time-looking string must stay a string
+        ("5", "integer", 5),
+        ("5.5", "number", 5.5),
+        ("true", "boolean", True),
+        ("false", "boolean", False),
+        # native values pass through with the right type
+        (5, "integer", 5),
+        (True, "boolean", True),
+        # legacy Python-style aliases still supported
+        ("hello", "str", "hello"),
+        ("7", "int", 7),
+        ("2.5", "float", 2.5),
+        # array / object values are passed through unchanged (JSON-native)
+        ([10, 20, 30], "array", [10, 20, 30]),
+        ({"k": "v"}, "object", {"k": "v"}),
+    ],
+)
+def test_mcp_arg_convert_produces_json_native_values(value, arg_type, expected):
+    """mcp_arg_convert builds MCP call arguments, so it must return JSON-native
+    values (no source-code quoting, no guess-coercion across types)."""
+    result = mcp_arg_convert(value, arg_type)
+    assert result == expected
+    assert type(result) is type(expected)
 
 
 @pytest.fixture

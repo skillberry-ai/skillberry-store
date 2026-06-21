@@ -4,6 +4,7 @@ import os
 import re
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
@@ -16,6 +17,9 @@ class SkillberryPluginDedupe(PluginBase):
 
     def __init__(self):
         super().__init__()
+
+        self._mode = os.getenv("DEDUPE_MODE", "interactive")
+        self._pending_decisions: Dict[str, dict] = {}
 
         self._metadata = PluginMetadata(
             name="Skill Deduplicator",
@@ -57,13 +61,68 @@ class SkillberryPluginDedupe(PluginBase):
         return self.llm_client is not None
 
     def get_router(self):
-        return None
+        from fastapi import APIRouter, HTTPException
+
+        router = APIRouter()
+
+        @router.get("/decisions")
+        async def list_decisions():
+            return list(self._pending_decisions.values())
+
+        @router.post("/decisions/{uuid}/keep")
+        async def keep_decision(uuid: str):
+            decision = self._pending_decisions.pop(uuid, None)
+            if decision is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No pending decision for skill {uuid}",
+                )
+            return {
+                "message": f"Skill '{decision['skill_name']}' marked as kept. Duplicate tags remain."
+            }
+
+        @router.post("/decisions/{uuid}/delete")
+        async def delete_decision(uuid: str):
+            decision = self._pending_decisions.pop(uuid, None)
+            if decision is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No pending decision for skill {uuid}",
+                )
+            if not self.store.delete_skill(uuid):
+                logger.error(f"Failed to delete skill {uuid} during dedupe decision")
+            return {"message": f"Skill '{decision['skill_name']}' deleted."}
+
+        return router
 
     def get_cli_commands(self) -> Optional[Dict[str, Any]]:
         return None
 
     def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return None
+        return {
+            "color": "#C9190B",
+            "notifications": {
+                "poll_endpoint": "/api/plugins/dedupe/decisions",
+                "item_schema": {
+                    "title_field": "skill_name",
+                    "body_fields": ["duplicates"],
+                    "actions": [
+                        {
+                            "label": "Keep",
+                            "endpoint": "/api/plugins/dedupe/decisions/{uuid}/keep",
+                            "method": "POST",
+                            "variant": "primary",
+                        },
+                        {
+                            "label": "Delete",
+                            "endpoint": "/api/plugins/dedupe/decisions/{uuid}/delete",
+                            "method": "POST",
+                            "variant": "danger",
+                        },
+                    ],
+                },
+            },
+        }
 
     def _register_event_handlers(self) -> None:
         from skillberry_store.plugins.events import _event_handlers
@@ -186,6 +245,13 @@ class SkillberryPluginDedupe(PluginBase):
 
         if findings:
             await self._apply_duplicate_findings(uuid, findings)
+            if self._mode == "interactive":
+                self._pending_decisions[uuid] = {
+                    "uuid": uuid,
+                    "skill_name": skill.get("name", uuid),
+                    "duplicates": findings,
+                    "detected_at": datetime.now(timezone.utc).isoformat(),
+                }
             logger.info(
                 f"Skill {uuid} tagged with {len(findings)} duplicate(s): "
                 f"{[f['name'] for f in findings]}"
