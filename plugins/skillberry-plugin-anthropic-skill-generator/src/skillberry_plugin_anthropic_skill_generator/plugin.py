@@ -54,7 +54,7 @@ async def create_skill(prompt, skill_dir, context_dir, options, mode, plugin_ins
         context_dir=context_dir,
         prompt=prompt,
         agent_options=options,
-        preinstalled_skills=["skill-creator"],
+        remote_skills=["https://github.com/anthropics/skills/tree/main/skills/skill-creator"],
         mode=mode,
     )
 
