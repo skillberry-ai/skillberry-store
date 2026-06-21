@@ -51,6 +51,8 @@ export function PluginActionForm({
 
   // Dynamic dropdown state: field name → [{label, value}]
   const [dynamicOptions, setDynamicOptions] = useState<Record<string, { label: string; value: string }[]>>({});
+  // Raw fetched items per field, retained so x-prefill can read keys other than label/value.
+  const [dynamicRawItems, setDynamicRawItems] = useState<Record<string, any[]>>({});
   const [optionsLoading, setOptionsLoading] = useState<Record<string, boolean>>({});
 
   const extractItems = (data: unknown): unknown[] => {
@@ -85,12 +87,34 @@ export function PluginActionForm({
       );
       const options = filtered.map((item) => ({ label: item[labelKey], value: item[valueKey] }));
       setDynamicOptions((prev) => ({ ...prev, [propertyName]: options }));
+      setDynamicRawItems((prev) => ({ ...prev, [propertyName]: filtered }));
       if (options.length === 1) {
         setFormData((prev) => ({ ...prev, [propertyName]: options[0].value }));
       }
     } finally {
       setOptionsLoading((prev) => ({ ...prev, [propertyName]: false }));
     }
+  };
+
+  // Apply an x-prefill map: when a dropdown option is selected, copy values from the
+  // selected raw option object into sibling form fields. Returns the patch (excluding the
+  // dropdown's own value) so callers can merge it into a single state update.
+  const computePrefill = (
+    propertyName: string,
+    schema: any,
+    selectedValue: string
+  ): Record<string, any> => {
+    const prefill = schema['x-prefill'] as Record<string, string> | undefined;
+    if (!prefill) return {};
+    const valueKey: string = schema['x-option-value'] ?? 'value';
+    const items = dynamicRawItems[propertyName] ?? [];
+    const selected = items.find((item) => String(item[valueKey]) === String(selectedValue));
+    const patch: Record<string, any> = {};
+    for (const [targetField, optionKey] of Object.entries(prefill)) {
+      const raw = selected ? selected[optionKey] : undefined;
+      patch[targetField] = Array.isArray(raw) ? raw.join(', ') : raw ?? '';
+    }
+    return patch;
   };
 
   // Poll the plugin-declared status endpoint while a job is pending. React Query
@@ -325,7 +349,14 @@ export function PluginActionForm({
           <FormSelect
             id={propertyName}
             value={(value as string) || ''}
-            onChange={(_event, newValue) => handleChange(newValue)}
+            onChange={(_event, newValue) => {
+              if (propertySchema['x-prefill']) {
+                const patch = computePrefill(propertyName, propertySchema, newValue);
+                setFormData((prev) => ({ ...prev, [propertyName]: newValue, ...patch }));
+              } else {
+                handleChange(newValue);
+              }
+            }}
             isDisabled={isDisabled || loading}
           >
             <FormSelectOption

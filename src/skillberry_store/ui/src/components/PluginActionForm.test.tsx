@@ -145,6 +145,49 @@ describe('PluginActionForm — generic async actions', () => {
     expect(document.querySelector('textarea')).toBeTruthy();
   });
 
+  it('prefills sibling fields when a preset is selected', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { id: 'opt1', label: 'Opt 1', prompt: 'hello prompt', skills: ['a', 'b'] },
+      ],
+    });
+    const action = {
+      label: 'Run preset',
+      endpoint: '/plugins/ask-runspace/run',
+      method: 'POST',
+      params_schema: {
+        type: 'object',
+        properties: {
+          preset_id: {
+            type: 'string',
+            'x-options-from': '/x/presets',
+            'x-option-label': 'label',
+            'x-option-value': 'id',
+            'x-prefill': { request: 'prompt', skills: 'skills' },
+          },
+          request: { type: 'string', format: 'textarea' },
+          skills: { type: 'array' },
+        },
+      },
+    } as any;
+
+    renderForm(action, async () => ({ success: true }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'Opt 1' })).toBeDefined();
+    });
+
+    fireEvent.change(document.getElementById('preset_id') as HTMLSelectElement, {
+      target: { value: 'opt1' },
+    });
+
+    await waitFor(() => {
+      expect((document.getElementById('request') as HTMLTextAreaElement).value).toBe('hello prompt');
+    });
+    expect((document.getElementById('skills') as HTMLInputElement).value).toBe('a, b');
+  });
+
   it('behaves synchronously for actions without async_action (no polling)', async () => {
     const syncAction: PluginAction = {
       label: 'Plain action',
