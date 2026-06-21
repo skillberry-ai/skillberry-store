@@ -623,7 +623,13 @@ The skill should be production-ready and well-documented."""
                             },
                             "agent_env": {
                                 "type": "object",
-                                "description": "Optional environment variables for Claude Code (e.g., ANTHROPIC_API_KEY)"
+                                "title": "Environment overrides (optional)",
+                                "description": (
+                                    "Per-run overrides for the Claude Code agent environment. "
+                                    "Your ~/.claude/settings.json env block and the server's "
+                                    "ANTHROPIC_*/CLAUDE_* variables are already loaded automatically; "
+                                    "only set this to override them."
+                                )
                             },
                             "execution_mode": {
                                 "type": "string",

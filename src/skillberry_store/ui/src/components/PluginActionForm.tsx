@@ -330,7 +330,7 @@ export function PluginActionForm({
     return (
       <FormGroup
         key={propertyName}
-        label={propertyName}
+        label={propertySchema.title ?? propertyName}
         isRequired={isRequired}
         fieldId={propertyName}
       >
