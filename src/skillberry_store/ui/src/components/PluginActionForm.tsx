@@ -112,7 +112,9 @@ export function PluginActionForm({
     const patch: Record<string, any> = {};
     for (const [targetField, optionKey] of Object.entries(prefill)) {
       const raw = selected ? selected[optionKey] : undefined;
-      patch[targetField] = Array.isArray(raw) ? raw.join(', ') : raw ?? '';
+      // Copy the RAW value: arrays stay arrays (the list widget renders them),
+      // strings stay strings.
+      patch[targetField] = raw ?? '';
     }
     return patch;
   };
@@ -161,11 +163,17 @@ export function PluginActionForm({
     const coercedData: Record<string, any> = { ...formData };
     if (action.params_schema.properties) {
       for (const [key, schema] of Object.entries(action.params_schema.properties) as [string, any][]) {
-        if (schema.type === 'array' && typeof coercedData[key] === 'string') {
-          coercedData[key] = coercedData[key]
-            .split(',')
-            .map((s: string) => s.trim())
-            .filter(Boolean);
+        if (schema.type === 'array') {
+          const v = coercedData[key];
+          if (Array.isArray(v)) {
+            coercedData[key] = v.map((s: string) => String(s).trim()).filter(Boolean);
+          } else if (typeof v === 'string') {
+            // Legacy/safety: comma-separated string from older state.
+            coercedData[key] = v
+              .split(',')
+              .map((s: string) => s.trim())
+              .filter(Boolean);
+          }
         }
       }
     }
@@ -396,11 +404,68 @@ export function PluginActionForm({
       );
     }
 
+    // Array → editable list of text inputs (add/remove rows)
+    if (propertySchema.type === 'array') {
+      const items: string[] = Array.isArray(value) ? value : value ? [String(value)] : [];
+      const displayItems = items.length === 0 ? [''] : items;
+      const title: string = propertySchema.title ?? propertyName;
+
+      const setItems = (next: string[]) => {
+        setFormData((prev) => ({ ...prev, [propertyName]: next }));
+      };
+      const updateItem = (index: number, newValue: string) => {
+        const next = [...displayItems];
+        next[index] = newValue;
+        setItems(next);
+      };
+      const removeItem = (index: number) => {
+        const next = displayItems.filter((_, i) => i !== index);
+        setItems(next);
+      };
+      const addItem = () => {
+        setItems([...displayItems, '']);
+      };
+
+      return (
+        <FormGroup
+          key={propertyName}
+          label={title}
+          isRequired={isRequired}
+          fieldId={propertyName}
+        >
+          {propertySchema.description && (
+            <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
+              {propertySchema.description}
+            </div>
+          )}
+          {displayItems.map((item, index) => (
+            <div
+              key={index}
+              style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.25rem' }}
+            >
+              <TextInput
+                id={index === 0 ? propertyName : `${propertyName}-${index}`}
+                value={item}
+                onChange={(_event, newValue) => updateItem(index, newValue)}
+                aria-label={`${title} item ${index + 1}`}
+              />
+              <Button
+                variant="plain"
+                aria-label={`Remove ${title} item ${index + 1}`}
+                onClick={() => removeItem(index)}
+              >
+                ✕
+              </Button>
+            </div>
+          ))}
+          <Button variant="link" onClick={addItem}>
+            Add
+          </Button>
+        </FormGroup>
+      );
+    }
+
     // Default to text input
-    const isArray = propertySchema.type === 'array';
-    const description = isArray
-      ? `${propertySchema.description || ''} (comma-separated)`.trim()
-      : propertySchema.description;
     return (
       <FormGroup
         key={propertyName}
@@ -408,9 +473,9 @@ export function PluginActionForm({
         isRequired={isRequired}
         fieldId={propertyName}
       >
-        {description && (
+        {propertySchema.description && (
           <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
-            {description}
+            {propertySchema.description}
           </div>
         )}
         <TextInput

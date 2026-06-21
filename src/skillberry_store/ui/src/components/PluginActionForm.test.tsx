@@ -185,7 +185,54 @@ describe('PluginActionForm — generic async actions', () => {
     await waitFor(() => {
       expect((document.getElementById('request') as HTMLTextAreaElement).value).toBe('hello prompt');
     });
-    expect((document.getElementById('skills') as HTMLInputElement).value).toBe('a, b');
+    // The array `skills` field now renders as a list: the two values "a" and "b"
+    // appear as separate inputs.
+    const skillsGroup = document.getElementById('skills')!.closest('[class*="c-form__group"]')!;
+    const skillInputs = Array.from(
+      skillsGroup.querySelectorAll('input')
+    ) as HTMLInputElement[];
+    const values = skillInputs.map((i) => i.value);
+    expect(values).toContain('a');
+    expect(values).toContain('b');
+  });
+
+  it('renders an array field as an add/remove list', () => {
+    const action = {
+      label: 'Tag it',
+      endpoint: '/plugins/ask-runspace/run',
+      method: 'POST',
+      params_schema: {
+        type: 'object',
+        properties: {
+          tags: { type: 'array', title: 'Tags' },
+        },
+      },
+    } as any;
+
+    renderForm(action, async () => ({ success: true }));
+
+    const group = document.getElementById('tags')!.closest('[class*="c-form__group"]')!;
+    const inputsOf = () => Array.from(group.querySelectorAll('input')) as HTMLInputElement[];
+
+    // An "Add" control exists, and there is initially one (empty) row.
+    const addButton = screen.getByRole('button', { name: 'Add' });
+    expect(addButton).toBeDefined();
+    expect(inputsOf().length).toBe(1);
+
+    // Type into the first input.
+    fireEvent.change(inputsOf()[0], { target: { value: 'first' } });
+    expect(inputsOf()[0].value).toBe('first');
+
+    // Clicking Add appends an extra input.
+    fireEvent.click(addButton);
+    expect(inputsOf().length).toBe(2);
+
+    fireEvent.change(inputsOf()[1], { target: { value: 'second' } });
+    expect(inputsOf()[1].value).toBe('second');
+
+    // Removing a row drops the input count.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Tags item 2' }));
+    expect(inputsOf().length).toBe(1);
   });
 
   it('behaves synchronously for actions without async_action (no polling)', async () => {
