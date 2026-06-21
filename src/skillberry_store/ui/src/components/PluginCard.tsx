@@ -12,6 +12,7 @@ import {
   Flex,
   FlexItem,
   Tooltip,
+  Switch,
 } from '@patternfly/react-core';
 import { CheckCircleIcon, ExclamationCircleIcon, InfoCircleIcon } from '@patternfly/react-icons';
 import type { Plugin } from '@/types';
@@ -19,9 +20,10 @@ import type { Plugin } from '@/types';
 interface PluginCardProps {
   plugin: Plugin;
   onActionClick?: (action: any) => void;
+  onToggleEnabled?: (plugin: Plugin, enabled: boolean) => void;
 }
 
-export function PluginCard({ plugin, onActionClick }: PluginCardProps) {
+export function PluginCard({ plugin, onActionClick, onToggleEnabled }: PluginCardProps) {
   const getStatusIcon = () => {
     if (plugin.enabled) {
       return <CheckCircleIcon style={{ color: '#3E8635' }} />;
@@ -46,9 +48,21 @@ export function PluginCard({ plugin, onActionClick }: PluginCardProps) {
             <Text component="h3">{plugin.name}</Text>
           </FlexItem>
           <FlexItem align={{ default: 'alignRight' }}>
-            <Tooltip content={plugin.status}>
-              <Label icon={getStatusIcon()}>{getStatusLabel()}</Label>
-            </Tooltip>
+            <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsSm' }}>
+              <FlexItem>
+                <Switch
+                  id={`plugin-toggle-${plugin.slug}`}
+                  aria-label={`Toggle ${plugin.name}`}
+                  isChecked={plugin.admin_enabled}
+                  onChange={(_event, checked) => onToggleEnabled?.(plugin, checked)}
+                />
+              </FlexItem>
+              <FlexItem>
+                <Tooltip content={plugin.status}>
+                  <Label icon={getStatusIcon()}>{getStatusLabel()}</Label>
+                </Tooltip>
+              </FlexItem>
+            </Flex>
           </FlexItem>
         </Flex>
       </CardTitle>
