@@ -12,14 +12,25 @@ def test_presets_have_id_label_guidance():
 
 
 def test_compose_prompt_combines_guidance_and_request():
-    pid = PRESETS[0]["id"]
-    out = compose_prompt(pid, "do the thing")
+    # Use a preset that actually has guidance (the first one is the generic
+    # empty-guidance option).
+    preset = next(p for p in PRESETS if p["guidance"].strip())
+    out = compose_prompt(preset["id"], "do the thing")
     assert "do the thing" in out
-    assert PRESETS[0]["guidance"] in out
+    assert preset["guidance"] in out
 
 
 def test_compose_prompt_request_only():
-    assert compose_prompt(None, "just this") .strip().endswith("just this")
+    assert compose_prompt(None, "just this").strip().endswith("just this")
+
+
+def test_compose_prompt_generic_preset_is_request_only():
+    # The generic "custom" preset has empty guidance -> request used verbatim.
+    assert compose_prompt("custom", "just this") == "just this"
+
+
+def test_optimize_preset_present():
+    assert any(p["id"] == "optimize" for p in PRESETS)
 
 
 def _plugin(env):
@@ -130,6 +141,34 @@ def test_status_ready_shows_message_when_no_summary(monkeypatch):
     assert "summary" in s["summary_md"].lower()
 
 
+def test_keep_workspace_retains_dir_and_cleanup_endpoint_deletes_it(monkeypatch):
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+
+    async def fake_run(prompt, editable_dir, context_dir, options, mode):
+        class R: session_id = "sess123"
+        return R()
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
+                        lambda session_id, editable_dir, mode: "# Done")
+
+    client = _client(p)
+    job_id = client.post("/plugins/ask-runspace/run",
+                         json={"request": "do x", "keep_workspace": True}).json()["data"]["job_id"]
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    ws = s["workspace_dir"]
+    assert os.path.isdir(ws)  # kept, not deleted
+
+    # The cleanup endpoint deletes it; a second call 404s.
+    assert client.post(f"/plugins/ask-runspace/cleanup/{job_id}").status_code == 200
+    assert not os.path.exists(ws)
+    assert client.post(f"/plugins/ask-runspace/cleanup/{job_id}").status_code == 404
+
+
 def test_ui_config_shape():
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
     cfg = p.get_ui_config()
@@ -138,4 +177,7 @@ def test_ui_config_shape():
     assert props["request"]["format"] == "textarea"
     assert action["params_schema"]["required"] == ["request"]
     assert props["preset_id"]["x-options-from"].endswith("/presets")
+    assert props["keep_workspace"]["type"] == "boolean"
+    assert props["keep_workspace"].get("default") is False
+    assert action["async_action"]["cleanup_action"]["when_field"] == "workspace_dir"
     assert action["async_action"]["result_markdown_field"] == "summary_md"

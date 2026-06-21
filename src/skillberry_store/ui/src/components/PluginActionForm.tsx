@@ -46,6 +46,9 @@ export function PluginActionForm({
   const [jobId, setJobId] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
 
+  // Optional post-result "cleanup" action (e.g. delete a kept workspace).
+  const [cleanupState, setCleanupState] = useState<'idle' | 'deleting' | 'done'>('idle');
+
   // Dynamic dropdown state: field name → [{label, value}]
   const [dynamicOptions, setDynamicOptions] = useState<Record<string, { label: string; value: string }[]>>({});
   const [optionsLoading, setOptionsLoading] = useState<Record<string, boolean>>({});
@@ -174,7 +177,21 @@ export function PluginActionForm({
     setFormData({});
     setError(null);
     setResult(null);
+    setCleanupState('idle');
     onClose();
+  };
+
+  const handleCleanup = async () => {
+    if (!asyncConfig?.cleanup_action || !jobId) return;
+    setCleanupState('deleting');
+    try {
+      const url = interpolateUrl(asyncConfig.cleanup_action.endpoint, { job_id: jobId });
+      const resp = await fetch(url, { method: 'POST' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      setCleanupState('done');
+    } catch {
+      setCleanupState('idle');
+    }
   };
 
   // Fetch options for non-dependent fields on open
@@ -428,6 +445,25 @@ export function PluginActionForm({
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {(statusQuery.data as any)[asyncConfig.result_markdown_field] as string}
                 </ReactMarkdown>
+              </div>
+            )}
+          {jobStatus === 'ready' &&
+            asyncConfig.cleanup_action &&
+            (statusQuery.data as any)?.[asyncConfig.cleanup_action.when_field] && (
+              <div style={{ marginBottom: '1rem' }}>
+                {cleanupState === 'done' ? (
+                  <Alert variant="info" title="Workspace deleted" isInline />
+                ) : (
+                  <Button
+                    variant="secondary"
+                    isDanger
+                    onClick={handleCleanup}
+                    isLoading={cleanupState === 'deleting'}
+                    isDisabled={cleanupState === 'deleting'}
+                  >
+                    {asyncConfig.cleanup_action.label}
+                  </Button>
+                )}
               </div>
             )}
           {jobStatus === 'failed' && (

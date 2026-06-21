@@ -34,6 +34,7 @@ class SkillberryPluginAskRunspace(PluginBase):
         self._execution_mode = os.getenv("RUNSPACE_MODE", "container")
         self._claude_settings = None
         self._jobs: Dict[str, Any] = {}
+        self._workspaces: Dict[str, str] = {}
         self._load_claude_settings()
         self._runspace_available = runspace_agent is not None
         self._credentials_configured = self._check_credentials()
@@ -84,18 +85,22 @@ class SkillberryPluginAskRunspace(PluginBase):
             preset_id: Optional[str] = None
             execution_mode: Optional[str] = None
             agent_env: Optional[Dict[str, str]] = None
+            keep_workspace: bool = False
 
         @router.get("/presets")
         async def presets():
             return PRESETS
 
         async def _execute(job_id: str, req: RunRequest):
-            # The scratch workspace only needs to live for the duration of the
-            # run: read_summary returns the summary as a string (from the
-            # runspace-managed session workspace in container mode, or from the
-            # editable dir in local mode), so we can delete the temp dir once
-            # we have it. Clean up in a finally to avoid leaking dirs per run.
+            # By default the scratch workspace only needs to live for the
+            # duration of the run: read_summary returns the summary as a string
+            # (from the runspace-managed session workspace in container mode, or
+            # the editable dir in local mode), so we delete the temp dir once we
+            # have it. When keep_workspace is set, we retain it for inspection
+            # and expose a delete endpoint instead.
             tmp = tempfile.mkdtemp(prefix="ask-runspace-")
+            if req.keep_workspace:
+                self._workspaces[job_id] = tmp
             try:
                 editable = Path(tmp) / "editable"; editable.mkdir()
                 context = Path(tmp) / "context"; context.mkdir()
@@ -104,12 +109,16 @@ class SkillberryPluginAskRunspace(PluginBase):
                 options = ClaudeCodeOptions(env=self._build_claude_env(req.agent_env))
                 result = await runner.run_task_session(prompt, str(editable), str(context), options, mode)
                 summary = runner.read_summary(result.session_id, str(editable), mode)
-                return {
+                payload = {
                     "session_id": result.session_id,
                     "summary_md": summary or "_The agent finished but did not produce a summary._",
                 }
+                if req.keep_workspace:
+                    payload["workspace_dir"] = tmp
+                return payload
             finally:
-                shutil.rmtree(tmp, ignore_errors=True)
+                if not req.keep_workspace:
+                    shutil.rmtree(tmp, ignore_errors=True)
 
         @router.post("/run")
         async def run(req: RunRequest):
@@ -135,6 +144,14 @@ class SkillberryPluginAskRunspace(PluginBase):
                 logger.error("ask-runspace job %s failed: %s", job_id, exc)
                 return {"job_id": job_id, "status": "failed", "detail": str(exc)}
             return {"job_id": job_id, "status": "ready", **task.result()}
+
+        @router.post("/cleanup/{job_id}")
+        async def cleanup_workspace(job_id: str):
+            path = self._workspaces.pop(job_id, None)
+            if path is None:
+                raise HTTPException(status_code=404, detail="No kept workspace for this job")
+            shutil.rmtree(path, ignore_errors=True)
+            return {"success": True, "message": "Workspace deleted", "data": {"deleted": path}}
 
         return router
 
@@ -179,12 +196,26 @@ class SkillberryPluginAskRunspace(PluginBase):
                                     "only set this to override them."
                                 ),
                             },
+                            "keep_workspace": {
+                                "type": "boolean",
+                                "default": False,
+                                "title": "Keep workspace folder after run",
+                                "description": (
+                                    "Keep the agent's scratch workspace on the server for inspection. "
+                                    "When off (default) it is deleted automatically after the run."
+                                ),
+                            },
                         },
                         "required": ["request"],
                     },
                     "async_action": {
                         "status_endpoint": "/api/plugins/ask-runspace/status/{job_id}",
                         "result_markdown_field": "summary_md",
+                        "cleanup_action": {
+                            "endpoint": "/api/plugins/ask-runspace/cleanup/{job_id}",
+                            "label": "Delete workspace",
+                            "when_field": "workspace_dir",
+                        },
                         "labels": {
                             "pending": "Agent is working…",
                             "ready": "Task complete",
