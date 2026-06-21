@@ -127,4 +127,60 @@ class SkillberryPluginAskRunspace(PluginBase):
         return router
 
     def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return None  # implemented in Task 5
+        return {
+            "icon": "RobotIcon",
+            "color": "#7C3AED",
+            "actions": [
+                {
+                    "label": "Run task",
+                    "endpoint": "/plugins/ask-runspace/run",
+                    "method": "POST",
+                    "params_schema": {
+                        "type": "object",
+                        "properties": {
+                            "preset_id": {
+                                "type": "string",
+                                "title": "Example task (optional)",
+                                "x-options-from": "/api/plugins/ask-runspace/presets",
+                                "x-option-label": "label",
+                                "x-option-value": "id",
+                            },
+                            "request": {
+                                "type": "string",
+                                "title": "Your request",
+                                "format": "textarea",
+                                "description": "Describe what you want the agent to do.",
+                            },
+                            "execution_mode": {
+                                "type": "string",
+                                "enum": ["container", "local"],
+                                "default": "container",
+                                "title": "Execution mode",
+                            },
+                            "agent_env": {
+                                "type": "object",
+                                "title": "Environment overrides (optional)",
+                                "description": (
+                                    "Per-run overrides for the Claude Code agent environment. "
+                                    "Your ~/.claude/settings.json env block and the server's "
+                                    "ANTHROPIC_*/CLAUDE_* variables are already loaded automatically; "
+                                    "only set this to override them."
+                                ),
+                            },
+                        },
+                        "required": ["request"],
+                    },
+                    "async_action": {
+                        "status_endpoint": "/api/plugins/ask-runspace/status/{job_id}",
+                        "result_markdown_field": "summary_md",
+                        "labels": {
+                            "pending": "Agent is working…",
+                            "ready": "Task complete",
+                            "failed": "Task failed",
+                            "timeout": "Could not confirm status — check the plugin logs",
+                            "done": "Done",
+                        },
+                    },
+                }
+            ],
+        }

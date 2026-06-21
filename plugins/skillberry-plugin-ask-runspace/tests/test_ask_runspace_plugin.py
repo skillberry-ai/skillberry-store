@@ -82,3 +82,14 @@ def test_run_then_status_ready(monkeypatch):
     assert s["status"] == "ready"
     assert s["summary_md"] == "# Done\nall good"
     assert s["session_id"] == "sess123"
+
+
+def test_ui_config_shape():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    cfg = p.get_ui_config()
+    action = cfg["actions"][0]
+    props = action["params_schema"]["properties"]
+    assert props["request"]["format"] == "textarea"
+    assert action["params_schema"]["required"] == ["request"]
+    assert props["preset_id"]["x-options-from"].endswith("/presets")
+    assert action["async_action"]["result_markdown_field"] == "summary_md"
