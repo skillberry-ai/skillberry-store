@@ -166,7 +166,9 @@ def test_is_enabled_without_credentials():
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")}
     with patch.dict(os.environ, env, clear=True):
         with patch("skillberry_plugin_skill_optimizer.plugin.runspace_agent", new=Mock()):
-            p = SkillberryPluginSkillOptimizer()
+            # Also isolate from any real ~/.claude/settings.json on the dev machine.
+            with patch.object(SkillberryPluginSkillOptimizer, "_load_claude_settings", lambda self: None):
+                p = SkillberryPluginSkillOptimizer()
     assert p.is_enabled() is False
 
 
@@ -186,7 +188,9 @@ def test_status_message_missing_credentials():
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")}
     with patch.dict(os.environ, env, clear=True):
         with patch("skillberry_plugin_skill_optimizer.plugin.runspace_agent", new=Mock()):
-            p = SkillberryPluginSkillOptimizer()
+            # Also isolate from any real ~/.claude/settings.json on the dev machine.
+            with patch.object(SkillberryPluginSkillOptimizer, "_load_claude_settings", lambda self: None):
+                p = SkillberryPluginSkillOptimizer()
     assert "credentials" in p.get_status_message().lower()
 
 
@@ -489,3 +493,56 @@ def test_ui_config_params_schema(plugin):
 
 def test_get_cli_commands_returns_none(plugin):
     assert plugin.get_cli_commands() is None
+
+
+# ---------------------------------------------------------------------------
+# Claude settings.json env handling
+# ---------------------------------------------------------------------------
+
+def _make_plugin_with_settings(settings):
+    """Instantiate the plugin with a stubbed ~/.claude/settings.json payload."""
+    with patch("skillberry_plugin_skill_optimizer.plugin.runspace_agent", new=Mock()):
+        with patch.object(
+            SkillberryPluginSkillOptimizer, "_load_claude_settings", lambda self: None
+        ):
+            p = SkillberryPluginSkillOptimizer()
+    p._claude_settings = settings
+    return p
+
+
+def test_check_credentials_reads_settings_env_block():
+    # Standard Claude Code schema: credentials live under the "env" block.
+    settings = {"env": {"ANTHROPIC_BASE_URL": "https://gw", "ANTHROPIC_AUTH_TOKEN": "tok"}}
+    clean = {k: v for k, v in os.environ.items()
+             if not (k.startswith("ANTHROPIC_") or k.startswith("CLAUDE_"))}
+    with patch.dict(os.environ, clean, clear=True):
+        p = _make_plugin_with_settings(settings)
+        assert p._check_credentials() is True
+
+
+def test_build_claude_env_forwards_entire_settings_env_block():
+    settings = {
+        "env": {
+            "ANTHROPIC_BASE_URL": "https://gw",
+            "ANTHROPIC_AUTH_TOKEN": "tok",
+            "ANTHROPIC_MODEL": "claude-opus-4-8",
+            "ANTHROPIC_SMALL_FAST_MODEL": "claude-sonnet-4-6",
+            "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-4-8",
+        }
+    }
+    clean = {k: v for k, v in os.environ.items()
+             if not (k.startswith("ANTHROPIC_") or k.startswith("CLAUDE_"))}
+    with patch.dict(os.environ, clean, clear=True):
+        p = _make_plugin_with_settings(settings)
+        env = p._build_claude_env()
+    # Every key from the settings env block is forwarded, not just a hardcoded subset.
+    for key, value in settings["env"].items():
+        assert env[key] == value
+
+
+def test_build_claude_env_process_env_overrides_settings():
+    settings = {"env": {"ANTHROPIC_MODEL": "from-settings"}}
+    with patch.dict(os.environ, {"ANTHROPIC_MODEL": "from-process"}, clear=False):
+        p = _make_plugin_with_settings(settings)
+        env = p._build_claude_env()
+    assert env["ANTHROPIC_MODEL"] == "from-process"
