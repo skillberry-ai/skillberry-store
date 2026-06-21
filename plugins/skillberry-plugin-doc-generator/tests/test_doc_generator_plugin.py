@@ -1,10 +1,18 @@
-"""Tests for the doc-generator plugin (mocked store, no network/LLM)."""
+"""Tests for the doc-generator plugin (mocked store + mocked LLM, no network).
+
+The LLM is wired exactly like the security plugin, so these tests use the same
+idiom: fake ``llm_switchboard`` at import time so the plugin builds a mock
+client, then stub ``generate_async`` with an ``AsyncMock``.
+"""
 
 import copy
+import json
 
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from skillberry_plugin_doc_generator.plugin import SkillberryPluginDocGenerator
+from skillberry_store.plugins import events as events_module
 from skillberry_store.plugins.base import PluginType
 
 
@@ -43,22 +51,57 @@ class FakeStore:
         return True
 
 
-def _plugin(store):
-    p = SkillberryPluginDocGenerator()
+def _llm_json(description="Clear documentation produced for the object.", **extra):
+    payload = {
+        "description": description,
+        "when_to_use": "When you need this capability.",
+        "parameters": extra.get("parameters", []),
+        "examples": extra.get("examples", ["example usage"]),
+    }
+    return json.dumps(payload)
+
+
+def _make_plugin_with_mock_llm():
+    """Create a plugin instance with a mocked (enabled) LLM client."""
+    mock_client = MagicMock()
+    mock_llm_class = MagicMock(return_value=mock_client)
+    mock_module = MagicMock()
+    mock_module.get_llm.return_value = mock_llm_class
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        plugin = SkillberryPluginDocGenerator()
+    return plugin
+
+
+def _plugin(store, response=None):
+    """An enabled plugin bound to ``store`` with a canned LLM response."""
+    p = _make_plugin_with_mock_llm()
     p.set_store_api(store)
+    p.llm_client.generate_async = AsyncMock(return_value=response or _llm_json())
     return p
 
 
+# ── metadata / enablement ────────────────────────────────────────────────────
+
+
 def test_metadata_and_enablement():
-    p = SkillberryPluginDocGenerator()
+    p = _make_plugin_with_mock_llm()
     assert p.metadata.name == "Documentation Generator"
     assert p.metadata.plugin_type == PluginType.EVALUATOR
     assert p.is_enabled() is True
-    assert "backend" in p.get_status_message()
+    assert "Ready" in p.get_status_message()
+
+
+def test_plugin_disabled_when_llm_unavailable():
+    mock_module = MagicMock()
+    mock_module.get_llm.side_effect = RuntimeError("LLM unavailable")
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        p = SkillberryPluginDocGenerator()
+    assert p.is_enabled() is False
+    assert "error" in p.get_status_message().lower()
 
 
 def test_router_exposes_generate_and_refresh():
-    p = SkillberryPluginDocGenerator()
+    p = _make_plugin_with_mock_llm()
     router = p.get_router()
     paths = {r.path for r in router.routes}
     assert "/generate" in paths
@@ -66,15 +109,18 @@ def test_router_exposes_generate_and_refresh():
 
 
 def test_ui_config_actions():
-    p = SkillberryPluginDocGenerator()
+    p = _make_plugin_with_mock_llm()
     cfg = p.get_ui_config()
     labels = {a["label"] for a in cfg["actions"]}
-    assert any("Generate" in l for l in labels)
-    assert any("Refresh" in l for l in labels)
+    assert any("Generate" in label for label in labels)
+    assert any("Refresh" in label for label in labels)
     # object_type must carry a default so the generic UI form pre-populates it.
     for action in cfg["actions"]:
         ot = action["params_schema"]["properties"]["object_type"]
         assert ot.get("default") == "tool"
+
+
+# ── endpoint validation / gating ─────────────────────────────────────────────
 
 
 def test_endpoint_validates_blank_and_bad_input_as_400_not_422():
@@ -83,7 +129,7 @@ def test_endpoint_validates_blank_and_bad_input_as_400_not_422():
     from fastapi.testclient import TestClient
 
     app = FastAPI()
-    app.include_router(SkillberryPluginDocGenerator().get_router())
+    app.include_router(_make_plugin_with_mock_llm().get_router())
     client = TestClient(app)
 
     # empty body: object_type defaults to 'tool', uuid missing -> 400 (not 422)
@@ -95,6 +141,51 @@ def test_endpoint_validates_blank_and_bad_input_as_400_not_422():
     r = client.post("/generate", json={"object_type": "widget", "uuid": "x"})
     assert r.status_code == 400
     assert "object_type must be one of" in r.json()["detail"]
+
+
+def test_endpoint_returns_503_when_llm_unavailable():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    mock_module = MagicMock()
+    mock_module.get_llm.side_effect = RuntimeError("LLM unavailable")
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        plugin = SkillberryPluginDocGenerator()
+
+    app = FastAPI()
+    app.include_router(plugin.get_router())
+    client = TestClient(app)
+    r = client.post("/generate", json={"object_type": "tool", "uuid": "t1"})
+    assert r.status_code == 503
+
+
+# ── parameter extraction (LLM-independent) ───────────────────────────────────
+
+
+def test_list_parameter_schema_form_supported():
+    store = FakeStore(
+        {
+            ("tool", "t1"): {
+                "name": "t",
+                "parameters": [
+                    {
+                        "name": "x",
+                        "type": "string",
+                        "required": True,
+                        "description": "the x",
+                    },
+                ],
+            }
+        }
+    )
+    p = _plugin(store)
+    obj = store.get_tool("t1")
+    object_doc = p._to_object_doc("tool", "t1", obj)
+    assert [pp.name for pp in object_doc.parameters] == ["x"]
+    assert object_doc.parameters[0].description == "the x"
+
+
+# ── core operations (mocked LLM) ─────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
@@ -116,7 +207,7 @@ async def test_generate_proposes_without_applying():
     assert result["applied"] is False
     doc = result["documentation"]
     assert doc["description"]
-    assert doc["backend"] == "heuristic"
+    assert doc["backend"] == p._backend and doc["backend"]
     assert "source_fingerprint" in doc
 
     # persisted under proposed, NOT current; author description untouched
@@ -157,6 +248,18 @@ async def test_missing_object_raises_valueerror():
 
 
 @pytest.mark.asyncio
+async def test_generate_requires_llm_client():
+    """With no LLM the operation hard-fails rather than silently degrading."""
+    mock_module = MagicMock()
+    mock_module.get_llm.side_effect = RuntimeError("LLM unavailable")
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        p = SkillberryPluginDocGenerator()
+    p.set_store_api(FakeStore({("tool", "t1"): {"name": "t"}}))
+    with pytest.raises(RuntimeError, match="LLM client not initialized"):
+        await p.generate_docs("tool", "t1")
+
+
+@pytest.mark.asyncio
 async def test_refresh_detects_no_drift_then_drift():
     store = FakeStore(
         {
@@ -184,48 +287,82 @@ async def test_refresh_detects_no_drift_then_drift():
 
     r2 = await p.refresh_docs("tool", "t1")
     assert r2["drift"]
-    # refreshed docs proposed (not applied) and reflect the new params
+    # refreshed docs are proposed (not applied) and re-generated
     assert r2["applied"] is False
-    assert any(pp["name"] == "b" for pp in r2["documentation"]["parameters"])
+    assert r2["documentation"]["backend"] == p._backend
+    assert r2["documentation"]["source_fingerprint"] != (r1["documentation"] or {}).get(
+        "source_fingerprint"
+    )
 
 
 @pytest.mark.asyncio
-async def test_enrich_preserves_thin_author_description():
+async def test_thin_author_description_labeled_enriched():
     store = FakeStore(
         {
             ("tool", "t1"): {
                 "name": "fetch",
-                "description": "Gets data",  # thin
+                "description": "Gets data",  # thin (< 40 chars)
                 "content": "import requests",
             }
         }
     )
     p = _plugin(store)
     result = await p.generate_docs("tool", "t1", apply=True)
-    desc = result["documentation"]["description"]
-    assert desc.startswith("Gets data")  # author words preserved
     assert result["documentation"]["mode"] == "enriched"
 
 
 @pytest.mark.asyncio
-async def test_list_parameter_schema_form_supported():
-    store = FakeStore(
-        {
-            ("tool", "t1"): {
-                "name": "t",
-                "parameters": [
-                    {
-                        "name": "x",
-                        "type": "string",
-                        "required": True,
-                        "description": "the x",
-                    },
-                ],
-            }
-        }
-    )
+async def test_substantial_author_description_kept_verbatim():
+    author = "Posts a richly formatted message to a Slack channel and returns the ts."
+    store = FakeStore({("tool", "t1"): {"name": "post", "description": author}})
     p = _plugin(store)
-    result = await p.generate_docs("tool", "t1")
-    params = result["documentation"]["parameters"]
-    assert params[0]["name"] == "x"
-    assert params[0]["description"] == "the x"  # author param doc preserved
+    result = await p.generate_docs("tool", "t1", apply=True)
+    # non-destructive: sufficient author content is kept verbatim
+    assert result["documentation"]["mode"] == "kept"
+    assert result["documentation"]["description"] == author
+
+
+# ── event handlers ───────────────────────────────────────────────────────────
+
+
+def test_event_handlers_registered_for_all_content_types():
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        _make_plugin_with_mock_llm()
+        assert len(events_module._event_handlers.get("content_added:tool", [])) > 0
+        assert len(events_module._event_handlers.get("content_added:skill", [])) > 0
+        assert len(events_module._event_handlers.get("content_added:snippet", [])) > 0
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
+
+
+@pytest.mark.asyncio
+async def test_auto_proposal_skipped_when_store_not_set():
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        _make_plugin_with_mock_llm()  # store API never set
+        handler = events_module._event_handlers["content_added:tool"][0]
+        await handler(uuid="any-uuid")  # must not raise
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)
+
+
+@pytest.mark.asyncio
+async def test_auto_proposal_skipped_when_disabled():
+    saved = dict(events_module._event_handlers)
+    events_module._event_handlers.clear()
+    try:
+        mock_module = MagicMock()
+        mock_module.get_llm.side_effect = RuntimeError("LLM unavailable")
+        with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+            plugin = SkillberryPluginDocGenerator()
+        plugin.set_store_api(FakeStore({("tool", "t1"): {"name": "t"}}))
+        handler = events_module._event_handlers["content_added:tool"][0]
+        await handler(uuid="t1")  # disabled -> must not raise or call LLM
+    finally:
+        events_module._event_handlers.clear()
+        events_module._event_handlers.update(saved)

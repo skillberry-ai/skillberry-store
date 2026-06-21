@@ -41,32 +41,25 @@ docs for objects that lack them (it never auto-applies).
 
 ## Generation backend
 
-The generation engine is pluggable (`generators/`). The default `heuristic`
-backend is **deterministic and dependency-free** — no network, no LLM — so the
-plugin works out of the box and every result is reproducible in a unit test.
+Documentation is produced by a frontier model through **`llm-switchboard`**,
+wired exactly like the **security evaluator** plugin:
 
-### Optional frontier-model backend
+```
+get_llm(LLM_PROVIDER) → Client(model_name=LLM_MODEL) → await client.generate_async(prompt=...)
+```
 
-If a frontier model is configured, the plugin uses it **automatically**; the
-default behavior is unchanged unless it is. This uses the same mechanism as the
-security evaluator plugin (`llm-switchboard`):
+Configure the provider in the environment (no UI), the same vars the other
+LLM plugins use:
 
-1. Install the extra: `pip install -e 'plugins/skillberry-plugin-doc-generator[llm]'`
-2. Configure the provider in the environment (no UI):
-   - `LLM_PROVIDER` (default `openai.async`), `LLM_MODEL` (default `gpt-4`)
-   - the provider's API key (e.g. `OPENAI_API_KEY`)
+- `LLM_PROVIDER` (default `openai.async`), `LLM_MODEL` (default `gpt-4`)
+- the provider's API key (e.g. `OPENAI_API_KEY`)
 
-Selection is env-driven (`resolve_generator`):
-
-| `DOC_GENERATOR_BACKEND` | Behavior |
-|-------------------------|----------|
-| unset / `auto` | LLM backend **iff** a client initializes (switchboard + API key), else `heuristic` |
-| `llm` | force LLM, fall back to `heuristic` if unavailable |
-| `heuristic` | always the deterministic backend |
-
-The LLM backend also **degrades per request**: if a model call fails at runtime,
-that object falls back to the heuristic result, so generation never hard-fails.
-No specific model is hardcoded — the host chooses which (if any) to plug in.
+No specific model is hardcoded — the host chooses which one to plug in. If
+`llm-switchboard` is not installed or the LLM cannot be initialized, the plugin
+is **disabled** (`is_enabled()` is `False`) and its endpoints return `503`,
+exactly like the security plugin. The `mode` label (`generated` / `enriched` /
+`kept`) is decided from the author's existing description so the non-destructive
+guarantee holds: sufficient author content is kept verbatim.
 
 ## API
 
@@ -94,8 +87,9 @@ pip install -e plugins/skillberry-plugin-doc-generator
 pytest plugins/skillberry-plugin-doc-generator/tests -q
 ```
 
-Tests are network-free and LLM-free: the deterministic generator is exercised
-directly, and the plugin is exercised against a mocked store.
+Tests are network-free: the `llm-switchboard` client is mocked (an `AsyncMock`
+returns canned JSON, like the security plugin's tests) and the plugin is
+exercised against a mocked store.
 
 ## Notes
 

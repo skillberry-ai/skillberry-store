@@ -8,20 +8,16 @@ version = "0.1.0"
 description = "Skillberry Store plugin that generates, enriches and drift-checks documentation for skills, tools and snippets"
 readme = "README.md"
 requires-python = ">=3.10"
-# No heavy deps: the default generator is deterministic and dependency-free.
-# An LLM generator can be injected by the host without adding deps here.
-dependencies = []
+# Wired exactly like the security evaluator plugin: documentation is generated
+# by a frontier model via llm-switchboard, so it is a hard dependency.
+dependencies = [
+    "llm-switchboard[litellm]>=0.1.0",
+]
 
 [project.entry-points."skillberry_store.plugins"]
 doc_generator = "skillberry_plugin_doc_generator.plugin:SkillberryPluginDocGenerator"
 
-# The default generator is deterministic and needs nothing. Installing the
-# `llm` extra enables the optional frontier-model backend (used automatically
-# only when the provider's API key is configured in the environment).
 [project.optional-dependencies]
-llm = [
-    "llm-switchboard[litellm]>=0.1.0",
-]
 dev = [
     "pytest",
     "pytest-asyncio",
@@ -30,8 +26,5 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = [
-    "skillberry_plugin_doc_generator",
-    "skillberry_plugin_doc_generator.generators",
-]
+packages = ["skillberry_plugin_doc_generator"]
 package-dir = {"" = "src"}

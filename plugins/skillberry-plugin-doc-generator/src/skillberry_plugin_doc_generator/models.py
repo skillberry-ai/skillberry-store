@@ -1,15 +1,12 @@
-"""Documentation shape + generator interface.
+"""Documentation shapes shared across the plugin.
 
 The store curates three object types (skills, tools, snippets) whose docs today
 drift and have no common shape (issue #201). This module defines:
 
   - ``Documentation``: the single, consistent documentation shape produced for
     every object type — description, when-to-use, parameter docs, examples.
-  - ``ObjectDoc``: the normalized view of a store object the generators read
-    from, so a generator never has to know skill-vs-tool-vs-snippet plumbing.
-  - ``DocGenerator``: the interface a generation backend implements. The plugin
-    ships a deterministic, dependency-free default (``heuristic``); an LLM
-    backend can be injected by the host without changing the plugin.
+  - ``ObjectDoc``: the normalized view of a store object the generator reads
+    from, so generation never has to know skill-vs-tool-vs-snippet plumbing.
 
 The shape is intentionally JSON-friendly (``to_dict``) so it can be persisted in
 ``extra["documentation"]`` and rendered uniformly in the UI.
@@ -61,7 +58,7 @@ class Documentation:
     examples: List[str] = field(default_factory=list)
     # How this doc relates to pre-existing author content (see MODE_* above).
     mode: str = MODE_GENERATED
-    # Free-form notes the generator wants to surface (e.g. "no params found").
+    # Free-form notes worth surfacing (e.g. "no params found").
     notes: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -75,7 +72,7 @@ class Documentation:
         }
 
     def is_empty(self) -> bool:
-        """True when the generator could not produce anything meaningful."""
+        """True when generation could not produce anything meaningful."""
         return not (
             self.description or self.when_to_use or self.parameters or self.examples
         )
@@ -83,12 +80,12 @@ class Documentation:
 
 @dataclass
 class ObjectDoc:
-    """Normalized, type-agnostic view of a store object for the generators.
+    """Normalized, type-agnostic view of a store object used to build the prompt.
 
-    The plugin builds this from a raw store object so generators stay decoupled
-    from how skills/tools/snippets are stored. ``source_fingerprint`` is a hash
-    of the inputs that documentation is derived from — when it changes, existing
-    docs are stale (drift).
+    The plugin builds this from a raw store object so the generation prompt and
+    the drift fingerprint stay decoupled from how skills/tools/snippets are
+    stored. ``source_fingerprint`` is a hash of the inputs documentation is
+    derived from — when it changes, existing docs are stale (drift).
     """
 
     object_type: str
@@ -123,27 +120,3 @@ class ObjectDoc:
             h.update(b"\x00ref\x00")
             h.update(ref.encode("utf-8", "replace"))
         return h.hexdigest()
-
-
-class DocGenerator:
-    """Interface a documentation backend implements.
-
-    Backends must be pure with respect to the store: they receive a fully
-    materialized ``ObjectDoc`` and return a ``Documentation``. They never read
-    or write the store themselves — the plugin owns all persistence — which
-    keeps every backend trivially unit-testable.
-    """
-
-    name = "base"
-
-    def generate(
-        self, obj: ObjectDoc, existing: Optional[Documentation]
-    ) -> Documentation:
-        """Produce documentation for ``obj``.
-
-        ``existing`` is the previously stored Documentation when enriching/
-        refreshing (else ``None``). Implementations should preserve good
-        author-written content from ``obj.description`` / ``existing`` rather
-        than discarding it (non-destructive — issue #201, item 5).
-        """
-        raise NotImplementedError
