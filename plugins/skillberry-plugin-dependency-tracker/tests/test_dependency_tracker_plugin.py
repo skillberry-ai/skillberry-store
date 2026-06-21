@@ -71,7 +71,7 @@ def test_metadata_and_enablement():
 def test_router_exposes_scan():
     p = SkillberryPluginDependencyTracker()
     paths = {r.path for r in p.get_router().routes}
-    assert "/scan" in paths
+    assert "/resolve-dependencies" in paths
 
 
 def test_ui_config_action_has_object_type_default():
@@ -103,11 +103,11 @@ def test_endpoint_blank_input_is_400_not_422():
     app.include_router(SkillberryPluginDependencyTracker().get_router())
     client = TestClient(app)
 
-    r = client.post("/scan", json={})
+    r = client.post("/resolve-dependencies", json={})
     assert r.status_code == 400
     assert "uuid is required" in r.json()["detail"]
 
-    r = client.post("/scan", json={"object_type": "widget", "uuid": "x"})
+    r = client.post("/resolve-dependencies", json={"object_type": "widget", "uuid": "x"})
     assert r.status_code == 400
     assert "object_type must be one of" in r.json()["detail"]
 

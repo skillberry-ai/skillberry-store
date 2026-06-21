@@ -74,7 +74,7 @@ Summary tags are also written: `dep:count:N`, `dep:unresolved:M`,
 
 Mounted at `/plugins/dependency_tracker` (and `/api/plugins/dependency_tracker/...` for the UI):
 
-- `POST /scan` — body `{ "object_type": "skill|tool|snippet", "uuid": str, "pypi"?: bool }`
+- `POST /resolve-dependencies` — body `{ "object_type": "skill|tool|snippet", "uuid": str, "pypi"?: bool }`
   → `{ success, message, data: { object_type, uuid, dependencies, summary } }`
 
 Invalid/missing input returns a clean **400** (not a raw 422). **On-demand only** —

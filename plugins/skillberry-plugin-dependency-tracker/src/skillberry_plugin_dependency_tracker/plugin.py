@@ -358,7 +358,7 @@ class SkillberryPluginDependencyTracker(PluginBase):
             if not (uuid and uuid.strip()):
                 raise HTTPException(status_code=400, detail="uuid is required")
 
-        @router.post("/scan")
+        @router.post("/resolve-dependencies")
         async def scan_endpoint(request: ScanRequest):
             """Resolve & record external Python dependencies for an object."""
             _validate(request.object_type, request.uuid)
@@ -391,7 +391,7 @@ class SkillberryPluginDependencyTracker(PluginBase):
             "actions": [
                 {
                     "label": "Scan dependencies",
-                    "endpoint": "/api/plugins/dependency_tracker/scan",
+                    "endpoint": "/api/plugins/dependency_tracker/resolve-dependencies",
                     "method": "POST",
                     "params_schema": {
                         "type": "object",
