@@ -75,11 +75,21 @@ def register_vnfs_api(
     @app.get(
         "/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vnfs-servers"}
     )
-    def list_vnfs_servers():
+    def list_vnfs_servers(skill_uuid: Optional[str] = None):
         logger.info("Request to list vnfs servers")
         list_vnfs_counter.inc()
         try:
-            return service.list_all()
+            result = service.list_all()
+            if skill_uuid:
+                servers = result["virtual_nfs_servers"]
+                result = {
+                    "virtual_nfs_servers": {
+                        k: v
+                        for k, v in servers.items()
+                        if v.get("skill_uuid") == skill_uuid
+                    }
+                }
+            return result
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")
             raise HTTPException(

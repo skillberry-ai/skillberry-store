@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillberry-plugin-provenance"
+version = "0.1.0"
+description = "Skillberry Store plugin that gathers provenance, authenticity and legality background for imported skills"
+readme = "README.md"
+requires-python = ">=3.10"
+# requests is already a store dependency; the plugin adds no heavy deps.
+dependencies = ["requests"]
+
+[project.entry-points."skillberry_store.plugins"]
+provenance = "skillberry_plugin_provenance.plugin:SkillberryPluginProvenance"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "fastapi",
+]
+
+[tool.setuptools]
+packages = [
+    "skillberry_plugin_provenance",
+    "skillberry_plugin_provenance.sources",
+]
+package-dir = {"" = "src"}

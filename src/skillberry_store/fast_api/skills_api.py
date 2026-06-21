@@ -6,7 +6,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional, Annotated, List
+from typing import TYPE_CHECKING, Optional, Annotated, List, Dict, Any
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Header
 from fastapi.responses import Response
 from prometheus_client import Counter
@@ -16,7 +16,10 @@ from skillberry_store.plugins.events import (
     emit_content_deleted,
 )
 
-from skillberry_store.tools.anthropic.importer import import_from_anthropic_skill
+from skillberry_store.tools.anthropic.importer import (
+    import_from_anthropic_skill,
+    parse_github_origin,
+)
 from skillberry_store.tools.endpoint_auth import (
     resolve_auth_headers,
     ReauthRequired,
@@ -792,6 +795,18 @@ def register_skills_api(
                 if tag and tag not in skill_tags:
                     skill_tags.append(tag)
 
+            # Record the skill's origin so it can be looked up / re-checked later
+            # by the provenance plugin (drift detection needs this baseline).
+            # Only URL imports have a remote origin; zip/folder imports do not.
+            skill_extra: Dict[str, Any] = {}
+            if source_type == "url" and github_url:
+                origin = parse_github_origin(github_url)
+                skill_extra["origin"] = {
+                    "type": "github" if origin else "url",
+                    "url": github_url,
+                    **(origin or {}),
+                }
+
             # Prepare skill schema with UUID (either existing or None for new)
             skill_schema = SkillSchema(
                 uuid=None,
@@ -803,6 +818,7 @@ def register_skills_api(
                 snippet_uuids=created_snippet_uuids,
                 state=ManifestState.APPROVED,
                 parent=None,  # Will be set by create_skill if name exists
+                extra=skill_extra,
             )
 
             # Create new skill

@@ -119,6 +119,22 @@ export interface ApiError {
 
 export type PluginType = 'creator' | 'evaluator' | 'optimizer';
 
+export interface PluginAsyncActionConfig {
+  // Endpoint polled while a job is pending. `{job_id}` is interpolated from the
+  // submit result's `data.job_id`.
+  status_endpoint: string;
+  poll_interval_ms?: number; // default 2000
+  timeout_ms?: number; // default 180000
+  // All user-facing strings come from the plugin — the form has none baked in.
+  labels: {
+    pending: string; // alert title shown while polling
+    ready: string; // success alert title
+    failed: string; // error alert title
+    timeout: string; // shown if the job never resolves
+    done?: string; // submit-button label on success (default "Done")
+  };
+}
+
 export interface PluginAction {
   label: string;
   description?: string;
@@ -129,6 +145,9 @@ export interface PluginAction {
     properties: Record<string, any>;
     required?: string[];
   };
+  // Opt-in: when present and a submit returns `{ job_id, status: "pending" }`,
+  // the form polls `status_endpoint` until the job is ready/failed/timed out.
+  async_action?: PluginAsyncActionConfig;
 }
 
 export interface PluginNotificationAction {
