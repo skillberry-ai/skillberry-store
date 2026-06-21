@@ -3,7 +3,7 @@
 import logging
 from typing import Dict, List, Optional, Any
 from importlib.metadata import entry_points
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 
 from skillberry_store.plugins.base import PluginBase
 from skillberry_store.plugins.store_api import StoreAPI
@@ -122,35 +122,37 @@ class PluginLoader:
             raise KeyError(slug)
         self.config.set_enabled(slug, value)
 
+    def _make_router_guard(self, slug: str):
+        """Build a dependency that 404s when the plugin is not active."""
+        async def guard():
+            if not self.is_active(slug):
+                raise HTTPException(status_code=404, detail=f"Plugin '{slug}' is disabled")
+        return guard
+
     def mount_routers(self, app: FastAPI):
         """Mount plugin routers to the FastAPI app.
-        
-        Only enabled plugins with routers are mounted.
-        Routers are mounted at /plugins/{plugin_name}/
-        
+
+        Routers are always mounted (so plugins can be toggled live without a
+        restart) but carry a guard dependency that returns 404 while the plugin
+        is disabled or not capable.
+
         Args:
             app: FastAPI application instance
         """
         for plugin_name, plugin in self.plugins.items():
-            # Skip disabled plugins
-            if not plugin.is_enabled():
-                logger.info(f"Plugin '{plugin_name}' is disabled, skipping router mount")
-                continue
-            
-            # Get router
             router = plugin.get_router()
             if router is None:
                 continue
-            
-            # Mount router
+
             prefix = f"/plugins/{plugin_name}"
             app.include_router(
                 router,
                 prefix=prefix,
-                tags=["plugins", plugin_name]
+                tags=["plugins", plugin_name],
+                dependencies=[Depends(self._make_router_guard(plugin_name))],
             )
-            
-            logger.info(f"Mounted router for plugin '{plugin_name}' at {prefix}")
+
+            logger.info(f"Mounted router for plugin '{plugin_name}' at {prefix} (guarded)")
     
     def get_plugin_info(self, plugin_name: str) -> Optional[Dict[str, Any]]:
         """Get information about a specific plugin.
