@@ -24,4 +24,27 @@ describe('PluginCard toggle', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     expect(onToggle).toHaveBeenCalledWith(basePlugin, false);
   });
+
+  it('dims the card when the plugin is admin-disabled', () => {
+    const { container, rerender } = render(<PluginCard plugin={basePlugin} />);
+    expect(container.querySelector('[data-disabled="true"]')).toBeNull();
+
+    rerender(<PluginCard plugin={{ ...basePlugin, admin_enabled: false }} />);
+    expect(container.querySelector('[data-disabled="true"]')).not.toBeNull();
+  });
+
+  it('keeps the toggle interactive while dimmed', () => {
+    const onToggle = vi.fn();
+    render(
+      <PluginCard
+        plugin={{ ...basePlugin, admin_enabled: false, enabled: false }}
+        onToggleEnabled={onToggle}
+      />
+    );
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(onToggle).toHaveBeenCalledWith(
+      expect.objectContaining({ slug: 'demo' }),
+      true
+    );
+  });
 });

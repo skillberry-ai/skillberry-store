@@ -24,6 +24,11 @@ interface PluginCardProps {
 }
 
 export function PluginCard({ plugin, onActionClick, onToggleEnabled }: PluginCardProps) {
+  // Visually dim cards the admin has turned off. The toggle and status stay at
+  // full opacity so the plugin can still be re-enabled.
+  const dimmed = !plugin.admin_enabled;
+  const dimStyle = { opacity: dimmed ? 0.5 : 1 };
+
   const getStatusIcon = () => {
     if (plugin.enabled) {
       return <CheckCircleIcon style={{ color: '#3E8635' }} />;
@@ -38,14 +43,16 @@ export function PluginCard({ plugin, onActionClick, onToggleEnabled }: PluginCar
   return (
     <Card
       isCompact
+      data-disabled={dimmed ? 'true' : undefined}
       style={{
         borderLeft: `4px solid ${plugin.ui_config?.color || '#0066CC'}`,
+        backgroundColor: dimmed ? '#FAFAFA' : undefined,
       }}
     >
       <CardTitle>
         <Flex alignItems={{ default: 'alignItemsCenter' }}>
           <FlexItem>
-            <Text component="h3">{plugin.name}</Text>
+            <Text component="h3" style={dimStyle}>{plugin.name}</Text>
           </FlexItem>
           <FlexItem align={{ default: 'alignRight' }}>
             <Flex alignItems={{ default: 'alignItemsCenter' }} spaceItems={{ default: 'spaceItemsSm' }}>
@@ -66,7 +73,7 @@ export function PluginCard({ plugin, onActionClick, onToggleEnabled }: PluginCar
           </FlexItem>
         </Flex>
       </CardTitle>
-      <CardBody>
+      <CardBody style={dimStyle}>
         <Text component="p" style={{ marginBottom: '0.5rem' }}>
           {plugin.description}
         </Text>
