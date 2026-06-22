@@ -23,6 +23,29 @@ def _default_mcp_servers_json() -> str:
     )
 
 
+def _store_server_name(mcp_servers: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Return the mcp_servers key that points at this store (a /control_sse URL)."""
+    if not mcp_servers:
+        return None
+    for name, cfg in mcp_servers.items():
+        if isinstance(cfg, dict) and str(cfg.get("url", "")).rstrip("/").endswith("/control_sse"):
+            return name
+    return None
+
+
+def _store_usage_suffix(server_name: str) -> str:
+    """Guidance appended to the prompt so the agent actually uses the store MCP."""
+    return (
+        f"\n\n---\nYou have access to a Skillberry Store MCP server named "
+        f"\"{server_name}\" (its tools are prefixed `mcp__{server_name}__`). This is "
+        "the live store. When the task involves creating or changing tools, skills, "
+        "snippets, or MCP/VMCP servers, persist your work in the store through that "
+        "server's tools — create or update the resources there, not just as local "
+        "files. List existing resources first to avoid duplicates, and state what you "
+        "created or changed in the store in your summary."
+    )
+
+
 def _parse_mcp_servers(value: Any) -> Optional[Dict[str, Any]]:
     """Normalize the ``mcp_servers`` request field into a Claude Code map.
 
@@ -239,6 +262,13 @@ class SkillberryPluginAskRunspace(PluginBase):
                 context = Path(tmp) / "context"; context.mkdir()
                 mode = req.execution_mode or self._execution_mode
                 agent_env = self._build_claude_env(req.agent_env)
+                # When the store's own MCP is provided, tell the agent to use it —
+                # otherwise it tends to only write local files and never touch the
+                # store. Skip the guidance if the user removed the store server.
+                prompt = req.request
+                store_name = _store_server_name(req.mcp_servers)
+                if store_name:
+                    prompt = req.request + _store_usage_suffix(store_name)
                 session_url = None
                 if req.use_runspace_server:
                     # Delegate to a running runspace server instead of the
@@ -249,7 +279,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                         self._job_meta[job_id] = {"session_url": url}
 
                     sr = await runner.run_via_server(
-                        req.runspace_server_url, req.request, str(editable), str(context), mode,
+                        req.runspace_server_url, prompt, str(editable), str(context), mode,
                         remote_skills=req.skills, skills_dir=skills_dir,
                         mcp_servers=req.mcp_servers, agent_env=agent_env,
                         on_started=_on_started,
@@ -263,7 +293,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                         options_kwargs["mcp_servers"] = req.mcp_servers
                     options = ClaudeCodeOptions(**options_kwargs)
                     result = await runner.run_task_session(
-                        req.request, str(editable), str(context), options, mode,
+                        prompt, str(editable), str(context), options, mode,
                         remote_skills=req.skills, skills_dir=skills_dir,
                     )
                     session_id = result.session_id
