@@ -41,7 +41,7 @@ def register_vnfs_api(
     @app.post(
         "/vnfs_servers/",
         tags=[tags],
-        openapi_extra={"x-cli-name": "create-vnfs-server"},
+        openapi_extra={"x-cli-name": "create-vnfs-server", "x-mcp-tool": True},
     )
     def create_vnfs_server(vnfs: Annotated[VnfsSchema, Query()], request: Request):
         """Create a new virtual NFS server.
@@ -84,7 +84,9 @@ def register_vnfs_api(
             )
 
     @app.get(
-        "/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vnfs-servers"}
+        "/vnfs_servers/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "list-vnfs-servers", "x-mcp-tool": True},
     )
     def list_vnfs_servers(skill_uuid: Optional[str] = None):
         """List all virtual NFS servers in the store.
@@ -110,7 +112,7 @@ def register_vnfs_api(
     @app.get(
         "/vnfs_servers/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "get-vnfs-server"},
+        openapi_extra={"x-cli-name": "get-vnfs-server", "x-mcp-tool": True},
     )
     def get_vnfs_server(uuid_or_name: str):
         """Get metadata for a specific virtual NFS server by UUID or name.
@@ -139,7 +141,7 @@ def register_vnfs_api(
     @app.delete(
         "/vnfs_servers/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "delete-vnfs-server"},
+        openapi_extra={"x-cli-name": "delete-vnfs-server", "x-mcp-tool": True},
     )
     def delete_vnfs_server(uuid_or_name: str):
         """Delete a virtual NFS server from the store.
@@ -170,7 +172,7 @@ def register_vnfs_api(
     @app.put(
         "/vnfs_servers/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "update-vnfs-server"},
+        openapi_extra={"x-cli-name": "update-vnfs-server", "x-mcp-tool": True},
     )
     def update_vnfs_server(
         uuid_or_name: str, vnfs: Annotated[VnfsSchema, Query()], request: Request
@@ -207,7 +209,7 @@ def register_vnfs_api(
     @app.post(
         "/vnfs_servers/{uuid_or_name}/start",
         tags=[tags],
-        openapi_extra={"x-cli-name": "start-vnfs-server"},
+        openapi_extra={"x-cli-name": "start-vnfs-server", "x-mcp-tool": True},
     )
     def start_vnfs_server(uuid_or_name: str, request: Request):
         """Start or restart a virtual NFS server.
@@ -247,7 +249,7 @@ def register_vnfs_api(
     @app.get(
         "/search/vnfs_servers",
         tags=[tags],
-        openapi_extra={"x-cli-name": "search-vnfs-servers"},
+        openapi_extra={"x-cli-name": "search-vnfs-servers", "x-mcp-tool": True},
     )
     def search_vnfs_servers(
         search_term: str,

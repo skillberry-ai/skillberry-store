@@ -52,7 +52,11 @@ def register_skills_api(
         service = get_service("skill")
     assert service is not None  # narrowed for type checker
 
-    @app.post("/skills/", tags=[tags], openapi_extra={"x-cli-name": "create-skill"})
+    @app.post(
+        "/skills/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "create-skill", "x-mcp-tool": True},
+    )
     async def create_skill(skill: Annotated[SkillSchema, Query()]):
         """Create a new skill in the store.
 
@@ -82,7 +86,11 @@ def register_skills_api(
                 status_code=500, detail=f"Error creating skill: {str(e)}"
             )
 
-    @app.get("/skills/", tags=[tags], openapi_extra={"x-cli-name": "list-skills"})
+    @app.get(
+        "/skills/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "list-skills", "x-mcp-tool": True},
+    )
     def list_skills():
         """List all skills in the store.
 
@@ -105,7 +113,9 @@ def register_skills_api(
             )
 
     @app.get(
-        "/skills/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-skill"}
+        "/skills/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "get-skill", "x-mcp-tool": True},
     )
     def get_skill(uuid_or_name: str):
         """Get metadata for a specific skill by UUID or name.
@@ -136,7 +146,7 @@ def register_skills_api(
     @app.delete(
         "/skills/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "delete-skill"},
+        openapi_extra={"x-cli-name": "delete-skill", "x-mcp-tool": True},
     )
     async def delete_skill(
         uuid_or_name: str,
@@ -187,7 +197,7 @@ def register_skills_api(
     @app.put(
         "/skills/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "update-skill"},
+        openapi_extra={"x-cli-name": "update-skill", "x-mcp-tool": True},
     )
     async def update_skill(uuid_or_name: str, skill: SkillSchema):
         """Update an existing skill's metadata.
@@ -218,7 +228,9 @@ def register_skills_api(
             )
 
     @app.get(
-        "/search/skills", tags=[tags], openapi_extra={"x-cli-name": "search-skills"}
+        "/search/skills",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "search-skills", "x-mcp-tool": True},
     )
     def search_skills(
         search_term: str,

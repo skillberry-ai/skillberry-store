@@ -93,7 +93,11 @@ def register_tools_api(
                 status_code=500, detail=f"Error creating tool: {str(e)}"
             )
 
-    @app.get("/tools/", tags=[tags], openapi_extra={"x-cli-name": "list-tools"})
+    @app.get(
+        "/tools/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "list-tools", "x-mcp-tool": True},
+    )
     def list_tools() -> List[Dict[str, Any]]:
         """List all tools in the store.
 
@@ -117,7 +121,9 @@ def register_tools_api(
             )
 
     @app.get(
-        "/tools/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-tool"}
+        "/tools/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "get-tool", "x-mcp-tool": True},
     )
     def get_tool(uuid_or_name: str) -> Dict[str, Any]:
         """Get metadata for a specific tool by UUID or name.
@@ -147,7 +153,7 @@ def register_tools_api(
         "/tools/{uuid_or_name}/module",
         tags=[tags],
         response_class=PlainTextResponse,
-        openapi_extra={"x-cli-name": "get-tool-module"},
+        openapi_extra={"x-cli-name": "get-tool-module", "x-mcp-tool": True},
     )
     async def get_tool_module(uuid_or_name: str) -> PlainTextResponse:
         """Get the module file content for a specific tool.
@@ -180,7 +186,7 @@ def register_tools_api(
     @app.delete(
         "/tools/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "delete-tool"},
+        openapi_extra={"x-cli-name": "delete-tool", "x-mcp-tool": True},
     )
     async def delete_tool(uuid_or_name: str) -> Dict:
         """Delete a tool from the store.
@@ -214,7 +220,7 @@ def register_tools_api(
     @app.put(
         "/tools/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "update-tool"},
+        openapi_extra={"x-cli-name": "update-tool", "x-mcp-tool": True},
     )
     async def update_tool(uuid_or_name: str, tool: ToolSchema) -> Dict:
         """Update an existing tool's metadata.
@@ -248,7 +254,7 @@ def register_tools_api(
     @app.post(
         "/tools/{uuid_or_name}/execute",
         tags=[tags],
-        openapi_extra={"x-cli-name": "execute-tool"},
+        openapi_extra={"x-cli-name": "execute-tool", "x-mcp-tool": True},
     )
     async def execute_tool(
         uuid_or_name: str, request: Request, parameters: Optional[Dict[str, Any]] = None
@@ -289,7 +295,11 @@ def register_tools_api(
                 status_code=500, detail=f"Error executing tool: {str(e)}"
             )
 
-    @app.get("/search/tools", tags=[tags], openapi_extra={"x-cli-name": "search-tools"})
+    @app.get(
+        "/search/tools",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "search-tools", "x-mcp-tool": True},
+    )
     def search_tools(
         search_term: str,
         max_number_of_results: int = 5,

@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Literal
+from typing import Any, List, Literal
 
 import uvicorn
 
@@ -161,9 +161,32 @@ class SBS(FastAPI):
         plugin_loader.mount_routers(self)
         logger.info("Plugin routers mounted")
 
-        # Mount MCP server
-        mcp_server = FastApiMCP(self)
+        # Mount the Control MCP with a CURATED surface. The store auto-generates an
+        # MCP tool per REST endpoint, but agents only need the content operations,
+        # and many endpoints either don't belong on the agent surface (health,
+        # readiness, metrics, admin backup/restore/purge, change polling, provenance)
+        # or can't be MCP tools at all (file-upload endpoints — an MCP call has no
+        # file body). Rather than maintaining a separate allow-list that drifts as
+        # endpoints come and go, each endpoint opts in where it is declared via
+        # ``openapi_extra={"x-mcp-tool": True}`` (alongside the existing
+        # ``x-cli-name``). We derive the allow-list from those markers here.
+        mcp_included_operations = self._mcp_included_operations()
+        logger.info(
+            "Exposing %d operations on the Control MCP: %s",
+            len(mcp_included_operations),
+            ", ".join(sorted(mcp_included_operations)),
+        )
+        mcp_server = FastApiMCP(self, include_operations=mcp_included_operations)
         mcp_server.mount_sse(mount_path="/control_sse")
+
+    def _mcp_included_operations(self) -> List[str]:
+        """Operation ids opted in to the Control MCP via ``x-mcp-tool``.
+
+        Reads the generated OpenAPI schema (the same source ``FastApiMCP``
+        consumes) so the Control MCP surface stays in sync with the endpoints
+        automatically — there is no list to maintain in parallel.
+        """
+        return mcp_operations_from_openapi(self.openapi())
 
     def configure_fastapi(self):
         """Configures CORS middleware and OpenAPI documentation settings."""
@@ -214,6 +237,26 @@ class SBS(FastAPI):
             access_log=True,
             log_config=log_config,
         )
+
+
+def mcp_operations_from_openapi(openapi_schema: dict) -> List[str]:
+    """Collect ``operationId``s opted in to the Control MCP via ``x-mcp-tool``.
+
+    An endpoint joins the Control MCP surface by declaring
+    ``openapi_extra={"x-mcp-tool": True}`` (next to the existing ``x-cli-name``).
+    FastAPI merges ``openapi_extra`` into each operation object, so the marker
+    and the ``operationId`` both live in the generated schema — the same schema
+    ``FastApiMCP`` consumes. Deriving the allow-list from there keeps the CLI and
+    Control MCP aligned and avoids maintaining a parallel list that drifts.
+    """
+    operations: List[str] = []
+    for path_item in openapi_schema.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            if operation.get("x-mcp-tool") and operation.get("operationId"):
+                operations.append(operation["operationId"])
+    return operations
 
 
 def custom_openapi(app: FastAPI, openapi_tags):
