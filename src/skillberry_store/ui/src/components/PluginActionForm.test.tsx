@@ -111,6 +111,34 @@ describe('PluginActionForm — generic async actions', () => {
     expect(screen.getByRole('button', { name: /Execute/i })).toBeDefined();
   });
 
+  it('keeps the result and does not time out once the job is ready', async () => {
+    // Job is already ready; the rendered markdown must survive past the timeout
+    // window (regression: a stale deadline used to wipe the completed result).
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: 'ready', summary_md: '# Hello world' }),
+    });
+    const onSubmit = vi.fn().mockResolvedValue(PENDING_RESULT);
+    const action: PluginAction = {
+      ...ASYNC_ACTION,
+      async_action: {
+        ...ASYNC_ACTION.async_action!,
+        result_markdown_field: 'summary_md',
+        poll_interval_ms: 20,
+        timeout_ms: 60,
+      },
+    };
+
+    renderForm(action, onSubmit);
+    fireEvent.click(screen.getByRole('button', { name: /Execute/i }));
+
+    await waitFor(() => expect(screen.getByText('Hello world')).toBeDefined());
+    // Wait well past timeout_ms — the result must remain and no timeout alert appears.
+    await new Promise((r) => setTimeout(r, 150));
+    expect(screen.queryByText(/Lost track of the kettle/i)).toBeNull();
+    expect(screen.getByText('Hello world')).toBeDefined();
+  });
+
   it('shows the timeout label when the job never resolves', async () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ status: 'pending' }) });
     const onSubmit = vi.fn().mockResolvedValue(PENDING_RESULT);

@@ -189,16 +189,19 @@ export function PluginActionForm({
   const isPolling = !!jobId && !timedOut && jobStatus !== 'ready' && jobStatus !== 'failed';
   const inAsyncJob = !!asyncConfig && (jobId !== null || timedOut);
 
-  // Start a timeout deadline whenever a new job begins polling.
+  // Start a timeout deadline while a job is pending. Once the job resolves
+  // (ready/failed) we bail without arming a timeout — otherwise a deadline from
+  // when the job started would later fire and wipe the displayed result.
   useEffect(() => {
     if (!jobId || !asyncConfig) return;
+    if (jobStatus === 'ready' || jobStatus === 'failed') return;
     setTimedOut(false);
     const handle = setTimeout(() => {
       setTimedOut(true);
       setJobId(null); // disables the query
     }, asyncConfig.timeout_ms ?? 180_000);
     return () => clearTimeout(handle);
-  }, [jobId, asyncConfig]);
+  }, [jobId, asyncConfig, jobStatus]);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);

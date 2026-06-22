@@ -179,7 +179,10 @@ def test_ui_config_shape():
     assert props["skills_upload_id"]["x-upload-endpoint"].endswith("/upload-skills")
     assert props["mcp_servers"]["format"] == "textarea"
     assert props["keep_workspace"]["type"] == "boolean"
-    assert props["keep_workspace"].get("default") is False
+    assert props["keep_workspace"].get("default") is True
+    # Hidden in server mode (the server keeps its own session workspace).
+    assert props["keep_workspace"]["x-visible-when"] == {"field": "use_runspace_server", "equals": False}
+    assert action["async_action"]["timeout_ms"] >= 600_000
     assert props["use_runspace_server"]["type"] == "boolean"
     assert props["use_runspace_server"].get("default") is False
     assert props["runspace_server_url"]["x-visible-when"] == {"field": "use_runspace_server", "equals": True}

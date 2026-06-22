@@ -222,7 +222,11 @@ class SkillberryPluginAskRunspace(PluginBase):
             # have it. When keep_workspace is set, we retain it for inspection
             # and expose a delete endpoint instead.
             tmp = tempfile.mkdtemp(prefix="ask-runspace-")
-            if req.keep_workspace:
+            # In server mode the runspace server keeps its own session workspace,
+            # so our local scratch is throwaway regardless of the keep_workspace
+            # toggle (which is hidden in that mode).
+            keep = req.keep_workspace and not req.use_runspace_server
+            if keep:
                 self._workspaces[job_id] = tmp
             # An uploaded skills folder (if any) takes precedence over a raw
             # skills_dir path. We own that temp dir and delete it after the run;
@@ -272,14 +276,14 @@ class SkillberryPluginAskRunspace(PluginBase):
                     payload["session_url"] = session_url
                 if req.skills:
                     payload["message"] = "Loaded skills: " + ", ".join(req.skills)
-                if req.keep_workspace:
+                if keep:
                     payload["workspace_dir"] = tmp
                 return payload
             finally:
                 self._job_meta.pop(job_id, None)
                 if uploaded_skills:
                     shutil.rmtree(uploaded_skills, ignore_errors=True)
-                if not req.keep_workspace:
+                if not keep:
                     shutil.rmtree(tmp, ignore_errors=True)
 
         @router.post("/run")
@@ -403,12 +407,15 @@ class SkillberryPluginAskRunspace(PluginBase):
                             },
                             "keep_workspace": {
                                 "type": "boolean",
-                                "default": False,
+                                "default": True,
                                 "title": "Keep workspace folder after run",
                                 "description": (
-                                    "Keep the agent's scratch workspace on the server for inspection. "
-                                    "When off (default) it is deleted automatically after the run."
+                                    "Keep the agent's scratch workspace on the server so you can "
+                                    "inspect what it produced. On by default; untick to delete it "
+                                    "automatically after the run. (Ignored in Runspace-server mode — "
+                                    "the server keeps the session itself.)"
                                 ),
+                                "x-visible-when": {"field": "use_runspace_server", "equals": False},
                             },
                             "use_runspace_server": {
                                 "type": "boolean",
@@ -436,6 +443,9 @@ class SkillberryPluginAskRunspace(PluginBase):
                     },
                     "async_action": {
                         "status_endpoint": "/api/plugins/ask-runspace/status/{job_id}",
+                        # Agent runs can take many minutes (container builds, long
+                        # tasks), so allow a generous window before the UI gives up.
+                        "timeout_ms": 1_800_000,
                         "result_markdown_field": "summary_md",
                         "result_link": {
                             "field": "session_url",
