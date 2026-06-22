@@ -8,8 +8,15 @@ logger = logging.getLogger(__name__)
 
 async def run_task_session(prompt: str, editable_dir: str, context_dir: str,
                            options: Any, mode: str,
-                           remote_skills: Optional[list[str]] = None):
-    """Run a single Runspace agent session and return its RunspaceResult."""
+                           remote_skills: Optional[list[str]] = None,
+                           skills_dir: Optional[str] = None):
+    """Run a single Runspace agent session and return its RunspaceResult.
+
+    ``skills_dir`` is an optional local directory of custom skills (one
+    subfolder per skill, each with its own SKILL.md); it is loaded into the
+    agent alongside any ``remote_skills``. MCP servers are passed through the
+    agent ``options`` (``ClaudeCodeOptions.mcp_servers``).
+    """
     from runspace_agent import RunspaceSession, run_agent
 
     session = RunspaceSession(
@@ -19,6 +26,7 @@ async def run_task_session(prompt: str, editable_dir: str, context_dir: str,
         agent_options=options,
         mode="container" if mode == "container" else "local",
         remote_skills=remote_skills or None,
+        skills_dir=Path(skills_dir) if skills_dir else None,
     )
     result = await run_agent(session)
     if not result.success:

@@ -17,6 +17,14 @@ preset — then render the agent's `summary.md` back to you as Markdown.
   agent via `npx skills add` (runspace `remote_skills`) — GitHub URLs or `owner/repo`.
   Selecting an example fills these in (e.g. the skill-creator or evo-graph repos); you can
   add or remove sources before running.
+- **Skills directory** (`skills_dir`, optional): an absolute path on the server to a local
+  skills directory — one subfolder per skill, each with its own `SKILL.md`. It is loaded
+  into the agent alongside the remote `skills` (runspace `skills_dir`).
+- **MCP servers** (`mcp_servers`, optional): a JSON object of MCP servers to expose to the
+  agent, in Claude Code format. Paste either a bare `{"name": {…}}` map or a full
+  `{"mcpServers": {…}}` block (as in a `.mcp.json` file) — the wrapper is unwrapped
+  automatically and forwarded via `ClaudeCodeOptions.mcp_servers` (works in both
+  `container` and `local` modes). Invalid JSON is rejected with a `400`.
 - The plugin spins up a Runspace agent session (with fresh `editable` and `context`
   working directories), installs any `skills`, runs the agent on your `request`, and waits.
 - **Async + status**: `POST /plugins/ask-runspace/run` returns a `job_id` immediately.

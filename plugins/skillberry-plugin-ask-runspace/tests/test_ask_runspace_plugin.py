@@ -65,7 +65,7 @@ def test_run_then_status_ready(monkeypatch):
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
     seen = {}
 
-    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None):
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None, skills_dir=None):
         seen["remote_skills"] = remote_skills
         class R: session_id = "sess123"
         return R()
@@ -96,7 +96,7 @@ def test_run_cleans_up_temp_dir(monkeypatch):
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
     seen = {}
 
-    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None):
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None, skills_dir=None):
         seen["editable_dir"] = editable_dir  # inside the scratch temp dir
         class R: session_id = "sess123"
         return R()
@@ -119,7 +119,7 @@ def test_run_cleans_up_temp_dir(monkeypatch):
 def test_status_ready_shows_message_when_no_summary(monkeypatch):
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
 
-    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None):
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None, skills_dir=None):
         class R: session_id = "sess123"
         return R()
 
@@ -141,7 +141,7 @@ def test_status_ready_shows_message_when_no_summary(monkeypatch):
 def test_keep_workspace_retains_dir_and_cleanup_endpoint_deletes_it(monkeypatch):
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
 
-    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None):
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None, skills_dir=None):
         class R: session_id = "sess123"
         return R()
 
@@ -176,7 +176,67 @@ def test_ui_config_shape():
     assert props["preset_id"]["x-options-from"].endswith("/presets")
     assert props["preset_id"]["x-prefill"] == {"request": "prompt", "skills": "skills"}
     assert props["skills"]["type"] == "array"
+    assert props["skills_dir"]["type"] == "string"
+    assert props["mcp_servers"]["format"] == "textarea"
     assert props["keep_workspace"]["type"] == "boolean"
     assert props["keep_workspace"].get("default") is False
     assert action["async_action"]["cleanup_action"]["when_field"] == "workspace_dir"
     assert action["async_action"]["result_markdown_field"] == "summary_md"
+
+
+def test_parse_mcp_servers_handles_json_wrapper_and_invalid():
+    from skillberry_plugin_ask_runspace.plugin import _parse_mcp_servers
+
+    bare = '{"fetch": {"command": "npx", "args": ["-y", "mcp-fetch"]}}'
+    assert _parse_mcp_servers(bare) == {"fetch": {"command": "npx", "args": ["-y", "mcp-fetch"]}}
+    # A full .mcp.json wrapper is unwrapped to the bare name→config map.
+    wrapped = '{"mcpServers": {"fetch": {"command": "npx"}}}'
+    assert _parse_mcp_servers(wrapped) == {"fetch": {"command": "npx"}}
+    # Already-decoded dicts pass through; empty/None collapse to None.
+    assert _parse_mcp_servers({"a": {}}) == {"a": {}}
+    assert _parse_mcp_servers("") is None
+    assert _parse_mcp_servers(None) is None
+    import pytest
+    with pytest.raises(ValueError):
+        _parse_mcp_servers("{not json}")
+    with pytest.raises(ValueError):
+        _parse_mcp_servers("[1, 2]")
+
+
+def test_run_rejects_invalid_mcp_servers():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    r = _client(p).post("/plugins/ask-runspace/run",
+                        json={"request": "do x", "mcp_servers": "{bad json"})
+    assert r.status_code == 400
+
+
+def test_run_forwards_skills_dir_and_mcp_servers(monkeypatch):
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    seen = {}
+
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None, skills_dir=None):
+        seen["skills_dir"] = skills_dir
+        seen["mcp_servers"] = getattr(options, "mcp_servers", None)
+        class R: session_id = "sess123"
+        return R()
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
+                        lambda session_id, editable_dir, mode: "# Done")
+
+    client = _client(p)
+    job_id = client.post(
+        "/plugins/ask-runspace/run",
+        json={
+            "request": "do x",
+            "skills_dir": "/srv/skills",
+            "mcp_servers": '{"mcpServers": {"fetch": {"command": "npx"}}}',
+        },
+    ).json()["data"]["job_id"]
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    assert seen["skills_dir"] == "/srv/skills"
+    assert seen["mcp_servers"] == {"fetch": {"command": "npx"}}

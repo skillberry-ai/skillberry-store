@@ -1,8 +1,38 @@
 """Ask Runspace: run the Runspace agent on a free-text task and show its summary."""
+import json
 import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+
+def _parse_mcp_servers(value: Any) -> Optional[Dict[str, Any]]:
+    """Normalize the ``mcp_servers`` request field into a Claude Code map.
+
+    Accepts a JSON string (as typed in the UI) or an already-decoded object.
+    A top-level ``{"mcpServers": {...}}`` / ``{"mcp_servers": {...}}`` wrapper —
+    the shape of a ``.mcp.json`` file — is unwrapped to the bare name→config map
+    that ``ClaudeCodeOptions.mcp_servers`` expects. Returns ``None`` when empty.
+    Raises ``ValueError`` on invalid input.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"mcp_servers must be valid JSON: {exc}")
+    if not isinstance(value, dict):
+        raise ValueError("mcp_servers must be a JSON object of MCP server configs")
+    if len(value) == 1 and next(iter(value)) in ("mcpServers", "mcp_servers"):
+        inner = next(iter(value.values()))
+        if not isinstance(inner, dict):
+            raise ValueError("mcp_servers wrapper must contain a JSON object")
+        value = inner
+    return value or None
 
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 from skillberry_store.plugins.claude_credentials import (
@@ -87,6 +117,8 @@ class SkillberryPluginAskRunspace(PluginBase):
         class RunRequest(BaseModel):
             request: str
             skills: list[str] = []
+            skills_dir: Optional[str] = None
+            mcp_servers: Optional[Any] = None
             execution_mode: Optional[str] = None
             agent_env: Optional[Dict[str, str]] = None
             keep_workspace: bool = False
@@ -109,10 +141,13 @@ class SkillberryPluginAskRunspace(PluginBase):
                 editable = Path(tmp) / "editable"; editable.mkdir()
                 context = Path(tmp) / "context"; context.mkdir()
                 mode = req.execution_mode or self._execution_mode
-                options = ClaudeCodeOptions(env=self._build_claude_env(req.agent_env))
+                options_kwargs: Dict[str, Any] = {"env": self._build_claude_env(req.agent_env)}
+                if req.mcp_servers:
+                    options_kwargs["mcp_servers"] = req.mcp_servers
+                options = ClaudeCodeOptions(**options_kwargs)
                 result = await runner.run_task_session(
                     req.request, str(editable), str(context), options, mode,
-                    remote_skills=req.skills,
+                    remote_skills=req.skills, skills_dir=req.skills_dir,
                 )
                 summary = runner.read_summary(result.session_id, str(editable), mode)
                 payload = {
@@ -132,6 +167,10 @@ class SkillberryPluginAskRunspace(PluginBase):
         async def run(req: RunRequest):
             if not req.request or not req.request.strip():
                 raise HTTPException(status_code=400, detail="request must not be empty")
+            try:
+                req.mcp_servers = _parse_mcp_servers(req.mcp_servers)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
             job_id = str(uuid.uuid4())
             self._jobs[job_id] = asyncio.create_task(_execute(job_id, req), name=f"ask-runspace-{job_id}")
             return {"success": True, "message": "Task is starting…",
@@ -196,6 +235,27 @@ class SkillberryPluginAskRunspace(PluginBase):
                                     "Remote skill sources installed into the agent via npx "
                                     "(GitHub URLs or owner/repo). Selecting an example fills "
                                     "this in; edit freely."
+                                ),
+                            },
+                            "skills_dir": {
+                                "type": "string",
+                                "title": "Skills directory (optional)",
+                                "description": (
+                                    "Absolute path on the server to a local skills directory "
+                                    "(one subfolder per skill, each with its own SKILL.md). "
+                                    "Loaded into the agent alongside the remote skills above "
+                                    "(runspace skills_dir)."
+                                ),
+                            },
+                            "mcp_servers": {
+                                "type": "string",
+                                "format": "textarea",
+                                "title": "MCP servers (JSON, optional)",
+                                "description": (
+                                    "JSON object of MCP servers to expose to the agent, in "
+                                    "Claude Code format — either a bare {\"name\": {…}} map or a "
+                                    "full {\"mcpServers\": {…}} block (as in a .mcp.json file). "
+                                    "Forwarded via ClaudeCodeOptions.mcp_servers."
                                 ),
                             },
                             "execution_mode": {
