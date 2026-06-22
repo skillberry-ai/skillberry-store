@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class PluginEnabledUpdate(BaseModel):
     """Body for toggling a plugin's admin enablement."""
+
     enabled: bool
 
 
@@ -108,11 +109,15 @@ def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"
             HTTPException: 404 if plugin not found
         """
         if plugin_loader.get_plugin_info(plugin_name) is None:
-            raise HTTPException(status_code=404, detail=f"Plugin '{plugin_name}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Plugin '{plugin_name}' not found"
+            )
         try:
             plugin_loader.set_enabled(plugin_name, body.enabled)
         except KeyError:
-            raise HTTPException(status_code=404, detail=f"Plugin '{plugin_name}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Plugin '{plugin_name}' not found"
+            )
         return plugin_loader.get_plugin_info(plugin_name)
 
 
