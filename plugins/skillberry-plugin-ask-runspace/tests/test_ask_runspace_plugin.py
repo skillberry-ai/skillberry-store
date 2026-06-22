@@ -176,7 +176,8 @@ def test_ui_config_shape():
     assert props["preset_id"]["x-options-from"].endswith("/presets")
     assert props["preset_id"]["x-prefill"] == {"request": "prompt", "skills": "skills"}
     assert props["skills"]["type"] == "array"
-    assert props["skills_dir"]["type"] == "string"
+    assert props["skills_upload_id"]["format"] == "directory-upload"
+    assert props["skills_upload_id"]["x-upload-endpoint"].endswith("/upload-skills")
     assert props["mcp_servers"]["format"] == "textarea"
     assert props["keep_workspace"]["type"] == "boolean"
     assert props["keep_workspace"].get("default") is False
@@ -240,3 +241,62 @@ def test_run_forwards_skills_dir_and_mcp_servers(monkeypatch):
     assert s["status"] == "ready"
     assert seen["skills_dir"] == "/srv/skills"
     assert seen["mcp_servers"] == {"fetch": {"command": "npx"}}
+
+
+def test_materialize_skill_upload_strips_top_and_blocks_traversal():
+    import tempfile
+    from skillberry_plugin_ask_runspace.plugin import _safe_rel_parts, _materialize_skill_upload
+
+    assert _safe_rel_parts("../etc/passwd") is None
+    assert _safe_rel_parts("/abs/path") is None
+    assert _safe_rel_parts("a/b/c.md") == ["a", "b", "c.md"]
+
+    base = tempfile.mkdtemp()
+    n = _materialize_skill_upload(base, [
+        ("pack/skill-a/SKILL.md", b"a"),
+        ("pack/skill-a/tool.py", b"x"),
+        ("../evil", b"nope"),
+    ])
+    assert n == 2  # the traversal entry is skipped
+    # The single common top folder ("pack") is stripped → skills sit at the root.
+    assert os.path.isfile(os.path.join(base, "skill-a", "SKILL.md"))
+    assert not os.path.exists(os.path.join(base, "evil"))
+
+
+def test_upload_skills_then_run_consumes_and_cleans_up(monkeypatch):
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    client = _client(p)
+
+    up = client.post(
+        "/plugins/ask-runspace/upload-skills",
+        files=[
+            ("files", ("my-skills/skill-a/SKILL.md", b"# A", "text/markdown")),
+            ("files", ("my-skills/skill-b/SKILL.md", b"# B", "text/markdown")),
+        ],
+    )
+    assert up.status_code == 200
+    assert up.json()["data"]["file_count"] == 2
+    upload_id = up.json()["data"]["upload_id"]
+
+    seen = {}
+
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None, skills_dir=None):
+        seen["skills_dir"] = skills_dir
+        seen["has_skill_a"] = os.path.isfile(os.path.join(skills_dir, "skill-a", "SKILL.md"))
+        class R: session_id = "s"
+        return R()
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
+                        lambda session_id, editable_dir, mode: "# Done")
+
+    job_id = client.post("/plugins/ask-runspace/run",
+                         json={"request": "do x", "skills_upload_id": upload_id}).json()["data"]["job_id"]
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    assert seen["has_skill_a"] is True
+    # The uploaded temp dir is removed once the run consumes it.
+    assert not os.path.exists(seen["skills_dir"])

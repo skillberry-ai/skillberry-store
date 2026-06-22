@@ -235,6 +235,55 @@ describe('PluginActionForm — generic async actions', () => {
     expect(inputsOf().length).toBe(1);
   });
 
+  it('uploads a selected skills folder and submits the returned token', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: { upload_id: 'up-123', file_count: 1 } }),
+    });
+    const onSubmit = vi.fn().mockResolvedValue({ success: true } as PluginActionResult);
+    const action = {
+      label: 'Run task',
+      endpoint: '/plugins/ask-runspace/run',
+      method: 'POST',
+      params_schema: {
+        type: 'object',
+        properties: {
+          skills_upload_id: {
+            type: 'string',
+            title: 'Skills folder',
+            format: 'directory-upload',
+            'x-upload-endpoint': '/api/plugins/ask-runspace/upload-skills',
+          },
+        },
+      },
+    } as any;
+
+    renderForm(action, onSubmit);
+
+    // The drop zone is shown instead of a text input.
+    expect(screen.getByText(/Drag-drop a skills folder/i)).toBeDefined();
+
+    const input = document.getElementById('skills_upload_id-dirinput') as HTMLInputElement;
+    const file = new File(['# A'], 'SKILL.md', { type: 'text/markdown' });
+    Object.defineProperty(file, 'webkitRelativePath', { value: 'my-skills/skill-a/SKILL.md' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    // It uploads to the field's endpoint and reports the folder as ready.
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/plugins/ask-runspace/upload-skills',
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(screen.getByText(/file\(s\) ready/i)).toBeDefined();
+    });
+
+    // Submitting sends the returned upload token as the field value.
+    fireEvent.click(screen.getByRole('button', { name: /Execute/i }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ skills_upload_id: 'up-123' }));
+    });
+  });
+
   it('behaves synchronously for actions without async_action (no polling)', async () => {
     const syncAction: PluginAction = {
       label: 'Plain action',

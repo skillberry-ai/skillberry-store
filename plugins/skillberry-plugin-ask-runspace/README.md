@@ -17,9 +17,13 @@ preset — then render the agent's `summary.md` back to you as Markdown.
   agent via `npx skills add` (runspace `remote_skills`) — GitHub URLs or `owner/repo`.
   Selecting an example fills these in (e.g. the skill-creator or evo-graph repos); you can
   add or remove sources before running.
-- **Skills directory** (`skills_dir`, optional): an absolute path on the server to a local
-  skills directory — one subfolder per skill, each with its own `SKILL.md`. It is loaded
-  into the agent alongside the remote `skills` (runspace `skills_dir`).
+- **Skills folder** (optional): drag-drop (or browse to) a local folder of skills — one
+  subfolder per skill, each with its own `SKILL.md`. The browser can't hand the server a
+  real local path, so the folder is **uploaded**: `POST /plugins/ask-runspace/upload-skills`
+  reconstructs it into a temp dir (the common top folder is stripped, path traversal is
+  rejected) and returns an `upload_id`. Pass that as `skills_upload_id` on `/run`; it's used
+  as the agent's `skills_dir` alongside the remote `skills`, and the temp dir is deleted
+  after the run. Programmatic callers can still pass a raw server path via `skills_dir`.
 - **MCP servers** (`mcp_servers`, optional): a JSON object of MCP servers to expose to the
   agent, in Claude Code format. Paste either a bare `{"name": {…}}` map or a full
   `{"mcpServers": {…}}` block (as in a `.mcp.json` file) — the wrapper is unwrapped

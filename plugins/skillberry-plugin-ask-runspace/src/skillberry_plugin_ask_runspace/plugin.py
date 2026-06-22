@@ -34,6 +34,49 @@ def _parse_mcp_servers(value: Any) -> Optional[Dict[str, Any]]:
         value = inner
     return value or None
 
+
+def _safe_rel_parts(rel_path: str) -> Optional[list[str]]:
+    """Validate an uploaded file's relative path and return its safe segments.
+
+    Returns ``None`` for paths that are absolute or escape the upload root
+    (``..`` traversal), so the caller can skip them rather than write outside
+    the temp directory.
+    """
+    parts = [p for p in rel_path.replace("\\", "/").split("/") if p not in ("", ".")]
+    if not parts or any(p == ".." for p in parts):
+        return None
+    if rel_path.startswith("/"):
+        return None
+    return parts
+
+
+def _materialize_skill_upload(base: str, files: list) -> int:
+    """Write uploaded (relative_path, bytes) pairs under ``base``.
+
+    Drops the single common top-level folder (e.g. the dragged folder's own
+    name) so ``base`` ends up containing one subdirectory per skill — the shape
+    runspace's ``skills_dir`` expects. Returns the number of files written.
+    """
+    parts_by_file = []
+    for rel, _ in files:
+        parts = _safe_rel_parts(rel)
+        if parts is not None:
+            parts_by_file.append(parts)
+    tops = {p[0] for p in parts_by_file if len(p) > 1}
+    strip_top = tops.pop() if len(tops) == 1 else None
+    written = 0
+    for rel, data in files:
+        parts = _safe_rel_parts(rel)
+        if parts is None:
+            continue
+        if strip_top and len(parts) > 1 and parts[0] == strip_top:
+            parts = parts[1:]
+        dest = Path(base).joinpath(*parts)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        written += 1
+    return written
+
 from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 from skillberry_store.plugins.claude_credentials import (
     load_claude_settings, settings_env, has_api_access, build_agent_env,
@@ -69,6 +112,8 @@ class SkillberryPluginAskRunspace(PluginBase):
         self._claude_settings = None
         self._jobs: Dict[str, Any] = {}
         self._workspaces: Dict[str, str] = {}
+        # upload_id -> temp dir holding an uploaded skills folder, consumed by a run.
+        self._skill_uploads: Dict[str, str] = {}
         self._load_claude_settings()
         self._runspace_available = runspace_agent is not None
         self._credentials_configured = self._check_credentials()
@@ -105,7 +150,7 @@ class SkillberryPluginAskRunspace(PluginBase):
         import shutil
         import tempfile
         import uuid
-        from fastapi import APIRouter, HTTPException
+        from fastapi import APIRouter, File, HTTPException, UploadFile
         from pydantic import BaseModel
         from claude_code_sdk import ClaudeCodeOptions
 
@@ -118,6 +163,7 @@ class SkillberryPluginAskRunspace(PluginBase):
             request: str
             skills: list[str] = []
             skills_dir: Optional[str] = None
+            skills_upload_id: Optional[str] = None
             mcp_servers: Optional[Any] = None
             execution_mode: Optional[str] = None
             agent_env: Optional[Dict[str, str]] = None
@@ -126,6 +172,25 @@ class SkillberryPluginAskRunspace(PluginBase):
         @router.get("/presets")
         async def presets():
             return PRESETS
+
+        @router.post("/upload-skills")
+        async def upload_skills(files: list[UploadFile] = File(...)):
+            # The browser cannot hand us a real server path, so the UI uploads a
+            # skills folder here; we reconstruct it into a temp dir keyed by an
+            # upload_id that a later /run consumes as its skills_dir.
+            pairs = [(f.filename or "", await f.read()) for f in files]
+            if not any(rel for rel, _ in pairs):
+                raise HTTPException(status_code=400, detail="No files uploaded")
+            base = tempfile.mkdtemp(prefix="ask-runspace-skills-")
+            written = _materialize_skill_upload(base, pairs)
+            if written == 0:
+                shutil.rmtree(base, ignore_errors=True)
+                raise HTTPException(status_code=400, detail="No usable files in upload")
+            upload_id = str(uuid.uuid4())
+            self._skill_uploads[upload_id] = base
+            return {"success": True,
+                    "message": f"Uploaded {written} file(s)",
+                    "data": {"upload_id": upload_id, "file_count": written}}
 
         async def _execute(job_id: str, req: RunRequest):
             # By default the scratch workspace only needs to live for the
@@ -137,6 +202,12 @@ class SkillberryPluginAskRunspace(PluginBase):
             tmp = tempfile.mkdtemp(prefix="ask-runspace-")
             if req.keep_workspace:
                 self._workspaces[job_id] = tmp
+            # An uploaded skills folder (if any) takes precedence over a raw
+            # skills_dir path. We own that temp dir and delete it after the run;
+            # runspace copies the skills into the workspace, so it isn't needed
+            # afterwards.
+            uploaded_skills = self._skill_uploads.pop(req.skills_upload_id, None) if req.skills_upload_id else None
+            skills_dir = uploaded_skills or req.skills_dir
             try:
                 editable = Path(tmp) / "editable"; editable.mkdir()
                 context = Path(tmp) / "context"; context.mkdir()
@@ -147,7 +218,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                 options = ClaudeCodeOptions(**options_kwargs)
                 result = await runner.run_task_session(
                     req.request, str(editable), str(context), options, mode,
-                    remote_skills=req.skills, skills_dir=req.skills_dir,
+                    remote_skills=req.skills, skills_dir=skills_dir,
                 )
                 summary = runner.read_summary(result.session_id, str(editable), mode)
                 payload = {
@@ -160,6 +231,8 @@ class SkillberryPluginAskRunspace(PluginBase):
                     payload["workspace_dir"] = tmp
                 return payload
             finally:
+                if uploaded_skills:
+                    shutil.rmtree(uploaded_skills, ignore_errors=True)
                 if not req.keep_workspace:
                     shutil.rmtree(tmp, ignore_errors=True)
 
@@ -237,14 +310,16 @@ class SkillberryPluginAskRunspace(PluginBase):
                                     "this in; edit freely."
                                 ),
                             },
-                            "skills_dir": {
+                            "skills_upload_id": {
                                 "type": "string",
-                                "title": "Skills directory (optional)",
+                                "title": "Skills folder (optional)",
+                                "format": "directory-upload",
+                                "x-upload-endpoint": "/api/plugins/ask-runspace/upload-skills",
                                 "description": (
-                                    "Absolute path on the server to a local skills directory "
-                                    "(one subfolder per skill, each with its own SKILL.md). "
-                                    "Loaded into the agent alongside the remote skills above "
-                                    "(runspace skills_dir)."
+                                    "Drag-drop (or browse to) a folder of skills — one subfolder "
+                                    "per skill, each with its own SKILL.md. It is uploaded to the "
+                                    "server and loaded into the agent for this run, alongside the "
+                                    "remote skills above (runspace skills_dir)."
                                 ),
                             },
                             "mcp_servers": {

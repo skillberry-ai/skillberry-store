@@ -20,6 +20,48 @@ import {
 } from '@patternfly/react-core';
 import type { PluginAction, PluginActionResult } from '@/types';
 
+// A file picked from a dropped/selected folder, with its path relative to that folder.
+type PickedFile = { file: File; path: string };
+
+async function readDirEntries(reader: any): Promise<any[]> {
+  const all: any[] = [];
+  // readEntries yields children in batches; call until it returns none.
+  for (;;) {
+    const batch: any[] = await new Promise((res, rej) => reader.readEntries(res, rej));
+    if (!batch.length) break;
+    all.push(...batch);
+  }
+  return all;
+}
+
+async function walkEntry(entry: any, prefix: string, out: PickedFile[]): Promise<void> {
+  if (entry.isFile) {
+    const file: File = await new Promise((res, rej) => entry.file(res, rej));
+    out.push({ file, path: prefix + entry.name });
+  } else if (entry.isDirectory) {
+    const children = await readDirEntries(entry.createReader());
+    for (const child of children) await walkEntry(child, `${prefix}${entry.name}/`, out);
+  }
+}
+
+// Recursively read a dropped folder via the DataTransferItem entries API,
+// falling back to the flat file list when the browser doesn't support it.
+async function gatherDroppedFiles(dt: DataTransfer): Promise<PickedFile[]> {
+  const out: PickedFile[] = [];
+  const entries = Array.from(dt.items)
+    .map((it: any) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+    .filter(Boolean);
+  if (entries.length) {
+    for (const e of entries) await walkEntry(e, '', out);
+    return out;
+  }
+  return Array.from(dt.files).map((f) => ({ file: f, path: (f as any).webkitRelativePath || f.name }));
+}
+
+function gatherInputFiles(list: FileList): PickedFile[] {
+  return Array.from(list).map((f) => ({ file: f, path: (f as any).webkitRelativePath || f.name }));
+}
+
 interface PluginActionFormProps {
   action: PluginAction;
   pluginName: string;
@@ -48,6 +90,11 @@ export function PluginActionForm({
 
   // Optional post-result "cleanup" action (e.g. delete a kept workspace).
   const [cleanupState, setCleanupState] = useState<'idle' | 'deleting' | 'done'>('idle');
+
+  // Directory-upload state per field (drag-drop a folder → upload → token).
+  const [uploadState, setUploadState] = useState<
+    Record<string, { status: 'idle' | 'uploading' | 'done' | 'error'; count?: number; name?: string; error?: string }>
+  >({});
 
   // Dynamic dropdown state: field name → [{label, value}]
   const [dynamicOptions, setDynamicOptions] = useState<Record<string, { label: string; value: string }[]>>({});
@@ -210,6 +257,7 @@ export function PluginActionForm({
     setError(null);
     setResult(null);
     setCleanupState('idle');
+    setUploadState({});
     onClose();
   };
 
@@ -224,6 +272,44 @@ export function PluginActionForm({
     } catch {
       setCleanupState('idle');
     }
+  };
+
+  // Upload a picked folder to the field's endpoint; store the returned token as
+  // the field value so it submits like any other field.
+  const uploadDirectory = async (propertyName: string, endpoint: string, picked: PickedFile[]) => {
+    if (!picked.length) return;
+    const topName = picked[0].path.split('/')[0] || `${picked.length} files`;
+    setUploadState((p) => ({ ...p, [propertyName]: { status: 'uploading', name: topName } }));
+    try {
+      const fd = new FormData();
+      // The third arg sets each part's filename to its relative path, which the
+      // server uses to rebuild the folder structure.
+      for (const { file, path } of picked) fd.append('files', file, path);
+      const resp = await fetch(endpoint, { method: 'POST', body: fd });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const id = json?.data?.upload_id as string | undefined;
+      const count = (json?.data?.file_count as number | undefined) ?? picked.length;
+      if (!id) throw new Error('No upload id returned');
+      setFormData((prev) => ({ ...prev, [propertyName]: id }));
+      setUploadState((p) => ({ ...p, [propertyName]: { status: 'done', count, name: topName } }));
+    } catch (e: any) {
+      setFormData((prev) => {
+        const next = { ...prev };
+        delete next[propertyName];
+        return next;
+      });
+      setUploadState((p) => ({ ...p, [propertyName]: { status: 'error', error: e?.message || 'Upload failed' } }));
+    }
+  };
+
+  const clearUpload = (propertyName: string) => {
+    setFormData((prev) => {
+      const next = { ...prev };
+      delete next[propertyName];
+      return next;
+    });
+    setUploadState((p) => ({ ...p, [propertyName]: { status: 'idle' } }));
   };
 
   // Fetch options for non-dependent fields on open
@@ -285,6 +371,67 @@ export function PluginActionForm({
             onChange={(_event, checked) => handleChange(checked)}
             label={propertySchema.description || propertyName}
           />
+        </FormGroup>
+      );
+    }
+
+    // Directory upload (drag-drop a folder → upload → store the returned token)
+    if (propertySchema.format === 'directory-upload') {
+      const endpoint: string = propertySchema['x-upload-endpoint'];
+      const title: string = propertySchema.title ?? propertyName;
+      const inputId = `${propertyName}-dirinput`;
+      const st = uploadState[propertyName] ?? { status: 'idle' as const };
+      return (
+        <FormGroup key={propertyName} label={title} isRequired={isRequired} fieldId={propertyName}>
+          {propertySchema.description && (
+            <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
+              {propertySchema.description}
+            </div>
+          )}
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={async (e) => {
+              e.preventDefault();
+              const picked = await gatherDroppedFiles(e.dataTransfer);
+              uploadDirectory(propertyName, endpoint, picked);
+            }}
+            onClick={() => document.getElementById(inputId)?.click()}
+            style={{
+              border: '2px dashed #b8bbbe',
+              borderRadius: '6px',
+              padding: '1.25rem',
+              textAlign: 'center',
+              cursor: 'pointer',
+              background: '#fafafa',
+            }}
+          >
+            {st.status === 'uploading' && <span>Uploading {st.name}…</span>}
+            {st.status === 'done' && (
+              <span>✓ {st.name} — {st.count} file(s) ready. Click or drop to replace.</span>
+            )}
+            {st.status === 'error' && (
+              <span style={{ color: '#c9190b' }}>{st.error}. Click or drop to retry.</span>
+            )}
+            {(st.status === 'idle' || st.status === undefined) && (
+              <span>Drag-drop a skills folder here, or click to browse</span>
+            )}
+            <input
+              id={inputId}
+              type="file"
+              multiple
+              {...({ webkitdirectory: '', directory: '' } as any)}
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const files = e.target.files;
+                if (files && files.length) uploadDirectory(propertyName, endpoint, gatherInputFiles(files));
+              }}
+            />
+          </div>
+          {st.status === 'done' && (
+            <Button variant="link" isInline onClick={() => clearUpload(propertyName)} style={{ marginTop: '0.25rem' }}>
+              Remove folder
+            </Button>
+          )}
         </FormGroup>
       );
     }
