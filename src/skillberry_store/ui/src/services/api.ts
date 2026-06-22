@@ -430,6 +430,15 @@ export const pluginsApi = {
     return handleResponse<Plugin>(response);
   },
 
+  setEnabled: async (name: string, enabled: boolean): Promise<Plugin> => {
+    const response = await fetch(`${API_BASE}/plugins/${name}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    return handleResponse<Plugin>(response);
+  },
+
   executeAction: async (
     pluginName: string,
     action: string,

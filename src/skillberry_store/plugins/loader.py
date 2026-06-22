@@ -3,10 +3,12 @@
 import logging
 from typing import Dict, List, Optional, Any
 from importlib.metadata import entry_points
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 
 from skillberry_store.plugins.base import PluginBase
 from skillberry_store.plugins.store_api import StoreAPI
+from skillberry_store.plugins.config import PluginConfigStore
+from skillberry_store.plugins import events as plugin_events
 
 logger = logging.getLogger(__name__)
 
@@ -18,14 +20,19 @@ class PluginLoader:
     Each plugin must be a subclass of PluginBase.
     """
     
-    def __init__(self, store_api: StoreAPI):
+    def __init__(self, store_api: StoreAPI, config_store: Optional[PluginConfigStore] = None):
         """Initialize the plugin loader.
-        
+
         Args:
             store_api: StoreAPI instance to inject into plugins
+            config_store: persisted enable/disable state (defaults to PluginConfigStore())
         """
         self.store_api = store_api
         self.plugins: Dict[str, PluginBase] = {}
+        self.config = config_store or PluginConfigStore()
+        # Event dispatch consults admin enablement only; capability is handled
+        # by each plugin's own internal guard.
+        plugin_events.set_enabled_resolver(self.config.is_enabled)
     
     def discover_plugins(self) -> List[str]:
         """Discover and load all available plugins.
@@ -64,12 +71,16 @@ class PluginLoader:
                     )
                     continue
                 
-                # Instantiate the plugin
+                # Snapshot existing handlers, instantiate, then attribute any
+                # newly-registered handlers to this plugin's slug.
+                before = self._handler_snapshot()
                 plugin = plugin_class()
-                
+                for func in self._handler_snapshot() - before:
+                    plugin_events.register_handler_owner(func, entry_point.name)
+
                 # Inject store API
                 plugin.set_store_api(self.store_api)
-                
+
                 # Store the plugin
                 self.plugins[entry_point.name] = plugin
                 discovered.append(entry_point.name)
@@ -90,35 +101,58 @@ class PluginLoader:
         
         return discovered
     
+    @staticmethod
+    def _handler_snapshot() -> set:
+        """Set of all handler callables currently in the global event registry."""
+        snapshot = set()
+        for handlers in plugin_events._event_handlers.values():
+            snapshot.update(handlers)
+        return snapshot
+
+    def is_active(self, slug: str) -> bool:
+        """Effective enablement: plugin is capable AND admin-enabled."""
+        plugin = self.plugins.get(slug)
+        if plugin is None:
+            return False
+        return plugin.is_enabled() and self.config.is_enabled(slug)
+
+    def set_enabled(self, slug: str, value: bool) -> None:
+        """Admin toggle for a plugin; persists and takes effect live."""
+        if slug not in self.plugins:
+            raise KeyError(slug)
+        self.config.set_enabled(slug, value)
+
+    def _make_router_guard(self, slug: str):
+        """Build a dependency that 404s when the plugin is not active."""
+        async def guard():
+            if not self.is_active(slug):
+                raise HTTPException(status_code=404, detail=f"Plugin '{slug}' is disabled")
+        return guard
+
     def mount_routers(self, app: FastAPI):
         """Mount plugin routers to the FastAPI app.
-        
-        Only enabled plugins with routers are mounted.
-        Routers are mounted at /plugins/{plugin_name}/
-        
+
+        Routers are always mounted (so plugins can be toggled live without a
+        restart) but carry a guard dependency that returns 404 while the plugin
+        is disabled or not capable.
+
         Args:
             app: FastAPI application instance
         """
         for plugin_name, plugin in self.plugins.items():
-            # Skip disabled plugins
-            if not plugin.is_enabled():
-                logger.info(f"Plugin '{plugin_name}' is disabled, skipping router mount")
-                continue
-            
-            # Get router
             router = plugin.get_router()
             if router is None:
                 continue
-            
-            # Mount router
+
             prefix = f"/plugins/{plugin_name}"
             app.include_router(
                 router,
                 prefix=prefix,
-                tags=["plugins", plugin_name]
+                tags=["plugins", plugin_name],
+                dependencies=[Depends(self._make_router_guard(plugin_name))],
             )
-            
-            logger.info(f"Mounted router for plugin '{plugin_name}' at {prefix}")
+
+            logger.info(f"Mounted router for plugin '{plugin_name}' at {prefix} (guarded)")
     
     def get_plugin_info(self, plugin_name: str) -> Optional[Dict[str, Any]]:
         """Get information about a specific plugin.
@@ -144,7 +178,8 @@ class PluginLoader:
             "plugin_type": metadata.plugin_type.value,
             "author": metadata.author,
             "homepage": metadata.homepage,
-            "enabled": plugin.is_enabled(),
+            "enabled": self.is_active(plugin_name),
+            "admin_enabled": self.config.is_enabled(plugin_name),
             "status": plugin.get_status_message(),
             "has_router": plugin.get_router() is not None,
             "has_cli": plugin.get_cli_commands() is not None,

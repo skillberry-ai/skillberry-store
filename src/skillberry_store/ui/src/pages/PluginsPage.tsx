@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   PageSection,
   Title,
@@ -31,6 +31,20 @@ export function PluginsPage() {
     queryKey: ['plugins'],
     queryFn: pluginsApi.list,
   });
+
+  const queryClient = useQueryClient();
+
+  const toggleEnabledMutation = useMutation({
+    mutationFn: ({ slug, enabled }: { slug: string; enabled: boolean }) =>
+      pluginsApi.setEnabled(slug, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugins'] });
+    },
+  });
+
+  const handleToggleEnabled = (plugin: Plugin, enabled: boolean) => {
+    toggleEnabledMutation.mutate({ slug: plugin.slug, enabled });
+  };
 
   // Execute plugin action mutation
   const executeActionMutation = useMutation({
@@ -114,6 +128,7 @@ export function PluginsPage() {
             key={plugin.name}
             plugin={plugin}
             onActionClick={(action) => handleActionClick(plugin, action)}
+            onToggleEnabled={handleToggleEnabled}
           />
         ))}
       </Gallery>
