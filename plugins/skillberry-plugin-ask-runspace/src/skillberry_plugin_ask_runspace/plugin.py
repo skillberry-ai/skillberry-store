@@ -150,7 +150,9 @@ class SkillberryPluginAskRunspace(PluginBase):
             ),
             plugin_type=PluginType.CREATOR,
         )
-        self._execution_mode = os.getenv("RUNSPACE_MODE", "container")
+        # Default to local so the agent can reach the store MCP at localhost; a
+        # container can't (no host networking). Override with RUNSPACE_MODE.
+        self._execution_mode = os.getenv("RUNSPACE_MODE", "local")
         self._claude_settings = None
         self._jobs: Dict[str, Any] = {}
         self._workspaces: Dict[str, str] = {}
@@ -419,16 +421,23 @@ class SkillberryPluginAskRunspace(PluginBase):
                                     "agent can act on the store — create and list tools, skills, "
                                     "snippets, etc. Keep it to let this run affect the store; remove "
                                     "the entry (or clear the box) to keep the run from touching the "
-                                    "store. Add your own servers here too. Note: in container "
-                                    "execution mode the agent may need the host address (e.g. "
-                                    "host.docker.internal) instead of localhost to reach the store."
+                                    "store. Add your own servers here too. Note: reaching this "
+                                    "localhost store requires 'local' execution mode — a container "
+                                    "sandbox has no route to it."
                                 ),
                             },
                             "execution_mode": {
                                 "type": "string",
-                                "enum": ["container", "local"],
-                                "default": "container",
+                                "enum": ["local", "container"],
+                                "default": "local",
                                 "title": "Execution mode",
+                                "description": (
+                                    "local: the agent runs on this host, so it CAN reach the store "
+                                    "MCP at localhost — required for the agent to read/write the "
+                                    "store. container: runs in an isolated Docker sandbox that "
+                                    "cannot reach a localhost store (no host networking), so store "
+                                    "tools won't be available there."
+                                ),
                             },
                             "agent_env": {
                                 "type": "object",

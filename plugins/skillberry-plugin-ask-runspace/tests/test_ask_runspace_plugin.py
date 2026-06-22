@@ -174,6 +174,8 @@ def test_ui_config_shape():
     assert action["params_schema"]["required"] == ["request"]
     assert props["preset_id"]["x-options-from"].endswith("/presets")
     assert props["preset_id"]["x-prefill"] == {"request": "prompt", "skills": "skills"}
+    # Local is the default so the agent can reach the localhost store MCP.
+    assert props["execution_mode"]["default"] == "local"
     assert props["skills"]["type"] == "array"
     assert props["skills_upload_id"]["format"] == "directory-upload"
     assert props["skills_upload_id"]["x-upload-endpoint"].endswith("/upload-skills")

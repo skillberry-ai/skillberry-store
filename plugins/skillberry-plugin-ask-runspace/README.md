@@ -94,4 +94,14 @@ See `.env.example`.
 | `RUNSPACE_MODE` | no | `container` | Agent execution mode: `container` or `local` |
 
 `RUNSPACE_MODE` sets the default execution mode for the agent session; it can be
-overridden per request via the `execution_mode` field (`container` / `local`).
+overridden per request via the `execution_mode` field (`local` / `container`).
+
+### Execution mode and store access
+
+The mode defaults to **`local`** (agent runs on this host). This matters for the store
+MCP: the prefilled server points at `http://<host>:<SBS_PORT>/control_sse`, which only
+resolves from the host. In **`container`** mode the agent runs in an isolated Docker
+sandbox with no host networking (`runspace` does not add `host.docker.internal`), so it
+**cannot reach a localhost store** — `claude mcp list` shows nothing and the agent falls
+back to writing local files in the scratch workspace instead of creating store resources.
+Use `local` mode (the default) when you want the agent to read/write the store.
