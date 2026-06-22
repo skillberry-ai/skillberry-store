@@ -2,8 +2,27 @@
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+# localhost forms that a containerized agent can't reach; in container mode they
+# are rewritten to host.docker.internal so MCP servers on the host stay reachable.
+_LOCALHOST_RE = re.compile(r"^(https?://)(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?=[:/]|$)")
+
+
+def _rewrite_localhost_for_container(mcp_servers: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Point localhost MCP URLs at the host (host.docker.internal) for container runs."""
+    if not mcp_servers:
+        return mcp_servers
+    out: Dict[str, Any] = {}
+    for name, cfg in mcp_servers.items():
+        if isinstance(cfg, dict) and isinstance(cfg.get("url"), str):
+            new_url = _LOCALHOST_RE.sub(r"\1host.docker.internal", cfg["url"])
+            if new_url != cfg["url"]:
+                cfg = {**cfg, "url": new_url}
+        out[name] = cfg
+    return out
 
 
 # The store's own MCP server, prefilled into the mcp_servers field and referenced
@@ -271,6 +290,12 @@ class SkillberryPluginAskRunspace(PluginBase):
                 # The request text is the whole prompt (it already carries any
                 # store-usage guidance the user kept from the prefill).
                 prompt = req.request
+                # A containerized agent can't reach a localhost MCP, so rewrite
+                # localhost URLs to host.docker.internal for container runs.
+                mcp_for_run = (
+                    _rewrite_localhost_for_container(req.mcp_servers)
+                    if mode == "container" else req.mcp_servers
+                )
                 session_url = None
                 if req.use_runspace_server:
                     # Delegate to a running runspace server instead of the
@@ -283,7 +308,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                     sr = await runner.run_via_server(
                         req.runspace_server_url, prompt, str(editable), str(context), mode,
                         remote_skills=req.skills, skills_dir=skills_dir,
-                        mcp_servers=req.mcp_servers, agent_env=agent_env,
+                        mcp_servers=mcp_for_run, agent_env=agent_env,
                         on_started=_on_started,
                     )
                     session_id = sr.session_id
@@ -291,8 +316,8 @@ class SkillberryPluginAskRunspace(PluginBase):
                     session_url = sr.session_url
                 else:
                     options_kwargs: Dict[str, Any] = {"env": agent_env}
-                    if req.mcp_servers:
-                        options_kwargs["mcp_servers"] = req.mcp_servers
+                    if mcp_for_run:
+                        options_kwargs["mcp_servers"] = mcp_for_run
                     options = ClaudeCodeOptions(**options_kwargs)
                     result = await runner.run_task_session(
                         prompt, str(editable), str(context), options, mode,

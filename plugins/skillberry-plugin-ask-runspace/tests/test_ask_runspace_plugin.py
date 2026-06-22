@@ -252,6 +252,53 @@ def test_run_sends_request_verbatim(monkeypatch):
     assert seen["prompt"] == "make a mul tool\n\n--- (edited guidance)"
 
 
+def test_rewrite_localhost_for_container():
+    from skillberry_plugin_ask_runspace.plugin import _rewrite_localhost_for_container
+
+    out = _rewrite_localhost_for_container(
+        {"store": {"type": "sse", "url": "http://localhost:8000/control_sse"},
+         "remote": {"type": "sse", "url": "https://example.com/sse"},
+         "stdio": {"command": "npx"}}
+    )
+    assert out["store"]["url"] == "http://host.docker.internal:8000/control_sse"
+    # Non-localhost and non-URL servers are left untouched.
+    assert out["remote"]["url"] == "https://example.com/sse"
+    assert out["stdio"] == {"command": "npx"}
+    assert _rewrite_localhost_for_container(None) is None
+
+
+def test_container_mode_rewrites_store_url_to_host_docker_internal(monkeypatch):
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    seen = {}
+
+    async def fake_server(base_url, prompt, editable_dir, context_dir, mode,
+                          remote_skills=None, skills_dir=None, mcp_servers=None,
+                          agent_env=None, on_started=None):
+        from skillberry_plugin_ask_runspace.runner import ServerRunResult
+        seen["mcp_servers"] = mcp_servers
+        return ServerRunResult(session_id="s", summary="# done",
+                               session_url="http://localhost:6767/ui/sessions/s")
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_via_server", fake_server)
+
+    client = _client(p)
+    job_id = client.post(
+        "/plugins/ask-runspace/run",
+        json={
+            "request": "x",
+            "use_runspace_server": True,
+            "execution_mode": "container",
+            "mcp_servers": '{"skillberry-store": {"type": "sse", "url": "http://localhost:8000/control_sse"}}',
+        },
+    ).json()["data"]["job_id"]
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    assert seen["mcp_servers"]["skillberry-store"]["url"] == "http://host.docker.internal:8000/control_sse"
+
+
 def test_normalize_server_url():
     from skillberry_plugin_ask_runspace.runner import normalize_server_url
 
