@@ -24,11 +24,17 @@ preset — then render the agent's `summary.md` back to you as Markdown.
   rejected) and returns an `upload_id`. Pass that as `skills_upload_id` on `/run`; it's used
   as the agent's `skills_dir` alongside the remote `skills`, and the temp dir is deleted
   after the run. Programmatic callers can still pass a raw server path via `skills_dir`.
-- **MCP servers** (`mcp_servers`, optional): a JSON object of MCP servers to expose to the
-  agent, in Claude Code format. Paste either a bare `{"name": {…}}` map or a full
-  `{"mcpServers": {…}}` block (as in a `.mcp.json` file) — the wrapper is unwrapped
-  automatically and forwarded via `ClaudeCodeOptions.mcp_servers` (works in both
-  `container` and `local` modes). Invalid JSON is rejected with a `400`.
+- **MCP servers** (`mcp_servers`): a JSON object of MCP servers to expose to the agent, in
+  Claude Code format. It is **prefilled with this store's own control-plane MCP**
+  (`{"skillberry-store": {"type": "sse", "url": "http://<host>:<SBS_PORT>/control_sse"}}`,
+  the same SSE endpoint mounted at `/control_sse`) so the agent can act on the store —
+  create and list tools, skills, snippets, VMCPs, etc. — exactly the operations the plugins
+  themselves use. **Keep it** to let a run affect the store; **remove the entry (or clear
+  the box)** to keep the run from touching the store. You can add your own servers too —
+  paste either a bare `{"name": {…}}` map or a full `{"mcpServers": {…}}` block (the wrapper
+  is unwrapped automatically). Forwarded via `ClaudeCodeOptions.mcp_servers`; invalid JSON is
+  rejected with a `400`. Note: in `container` mode the agent runs in a Docker container, so
+  `localhost` won't reach the store — use the host address (e.g. `host.docker.internal`).
 - The plugin spins up a Runspace agent session (with fresh `editable` and `context`
   working directories), installs any `skills`, runs the agent on your `request`, and waits.
 - **Use Runspace server** (optional, off by default): tick this to send the task to a

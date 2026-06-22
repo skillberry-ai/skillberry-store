@@ -313,6 +313,22 @@ export function PluginActionForm({
     setUploadState((p) => ({ ...p, [propertyName]: { status: 'idle' } }));
   };
 
+  // Seed schema defaults into formData when the form opens so prefilled values
+  // (e.g. the store MCP servers JSON) are actually submitted, not just displayed.
+  useEffect(() => {
+    if (!isOpen || !action.params_schema.properties) return;
+    setFormData((prev) => {
+      const next = { ...prev };
+      for (const [name, schema] of Object.entries(action.params_schema.properties) as [string, any][]) {
+        if (next[name] === undefined && schema.default !== undefined) {
+          next[name] = schema.default;
+        }
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
   // Fetch options for non-dependent fields on open
   useEffect(() => {
     if (!isOpen || !action.params_schema.properties) return;

@@ -186,6 +186,19 @@ def test_ui_config_shape():
     assert action["async_action"]["cleanup_action"]["when_field"] == "workspace_dir"
     assert action["async_action"]["result_markdown_field"] == "summary_md"
     assert action["async_action"]["result_link"]["field"] == "session_url"
+    # mcp_servers is prefilled with the store's own MCP so the agent can use it.
+    import json as _json
+    default_mcp = _json.loads(props["mcp_servers"]["default"])
+    store = default_mcp["skillberry-store"]
+    assert store["type"] == "sse"
+    assert store["url"].endswith("/control_sse")
+
+
+def test_store_mcp_url_uses_sbs_port_and_localhost():
+    from skillberry_plugin_ask_runspace.plugin import _store_mcp_url
+
+    with patch.dict(os.environ, {"SBS_HOST": "0.0.0.0", "SBS_PORT": "8123"}, clear=False):
+        assert _store_mcp_url() == "http://localhost:8123/control_sse"
 
 
 def test_normalize_server_url():

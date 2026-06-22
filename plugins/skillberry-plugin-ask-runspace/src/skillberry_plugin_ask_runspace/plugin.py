@@ -6,6 +6,23 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
+def _store_mcp_url() -> str:
+    """Connectable SSE URL of this store's control-plane MCP (mounted at /control_sse)."""
+    host = os.getenv("SBS_HOST", "0.0.0.0") or "localhost"
+    if host in ("0.0.0.0", "::"):
+        host = "localhost"
+    port = os.getenv("SBS_PORT", "8000")
+    return f"http://{host}:{port}/control_sse"
+
+
+def _default_mcp_servers_json() -> str:
+    """Prefill for the mcp_servers field: the store's own MCP so the agent can use it."""
+    return json.dumps(
+        {"skillberry-store": {"type": "sse", "url": _store_mcp_url()}},
+        indent=2,
+    )
+
+
 def _parse_mcp_servers(value: Any) -> Optional[Dict[str, Any]]:
     """Normalize the ``mcp_servers`` request field into a Claude Code map.
 
@@ -344,12 +361,17 @@ class SkillberryPluginAskRunspace(PluginBase):
                             "mcp_servers": {
                                 "type": "string",
                                 "format": "textarea",
-                                "title": "MCP servers (JSON, optional)",
+                                "title": "MCP servers (JSON)",
+                                "default": _default_mcp_servers_json(),
                                 "description": (
-                                    "JSON object of MCP servers to expose to the agent, in "
-                                    "Claude Code format — either a bare {\"name\": {…}} map or a "
-                                    "full {\"mcpServers\": {…}} block (as in a .mcp.json file). "
-                                    "Forwarded via ClaudeCodeOptions.mcp_servers."
+                                    "JSON object of MCP servers exposed to the agent (Claude Code "
+                                    "format). Prefilled with this store's own MCP server so the "
+                                    "agent can act on the store — create and list tools, skills, "
+                                    "snippets, etc. Keep it to let this run affect the store; remove "
+                                    "the entry (or clear the box) to keep the run from touching the "
+                                    "store. Add your own servers here too. Note: in container "
+                                    "execution mode the agent may need the host address (e.g. "
+                                    "host.docker.internal) instead of localhost to reach the store."
                                 ),
                             },
                             "execution_mode": {

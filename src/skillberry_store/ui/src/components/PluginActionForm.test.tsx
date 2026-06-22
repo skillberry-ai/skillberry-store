@@ -335,6 +335,38 @@ describe('PluginActionForm — generic async actions', () => {
     expect(document.getElementById('url')).not.toBeNull();
   });
 
+  it('submits a prefilled default even when the field is left untouched', async () => {
+    const onSubmit = vi.fn().mockResolvedValue({ success: true } as PluginActionResult);
+    const action = {
+      label: 'Run task',
+      endpoint: '/x/run',
+      method: 'POST',
+      params_schema: {
+        type: 'object',
+        properties: {
+          mcp_servers: {
+            type: 'string',
+            format: 'textarea',
+            title: 'MCP servers',
+            default: '{"skillberry-store": {"type": "sse", "url": "http://localhost:8000/control_sse"}}',
+          },
+        },
+      },
+    } as any;
+
+    renderForm(action, onSubmit);
+    // Submit without editing the prefilled textarea.
+    fireEvent.click(screen.getByRole('button', { name: /Execute/i }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mcp_servers: '{"skillberry-store": {"type": "sse", "url": "http://localhost:8000/control_sse"}}',
+        })
+      );
+    });
+  });
+
   it('behaves synchronously for actions without async_action (no polling)', async () => {
     const syncAction: PluginAction = {
       label: 'Plain action',
