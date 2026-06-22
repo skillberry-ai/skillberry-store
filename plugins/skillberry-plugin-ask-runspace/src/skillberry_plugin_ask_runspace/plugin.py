@@ -131,6 +131,9 @@ class SkillberryPluginAskRunspace(PluginBase):
         self._workspaces: Dict[str, str] = {}
         # upload_id -> temp dir holding an uploaded skills folder, consumed by a run.
         self._skill_uploads: Dict[str, str] = {}
+        # job_id -> partial info known mid-run (e.g. the server session URL), so
+        # the status endpoint can surface it while the job is still pending.
+        self._job_meta: Dict[str, Dict[str, Any]] = {}
         self._load_claude_settings()
         self._runspace_available = runspace_agent is not None
         self._credentials_configured = self._check_credentials()
@@ -236,10 +239,16 @@ class SkillberryPluginAskRunspace(PluginBase):
                 if req.use_runspace_server:
                     # Delegate to a running runspace server instead of the
                     # in-process library; it manages the session and we link to it.
+                    # Record the session URL as soon as the session is created so
+                    # the status endpoint can show it while the run is pending.
+                    def _on_started(_sid: str, url: str):
+                        self._job_meta[job_id] = {"session_url": url}
+
                     sr = await runner.run_via_server(
                         req.runspace_server_url, req.request, str(editable), str(context), mode,
                         remote_skills=req.skills, skills_dir=skills_dir,
                         mcp_servers=req.mcp_servers, agent_env=agent_env,
+                        on_started=_on_started,
                     )
                     session_id = sr.session_id
                     summary = sr.summary
@@ -267,6 +276,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                     payload["workspace_dir"] = tmp
                 return payload
             finally:
+                self._job_meta.pop(job_id, None)
                 if uploaded_skills:
                     shutil.rmtree(uploaded_skills, ignore_errors=True)
                 if not req.keep_workspace:
@@ -291,7 +301,8 @@ class SkillberryPluginAskRunspace(PluginBase):
             if task is None:
                 raise HTTPException(status_code=404, detail=f"Unknown job {job_id}")
             if not task.done():
-                return {"job_id": job_id, "status": "pending"}
+                # Surface anything known mid-run (e.g. the server session URL).
+                return {"job_id": job_id, "status": "pending", **self._job_meta.get(job_id, {})}
             try:
                 exc = task.exception()
             except asyncio.CancelledError:

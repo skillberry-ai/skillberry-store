@@ -709,8 +709,7 @@ export function PluginActionForm({
               {statusQuery.data?.message}
             </Alert>
           )}
-          {jobStatus === 'ready' &&
-            asyncConfig.result_link &&
+          {asyncConfig.result_link &&
             (statusQuery.data as any)?.[asyncConfig.result_link.field] && (
               <div style={{ marginBottom: '0.75rem' }}>
                 <a

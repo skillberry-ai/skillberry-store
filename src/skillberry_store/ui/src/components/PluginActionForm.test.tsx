@@ -308,6 +308,32 @@ describe('PluginActionForm — generic async actions', () => {
     });
   });
 
+  it('shows the result_link as soon as it appears in the pending status payload', async () => {
+    // Status stays "pending" but already carries the session URL.
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: 'pending', session_url: 'http://localhost:6767/ui/sessions/abc' }),
+    });
+    const onSubmit = vi.fn().mockResolvedValue(PENDING_RESULT);
+    const action: PluginAction = {
+      ...ASYNC_ACTION,
+      async_action: {
+        ...ASYNC_ACTION.async_action!,
+        result_link: { field: 'session_url', label: 'Open session in Runspace ↗' },
+      },
+    };
+
+    renderForm(action, onSubmit);
+    fireEvent.click(screen.getByRole('button', { name: /Execute/i }));
+
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: /Open session in Runspace/i }) as HTMLAnchorElement;
+      expect(link.href).toContain('/ui/sessions/abc');
+    });
+    // Still pending — the link shows before completion.
+    expect(screen.getByText(/Brewing your coffee/i)).toBeDefined();
+  });
+
   it('shows an x-visible-when field only when its controlling box is ticked', () => {
     const action = {
       label: 'Run task',

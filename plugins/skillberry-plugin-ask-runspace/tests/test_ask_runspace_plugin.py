@@ -215,7 +215,8 @@ def test_run_uses_server_when_enabled(monkeypatch):
     seen = {}
 
     async def fake_server(base_url, prompt, editable_dir, context_dir, mode,
-                          remote_skills=None, skills_dir=None, mcp_servers=None, agent_env=None):
+                          remote_skills=None, skills_dir=None, mcp_servers=None,
+                          agent_env=None, on_started=None):
         from skillberry_plugin_ask_runspace.runner import ServerRunResult
         seen.update(base_url=base_url, prompt=prompt, mode=mode, mcp_servers=mcp_servers)
         return ServerRunResult(
@@ -249,6 +250,63 @@ def test_run_uses_server_when_enabled(monkeypatch):
     assert s["session_url"] == "http://localhost:6767/ui/sessions/srv-1"
     assert seen["base_url"] == "http://localhost:6767"
     assert seen["mcp_servers"] == {"fetch": {"command": "npx"}}
+
+
+def test_status_pending_surfaces_job_meta_session_url():
+    # A pending job exposes mid-run info (e.g. the server session URL recorded by
+    # run_via_server's on_started callback) so the UI can link to it before the
+    # run completes.
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    client = _client(p)
+
+    class _NotDone:
+        def done(self):
+            return False
+
+    p._jobs["job-x"] = _NotDone()
+    p._job_meta["job-x"] = {"session_url": "http://localhost:6767/ui/sessions/srv-1"}
+
+    s = client.get("/plugins/ask-runspace/status/job-x").json()
+    assert s["status"] == "pending"
+    assert s["session_url"].endswith("/ui/sessions/srv-1")
+
+
+def test_run_via_server_invokes_on_started_then_returns_summary(monkeypatch):
+    # Unit-test run_via_server end-to-end against a mocked runspace server: it
+    # reports the session URL via on_started before polling, then returns the
+    # summary once the session completes.
+    import httpx
+    from skillberry_plugin_ask_runspace import runner
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/run":
+            return httpx.Response(200, json={"session_id": "srv-9", "status": "pending"})
+        if path == "/sessions/srv-9":
+            return httpx.Response(200, json={"status": "completed", "has_summary": True})
+        if path == "/sessions/srv-9/summary":
+            return httpx.Response(200, json={"content": "# Done"})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.AsyncClient
+
+    def patched_client(*a, **k):
+        k["transport"] = transport
+        return real_client(*a, **k)
+
+    monkeypatch.setattr(httpx, "AsyncClient", patched_client)
+
+    started = {}
+    result = asyncio.run(runner.run_via_server(
+        "localhost:6767", "do x", "/e", "/c", "local",
+        on_started=lambda sid, url: started.update(sid=sid, url=url),
+        poll_interval=0.0,
+    ))
+    assert started["url"] == "http://localhost:6767/ui/sessions/srv-9"
+    assert result.session_id == "srv-9"
+    assert result.summary == "# Done"
+    assert result.session_url == "http://localhost:6767/ui/sessions/srv-9"
 
 
 def test_parse_mcp_servers_handles_json_wrapper_and_invalid():

@@ -3,7 +3,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,7 @@ async def run_via_server(base_url: str, prompt: str, editable_dir: str, context_
                          skills_dir: Optional[str] = None,
                          mcp_servers: Optional[Dict[str, Any]] = None,
                          agent_env: Optional[Dict[str, str]] = None,
+                         on_started: Optional[Callable[[str, str], None]] = None,
                          poll_interval: float = 2.0,
                          timeout: float = 3600.0) -> ServerRunResult:
     """Run a task on a remote runspace server instead of the in-process library.
@@ -69,7 +70,10 @@ async def run_via_server(base_url: str, prompt: str, editable_dir: str, context_
     completed/failed, then fetches the summary. ``editable_dir``/``context_dir``
     are server-side paths — this works when the server shares the filesystem
     (the localhost default); for a truly remote host those paths must exist
-    there. Returns the session id, summary text, and a clickable session URL.
+    there. ``on_started(session_id, session_url)`` is invoked as soon as the
+    session is created (before polling) so callers can surface the link while
+    the run is still in progress. Returns the session id, summary text, and a
+    clickable session URL.
     """
     import httpx
 
@@ -91,6 +95,8 @@ async def run_via_server(base_url: str, prompt: str, editable_dir: str, context_
         resp.raise_for_status()
         session_id = resp.json()["session_id"]
         session_url = f"{base}/ui/sessions/{session_id}"
+        if on_started is not None:
+            on_started(session_id, session_url)
 
         waited = 0.0
         while True:
