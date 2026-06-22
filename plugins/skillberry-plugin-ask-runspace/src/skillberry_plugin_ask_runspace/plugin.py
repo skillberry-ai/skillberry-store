@@ -6,6 +6,11 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
+# The store's own MCP server, prefilled into the mcp_servers field and referenced
+# by the store-usage guidance. Keep the two in sync via this name.
+STORE_SERVER_NAME = "skillberry-store"
+
+
 def _store_mcp_url() -> str:
     """Connectable SSE URL of this store's control-plane MCP (mounted at /control_sse)."""
     host = os.getenv("SBS_HOST", "0.0.0.0") or "localhost"
@@ -18,32 +23,29 @@ def _store_mcp_url() -> str:
 def _default_mcp_servers_json() -> str:
     """Prefill for the mcp_servers field: the store's own MCP so the agent can use it."""
     return json.dumps(
-        {"skillberry-store": {"type": "sse", "url": _store_mcp_url()}},
+        {STORE_SERVER_NAME: {"type": "sse", "url": _store_mcp_url()}},
         indent=2,
     )
 
 
-def _store_server_name(mcp_servers: Optional[Dict[str, Any]]) -> Optional[str]:
-    """Return the mcp_servers key that points at this store (a /control_sse URL)."""
-    if not mcp_servers:
-        return None
-    for name, cfg in mcp_servers.items():
-        if isinstance(cfg, dict) and str(cfg.get("url", "")).rstrip("/").endswith("/control_sse"):
-            return name
-    return None
-
-
-def _store_usage_suffix(server_name: str) -> str:
-    """Guidance appended to the prompt so the agent actually uses the store MCP."""
+def _store_guidance() -> str:
+    """Editable guidance prefilled into the request so the agent uses the store MCP."""
     return (
-        f"\n\n---\nYou have access to a Skillberry Store MCP server named "
-        f"\"{server_name}\" (its tools are prefixed `mcp__{server_name}__`). This is "
-        "the live store. When the task involves creating or changing tools, skills, "
-        "snippets, or MCP/VMCP servers, persist your work in the store through that "
-        "server's tools — create or update the resources there, not just as local "
-        "files. List existing resources first to avoid duplicates, and state what you "
-        "created or changed in the store in your summary."
+        "---\n"
+        f"When this task involves creating or changing tools, skills, snippets, or "
+        f"MCP/VMCP servers, use the Skillberry Store MCP server \"{STORE_SERVER_NAME}\" "
+        f"(tools prefixed `mcp__{STORE_SERVER_NAME}__`) to persist your work in the "
+        "store — create or update the resources there, not just as local files. List "
+        "existing resources first to avoid duplicates, and note what you changed in the "
+        "store in your summary.\n"
+        "(Remove these lines if you don't want this run to touch the store.)"
     )
+
+
+def _compose_prompt(task: str) -> str:
+    """Combine a preset/task prompt with the editable store guidance below it."""
+    task = (task or "").strip()
+    return f"{task}\n\n{_store_guidance()}" if task else _store_guidance()
 
 
 def _parse_mcp_servers(value: Any) -> Optional[Dict[str, Any]]:
@@ -216,7 +218,9 @@ class SkillberryPluginAskRunspace(PluginBase):
 
         @router.get("/presets")
         async def presets():
-            return PRESETS
+            # Append the editable store-usage guidance under each preset's prompt so
+            # selecting one fills the request box with {preset}\n\n{guidance}.
+            return [{**p, "prompt": _compose_prompt(p["prompt"])} for p in PRESETS]
 
         @router.post("/upload-skills")
         async def upload_skills(files: list[UploadFile] = File(...)):
@@ -262,13 +266,9 @@ class SkillberryPluginAskRunspace(PluginBase):
                 context = Path(tmp) / "context"; context.mkdir()
                 mode = req.execution_mode or self._execution_mode
                 agent_env = self._build_claude_env(req.agent_env)
-                # When the store's own MCP is provided, tell the agent to use it —
-                # otherwise it tends to only write local files and never touch the
-                # store. Skip the guidance if the user removed the store server.
+                # The request text is the whole prompt (it already carries any
+                # store-usage guidance the user kept from the prefill).
                 prompt = req.request
-                store_name = _store_server_name(req.mcp_servers)
-                if store_name:
-                    prompt = req.request + _store_usage_suffix(store_name)
                 session_url = None
                 if req.use_runspace_server:
                     # Delegate to a running runspace server instead of the
@@ -380,7 +380,12 @@ class SkillberryPluginAskRunspace(PluginBase):
                                 "type": "string",
                                 "title": "Your request",
                                 "format": "textarea",
-                                "description": "Describe what you want the agent to do.",
+                                "default": _store_guidance(),
+                                "description": (
+                                    "Describe what you want the agent to do. Prefilled with store-usage "
+                                    "guidance (editable) so the agent persists results in the store; "
+                                    "type your task above it, or delete the lines to skip the store."
+                                ),
                             },
                             "skills": {
                                 "type": "array",

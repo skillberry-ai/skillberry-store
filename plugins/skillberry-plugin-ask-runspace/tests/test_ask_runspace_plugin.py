@@ -204,21 +204,27 @@ def test_store_mcp_url_uses_sbs_port_and_localhost():
         assert _store_mcp_url() == "http://localhost:8123/control_sse"
 
 
-def test_store_server_name_matches_control_sse():
-    from skillberry_plugin_ask_runspace.plugin import _store_server_name
+def test_request_default_and_presets_carry_store_guidance():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
 
-    assert _store_server_name(None) is None
-    assert _store_server_name({"fetch": {"command": "npx"}}) is None
-    assert _store_server_name(
-        {"skillberry-store": {"type": "sse", "url": "http://localhost:8000/control_sse"}}
-    ) == "skillberry-store"
-    # Trailing slash is tolerated.
-    assert _store_server_name(
-        {"store": {"type": "sse", "url": "http://h:8000/control_sse/"}}
-    ) == "store"
+    # The request textarea is prefilled with the editable store-usage guidance.
+    props = p.get_ui_config()["actions"][0]["params_schema"]["properties"]
+    default_req = props["request"]["default"]
+    assert "Skillberry Store MCP server" in default_req
+    assert "mcp__skillberry-store__" in default_req
+
+    # Selecting a preset fills the box with {preset prompt}\n\n{guidance}.
+    items = _client(p).get("/plugins/ask-runspace/presets").json()
+    by_id = {i["id"]: i for i in items}
+    assert by_id["optimize"]["prompt"].startswith("Optimize the skill")
+    assert "Skillberry Store MCP server" in by_id["optimize"]["prompt"]
+    # The generic option carries the guidance alone (no task above it).
+    assert by_id["custom"]["prompt"].lstrip().startswith("---")
+    assert "mcp__skillberry-store__" in by_id["custom"]["prompt"]
 
 
-def test_prompt_gets_store_guidance_when_store_mcp_present(monkeypatch):
+def test_run_sends_request_verbatim(monkeypatch):
+    # The request text IS the whole prompt — no server-side composition.
     p = _plugin({"ANTHROPIC_API_KEY": "k"})
     seen = {}
 
@@ -234,46 +240,14 @@ def test_prompt_gets_store_guidance_when_store_mcp_present(monkeypatch):
     client = _client(p)
     job_id = client.post(
         "/plugins/ask-runspace/run",
-        json={
-            "request": "make a mul tool",
-            "mcp_servers": '{"skillberry-store": {"type": "sse", "url": "http://localhost:8000/control_sse"}}',
-        },
+        json={"request": "make a mul tool\n\n--- (edited guidance)"},
     ).json()["data"]["job_id"]
     for _ in range(50):
         s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
         if s["status"] != "pending":
             break
     assert s["status"] == "ready"
-    assert seen["prompt"].startswith("make a mul tool")
-    assert "Skillberry Store MCP server" in seen["prompt"]
-    assert "mcp__skillberry-store__" in seen["prompt"]
-
-
-def test_prompt_unchanged_without_store_mcp(monkeypatch):
-    p = _plugin({"ANTHROPIC_API_KEY": "k"})
-    seen = {}
-
-    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None, skills_dir=None):
-        seen["prompt"] = prompt
-        class R: session_id = "s"
-        return R()
-
-    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
-    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
-                        lambda *a, **k: "# done")
-
-    client = _client(p)
-    # A non-store MCP only → no store guidance appended.
-    job_id = client.post(
-        "/plugins/ask-runspace/run",
-        json={"request": "do x", "mcp_servers": '{"fetch": {"command": "npx"}}'},
-    ).json()["data"]["job_id"]
-    for _ in range(50):
-        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
-        if s["status"] != "pending":
-            break
-    assert s["status"] == "ready"
-    assert seen["prompt"] == "do x"
+    assert seen["prompt"] == "make a mul tool\n\n--- (edited guidance)"
 
 
 def test_normalize_server_url():

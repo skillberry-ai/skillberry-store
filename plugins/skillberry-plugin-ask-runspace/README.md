@@ -35,9 +35,10 @@ preset — then render the agent's `summary.md` back to you as Markdown.
   is unwrapped automatically). Forwarded via `ClaudeCodeOptions.mcp_servers`; invalid JSON is
   rejected with a `400`. Note: in `container` mode the agent runs in a Docker container, so
   `localhost` won't reach the store — use the host address (e.g. `host.docker.internal`).
-  When the store MCP is present, the plugin appends a short instruction to the prompt telling
-  the agent to actually use that server (create/update tools, skills, snippets in the store)
-  rather than only writing local files; remove the store entry and the guidance is dropped too.
+  The **request box is prefilled with editable store-usage guidance** (and every preset
+  includes it) so the agent actually uses that server — creating/updating tools, skills,
+  snippets in the store — instead of only writing local files. It's just text: edit it, or
+  delete the lines, to change or skip the store guidance for a run.
 - The plugin spins up a Runspace agent session (with fresh `editable` and `context`
   working directories), installs any `skills`, runs the agent on your `request`, and waits.
 - **Use Runspace server** (optional, off by default): tick this to send the task to a
