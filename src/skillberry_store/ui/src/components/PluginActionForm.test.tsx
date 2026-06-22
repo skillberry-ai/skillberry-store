@@ -284,6 +284,57 @@ describe('PluginActionForm — generic async actions', () => {
     });
   });
 
+  it('renders an external session link on success when result_link.field is present', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: 'ready', session_url: 'http://localhost:6767/ui/sessions/s1' }),
+    });
+    const onSubmit = vi.fn().mockResolvedValue(PENDING_RESULT);
+    const action: PluginAction = {
+      ...ASYNC_ACTION,
+      async_action: {
+        ...ASYNC_ACTION.async_action!,
+        result_link: { field: 'session_url', label: 'Open session in Runspace ↗' },
+      },
+    };
+
+    renderForm(action, onSubmit);
+    fireEvent.click(screen.getByRole('button', { name: /Execute/i }));
+
+    await waitFor(() => {
+      const link = screen.getByRole('link', { name: /Open session in Runspace/i }) as HTMLAnchorElement;
+      expect(link.href).toContain('/ui/sessions/s1');
+      expect(link.target).toBe('_blank');
+    });
+  });
+
+  it('shows an x-visible-when field only when its controlling box is ticked', () => {
+    const action = {
+      label: 'Run task',
+      endpoint: '/x/run',
+      method: 'POST',
+      params_schema: {
+        type: 'object',
+        properties: {
+          use_server: { type: 'boolean', title: 'Use server' },
+          url: {
+            type: 'string',
+            title: 'URL',
+            default: 'http://localhost:6767',
+            'x-visible-when': { field: 'use_server', equals: true },
+          },
+        },
+      },
+    } as any;
+
+    renderForm(action, async () => ({ success: true }));
+
+    // The dependent field is hidden until the controlling checkbox is ticked.
+    expect(document.getElementById('url')).toBeNull();
+    fireEvent.click(document.getElementById('use_server') as HTMLInputElement);
+    expect(document.getElementById('url')).not.toBeNull();
+  });
+
   it('behaves synchronously for actions without async_action (no polling)', async () => {
     const syncAction: PluginAction = {
       label: 'Plain action',

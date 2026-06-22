@@ -168,6 +168,8 @@ class SkillberryPluginAskRunspace(PluginBase):
             execution_mode: Optional[str] = None
             agent_env: Optional[Dict[str, str]] = None
             keep_workspace: bool = False
+            use_runspace_server: bool = False
+            runspace_server_url: Optional[str] = None
 
         @router.get("/presets")
         async def presets():
@@ -212,19 +214,36 @@ class SkillberryPluginAskRunspace(PluginBase):
                 editable = Path(tmp) / "editable"; editable.mkdir()
                 context = Path(tmp) / "context"; context.mkdir()
                 mode = req.execution_mode or self._execution_mode
-                options_kwargs: Dict[str, Any] = {"env": self._build_claude_env(req.agent_env)}
-                if req.mcp_servers:
-                    options_kwargs["mcp_servers"] = req.mcp_servers
-                options = ClaudeCodeOptions(**options_kwargs)
-                result = await runner.run_task_session(
-                    req.request, str(editable), str(context), options, mode,
-                    remote_skills=req.skills, skills_dir=skills_dir,
-                )
-                summary = runner.read_summary(result.session_id, str(editable), mode)
+                agent_env = self._build_claude_env(req.agent_env)
+                session_url = None
+                if req.use_runspace_server:
+                    # Delegate to a running runspace server instead of the
+                    # in-process library; it manages the session and we link to it.
+                    sr = await runner.run_via_server(
+                        req.runspace_server_url, req.request, str(editable), str(context), mode,
+                        remote_skills=req.skills, skills_dir=skills_dir,
+                        mcp_servers=req.mcp_servers, agent_env=agent_env,
+                    )
+                    session_id = sr.session_id
+                    summary = sr.summary
+                    session_url = sr.session_url
+                else:
+                    options_kwargs: Dict[str, Any] = {"env": agent_env}
+                    if req.mcp_servers:
+                        options_kwargs["mcp_servers"] = req.mcp_servers
+                    options = ClaudeCodeOptions(**options_kwargs)
+                    result = await runner.run_task_session(
+                        req.request, str(editable), str(context), options, mode,
+                        remote_skills=req.skills, skills_dir=skills_dir,
+                    )
+                    session_id = result.session_id
+                    summary = runner.read_summary(session_id, str(editable), mode)
                 payload = {
-                    "session_id": result.session_id,
+                    "session_id": session_id,
                     "summary_md": summary or "_The agent finished but did not produce a summary._",
                 }
+                if session_url:
+                    payload["session_url"] = session_url
                 if req.skills:
                     payload["message"] = "Loaded skills: " + ", ".join(req.skills)
                 if req.keep_workspace:
@@ -358,12 +377,37 @@ class SkillberryPluginAskRunspace(PluginBase):
                                     "When off (default) it is deleted automatically after the run."
                                 ),
                             },
+                            "use_runspace_server": {
+                                "type": "boolean",
+                                "default": False,
+                                "title": "Use Runspace server",
+                                "description": (
+                                    "Send the task to a running Runspace server instead of running "
+                                    "the library in-process. The run appears in that server's session "
+                                    "list and a link to it is shown when the task completes."
+                                ),
+                            },
+                            "runspace_server_url": {
+                                "type": "string",
+                                "title": "Runspace server URL",
+                                "default": "http://localhost:6767",
+                                "description": (
+                                    "Base URL of the Runspace server to POST the task to. The server "
+                                    "must be able to read the run's scratch workspace, so this is "
+                                    "typically a server on the same host (localhost)."
+                                ),
+                                "x-visible-when": {"field": "use_runspace_server", "equals": True},
+                            },
                         },
                         "required": ["request"],
                     },
                     "async_action": {
                         "status_endpoint": "/api/plugins/ask-runspace/status/{job_id}",
                         "result_markdown_field": "summary_md",
+                        "result_link": {
+                            "field": "session_url",
+                            "label": "Open session in Runspace ↗",
+                        },
                         "cleanup_action": {
                             "endpoint": "/api/plugins/ask-runspace/cleanup/{job_id}",
                             "label": "Delete workspace",

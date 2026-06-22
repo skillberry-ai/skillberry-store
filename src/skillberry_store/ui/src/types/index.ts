@@ -128,6 +128,12 @@ export interface PluginAsyncActionConfig {
   // When set, the named field from the status payload is rendered as Markdown
   // beneath the ready alert once the job completes.
   result_markdown_field?: string;
+  // Optional external link rendered on success when `field` is present in the
+  // status payload (e.g. a link to the run's session on a remote server).
+  result_link?: {
+    field: string;
+    label: string;
+  };
   // Optional post-result action. When the job is ready and `when_field` is
   // present in the status payload, a button (labelled `label`) POSTs to
   // `endpoint` (`{job_id}` interpolated) — e.g. to delete a kept workspace.

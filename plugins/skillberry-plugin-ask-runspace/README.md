@@ -31,6 +31,13 @@ preset — then render the agent's `summary.md` back to you as Markdown.
   `container` and `local` modes). Invalid JSON is rejected with a `400`.
 - The plugin spins up a Runspace agent session (with fresh `editable` and `context`
   working directories), installs any `skills`, runs the agent on your `request`, and waits.
+- **Use Runspace server** (optional, off by default): tick this to send the task to a
+  running Runspace server (`POST {url}/run`) instead of running the library in-process.
+  A **Runspace server URL** box appears (default `http://localhost:6767`). The plugin polls
+  `GET {url}/sessions/{id}` until the run finishes, fetches the summary, and shows a
+  clickable link to the session in that server's UI (`{url}/ui/sessions/{id}`). The server
+  reads the run's scratch workspace, so it should be on the same host (the localhost
+  default); the SBS-configured Claude credentials are forwarded as the run's `agent_settings.env`.
 - **Async + status**: `POST /plugins/ask-runspace/run` returns a `job_id` immediately.
   Poll `GET /plugins/ask-runspace/status/{job_id}` for `pending` → `ready` / `failed`.
   When `ready`, the response includes `session_id` and `summary_md` (and, when skills were

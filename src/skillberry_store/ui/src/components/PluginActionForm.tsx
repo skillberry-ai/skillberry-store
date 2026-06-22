@@ -17,6 +17,7 @@ import {
   Alert,
   FormSelect,
   FormSelectOption,
+  TextContent,
 } from '@patternfly/react-core';
 import type { PluginAction, PluginActionResult } from '@/types';
 
@@ -343,7 +344,18 @@ export function PluginActionForm({
       .map(([, s]: [string, any]) => formData[s['x-depends-on']])
       .join(',')]);
 
+  // A field may declare `x-visible-when: { field, equals }` to only render when
+  // another field has a given value (e.g. a server URL shown once a box is ticked).
+  const isFieldVisible = (propertySchema: any): boolean => {
+    const cond = propertySchema['x-visible-when'];
+    if (!cond) return true;
+    const current = formData[cond.field] ?? action.params_schema.properties?.[cond.field]?.default;
+    return current === cond.equals;
+  };
+
   const renderField = (propertyName: string, propertySchema: any) => {
+    if (!isFieldVisible(propertySchema)) return null;
+
     const isRequired = action.params_schema.required?.includes(propertyName);
     const value = formData[propertyName] !== undefined
       ? formData[propertyName]
@@ -361,7 +373,7 @@ export function PluginActionForm({
       return (
         <FormGroup
           key={propertyName}
-          label={propertyName}
+          label={propertySchema.title ?? propertyName}
           isRequired={isRequired}
           fieldId={propertyName}
         >
@@ -682,13 +694,26 @@ export function PluginActionForm({
             </Alert>
           )}
           {jobStatus === 'ready' &&
+            asyncConfig.result_link &&
+            (statusQuery.data as any)?.[asyncConfig.result_link.field] && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <a
+                  href={(statusQuery.data as any)[asyncConfig.result_link.field] as string}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {asyncConfig.result_link.label}
+                </a>
+              </div>
+            )}
+          {jobStatus === 'ready' &&
             asyncConfig.result_markdown_field &&
             (statusQuery.data as any)?.[asyncConfig.result_markdown_field] && (
-              <div className="pf-v6-c-content" style={{ marginTop: '0.5rem' }}>
+              <TextContent style={{ marginTop: '0.5rem' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {(statusQuery.data as any)[asyncConfig.result_markdown_field] as string}
                 </ReactMarkdown>
-              </div>
+              </TextContent>
             )}
           {jobStatus === 'ready' &&
             asyncConfig.cleanup_action &&

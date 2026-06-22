@@ -180,8 +180,62 @@ def test_ui_config_shape():
     assert props["mcp_servers"]["format"] == "textarea"
     assert props["keep_workspace"]["type"] == "boolean"
     assert props["keep_workspace"].get("default") is False
+    assert props["use_runspace_server"]["type"] == "boolean"
+    assert props["use_runspace_server"].get("default") is False
+    assert props["runspace_server_url"]["x-visible-when"] == {"field": "use_runspace_server", "equals": True}
     assert action["async_action"]["cleanup_action"]["when_field"] == "workspace_dir"
     assert action["async_action"]["result_markdown_field"] == "summary_md"
+    assert action["async_action"]["result_link"]["field"] == "session_url"
+
+
+def test_normalize_server_url():
+    from skillberry_plugin_ask_runspace.runner import normalize_server_url
+
+    assert normalize_server_url(None) == "http://localhost:6767"
+    assert normalize_server_url("") == "http://localhost:6767"
+    assert normalize_server_url("localhost:6767/") == "http://localhost:6767"
+    assert normalize_server_url("https://host:9000/") == "https://host:9000"
+
+
+def test_run_uses_server_when_enabled(monkeypatch):
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    seen = {}
+
+    async def fake_server(base_url, prompt, editable_dir, context_dir, mode,
+                          remote_skills=None, skills_dir=None, mcp_servers=None, agent_env=None):
+        from skillberry_plugin_ask_runspace.runner import ServerRunResult
+        seen.update(base_url=base_url, prompt=prompt, mode=mode, mcp_servers=mcp_servers)
+        return ServerRunResult(
+            session_id="srv-1", summary="# Server done",
+            session_url="http://localhost:6767/ui/sessions/srv-1",
+        )
+
+    # The library path must NOT be used when the server is enabled.
+    async def boom(*a, **k):
+        raise AssertionError("library run_task_session should not be called in server mode")
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_via_server", fake_server)
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", boom)
+
+    client = _client(p)
+    job_id = client.post(
+        "/plugins/ask-runspace/run",
+        json={
+            "request": "do x",
+            "use_runspace_server": True,
+            "runspace_server_url": "http://localhost:6767",
+            "mcp_servers": '{"fetch": {"command": "npx"}}',
+        },
+    ).json()["data"]["job_id"]
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    assert s["summary_md"] == "# Server done"
+    assert s["session_url"] == "http://localhost:6767/ui/sessions/srv-1"
+    assert seen["base_url"] == "http://localhost:6767"
+    assert seen["mcp_servers"] == {"fetch": {"command": "npx"}}
 
 
 def test_parse_mcp_servers_handles_json_wrapper_and_invalid():
