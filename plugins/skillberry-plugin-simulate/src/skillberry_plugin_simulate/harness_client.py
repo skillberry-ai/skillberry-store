@@ -43,7 +43,16 @@ class HarnessClient:
                     SIM_PATH, json={"openapi_spec": openapi_spec, "mcp_port": mcp_port}
                 )
                 break
-            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadError) as exc:
+            except (
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                httpx.ReadError,
+                # Docker publishes the port before uvicorn binds inside the
+                # container; the proxy accepts the connection then closes it
+                # without a response ("Server disconnected..."). This is startup
+                # lag, not a hard failure, so retry it like the others.
+                httpx.RemoteProtocolError,
+            ) as exc:
                 if attempt == startup_retries:
                     raise HarnessError(
                         f"create_simulation: harness not reachable after "

@@ -82,6 +82,26 @@ async def test_create_simulation_retries_on_connect_error():
 
 
 @pytest.mark.asyncio
+async def test_create_simulation_retries_on_remote_protocol_error():
+    """Docker publishes the port before uvicorn binds; the proxy accepts then
+    drops the connection, surfacing as RemoteProtocolError. This is startup lag
+    and must be retried, not raised."""
+    calls = {"n": 0}
+
+    def handler(request):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.RemoteProtocolError(
+                "Server disconnected without sending a response."
+            )
+        return httpx.Response(202, json={"status": "pending"})
+
+    hc = HarnessClient(_client(handler))
+    await hc.create_simulation({"openapi": "3.0.3"}, mcp_port=8701, startup_delay=0)
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
 async def test_create_simulation_raises_after_all_retries():
     def handler(request):
         raise httpx.ConnectError("still not ready")
