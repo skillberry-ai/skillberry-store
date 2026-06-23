@@ -75,7 +75,7 @@ def test_to_dict(mock_start):
     server = VirtualNfsServer(
         name="test_server",
         skill_uuid="test-skill-uuid",
-        port=11002,
+        port=11111,
         protocol="webdav",
         description="Test Server",
     )
@@ -84,7 +84,7 @@ def test_to_dict(mock_start):
     assert server_dict["name"] == "test_server"
     assert server_dict["skill_uuid"] == "test-skill-uuid"
     assert server_dict["description"] == "Test Server"
-    assert server_dict["port"] == 11002
+    assert server_dict["port"] == 11111
     assert server_dict["protocol"] == "webdav"
     assert server_dict["running"] == False
     assert "export_path" in server_dict

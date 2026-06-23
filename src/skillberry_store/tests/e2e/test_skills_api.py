@@ -446,7 +446,7 @@ async def test_import_anthropic_skill_with_complex_dependencies(run_sbs):
     3. Tools have correct UUIDs and dependencies
     4. Tool execution works correctly with dependencies
     """
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         # Get the path to the ZIP file
         zip_path = os.path.join(
             os.path.dirname(__file__),

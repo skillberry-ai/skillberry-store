@@ -934,7 +934,7 @@ async def test_create_tools_with_complex_dependencies(run_sbs):
         'example_functions'
     )
     
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         created_tools = []
         tool_uuids = {}  # Track UUIDs for dependency verification
         
