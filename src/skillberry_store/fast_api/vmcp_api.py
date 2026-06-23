@@ -62,6 +62,21 @@ def register_vmcp_api(
     vmcp_descriptions: Optional[Description] = None,
     service: Optional[VmcpService] = None,
 ):
+    """Register all Virtual MCP Server API endpoints with the FastAPI application.
+
+    This function sets up all REST API endpoints for managing virtual MCP servers,
+    which expose skills as MCP-compatible servers.
+
+    Args:
+        app: The FastAPI application instance to register routes with.
+        sts_url: The Skillberry Store URL for server communication.
+        tags: OpenAPI tag for grouping these endpoints (default: "vmcp_servers").
+        vmcp_descriptions: Optional Description instance for semantic search functionality.
+        service: Optional VmcpService instance. If None, a new instance will be created.
+
+    Returns:
+        None. Endpoints are registered directly on the app instance.
+    """
     if service is None:
         from skillberry_store.modules.object_handler import get_object_handler
         from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
@@ -75,6 +90,14 @@ def register_vmcp_api(
     app.state.vmcp_server_manager = service.server_manager
 
     def _extract_env_id(request: Request) -> str:
+        """Extract environment ID from request headers.
+
+        Args:
+            request: FastAPI request object.
+
+        Returns:
+            str: Environment ID from Skillberry context header, or empty string if not present.
+        """
         ctx = unflatten_keys(dict(request.headers)).get(SKILLBERRY_CONTEXT.lower())
         return ctx.get("env_id") if ctx else ""
 
@@ -84,6 +107,21 @@ def register_vmcp_api(
         openapi_extra={"x-cli-name": "create-vmcp-server"},
     )
     def create_vmcp_server(vmcp: Annotated[VmcpSchema, Query()], request: Request):
+        """Create a new virtual MCP server.
+
+        Creates a virtual MCP server that exposes a skill's tools and snippets
+        through the MCP protocol on a specified port.
+
+        Args:
+            vmcp: Virtual MCP server metadata conforming to VmcpSchema (name, skill_uuid, port, etc.).
+            request: FastAPI request object for extracting environment context.
+
+        Returns:
+            dict: Success message with server name, UUID, and assigned port.
+
+        Raises:
+            HTTPException: 409 if server already exists or port conflict, 500 for other errors.
+        """
         logger.info(f"Request to create vmcp server: {vmcp.name}")
         create_vmcp_counter.inc()
         try:
@@ -117,6 +155,19 @@ def register_vmcp_api(
         "/vmcp_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vmcp-servers"}
     )
     def list_vmcp_servers(skill_uuid: Optional[str] = None):
+        """List all virtual MCP servers in the store.
+
+        Retrieves metadata for all virtual MCP servers, optionally filtered by skill UUID.
+
+        Args:
+            skill_uuid: Optional skill UUID to filter servers by.
+
+        Returns:
+            dict: Dictionary containing virtual_mcp_servers with server metadata.
+
+        Raises:
+            HTTPException: 500 if listing fails.
+        """
         logger.info("Request to list vmcp servers")
         list_vmcp_counter.inc()
         try:
@@ -143,6 +194,20 @@ def register_vmcp_api(
         openapi_extra={"x-cli-name": "get-vmcp-server"},
     )
     def get_vmcp_server(uuid_or_name: str):
+        """Get metadata for a specific virtual MCP server by UUID or name.
+
+        Retrieves the complete manifest/metadata for a virtual MCP server identified
+        by either its UUID or its unique name.
+
+        Args:
+            uuid_or_name: The UUID or name of the virtual MCP server to retrieve.
+
+        Returns:
+            dict: Virtual MCP server metadata including name, uuid, skill_uuid, port, etc.
+
+        Raises:
+            HTTPException: 404 if server not found, 500 for other errors.
+        """
         logger.info(f"Request to get vmcp server: {uuid_or_name}")
         get_vmcp_counter.inc()
         try:
@@ -161,6 +226,19 @@ def register_vmcp_api(
         openapi_extra={"x-cli-name": "delete-vmcp-server"},
     )
     def delete_vmcp_server(uuid_or_name: str):
+        """Delete a virtual MCP server from the store.
+
+        Removes a virtual MCP server and stops it if running.
+
+        Args:
+            uuid_or_name: The UUID or name of the virtual MCP server to delete.
+
+        Returns:
+            dict: Success message confirming deletion.
+
+        Raises:
+            HTTPException: 404 if server not found, 500 for other errors.
+        """
         logger.info(f"Request to delete vmcp server: {uuid_or_name}")
         delete_vmcp_counter.inc()
         try:
@@ -182,6 +260,22 @@ def register_vmcp_api(
     def update_vmcp_server(
         uuid_or_name: str, vmcp: Annotated[VmcpSchema, Query()], request: Request
     ):
+        """Update an existing virtual MCP server's metadata.
+
+        Updates the manifest/metadata for an existing virtual MCP server. If the
+        server is running, it will be restarted with the new configuration.
+
+        Args:
+            uuid_or_name: The UUID or name of the virtual MCP server to update.
+            vmcp: Updated virtual MCP server metadata conforming to VmcpSchema.
+            request: FastAPI request object for extracting environment context.
+
+        Returns:
+            dict: Success message with server name and port.
+
+        Raises:
+            HTTPException: 404 if server not found, 500 for other errors.
+        """
         logger.info(f"Request to update vmcp server: {uuid_or_name}")
         update_vmcp_counter.inc()
         try:
@@ -206,7 +300,22 @@ def register_vmcp_api(
         openapi_extra={"x-cli-name": "start-vmcp-server"},
     )
     def start_vmcp_server(uuid_or_name: str, request: Request):
-        """Start or restart a virtual MCP server."""
+        """Start or restart a virtual MCP server.
+
+        Starts a virtual MCP server process that exposes the associated skill's
+        tools and snippets via the MCP protocol. If already running, returns
+        the existing server information.
+
+        Args:
+            uuid_or_name: The UUID or name of the virtual MCP server to start.
+            request: FastAPI request object for extracting environment context.
+
+        Returns:
+            dict: Success message with server name and port.
+
+        Raises:
+            HTTPException: 404 if server or skill not found, 500 for other errors.
+        """
         logger.info(f"Request to start vmcp server: {uuid_or_name}")
         try:
             vmcp_uuid = service._resolve_uuid(uuid_or_name)
@@ -264,6 +373,24 @@ def register_vmcp_api(
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
     ):
+        """Search for virtual MCP servers using semantic similarity.
+
+        Returns virtual MCP servers that are semantically similar to the search
+        term and match the specified filters.
+
+        Args:
+            search_term: Search term to find similar virtual MCP servers.
+            max_number_of_results: Maximum number of results to return (default: 5).
+            similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
+            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+
+        Returns:
+            list: List of matched server names and similarity scores.
+
+        Raises:
+            HTTPException: 503 if search is not available, 500 for other errors.
+        """
         logger.info(f"Request to search vmcp servers for: {search_term}")
         search_vmcp_counter.inc()
         if not vmcp_descriptions:

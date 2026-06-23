@@ -48,6 +48,20 @@ def register_snippets_api(
     snippets_descriptions: Optional[Description] = None,
     service: Optional[SnippetsService] = None,
 ):
+    """Register all snippets-related API endpoints with the FastAPI application.
+
+    This function sets up all REST API endpoints for managing snippets including
+    create, read, update, delete, and search operations.
+
+    Args:
+        app: The FastAPI application instance to register routes with.
+        tags: OpenAPI tag for grouping these endpoints (default: "snippets").
+        snippets_descriptions: Optional Description instance for semantic search functionality.
+        service: Optional SnippetsService instance. If None, a new instance will be created.
+
+    Returns:
+        None. Endpoints are registered directly on the app instance.
+    """
     if service is None:
         from skillberry_store.modules.object_handler import get_object_handler
 
@@ -58,6 +72,22 @@ def register_snippets_api(
         snippet: Annotated[SnippetSchema, Query()],
         file: Optional[UploadFile] = File(None),
     ):
+        """Create a new snippet in the store.
+
+        Creates a snippet with text content. Content can be provided either in the
+        snippet schema or uploaded as a file. Snippets are reusable text blocks
+        that can be referenced by skills.
+
+        Args:
+            snippet: Snippet metadata conforming to SnippetSchema (name, description, content, etc.).
+            file: Optional file upload containing snippet content. If provided, overrides snippet.content.
+
+        Returns:
+            dict: Success message with snippet name and UUID.
+
+        Raises:
+            HTTPException: 400 if file reading fails, 409 if snippet already exists, 500 for other errors.
+        """
         logger.info(f"Request to create snippet: {snippet.name}")
         create_snippet_counter.inc()
         if file:
@@ -86,6 +116,19 @@ def register_snippets_api(
 
     @app.get("/snippets/", tags=[tags], openapi_extra={"x-cli-name": "list-snippets"})
     def list_snippets():
+        """List all snippets in the store.
+
+        Retrieves metadata for all snippets currently stored in the system.
+
+        Args:
+            None.
+
+        Returns:
+            list: List of dictionaries, each containing snippet metadata (name, uuid, description, content, etc.).
+
+        Raises:
+            HTTPException: 500 if listing fails.
+        """
         logger.info("Request to list snippets")
         list_snippets_counter.inc()
         try:
@@ -102,6 +145,20 @@ def register_snippets_api(
         openapi_extra={"x-cli-name": "get-snippet"},
     )
     def get_snippet(uuid_or_name: str):
+        """Get metadata for a specific snippet by UUID or name.
+
+        Retrieves the complete manifest/metadata for a snippet identified by either
+        its UUID or its unique name.
+
+        Args:
+            uuid_or_name: The UUID or name of the snippet to retrieve.
+
+        Returns:
+            dict: Snippet metadata including name, uuid, description, content, etc.
+
+        Raises:
+            HTTPException: 404 if snippet not found, 500 for other errors.
+        """
         logger.info(f"Request to get snippet: {uuid_or_name}")
         get_snippet_counter.inc()
         try:
@@ -120,6 +177,20 @@ def register_snippets_api(
         openapi_extra={"x-cli-name": "delete-snippet"},
     )
     async def delete_snippet(uuid_or_name: str):
+        """Delete a snippet from the store.
+
+        Removes a snippet from the store. This operation triggers a content
+        deletion event for plugin processing.
+
+        Args:
+            uuid_or_name: The UUID or name of the snippet to delete.
+
+        Returns:
+            dict: Success message confirming deletion.
+
+        Raises:
+            HTTPException: 404 if snippet not found, 500 for other errors.
+        """
         logger.info(f"Request to delete snippet: {uuid_or_name}")
         delete_snippet_counter.inc()
         try:
@@ -144,6 +215,21 @@ def register_snippets_api(
         openapi_extra={"x-cli-name": "update-snippet"},
     )
     async def update_snippet(uuid_or_name: str, snippet: SnippetSchema):
+        """Update an existing snippet's metadata and content.
+
+        Updates the manifest/metadata and content for an existing snippet.
+        This operation triggers a content update event for plugin processing.
+
+        Args:
+            uuid_or_name: The UUID or name of the snippet to update.
+            snippet: Updated snippet metadata conforming to SnippetSchema.
+
+        Returns:
+            dict: Success message confirming update.
+
+        Raises:
+            HTTPException: 404 if snippet not found, 500 for other errors.
+        """
         logger.info(f"Request to update snippet: {uuid_or_name}")
         update_snippet_counter.inc()
         try:
@@ -170,6 +256,24 @@ def register_snippets_api(
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
     ):
+        """Search for snippets using semantic similarity.
+
+        Returns snippets that are semantically similar to the search term and
+        match the specified filters.
+
+        Args:
+            search_term: Search term to find similar snippets.
+            max_number_of_results: Maximum number of results to return (default: 5).
+            similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
+            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+
+        Returns:
+            list: List of matched snippet names and similarity scores.
+
+        Raises:
+            HTTPException: 503 if search is not available, 500 for other errors.
+        """
         logger.info(f"Request to search snippets for term: {search_term}")
         search_snippets_counter.inc()
         if not snippets_descriptions:

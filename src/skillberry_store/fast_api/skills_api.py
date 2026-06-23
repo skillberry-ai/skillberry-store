@@ -120,7 +120,20 @@ def register_skills_api(
     snippets_service = SnippetsService(handler=snippets_handler)
 
     def populate_skill_objects(skill_dict):
-        """Populate full tool and snippet objects from UUIDs."""
+        """Populate full tool and snippet objects from UUIDs in a skill dictionary.
+
+        Resolves tool_uuids and snippet_uuids to their full manifest objects and
+        adds them as 'tools' and 'snippets' lists in the skill dictionary.
+
+        Args:
+            skill_dict: Skill dictionary containing tool_uuids and snippet_uuids.
+
+        Returns:
+            dict: The same skill_dict with 'tools' and 'snippets' lists populated.
+
+        Raises:
+            HTTPException: 505 if any referenced tool or snippet is missing or invalid.
+        """
         # Populate tools - resolve and get resources (will raise 404 if any missing)
         if "tool_uuids" in skill_dict and skill_dict["tool_uuids"]:
             try:
@@ -159,6 +172,20 @@ def register_skills_api(
 
     @app.post("/skills/", tags=[tags], openapi_extra={"x-cli-name": "create-skill"})
     async def create_skill(skill: Annotated[SkillSchema, Query()]):
+        """Create a new skill in the store.
+
+        Creates a skill manifest that references tools and snippets by their UUIDs.
+        Skills are high-level compositions that group related tools and snippets.
+
+        Args:
+            skill: Skill metadata conforming to SkillSchema (name, description, tool_uuids, snippet_uuids, etc.).
+
+        Returns:
+            dict: Success message with skill name and UUID.
+
+        Raises:
+            HTTPException: 409 if skill already exists, 500 for other errors.
+        """
         logger.info(f"Request to create skill: {skill.name}")
         create_skill_counter.inc()
         try:
@@ -179,6 +206,19 @@ def register_skills_api(
 
     @app.get("/skills/", tags=[tags], openapi_extra={"x-cli-name": "list-skills"})
     def list_skills():
+        """List all skills in the store.
+
+        Retrieves metadata for all skills currently stored in the system.
+
+        Args:
+            None.
+
+        Returns:
+            list: List of dictionaries, each containing skill metadata (name, uuid, description, tool_uuids, snippet_uuids, etc.).
+
+        Raises:
+            HTTPException: 500 if listing fails.
+        """
         logger.info("Request to list skills")
         list_skills_counter.inc()
         try:
@@ -193,6 +233,20 @@ def register_skills_api(
         "/skills/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-skill"}
     )
     def get_skill(uuid_or_name: str):
+        """Get metadata for a specific skill by UUID or name.
+
+        Retrieves the complete manifest/metadata for a skill identified by either
+        its UUID or its unique name.
+
+        Args:
+            uuid_or_name: The UUID or name of the skill to retrieve.
+
+        Returns:
+            dict: Skill metadata including name, uuid, description, tool_uuids, snippet_uuids, etc.
+
+        Raises:
+            HTTPException: 404 if skill not found, 505 if referenced resources are invalid, 500 for other errors.
+        """
         logger.info(f"Request to get skill: {uuid_or_name}")
         get_skill_counter.inc()
         try:
@@ -221,6 +275,23 @@ def register_skills_api(
             False, description="Delete snippets not shared with other skills"
         ),
     ):
+        """Delete a skill from the store with optional cascade deletion.
+
+        Removes a skill and optionally its associated tools and snippets if they
+        are not referenced by other skills. This operation triggers a content
+        deletion event for plugin processing.
+
+        Args:
+            uuid_or_name: The UUID or name of the skill to delete.
+            delete_tools: If True, delete tools that are not shared with other skills (default: False).
+            delete_snippets: If True, delete snippets that are not shared with other skills (default: False).
+
+        Returns:
+            dict: Success message with lists of deleted tools and snippets.
+
+        Raises:
+            HTTPException: 404 if skill not found, 500 for other errors.
+        """
         logger.info(f"Request to delete skill: {uuid_or_name}")
         delete_skill_counter.inc()
         try:
@@ -281,6 +352,21 @@ def register_skills_api(
         openapi_extra={"x-cli-name": "update-skill"},
     )
     async def update_skill(uuid_or_name: str, skill: SkillSchema):
+        """Update an existing skill's metadata.
+
+        Updates the manifest/metadata for an existing skill. This operation
+        triggers a content update event for plugin processing.
+
+        Args:
+            uuid_or_name: The UUID or name of the skill to update.
+            skill: Updated skill metadata conforming to SkillSchema.
+
+        Returns:
+            dict: Success message confirming update.
+
+        Raises:
+            HTTPException: 404 if skill not found, 500 for other errors.
+        """
         logger.info(f"Request to update skill: {uuid_or_name}")
         update_skill_counter.inc()
         try:

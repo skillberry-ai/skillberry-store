@@ -154,6 +154,20 @@ def register_tools_api(
     tools_descriptions: Optional[Description] = None,
     service: Optional[ToolsService] = None,
 ):
+    """Register all tools-related API endpoints with the FastAPI application.
+
+    This function sets up all REST API endpoints for managing tools including
+    create, read, update, delete, execute, and search operations.
+
+    Args:
+        app: The FastAPI application instance to register routes with.
+        tags: OpenAPI tag for grouping these endpoints (default: "tools").
+        tools_descriptions: Optional Description instance for semantic search functionality.
+        service: Optional ToolsService instance. If None, a new instance will be created.
+
+    Returns:
+        None. Endpoints are registered directly on the app instance.
+    """
     if service is None:
         service = ToolsService(get_object_handler("tool"), tools_descriptions)
     tool_handler = service.handler  # kept for add_tool_from_python and search endpoints
@@ -163,6 +177,21 @@ def register_tools_api(
         tool: Annotated[ToolSchema, Query()],
         module: UploadFile = File(...),
     ) -> Dict[str, Any]:
+        """Create a new tool with its module file.
+
+        Creates a new tool entry in the store along with its associated Python module file.
+        The tool metadata is validated against the ToolSchema and stored as a manifest.
+
+        Args:
+            tool: Tool metadata conforming to ToolSchema (name, description, params, etc.).
+            module: Python module file to upload for the tool.
+
+        Returns:
+            dict: Contains success message, tool name, UUID, and module_name.
+
+        Raises:
+            HTTPException: 409 if tool already exists, 500 for other errors.
+        """
         logger.info(f"Request to create tool: {tool.name}")
         create_tool_counter.inc()
         try:
@@ -190,6 +219,19 @@ def register_tools_api(
 
     @app.get("/tools/", tags=[tags], openapi_extra={"x-cli-name": "list-tools"})
     def list_tools() -> List[Dict[str, Any]]:
+        """List all tools in the store.
+
+        Retrieves metadata for all tools currently stored in the system.
+
+        Args:
+            None.
+
+        Returns:
+            list: List of dictionaries, each containing tool metadata (name, uuid, description, etc.).
+
+        Raises:
+            HTTPException: 500 if listing fails.
+        """
         logger.info("Request to list tools")
         list_tools_counter.inc()
         try:
@@ -206,6 +248,20 @@ def register_tools_api(
         "/tools/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-tool"}
     )
     def get_tool(uuid_or_name: str) -> Dict[str, Any]:
+        """Get metadata for a specific tool by UUID or name.
+
+        Retrieves the complete manifest/metadata for a tool identified by either
+        its UUID or its unique name.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool to retrieve.
+
+        Returns:
+            dict: Tool metadata including name, uuid, description, parameters, dependencies, etc.
+
+        Raises:
+            HTTPException: 404 if tool not found, 500 for other errors.
+        """
         logger.info(f"Request to get tool: {uuid_or_name}")
         get_tool_counter.inc()
         try:
@@ -225,6 +281,21 @@ def register_tools_api(
         openapi_extra={"x-cli-name": "get-tool-module"},
     )
     async def get_tool_module(uuid_or_name: str) -> PlainTextResponse:
+        """Get the module file content for a specific tool.
+
+        Retrieves the Python source code or MCP content for a tool. For MCP-packaged
+        tools, returns the MCP manifest content. For code-packaged tools, returns
+        the Python module source.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool whose module to retrieve.
+
+        Returns:
+            PlainTextResponse: The module file content as plain text.
+
+        Raises:
+            HTTPException: 404 if tool not found, 500 for other errors.
+        """
         logger.info(f"Request to get module file for tool: {uuid_or_name}")
         get_tool_module_counter.inc()
         try:
@@ -252,6 +323,20 @@ def register_tools_api(
         openapi_extra={"x-cli-name": "delete-tool"},
     )
     async def delete_tool(uuid_or_name: str) -> Dict:
+        """Delete a tool from the store.
+
+        Removes a tool and its associated files from the store. This operation
+        also triggers a content deletion event for plugin processing.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool to delete.
+
+        Returns:
+            dict: Success message confirming deletion.
+
+        Raises:
+            HTTPException: 404 if tool not found, 500 for other errors.
+        """
         logger.info(f"Request to delete tool: {uuid_or_name}")
         delete_tool_counter.inc()
         try:
@@ -276,6 +361,22 @@ def register_tools_api(
         openapi_extra={"x-cli-name": "update-tool"},
     )
     async def update_tool(uuid_or_name: str, tool: ToolSchema) -> Dict:
+        """Update an existing tool's metadata.
+
+        Updates the manifest/metadata for an existing tool. The module file is not
+        updated by this endpoint. This operation triggers a content update event
+        for plugin processing.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool to update.
+            tool: Updated tool metadata conforming to ToolSchema.
+
+        Returns:
+            dict: Success message confirming update.
+
+        Raises:
+            HTTPException: 404 if tool not found, 500 for other errors.
+        """
         logger.info(f"Request to update tool: {uuid_or_name}")
         update_tool_counter.inc()
         try:

@@ -18,7 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 def _to_ns(data: Dict[str, Any]) -> SimpleNamespace:
-    """Build a SimpleNamespace with the attributes VirtualNfsServerManager.add_server needs."""
+    """Build a SimpleNamespace with attributes needed by VirtualNfsServerManager.add_server.
+    
+    Args:
+        data: Dictionary containing vNFS server configuration.
+        
+    Returns:
+        SimpleNamespace: Object with name, uuid, port, skill_uuid, description, and protocol attributes.
+    """
     return SimpleNamespace(
         name=data.get("name"),
         uuid=data.get("uuid"),
@@ -30,17 +37,46 @@ def _to_ns(data: Dict[str, Any]) -> SimpleNamespace:
 
 
 class VnfsService:
+    """Service layer for virtual NFS server CRUD operations.
+    
+    Provides business logic for managing virtual NFS servers, which expose
+    snippets through network file system interfaces on specified ports.
+    
+    Attributes:
+        handler: ObjectHandler for vNFS server persistence operations.
+        server_manager: VirtualNfsServerManager for runtime server management.
+        descriptions: Optional Description instance for semantic search indexing.
+    """
+    
     def __init__(
         self,
         handler: ObjectHandler,
         server_manager: VirtualNfsServerManager,
         descriptions: Optional[Description] = None,
     ):
+        """Initialize the VnfsService.
+        
+        Args:
+            handler: ObjectHandler instance for vNFS server operations.
+            server_manager: VirtualNfsServerManager for managing runtime servers.
+            descriptions: Optional Description instance for managing vNFS descriptions.
+        """
         self.handler = handler
         self.server_manager = server_manager
         self.descriptions = descriptions
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
+        """Resolve a vNFS server identifier to its UUID.
+        
+        Args:
+            uuid_or_name: vNFS server UUID or name to resolve.
+            
+        Returns:
+            str: The resolved UUID.
+            
+        Raises:
+            KeyError: If vNFS server not found.
+        """
         try:
             return self.handler.resolve_to_uuid_or_error(uuid_or_name)
         except Exception as e:
@@ -49,6 +85,20 @@ class VnfsService:
             raise
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new virtual NFS server and start it.
+        
+        Creates a vNFS server entry, starts the runtime server process, and updates
+        caches and indexes.
+        
+        Args:
+            data: vNFS server metadata dictionary (name, skill_uuid, port, protocol, etc.).
+            
+        Returns:
+            Dict[str, Any]: The created vNFS server data with UUID, timestamps, and assigned port.
+            
+        Raises:
+            ValueError: If vNFS server with the same UUID already exists.
+        """
         data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
         if self.handler.object_exists(data["uuid"]):
             raise ValueError(f"vNFS server with UUID '{data['uuid']}' already exists")
@@ -70,6 +120,18 @@ class VnfsService:
         return data
 
     def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        """Safely read a vNFS server dictionary with error handling.
+        
+        Args:
+            uuid: vNFS server UUID to read.
+            label: Human-readable label for error messages.
+            
+        Returns:
+            Dict[str, Any]: vNFS server metadata dictionary.
+            
+        Raises:
+            KeyError: If vNFS server not found.
+        """
         try:
             return self.handler.read_dict(uuid)
         except Exception as e:
@@ -78,6 +140,17 @@ class VnfsService:
             raise
 
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
+        """Get vNFS server metadata by UUID or name with runtime status.
+        
+        Args:
+            uuid_or_name: vNFS server UUID or name.
+            
+        Returns:
+            Dict[str, Any]: vNFS server metadata with 'running' and 'export_path' fields.
+            
+        Raises:
+            KeyError: If vNFS server not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         d = self._safe_read(uuid, uuid_or_name)
         try:
@@ -92,6 +165,12 @@ class VnfsService:
         return d
 
     def list_all(self) -> Dict[str, Any]:
+        """List all vNFS servers with runtime status.
+        
+        Returns:
+            Dict[str, Any]: Dictionary with 'virtual_nfs_servers' key containing server info
+                           indexed by UUID, including runtime status and export paths.
+        """
         items = self.handler.list_all_dicts()
         servers = []
         for item in items:
@@ -124,6 +203,21 @@ class VnfsService:
         return {"virtual_nfs_servers": {s["uuid"]: s for s in servers}}
 
     def update(self, uuid_or_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing vNFS server's metadata and restart it.
+        
+        Stops the old runtime server, updates metadata, starts a new runtime server
+        with updated configuration, and updates caches and indexes.
+        
+        Args:
+            uuid_or_name: vNFS server UUID or name to update.
+            data: Dictionary of fields to update.
+            
+        Returns:
+            Dict[str, Any]: The updated vNFS server metadata with new port.
+            
+        Raises:
+            KeyError: If vNFS server not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         existing = self.handler.read_dict(uuid)
         old_name = existing.get("name")
@@ -157,6 +251,16 @@ class VnfsService:
         return data
 
     def delete(self, uuid_or_name: str) -> None:
+        """Delete a vNFS server and stop its runtime process.
+        
+        Stops the runtime server, removes metadata, cache entries, and description indexes.
+        
+        Args:
+            uuid_or_name: vNFS server UUID or name to delete.
+            
+        Raises:
+            KeyError: If vNFS server not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         d = self.handler.read_dict(uuid)
         name = d.get("name")

@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 
 
 class VmcpService:
+    """Service layer for virtual MCP server CRUD operations.
+    
+    Provides business logic for managing virtual MCP servers, which expose
+    skills as MCP-compatible servers on specified ports.
+    
+    Attributes:
+        handler: ObjectHandler for VMCP server persistence operations.
+        server_manager: VirtualMcpServerManager for runtime server management.
+        skills_handler: ObjectHandler for resolving skill references.
+        descriptions: Optional Description instance for semantic search indexing.
+    """
+    
     def __init__(
         self,
         handler: ObjectHandler,
@@ -24,12 +36,31 @@ class VmcpService:
         skills_handler: ObjectHandler,
         descriptions: Optional[Description] = None,
     ):
+        """Initialize the VmcpService.
+        
+        Args:
+            handler: ObjectHandler instance for VMCP server operations.
+            server_manager: VirtualMcpServerManager for managing runtime servers.
+            skills_handler: ObjectHandler instance for skill operations.
+            descriptions: Optional Description instance for managing VMCP descriptions.
+        """
         self.handler = handler
         self.server_manager = server_manager
         self.skills_handler = skills_handler
         self.descriptions = descriptions
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
+        """Resolve a VMCP server identifier to its UUID.
+        
+        Args:
+            uuid_or_name: VMCP server UUID or name to resolve.
+            
+        Returns:
+            str: The resolved UUID.
+            
+        Raises:
+            KeyError: If VMCP server not found.
+        """
         try:
             return self.handler.resolve_to_uuid_or_error(uuid_or_name)
         except Exception as e:
@@ -38,6 +69,14 @@ class VmcpService:
             raise
 
     def _resolve_skill_uuids(self, skill_uuid: Optional[str]):
+        """Resolve a skill UUID to its tool and snippet UUIDs.
+        
+        Args:
+            skill_uuid: Optional skill UUID to resolve.
+            
+        Returns:
+            Tuple[List[str], List[str]]: Tool UUIDs and snippet UUIDs from the skill.
+        """
         tool_uuids: List[str] = []
         snippet_uuids: List[str] = []
         if not skill_uuid:
@@ -51,6 +90,21 @@ class VmcpService:
         return tool_uuids, snippet_uuids
 
     def create(self, data: Dict[str, Any], env_id: str = "") -> Dict[str, Any]:
+        """Create a new virtual MCP server and start it.
+        
+        Creates a VMCP server entry, starts the runtime server process, and updates
+        caches and indexes.
+        
+        Args:
+            data: VMCP server metadata dictionary (name, skill_uuid, port, etc.).
+            env_id: Optional environment ID for server isolation.
+            
+        Returns:
+            Dict[str, Any]: The created VMCP server data with UUID, timestamps, and assigned port.
+            
+        Raises:
+            ValueError: If VMCP server with the same UUID already exists.
+        """
         data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
         if self.handler.object_exists(data["uuid"]):
             raise ValueError(f"VMCP server with UUID '{data['uuid']}' already exists")
@@ -81,6 +135,18 @@ class VmcpService:
         return data
 
     def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        """Safely read a VMCP server dictionary with error handling.
+        
+        Args:
+            uuid: VMCP server UUID to read.
+            label: Human-readable label for error messages.
+            
+        Returns:
+            Dict[str, Any]: VMCP server metadata dictionary.
+            
+        Raises:
+            KeyError: If VMCP server not found.
+        """
         try:
             return self.handler.read_dict(uuid)
         except Exception as e:
@@ -89,6 +155,17 @@ class VmcpService:
             raise
 
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
+        """Get VMCP server metadata by UUID or name with runtime status.
+        
+        Args:
+            uuid_or_name: VMCP server UUID or name.
+            
+        Returns:
+            Dict[str, Any]: VMCP server metadata with 'running' and 'runtime' fields.
+            
+        Raises:
+            KeyError: If VMCP server not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         d = self._safe_read(uuid, uuid_or_name)
         try:
@@ -103,6 +180,12 @@ class VmcpService:
         return d
 
     def list_all(self) -> Dict[str, Any]:
+        """List all VMCP servers with runtime status.
+        
+        Returns:
+            Dict[str, Any]: Dictionary with 'virtual_mcp_servers' key containing server info
+                           indexed by UUID, including runtime status.
+        """
         items = self.handler.list_all_dicts()
         servers = []
         for item in items:
@@ -145,6 +228,22 @@ class VmcpService:
     def update(
         self, uuid_or_name: str, data: Dict[str, Any], env_id: str = ""
     ) -> Dict[str, Any]:
+        """Update an existing VMCP server's metadata and restart it.
+        
+        Stops the old runtime server, updates metadata, starts a new runtime server
+        with updated configuration, and updates caches and indexes.
+        
+        Args:
+            uuid_or_name: VMCP server UUID or name to update.
+            data: Dictionary of fields to update.
+            env_id: Optional environment ID for server isolation.
+            
+        Returns:
+            Dict[str, Any]: The updated VMCP server metadata with new port.
+            
+        Raises:
+            KeyError: If VMCP server not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         existing = self.handler.read_dict(uuid)
         old_name = existing.get("name")
@@ -187,6 +286,16 @@ class VmcpService:
         return data
 
     def delete(self, uuid_or_name: str) -> None:
+        """Delete a VMCP server and stop its runtime process.
+        
+        Stops the runtime server, removes metadata, cache entries, and description indexes.
+        
+        Args:
+            uuid_or_name: VMCP server UUID or name to delete.
+            
+        Raises:
+            KeyError: If VMCP server not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         d = self.handler.read_dict(uuid)
         name = d.get("name")
