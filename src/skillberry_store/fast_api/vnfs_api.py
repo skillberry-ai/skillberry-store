@@ -34,6 +34,21 @@ def register_vnfs_api(
     vnfs_descriptions: Optional[Description] = None,
     service: Optional[VnfsService] = None,
 ):
+    """Register all Virtual NFS Server API endpoints with the FastAPI application.
+
+    This function sets up all REST API endpoints for managing virtual NFS servers,
+    which expose snippets as network file system endpoints.
+
+    Args:
+        app: The FastAPI application instance to register routes with.
+        sts_url: The Skillberry Store URL for server communication.
+        tags: OpenAPI tag for grouping these endpoints (default: "vnfs_servers").
+        vnfs_descriptions: Optional Description instance for semantic search functionality.
+        service: Optional VnfsService instance. If None, a new instance will be created.
+
+    Returns:
+        None. Endpoints are registered directly on the app instance.
+    """
     if service is None:
         from skillberry_store.modules.object_handler import get_object_handler
         from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
@@ -51,6 +66,21 @@ def register_vnfs_api(
         openapi_extra={"x-cli-name": "create-vnfs-server"},
     )
     def create_vnfs_server(vnfs: Annotated[VnfsSchema, Query()], request: Request):
+        """Create a new virtual NFS server.
+
+        Creates a virtual NFS server that exposes snippets through a network
+        file system interface on a specified port.
+
+        Args:
+            vnfs: Virtual NFS server metadata conforming to VnfsSchema (name, skill_uuid, port, etc.).
+            request: FastAPI request object for extracting environment context.
+
+        Returns:
+            dict: Success message with server name, UUID, and assigned port.
+
+        Raises:
+            HTTPException: 409 if server already exists or port conflict, 500 for other errors.
+        """
         logger.info(f"Request to create vnfs server: {vnfs.name}")
         create_vnfs_counter.inc()
         try:
@@ -76,6 +106,19 @@ def register_vnfs_api(
         "/vnfs_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vnfs-servers"}
     )
     def list_vnfs_servers(skill_uuid: Optional[str] = None):
+        """List all virtual NFS servers in the store.
+
+        Retrieves metadata for all virtual NFS servers, optionally filtered by skill UUID.
+
+        Args:
+            skill_uuid: Optional skill UUID to filter servers by.
+
+        Returns:
+            dict: Dictionary containing virtual_nfs_servers with server metadata.
+
+        Raises:
+            HTTPException: 500 if listing fails.
+        """
         logger.info("Request to list vnfs servers")
         list_vnfs_counter.inc()
         try:
@@ -102,6 +145,20 @@ def register_vnfs_api(
         openapi_extra={"x-cli-name": "get-vnfs-server"},
     )
     def get_vnfs_server(uuid_or_name: str):
+        """Get metadata for a specific virtual NFS server by UUID or name.
+
+        Retrieves the complete manifest/metadata for a virtual NFS server identified
+        by either its UUID or its unique name.
+
+        Args:
+            uuid_or_name: The UUID or name of the virtual NFS server to retrieve.
+
+        Returns:
+            dict: Virtual NFS server metadata including name, uuid, skill_uuid, port, etc.
+
+        Raises:
+            HTTPException: 404 if server not found, 500 for other errors.
+        """
         logger.info(f"Request to get vnfs server: {uuid_or_name}")
         get_vnfs_counter.inc()
         try:
@@ -120,6 +177,19 @@ def register_vnfs_api(
         openapi_extra={"x-cli-name": "delete-vnfs-server"},
     )
     def delete_vnfs_server(uuid_or_name: str):
+        """Delete a virtual NFS server from the store.
+
+        Removes a virtual NFS server and stops it if running.
+
+        Args:
+            uuid_or_name: The UUID or name of the virtual NFS server to delete.
+
+        Returns:
+            dict: Success message confirming deletion.
+
+        Raises:
+            HTTPException: 404 if server not found, 500 for other errors.
+        """
         logger.info(f"Request to delete vnfs server: {uuid_or_name}")
         delete_vnfs_counter.inc()
         try:
@@ -141,6 +211,22 @@ def register_vnfs_api(
     def update_vnfs_server(
         uuid_or_name: str, vnfs: Annotated[VnfsSchema, Query()], request: Request
     ):
+        """Update an existing virtual NFS server's metadata.
+
+        Updates the manifest/metadata for an existing virtual NFS server. If the
+        server is running, it will be restarted with the new configuration.
+
+        Args:
+            uuid_or_name: The UUID or name of the virtual NFS server to update.
+            vnfs: Updated virtual NFS server metadata conforming to VnfsSchema.
+            request: FastAPI request object for extracting environment context.
+
+        Returns:
+            dict: Success message with server name and port.
+
+        Raises:
+            HTTPException: 404 if server not found, 500 for other errors.
+        """
         logger.info(f"Request to update vnfs server: {uuid_or_name}")
         update_vnfs_counter.inc()
         try:
@@ -163,7 +249,22 @@ def register_vnfs_api(
         openapi_extra={"x-cli-name": "start-vnfs-server"},
     )
     def start_vnfs_server(uuid_or_name: str, request: Request):
-        """Start or restart a vNFS endpoint."""
+        """Start or restart a virtual NFS server.
+
+        Starts a virtual NFS server process that exposes the associated skill's
+        snippets via a network file system interface. If already running, returns
+        the existing server information.
+
+        Args:
+            uuid_or_name: The UUID or name of the virtual NFS server to start.
+            request: FastAPI request object for extracting environment context.
+
+        Returns:
+            dict: Success message with server name and port.
+
+        Raises:
+            HTTPException: 404 if server or skill not found, 500 for other errors.
+        """
         logger.info(f"Request to start vnfs server: {uuid_or_name}")
         try:
             vnfs_data = service.handler.read_dict(service._resolve_uuid(uuid_or_name))
@@ -209,6 +310,24 @@ def register_vnfs_api(
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
     ):
+        """Search for virtual NFS servers using semantic similarity.
+
+        Returns virtual NFS servers that are semantically similar to the search
+        term and match the specified filters.
+
+        Args:
+            search_term: Search term to find similar virtual NFS servers.
+            max_number_of_results: Maximum number of results to return (default: 5).
+            similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
+            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
+            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+
+        Returns:
+            list: List of matched server names and similarity scores.
+
+        Raises:
+            HTTPException: 503 if search is not available, 500 for other errors.
+        """
         logger.info(f"Request to search vnfs servers for: {search_term}")
         search_vnfs_counter.inc()
         if not vnfs_descriptions:

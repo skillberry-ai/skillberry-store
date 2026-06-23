@@ -18,13 +18,41 @@ logger = logging.getLogger(__name__)
 
 
 class ToolsService:
+    """Service layer for tool CRUD and execution operations.
+    
+    Provides business logic for managing tools including creation, retrieval,
+    update, deletion, and dependency resolution. Handles both tool metadata
+    and module files.
+    
+    Attributes:
+        handler: ObjectHandler for tool persistence operations.
+        descriptions: Optional Description instance for semantic search indexing.
+    """
+    
     def __init__(
         self, handler: ObjectHandler, descriptions: Optional[Description] = None
     ):
+        """Initialize the ToolsService.
+        
+        Args:
+            handler: ObjectHandler instance for tool operations.
+            descriptions: Optional Description instance for managing tool descriptions.
+        """
         self.handler = handler
         self.descriptions = descriptions
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
+        """Resolve a tool identifier to its UUID.
+        
+        Args:
+            uuid_or_name: Tool UUID or name to resolve.
+            
+        Returns:
+            str: The resolved UUID.
+            
+        Raises:
+            KeyError: If tool not found.
+        """
         try:
             return self.handler.resolve_to_uuid_or_error(uuid_or_name)
         except Exception as e:
@@ -33,7 +61,18 @@ class ToolsService:
             raise
 
     def find_dependencies(self, dependencies: List[str], tool_uuid: str) -> Set[str]:
-        """Recursively resolve all transitive dependency UUIDs."""
+        """Recursively resolve all transitive dependency UUIDs.
+        
+        Traverses the dependency tree to find all direct and indirect dependencies
+        of a tool, avoiding circular dependencies.
+        
+        Args:
+            dependencies: List of direct dependency UUIDs.
+            tool_uuid: UUID of the tool being analyzed (for logging).
+            
+        Returns:
+            Set[str]: Set of all dependency UUIDs (transitive closure).
+        """
         found: Set[str] = set()
         if not dependencies:
             return found
@@ -50,6 +89,22 @@ class ToolsService:
     def create(
         self, data: Dict[str, Any], module_content: bytes, module_filename: str
     ) -> Dict[str, Any]:
+        """Create a new tool with its module file.
+        
+        Creates a tool entry with metadata and saves the associated module file.
+        Automatically detects dependencies if enabled and updates caches and indexes.
+        
+        Args:
+            data: Tool metadata dictionary (name, description, params, etc.).
+            module_content: Binary content of the tool's module file.
+            module_filename: Filename for the module (e.g., "tool.py").
+            
+        Returns:
+            Dict[str, Any]: The created tool data with UUID and timestamps.
+            
+        Raises:
+            ValueError: If tool with the same UUID already exists.
+        """
         data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
         if self.handler.object_exists(data["uuid"]):
             raise ValueError(f"Tool with UUID '{data['uuid']}' already exists")
@@ -87,6 +142,18 @@ class ToolsService:
         return data
 
     def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        """Safely read a tool dictionary with error handling.
+        
+        Args:
+            uuid: Tool UUID to read.
+            label: Human-readable label for error messages.
+            
+        Returns:
+            Dict[str, Any]: Tool metadata dictionary.
+            
+        Raises:
+            KeyError: If tool not found.
+        """
         try:
             return self.handler.read_dict(uuid)
         except Exception as e:
@@ -95,10 +162,33 @@ class ToolsService:
             raise
 
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
+        """Get tool metadata by UUID or name.
+        
+        Args:
+            uuid_or_name: Tool UUID or name.
+            
+        Returns:
+            Dict[str, Any]: Tool metadata dictionary.
+            
+        Raises:
+            KeyError: If tool not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         return self._safe_read(uuid, uuid_or_name)
 
     def get_module(self, uuid_or_name: str) -> str:
+        """Get the module file content for a tool.
+        
+        Args:
+            uuid_or_name: Tool UUID or name.
+            
+        Returns:
+            str: Module file content as string.
+            
+        Raises:
+            KeyError: If tool not found or has no module file.
+            RuntimeError: If module content type is invalid.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         tool = self.handler.read_dict(uuid)
         module_name = tool.get("module_name")
@@ -110,6 +200,14 @@ class ToolsService:
         return content
 
     def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        """List all tools with optional filtering.
+        
+        Args:
+            filters: Optional dictionary of field:value pairs to filter by.
+            
+        Returns:
+            List[Dict[str, Any]]: List of tool metadata dictionaries, sorted by modified_at descending.
+        """
         items = self.handler.list_all_dicts()
         if filters:
             items = [i for i in items if all(i.get(k) == v for k, v in filters.items())]
@@ -117,6 +215,21 @@ class ToolsService:
         return items
 
     def update(self, uuid_or_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing tool's metadata.
+        
+        Merges new data with existing tool data, updates timestamps, caches,
+        and description indexes as needed.
+        
+        Args:
+            uuid_or_name: Tool UUID or name to update.
+            data: Dictionary of fields to update.
+            
+        Returns:
+            Dict[str, Any]: The updated tool metadata.
+            
+        Raises:
+            KeyError: If tool not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         existing = self.handler.read_dict(uuid)
         old_name = existing.get("name")
@@ -145,6 +258,16 @@ class ToolsService:
         return merged
 
     def delete(self, uuid_or_name: str) -> None:
+        """Delete a tool and its associated files.
+        
+        Removes the tool metadata, module files, cache entries, and description indexes.
+        
+        Args:
+            uuid_or_name: Tool UUID or name to delete.
+            
+        Raises:
+            KeyError: If tool not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         try:
             d = self.handler.read_dict(uuid)

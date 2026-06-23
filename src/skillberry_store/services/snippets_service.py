@@ -16,13 +16,40 @@ logger = logging.getLogger(__name__)
 
 
 class SnippetsService:
+    """Service layer for snippet CRUD operations.
+    
+    Provides business logic for managing snippets, which are reusable text blocks
+    that can be referenced by skills.
+    
+    Attributes:
+        handler: ObjectHandler for snippet persistence operations.
+        descriptions: Optional Description instance for semantic search indexing.
+    """
+    
     def __init__(
         self, handler: ObjectHandler, descriptions: Optional[Description] = None
     ):
+        """Initialize the SnippetsService.
+        
+        Args:
+            handler: ObjectHandler instance for snippet operations.
+            descriptions: Optional Description instance for managing snippet descriptions.
+        """
         self.handler = handler
         self.descriptions = descriptions
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
+        """Resolve a snippet identifier to its UUID.
+        
+        Args:
+            uuid_or_name: Snippet UUID or name to resolve.
+            
+        Returns:
+            str: The resolved UUID.
+            
+        Raises:
+            KeyError: If snippet not found.
+        """
         try:
             return self.handler.resolve_to_uuid_or_error(uuid_or_name)
         except Exception as e:
@@ -31,6 +58,19 @@ class SnippetsService:
             raise
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new snippet.
+        
+        Creates a snippet entry with text content and updates caches and indexes.
+        
+        Args:
+            data: Snippet metadata dictionary (name, description, content, etc.).
+            
+        Returns:
+            Dict[str, Any]: The created snippet data with UUID and timestamps.
+            
+        Raises:
+            ValueError: If snippet with the same UUID already exists.
+        """
         data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
         if self.handler.object_exists(data["uuid"]):
             raise ValueError(f"Snippet with UUID '{data['uuid']}' already exists")
@@ -50,6 +90,18 @@ class SnippetsService:
         return data
 
     def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
+        """Safely read a snippet dictionary with error handling.
+        
+        Args:
+            uuid: Snippet UUID to read.
+            label: Human-readable label for error messages.
+            
+        Returns:
+            Dict[str, Any]: Snippet metadata dictionary.
+            
+        Raises:
+            KeyError: If snippet not found.
+        """
         try:
             return self.handler.read_dict(uuid)
         except Exception as e:
@@ -58,10 +110,29 @@ class SnippetsService:
             raise
 
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
+        """Get snippet metadata by UUID or name.
+        
+        Args:
+            uuid_or_name: Snippet UUID or name.
+            
+        Returns:
+            Dict[str, Any]: Snippet metadata dictionary.
+            
+        Raises:
+            KeyError: If snippet not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         return self._safe_read(uuid, uuid_or_name)
 
     def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        """List all snippets with optional filtering.
+        
+        Args:
+            filters: Optional dictionary of field:value pairs to filter by.
+            
+        Returns:
+            List[Dict[str, Any]]: List of snippet metadata dictionaries, sorted by modified_at descending.
+        """
         items = self.handler.list_all_dicts()
         if filters:
             items = [i for i in items if all(i.get(k) == v for k, v in filters.items())]
@@ -69,6 +140,21 @@ class SnippetsService:
         return items
 
     def update(self, uuid_or_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing snippet's metadata and content.
+        
+        Merges new data with existing snippet data, updates timestamps, caches,
+        and description indexes as needed.
+        
+        Args:
+            uuid_or_name: Snippet UUID or name to update.
+            data: Dictionary of fields to update.
+            
+        Returns:
+            Dict[str, Any]: The updated snippet metadata.
+            
+        Raises:
+            KeyError: If snippet not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         existing = self.handler.read_dict(uuid)
         old_name = existing.get("name")
@@ -91,6 +177,16 @@ class SnippetsService:
         return merged
 
     def delete(self, uuid_or_name: str) -> None:
+        """Delete a snippet.
+        
+        Removes the snippet metadata, cache entries, and description indexes.
+        
+        Args:
+            uuid_or_name: Snippet UUID or name to delete.
+            
+        Raises:
+            KeyError: If snippet not found.
+        """
         uuid = self._resolve_uuid(uuid_or_name)
         try:
             d = self.handler.read_dict(uuid)
