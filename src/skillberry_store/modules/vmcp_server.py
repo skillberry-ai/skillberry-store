@@ -494,13 +494,8 @@ class VirtualMcpServer:
             raise ValueError(f"Tool {tool_name} not found")
 
         try:
-            from skillberry_store.tools.configure import (
-                get_files_directory_path,
-                get_tools_directory,
-            )
-            from skillberry_store.modules.file_handler import FileHandler
             from skillberry_store.modules.file_executor import FileExecutor
-            from skillberry_store.fast_api.tools_api import find_tool_dependencies
+            from skillberry_store.services.registry import get_service
 
             # Use the manifest cached at server creation time so that a later overwrite of the
             # tool JSON file (e.g. by an MCP wrapper with the same name) cannot cause
@@ -526,13 +521,10 @@ class VirtualMcpServer:
             if not isinstance(module_content, str):
                 raise ValueError(f"Could not read module for tool '{tool_name}'")
 
-            # Load tool dependencies recursively using the shared function
+            # Load tool dependencies recursively via the shared service method.
             dependencies = tool_dict.get("dependencies", [])
-            tools_handler = FileHandler(get_tools_directory())
-            tool_dep_ids = find_tool_dependencies(
-                dependencies=dependencies,
-                tool_handler=self.tools_handler,
-                tool_uuid=tool_uuid,
+            tool_dep_ids = get_service("tool").find_dependencies(
+                dependencies, tool_uuid
             )
 
             dep_dicts = self.tools_handler.read_dicts(list(tool_dep_ids))

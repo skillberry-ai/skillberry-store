@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from skillberry_store.modules.object_handler import ObjectHandler
 from skillberry_store.utils.utils import generate_or_validate_uuid
 
 if TYPE_CHECKING:
     from skillberry_store.modules.description import Description
+    from skillberry_store.modules.lifecycle import LifecycleState
     from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,79 @@ class VnfsService:
         servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
         return {"virtual_nfs_servers": {s["uuid"]: s for s in servers}}
 
+    def search(
+        self,
+        search_term: str,
+        max_number_of_results: int = 5,
+        similarity_threshold: float = 1.0,
+        manifest_filter: str = ".",
+        lifecycle_state: Optional["LifecycleState"] = None,
+    ) -> List[Dict[str, Any]]:
+        """Search vNFS servers by semantic similarity to a search term.
+
+        Performs a vector-similarity search over vNFS server descriptions, then
+        filters by similarity threshold, manifest properties, and lifecycle state,
+        and returns matched names with similarity scores sorted by ``modified_at``
+        (most recent first).
+
+        Args:
+            search_term: Free-text query to match against vNFS descriptions.
+            max_number_of_results: Upper bound on candidates returned by the
+                vector index before threshold filtering.
+            similarity_threshold: Maximum allowed similarity score (lower is
+                more similar).
+            manifest_filter: Manifest property filter expression
+                (e.g. ``"tags:python"``, ``"state:approved"``).
+            lifecycle_state: Lifecycle state filter. Defaults to
+                ``LifecycleState.ANY`` when ``None`` is passed.
+
+        Returns:
+            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+
+        Raises:
+            RuntimeError: If the service was constructed without a
+                ``Description`` instance (search index unavailable).
+        """
+        from skillberry_store.modules.lifecycle import LifecycleState
+        from skillberry_store.fast_api.search_filters import apply_search_filters
+
+        if lifecycle_state is None:
+            lifecycle_state = LifecycleState.ANY
+        if not self.descriptions:
+            raise RuntimeError("vNFS server search is not available")
+
+        matched = self.descriptions.search_description(
+            search_term=search_term, k=max_number_of_results
+        )
+        filtered = [
+            m for m in matched if float(m["similarity_score"]) <= similarity_threshold
+        ]
+        candidates: List[Dict[str, Any]] = []
+        for m in filtered:
+            vnfs_uuid = m.get("filename") or m.get("name")
+            if not vnfs_uuid:
+                continue
+            try:
+                d = self.handler.read_dict(vnfs_uuid)
+                d["similarity_score"] = m.get("similarity_score", 0.0)
+                candidates.append(d)
+            except Exception as exc:
+                logger.warning(f"Could not load vnfs '{vnfs_uuid}': {exc}")
+        result_items = apply_search_filters(
+            candidates,
+            manifest_filter=manifest_filter,
+            lifecycle_state=lifecycle_state,
+        )
+        result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+        return [
+            {
+                "filename": s.get("name", ""),
+                "similarity_score": s.get("similarity_score", 0.0),
+            }
+            for s in result_items
+            if s.get("name")
+        ]
+
     def update(self, uuid_or_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing vNFS server's metadata and restart it.
         
@@ -249,6 +323,40 @@ class VnfsService:
             self.descriptions.write_description(data["uuid"], data["description"])
         logger.info(f"vNFS server '{new_name}' updated on port {server.port}")
         return data
+
+    def start(self, uuid_or_name: str) -> Tuple[Any, bool]:
+        """Start (or report already-running) a vNFS server runtime.
+
+        Resolves the vNFS server, checks whether its runtime is already up and
+        running; if so, returns the existing runtime with
+        ``already_running=True``. Otherwise adds the server via the runtime
+        manager.
+
+        Args:
+            uuid_or_name: vNFS server UUID or name to start.
+
+        Returns:
+            Tuple[Any, bool]: Pair of the runtime server object (whose ``.port``
+                callers may read) and a boolean that is ``True`` when the server
+                was already running and ``False`` when it was started by this
+                call.
+
+        Raises:
+            KeyError: If the vNFS server is not found.
+        """
+        vnfs_uuid = self._resolve_uuid(uuid_or_name)
+        vnfs_data = self.handler.read_dict(vnfs_uuid)
+        server_name = vnfs_data.get("name", "")
+        server_uuid = vnfs_data.get("uuid", "")
+        try:
+            existing = self.server_manager.get_server(server_name, server_uuid)
+            if existing and existing.running:
+                return existing, True
+        except Exception:
+            pass
+        server = self.server_manager.add_server(_to_ns(vnfs_data))
+        logger.info(f"vNFS server '{server_name}' started on port {server.port}")
+        return server, False
 
     def delete(self, uuid_or_name: str) -> None:
         """Delete a vNFS server and stop its runtime process.

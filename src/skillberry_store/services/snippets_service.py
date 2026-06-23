@@ -11,6 +11,7 @@ from skillberry_store.utils.utils import generate_or_validate_uuid
 
 if TYPE_CHECKING:
     from skillberry_store.modules.description import Description
+    from skillberry_store.modules.lifecycle import LifecycleState
 
 logger = logging.getLogger(__name__)
 
@@ -126,10 +127,10 @@ class SnippetsService:
 
     def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
         """List all snippets with optional filtering.
-        
+
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
-            
+
         Returns:
             List[Dict[str, Any]]: List of snippet metadata dictionaries, sorted by modified_at descending.
         """
@@ -138,6 +139,79 @@ class SnippetsService:
             items = [i for i in items if all(i.get(k) == v for k, v in filters.items())]
         items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
         return items
+
+    def search(
+        self,
+        search_term: str,
+        max_number_of_results: int = 5,
+        similarity_threshold: float = 1.0,
+        manifest_filter: str = ".",
+        lifecycle_state: Optional["LifecycleState"] = None,
+    ) -> List[Dict[str, Any]]:
+        """Search snippets by semantic similarity to a search term.
+
+        Performs a vector-similarity search over snippet descriptions, then filters
+        by similarity threshold, manifest properties, and lifecycle state, and
+        returns matched names with similarity scores sorted by ``modified_at``
+        (most recent first).
+
+        Args:
+            search_term: Free-text query to match against snippet descriptions.
+            max_number_of_results: Upper bound on candidates returned by the
+                vector index before threshold filtering.
+            similarity_threshold: Maximum allowed similarity score (lower is
+                more similar). Candidates above this score are discarded.
+            manifest_filter: Manifest property filter expression
+                (e.g. ``"tags:python"``, ``"state:approved"``).
+            lifecycle_state: Lifecycle state filter. Defaults to
+                ``LifecycleState.ANY`` when ``None`` is passed.
+
+        Returns:
+            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+
+        Raises:
+            RuntimeError: If the service was constructed without a
+                ``Description`` instance (search index unavailable).
+        """
+        from skillberry_store.modules.lifecycle import LifecycleState
+        from skillberry_store.fast_api.search_filters import apply_search_filters
+
+        if lifecycle_state is None:
+            lifecycle_state = LifecycleState.ANY
+        if not self.descriptions:
+            raise RuntimeError("Snippet search is not available")
+
+        matched = self.descriptions.search_description(
+            search_term=search_term, k=max_number_of_results
+        )
+        filtered = [
+            m for m in matched if float(m["similarity_score"]) <= similarity_threshold
+        ]
+        candidates: List[Dict[str, Any]] = []
+        for m in filtered:
+            name = m.get("filename") or m.get("name")
+            if not name:
+                continue
+            try:
+                d = self.get(name)
+                d["similarity_score"] = m.get("similarity_score", 0.0)
+                candidates.append(d)
+            except Exception:
+                pass
+        result_snippets = apply_search_filters(
+            candidates,
+            manifest_filter=manifest_filter,
+            lifecycle_state=lifecycle_state,
+        )
+        result_snippets.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+        return [
+            {
+                "filename": s.get("name", ""),
+                "similarity_score": s.get("similarity_score", 0.0),
+            }
+            for s in result_snippets
+            if s.get("name")
+        ]
 
     def update(self, uuid_or_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing snippet's metadata and content.
