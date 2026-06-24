@@ -2,53 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Annotated, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from prometheus_client import Counter, Histogram
 
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.vmcp_schema import VmcpSchema
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
 from skillberry_store.services.vmcp_service import VmcpService
-
-logger = logging.getLogger(__name__)
-
-prom_prefix = "sts_fastapi_vmcp_"
-create_vmcp_counter = Counter(
-    f"{prom_prefix}create_vmcp_counter", "Count number of vmcp create operations"
-)
-list_vmcp_counter = Counter(
-    f"{prom_prefix}list_vmcp_counter", "Count number of vmcp list operations"
-)
-get_vmcp_counter = Counter(
-    f"{prom_prefix}get_vmcp_counter", "Count number of vmcp get operations"
-)
-delete_vmcp_counter = Counter(
-    f"{prom_prefix}delete_vmcp_counter", "Count number of vmcp delete operations"
-)
-update_vmcp_counter = Counter(
-    f"{prom_prefix}update_vmcp_counter", "Count number of vmcp update operations"
-)
-search_vmcp_counter = Counter(
-    f"{prom_prefix}search_vmcp_counter", "Count number of vmcp search operations"
-)
-invoke_vmcp_tool_counter = Counter(
-    f"{prom_prefix}invoke_vmcp_tool_counter",
-    "Count number of vmcp tool invoke operations",
-    ["server_name", "tool_name"],
-)
-invoke_successfully_vmcp_tool_counter = Counter(
-    f"{prom_prefix}invoke_successfully_vmcp_tool_counter",
-    "Count number of vmcp tool invoked successfully operations",
-    ["server_name", "tool_name"],
-)
-invoke_successfully_vmcp_tool_latency = Histogram(
-    f"{prom_prefix}invoke_successfully_vmcp_tool_latency",
-    "Histogram of invoke vmcp tool successfully latencies",
-    ["server_name", "tool_name"],
-)
 
 
 def register_vmcp_api(
@@ -115,8 +76,6 @@ def register_vmcp_api(
             PortConflictError,
         )
 
-        logger.info(f"Request to create vmcp server: {vmcp.name}")
-        create_vmcp_counter.inc()
         try:
             result = service.create(vmcp.to_dict(), env_id=_extract_env_id(request))
             return {
@@ -132,7 +91,6 @@ def register_vmcp_api(
         except ValueError as e:
             raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
-            logger.error(f"Error creating vmcp server '{vmcp.name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error creating vmcp server: {str(e)}"
             )
@@ -154,12 +112,9 @@ def register_vmcp_api(
         Raises:
             HTTPException: 500 if listing fails.
         """
-        logger.info("Request to list vmcp servers")
-        list_vmcp_counter.inc()
         try:
             return service.list_all(skill_uuid=skill_uuid)
         except Exception as e:
-            logger.error(f"Error listing vmcp servers: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error listing vmcp servers: {str(e)}"
             )
@@ -184,14 +139,11 @@ def register_vmcp_api(
         Raises:
             HTTPException: 404 if server not found, 500 for other errors.
         """
-        logger.info(f"Request to get vmcp server: {uuid_or_name}")
-        get_vmcp_counter.inc()
         try:
             return service.get(uuid_or_name)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error retrieving vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving vmcp server: {str(e)}"
             )
@@ -215,15 +167,12 @@ def register_vmcp_api(
         Raises:
             HTTPException: 404 if server not found, 500 for other errors.
         """
-        logger.info(f"Request to delete vmcp server: {uuid_or_name}")
-        delete_vmcp_counter.inc()
         try:
             service.delete(uuid_or_name)
             return {"message": f"VMCP server '{uuid_or_name}' deleted successfully."}
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error deleting vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting vmcp server: {str(e)}"
             )
@@ -252,8 +201,6 @@ def register_vmcp_api(
         Raises:
             HTTPException: 404 if server not found, 500 for other errors.
         """
-        logger.info(f"Request to update vmcp server: {uuid_or_name}")
-        update_vmcp_counter.inc()
         try:
             result = service.update(
                 uuid_or_name, vmcp.to_dict(), env_id=_extract_env_id(request)
@@ -265,7 +212,6 @@ def register_vmcp_api(
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error updating vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating vmcp server: {str(e)}"
             )
@@ -292,7 +238,6 @@ def register_vmcp_api(
         Raises:
             HTTPException: 404 if server or skill not found, 500 for other errors.
         """
-        logger.info(f"Request to start vmcp server: {uuid_or_name}")
         try:
             server, already_running = service.start(
                 uuid_or_name, env_id=_extract_env_id(request)
@@ -308,7 +253,6 @@ def register_vmcp_api(
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error starting vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error starting vmcp server: {str(e)}"
             )
@@ -343,8 +287,6 @@ def register_vmcp_api(
         Raises:
             HTTPException: 503 if search is not available, 500 for other errors.
         """
-        logger.info(f"Request to search vmcp servers for: {search_term}")
-        search_vmcp_counter.inc()
         try:
             return service.search(
                 search_term=search_term,
@@ -356,7 +298,6 @@ def register_vmcp_api(
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
-            logger.error(f"Error searching vmcp servers: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error searching vmcp servers: {str(e)}"
             )

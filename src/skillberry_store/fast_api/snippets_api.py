@@ -2,40 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile
-from prometheus_client import Counter
-from skillberry_store.plugins.events import (
-    emit_content_added,
-    emit_content_updated,
-    emit_content_deleted,
-)
+
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
 from skillberry_store.services.snippets_service import SnippetsService
-
-logger = logging.getLogger(__name__)
-
-prom_prefix = "sts_fastapi_snippets_"
-create_snippet_counter = Counter(
-    f"{prom_prefix}create_snippet_counter", "Count number of snippet create operations"
-)
-list_snippets_counter = Counter(
-    f"{prom_prefix}list_snippets_counter", "Count number of snippet list operations"
-)
-get_snippet_counter = Counter(
-    f"{prom_prefix}get_snippet_counter", "Count number of snippet get operations"
-)
-delete_snippet_counter = Counter(
-    f"{prom_prefix}delete_snippet_counter", "Count number of snippet delete operations"
-)
-update_snippet_counter = Counter(
-    f"{prom_prefix}update_snippet_counter", "Count number of snippet update operations"
-)
-search_snippets_counter = Counter(
-    f"{prom_prefix}search_snippets_counter", "Count number of snippet search operations"
-)
 
 
 def register_snippets_api(
@@ -84,8 +56,6 @@ def register_snippets_api(
         Raises:
             HTTPException: 400 if file reading fails, 409 if snippet already exists, 500 for other errors.
         """
-        logger.info(f"Request to create snippet: {snippet.name}")
-        create_snippet_counter.inc()
         if file:
             try:
                 content_bytes = await file.read()
@@ -96,7 +66,6 @@ def register_snippets_api(
                 )
         try:
             result = service.create(snippet.to_dict())
-            emit_content_added("snippet", result["uuid"])
             return {
                 "message": f"Snippet '{result['name']}' created successfully.",
                 "name": result["name"],
@@ -105,7 +74,6 @@ def register_snippets_api(
         except ValueError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
-            logger.error(f"Error creating snippet '{snippet.name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error creating snippet: {str(e)}"
             )
@@ -125,12 +93,9 @@ def register_snippets_api(
         Raises:
             HTTPException: 500 if listing fails.
         """
-        logger.info("Request to list snippets")
-        list_snippets_counter.inc()
         try:
             return service.list_all()
         except Exception as e:
-            logger.error(f"Error listing snippets: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error listing snippets: {str(e)}"
             )
@@ -155,14 +120,11 @@ def register_snippets_api(
         Raises:
             HTTPException: 404 if snippet not found, 500 for other errors.
         """
-        logger.info(f"Request to get snippet: {uuid_or_name}")
-        get_snippet_counter.inc()
         try:
             return service.get(uuid_or_name)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error retrieving snippet '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving snippet: {str(e)}"
             )
@@ -187,18 +149,14 @@ def register_snippets_api(
         Raises:
             HTTPException: 404 if snippet not found, 500 for other errors.
         """
-        logger.info(f"Request to delete snippet: {uuid_or_name}")
-        delete_snippet_counter.inc()
         try:
-            result = service.delete(uuid_or_name)
-            emit_content_deleted("snippet", result["uuid"])
+            service.delete(uuid_or_name)
             return {
                 "message": f"Snippet with UUID or name '{uuid_or_name}' deleted successfully."
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.exception(f"Error deleting snippet '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting snippet: {str(e)}"
             )
@@ -224,18 +182,14 @@ def register_snippets_api(
         Raises:
             HTTPException: 404 if snippet not found, 500 for other errors.
         """
-        logger.info(f"Request to update snippet: {uuid_or_name}")
-        update_snippet_counter.inc()
         try:
-            result = service.update(uuid_or_name, snippet.to_dict())
-            emit_content_updated("snippet", result["uuid"])
+            service.update(uuid_or_name, snippet.to_dict())
             return {
                 "message": f"Snippet with UUID or name '{uuid_or_name}' updated successfully."
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error updating snippet '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating snippet: {str(e)}"
             )
@@ -268,8 +222,6 @@ def register_snippets_api(
         Raises:
             HTTPException: 503 if search is not available, 500 for other errors.
         """
-        logger.info(f"Request to search snippets for term: {search_term}")
-        search_snippets_counter.inc()
         try:
             return service.search(
                 search_term=search_term,
@@ -281,7 +233,6 @@ def register_snippets_api(
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
-            logger.error(f"Error searching snippets: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error searching snippets: {str(e)}"
             )

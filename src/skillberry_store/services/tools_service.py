@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import logging
+import time
+import traceback
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
+from prometheus_client import Counter, Histogram
+
 from skillberry_store.modules.object_handler import ObjectHandler
 from skillberry_store.modules.file_executor import detect_tool_dependencies
+from skillberry_store.plugins.events import (
+    emit_content_added,
+    emit_content_deleted,
+    emit_content_updated,
+)
 from skillberry_store.services.exceptions import ObjectAlreadyExistsError
 from skillberry_store.utils.utils import generate_or_validate_uuid
 from skillberry_store.tools.configure import is_auto_detect_dependencies_enabled
@@ -17,6 +26,50 @@ if TYPE_CHECKING:
     from skillberry_store.modules.lifecycle import LifecycleState
 
 logger = logging.getLogger(__name__)
+
+# observability - metrics
+prom_prefix = "sts_service_tools_"
+create_tool_counter = Counter(
+    f"{prom_prefix}create_tool_counter", "Count number of tool create operations"
+)
+list_tools_counter = Counter(
+    f"{prom_prefix}list_tools_counter", "Count number of tool list operations"
+)
+get_tool_counter = Counter(
+    f"{prom_prefix}get_tool_counter", "Count number of tool get operations"
+)
+get_tool_module_counter = Counter(
+    f"{prom_prefix}get_tool_module_counter",
+    "Count number of tool module get operations",
+)
+delete_tool_counter = Counter(
+    f"{prom_prefix}delete_tool_counter", "Count number of tool delete operations"
+)
+update_tool_counter = Counter(
+    f"{prom_prefix}update_tool_counter", "Count number of tool update operations"
+)
+execute_tool_counter = Counter(
+    f"{prom_prefix}execute_tool_counter",
+    "Count number of tool execute operations",
+    ["name"],
+)
+execute_successfully_tool_counter = Counter(
+    f"{prom_prefix}execute_successfully_tool_counter",
+    "Count number of tool executed successfully operations",
+    ["name"],
+)
+execute_successfully_tool_latency = Histogram(
+    f"{prom_prefix}execute_successfully_tool_latency",
+    "Histogram of execute tool successfully latencies",
+    ["name"],
+)
+search_tools_counter = Counter(
+    f"{prom_prefix}search_tools_counter", "Count number of tool search operations"
+)
+add_tool_from_python_counter = Counter(
+    f"{prom_prefix}add_tool_from_python_counter",
+    "Count number of tool add from Python operations",
+)
 
 
 class ToolsService:
@@ -120,37 +173,48 @@ class ToolsService:
         tool_dict = self.get(uuid_or_name)
         tool_uuid = tool_dict["uuid"]
         tool_name = tool_dict.get("name", uuid_or_name)
-        if tool_dict.get("packaging_format") == "mcp":
-            module_content = mcp_content_from_manifest(tool_dict)
-        else:
-            module_content = self.get_module(uuid_or_name)
-        dep_uuids = self.find_dependencies(
-            tool_dict.get("dependencies", []), tool_uuid
-        )
-        dep_dicts = self.handler.read_dicts(list(dep_uuids))
-        dep_files = [
-            self.handler.read_file(m["uuid"], m["module_name"], raw_content=True)
-            for m in dep_dicts
-        ]
-        file_executor = FileExecutor(
-            name=tool_name,
-            file_content=module_content,
-            file_manifest=tool_dict,
-            dependent_file_contents=dep_files,
-            dependent_tools_as_dict=dep_dicts,
-        )
-        result = await file_executor.execute_file(
-            parameters=parameters or {}, env_id=env_id
-        )
-        if isinstance(result, dict) and "error" in result:
-            error_message = result.get("error", "Unknown Error")
-            if "not found" in error_message.lower():
-                raise KeyError(error_message)
-            raise RuntimeError(error_message)
-        logger.info(
-            f"Tool '{tool_name}' (UUID: {tool_uuid}) executed successfully"
-        )
-        return result
+        execute_tool_counter.labels(name=tool_uuid).inc()
+        try:
+            if tool_dict.get("packaging_format") == "mcp":
+                module_content = mcp_content_from_manifest(tool_dict)
+            else:
+                module_content = self.get_module(uuid_or_name)
+            dep_uuids = self.find_dependencies(
+                tool_dict.get("dependencies", []), tool_uuid
+            )
+            dep_dicts = self.handler.read_dicts(list(dep_uuids))
+            dep_files = [
+                self.handler.read_file(m["uuid"], m["module_name"], raw_content=True)
+                for m in dep_dicts
+            ]
+            file_executor = FileExecutor(
+                name=tool_name,
+                file_content=module_content,
+                file_manifest=tool_dict,
+                dependent_file_contents=dep_files,
+                dependent_tools_as_dict=dep_dicts,
+            )
+            start_time = time.time()
+            result = await file_executor.execute_file(
+                parameters=parameters or {}, env_id=env_id
+            )
+            duration = time.time() - start_time
+            if isinstance(result, dict) and "error" in result:
+                error_message = result.get("error", "Unknown Error")
+                if "not found" in error_message.lower():
+                    raise KeyError(error_message)
+                raise RuntimeError(error_message)
+            execute_successfully_tool_counter.labels(name=tool_uuid).inc()
+            execute_successfully_tool_latency.labels(name=tool_uuid).observe(duration)
+            logger.info(
+                f"Tool '{tool_name}' (UUID: {tool_uuid}) executed successfully"
+            )
+            return result
+        except (KeyError, RuntimeError):
+            raise
+        except Exception as e:
+            logger.error(f"Error executing tool '{uuid_or_name}': {e}")
+            raise
 
     def create(
         self,
@@ -185,48 +249,56 @@ class ToolsService:
         Raises:
             ObjectAlreadyExistsError: If tool with the same UUID already exists.
         """
-        data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
-        if self.handler.object_exists(data["uuid"]):
-            raise ObjectAlreadyExistsError(
-                f"Tool with UUID '{data['uuid']}' already exists"
-            )
-        now = datetime.now(timezone.utc).isoformat()
-        data.setdefault("created_at", now)
-        data["modified_at"] = now
-        if data.get("name"):
-            data["parent"] = self.handler.get_cache_parent_for_head(
-                data["uuid"], data["name"]
-            )
-        self.handler.write_file(data["uuid"], module_filename, module_content)
-        data["module_name"] = module_filename
-        if not data.get("dependencies") and is_auto_detect_dependencies_enabled():
-            try:
-                content_str = (
-                    module_content.decode("utf-8")
-                    if isinstance(module_content, bytes)
-                    else module_content
+        create_tool_counter.inc()
+        try:
+            data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
+            if self.handler.object_exists(data["uuid"]):
+                raise ObjectAlreadyExistsError(
+                    f"Tool with UUID '{data['uuid']}' already exists"
                 )
-                available = self.handler.get_existing_names()
-                if extra_name_to_uuid:
-                    available = available | set(extra_name_to_uuid.keys())
-                detected_names = detect_tool_dependencies(
-                    content_str, data["name"], available
+            now = datetime.now(timezone.utc).isoformat()
+            data.setdefault("created_at", now)
+            data["modified_at"] = now
+            if data.get("name"):
+                data["parent"] = self.handler.get_cache_parent_for_head(
+                    data["uuid"], data["name"]
                 )
-                if detected_names:
-                    data["dependencies"] = [
-                        extra_name_to_uuid[n]
-                        if extra_name_to_uuid and n in extra_name_to_uuid
-                        else self.handler.name_to_uuid(n)
-                        for n in detected_names
-                    ]
-            except Exception as e:
-                logger.warning(f"Failed to auto-detect dependencies: {e}")
-        self.handler.write_dict(data["uuid"], data)
-        self.handler.update_cache(data["uuid"], new_name=data["name"])
-        if self.descriptions and data.get("description"):
-            self.descriptions.write_description(data["uuid"], data["description"])
-        logger.info(f"Tool '{data.get('name')}' created with UUID {data['uuid']}")
-        return data
+            self.handler.write_file(data["uuid"], module_filename, module_content)
+            data["module_name"] = module_filename
+            if not data.get("dependencies") and is_auto_detect_dependencies_enabled():
+                try:
+                    content_str = (
+                        module_content.decode("utf-8")
+                        if isinstance(module_content, bytes)
+                        else module_content
+                    )
+                    available = self.handler.get_existing_names()
+                    if extra_name_to_uuid:
+                        available = available | set(extra_name_to_uuid.keys())
+                    detected_names = detect_tool_dependencies(
+                        content_str, data["name"], available
+                    )
+                    if detected_names:
+                        data["dependencies"] = [
+                            extra_name_to_uuid[n]
+                            if extra_name_to_uuid and n in extra_name_to_uuid
+                            else self.handler.name_to_uuid(n)
+                            for n in detected_names
+                        ]
+                except Exception as e:
+                    logger.warning(f"Failed to auto-detect dependencies: {e}")
+            self.handler.write_dict(data["uuid"], data)
+            self.handler.update_cache(data["uuid"], new_name=data["name"])
+            if self.descriptions and data.get("description"):
+                self.descriptions.write_description(data["uuid"], data["description"])
+            emit_content_added("tool", data["uuid"])
+            logger.info(f"Tool '{data.get('name')}' created with UUID {data['uuid']}")
+            return data
+        except ObjectAlreadyExistsError:
+            raise
+        except Exception as e:
+            logger.error(f"Error creating tool '{data.get('name')}': {e}")
+            raise
 
     def _safe_read(self, uuid: str, label: str) -> Dict[str, Any]:
         """Safely read a tool dictionary with error handling.
@@ -250,18 +322,25 @@ class ToolsService:
 
     def get(self, uuid_or_name: str) -> Dict[str, Any]:
         """Get tool metadata by UUID or name.
-        
+
         Args:
             uuid_or_name: Tool UUID or name.
-            
+
         Returns:
             Dict[str, Any]: Tool metadata dictionary.
-            
+
         Raises:
             KeyError: If tool not found.
         """
-        uuid = self._resolve_uuid(uuid_or_name)
-        return self._safe_read(uuid, uuid_or_name)
+        get_tool_counter.inc()
+        try:
+            uuid = self._resolve_uuid(uuid_or_name)
+            return self._safe_read(uuid, uuid_or_name)
+        except KeyError:
+            raise
+        except Exception as e:
+            logger.error(f"Error retrieving tool '{uuid_or_name}': {e}")
+            raise
 
     def get_module(self, uuid_or_name: str) -> str:
         """Get the module file content for a tool.
@@ -282,17 +361,26 @@ class ToolsService:
         """
         from skillberry_store.fast_api.server_utils import mcp_content_from_manifest
 
-        uuid = self._resolve_uuid(uuid_or_name)
-        tool = self.handler.read_dict(uuid)
-        if tool.get("packaging_format") == "mcp":
-            return mcp_content_from_manifest(tool)
-        module_name = tool.get("module_name")
-        if not module_name:
-            raise KeyError(f"Tool '{uuid_or_name}' has no module file")
-        content = self.handler.read_file(uuid, module_name, raw_content=True)
-        if not isinstance(content, str):
-            raise RuntimeError(f"Invalid module content type for tool '{uuid_or_name}'")
-        return content
+        get_tool_module_counter.inc()
+        try:
+            uuid = self._resolve_uuid(uuid_or_name)
+            tool = self.handler.read_dict(uuid)
+            if tool.get("packaging_format") == "mcp":
+                return mcp_content_from_manifest(tool)
+            module_name = tool.get("module_name")
+            if not module_name:
+                raise KeyError(f"Tool '{uuid_or_name}' has no module file")
+            content = self.handler.read_file(uuid, module_name, raw_content=True)
+            if not isinstance(content, str):
+                raise RuntimeError(
+                    f"Invalid module content type for tool '{uuid_or_name}'"
+                )
+            return content
+        except (KeyError, RuntimeError):
+            raise
+        except Exception as e:
+            logger.error(f"Error retrieving module for '{uuid_or_name}': {e}")
+            raise
 
     def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
         """List all tools with optional filtering.
@@ -303,11 +391,18 @@ class ToolsService:
         Returns:
             List[Dict[str, Any]]: List of tool metadata dictionaries, sorted by modified_at descending.
         """
-        items = self.handler.list_all_dicts()
-        if filters:
-            items = [i for i in items if all(i.get(k) == v for k, v in filters.items())]
-        items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-        return items
+        list_tools_counter.inc()
+        try:
+            items = self.handler.list_all_dicts()
+            if filters:
+                items = [
+                    i for i in items if all(i.get(k) == v for k, v in filters.items())
+                ]
+            items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            return items
+        except Exception as e:
+            logger.error(f"Error listing tools: {e}\n{traceback.format_exc()}")
+            raise
 
     def search(
         self,
@@ -346,89 +441,106 @@ class ToolsService:
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
 
-        if lifecycle_state is None:
-            lifecycle_state = LifecycleState.ANY
-        if not self.descriptions:
-            raise RuntimeError(
-                "Tool search is not available - descriptions not initialized"
-            )
+        search_tools_counter.inc()
+        try:
+            if lifecycle_state is None:
+                lifecycle_state = LifecycleState.ANY
+            if not self.descriptions:
+                raise RuntimeError(
+                    "Tool search is not available - descriptions not initialized"
+                )
 
-        matched_entities = self.descriptions.search_description(
-            search_term=search_term, k=max_number_of_results
-        )
-        filtered_matched = [
-            m
-            for m in matched_entities
-            if float(m["similarity_score"]) <= similarity_threshold
-        ]
-        candidates: List[Dict[str, Any]] = []
-        for matched in filtered_matched:
-            tool_name = matched.get("filename") or matched.get("name")
-            if not tool_name:
-                continue
-            try:
-                tool_dict = self.get(tool_name)
-                tool_dict["similarity_score"] = matched.get("similarity_score", 0.0)
-                candidates.append(tool_dict)
-            except Exception as e:
-                logger.warning(f"Could not load tool {tool_name}: {e}")
-        filtered_tools = apply_search_filters(
-            candidates,
-            manifest_filter=manifest_filter,
-            lifecycle_state=lifecycle_state,
-        )
-        filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-        return [
-            {
-                "filename": t.get("name", ""),
-                "similarity_score": t.get("similarity_score", 0.0),
-            }
-            for t in filtered_tools
-            if t.get("name")
-        ]
+            matched_entities = self.descriptions.search_description(
+                search_term=search_term, k=max_number_of_results
+            )
+            filtered_matched = [
+                m
+                for m in matched_entities
+                if float(m["similarity_score"]) <= similarity_threshold
+            ]
+            candidates: List[Dict[str, Any]] = []
+            for matched in filtered_matched:
+                tool_name = matched.get("filename") or matched.get("name")
+                if not tool_name:
+                    continue
+                try:
+                    tool_dict = self.get(tool_name)
+                    tool_dict["similarity_score"] = matched.get(
+                        "similarity_score", 0.0
+                    )
+                    candidates.append(tool_dict)
+                except Exception as e:
+                    logger.warning(f"Could not load tool {tool_name}: {e}")
+            filtered_tools = apply_search_filters(
+                candidates,
+                manifest_filter=manifest_filter,
+                lifecycle_state=lifecycle_state,
+            )
+            filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            return [
+                {
+                    "filename": t.get("name", ""),
+                    "similarity_score": t.get("similarity_score", 0.0),
+                }
+                for t in filtered_tools
+                if t.get("name")
+            ]
+        except RuntimeError:
+            raise
+        except Exception as e:
+            logger.error(f"Error searching tools: {e}")
+            raise
 
     def update(self, uuid_or_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update an existing tool's metadata.
-        
+
         Merges new data with existing tool data, updates timestamps, caches,
         and description indexes as needed.
-        
+
         Args:
             uuid_or_name: Tool UUID or name to update.
             data: Dictionary of fields to update.
-            
+
         Returns:
             Dict[str, Any]: The updated tool metadata.
-            
+
         Raises:
             KeyError: If tool not found.
         """
-        uuid = self._resolve_uuid(uuid_or_name)
-        existing = self.handler.read_dict(uuid)
-        old_name = existing.get("name")
-        old_parent = existing.get("parent")
-        new_name = data.get("name") or old_name
-        if new_name:
-            data["parent"] = self.handler.get_cache_parent_for_head(uuid, new_name)
-        merged = {**existing, **data}
-        merged["uuid"] = existing.get("uuid", uuid)
-        merged["created_at"] = existing.get("created_at")
-        merged["modified_at"] = datetime.now(timezone.utc).isoformat()
-        self.handler.write_dict(uuid, merged)
-        if new_name:
-            self.handler.update_cache(
-                uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
-            )
-        if self.descriptions and data.get("description"):
-            old_desc = existing.get("description")
-            if old_desc != data["description"]:
-                try:
-                    self.descriptions.delete_description(uuid)
-                except Exception:
-                    pass
-                self.descriptions.write_description(uuid, data["description"])
-        logger.info(f"Tool '{uuid_or_name}' updated")
-        return merged
+        update_tool_counter.inc()
+        try:
+            uuid = self._resolve_uuid(uuid_or_name)
+            existing = self.handler.read_dict(uuid)
+            old_name = existing.get("name")
+            old_parent = existing.get("parent")
+            new_name = data.get("name") or old_name
+            if new_name:
+                data["parent"] = self.handler.get_cache_parent_for_head(uuid, new_name)
+            merged = {**existing, **data}
+            merged["uuid"] = existing.get("uuid", uuid)
+            merged["created_at"] = existing.get("created_at")
+            merged["modified_at"] = datetime.now(timezone.utc).isoformat()
+            self.handler.write_dict(uuid, merged)
+            if new_name:
+                self.handler.update_cache(
+                    uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
+                )
+            if self.descriptions and data.get("description"):
+                old_desc = existing.get("description")
+                if old_desc != data["description"]:
+                    try:
+                        self.descriptions.delete_description(uuid)
+                    except Exception:
+                        pass
+                    self.descriptions.write_description(uuid, data["description"])
+            emit_content_updated("tool", uuid)
+            logger.info(f"Tool '{uuid_or_name}' updated")
+            return merged
+        except KeyError:
+            raise
+        except Exception as e:
+            logger.error(f"Error updating tool '{uuid_or_name}': {e}")
+            raise
 
     def delete(self, uuid_or_name: str) -> Dict[str, Any]:
         """Delete a tool and its associated files.
@@ -444,24 +556,34 @@ class ToolsService:
         Raises:
             KeyError: If tool not found.
         """
-        uuid = self._resolve_uuid(uuid_or_name)
+        delete_tool_counter.inc()
         try:
-            d = self.handler.read_dict(uuid)
-            name, parent = d.get("name"), d.get("parent")
-        except Exception:
-            name, parent = None, None
-        if uuid and name:
-            self.handler.update_cache(
-                uuid, new_name=None, old_name=name, old_parent=parent
-            )
-        self.handler.delete_object(uuid)
-        if self.descriptions:
+            uuid = self._resolve_uuid(uuid_or_name)
             try:
-                self.descriptions.delete_description(uuid)
-            except Exception as e:
-                logger.warning(f"Could not delete tool description for {uuid}: {e}")
-        logger.info(f"Tool '{uuid_or_name}' deleted")
-        return {"uuid": uuid}
+                d = self.handler.read_dict(uuid)
+                name, parent = d.get("name"), d.get("parent")
+            except Exception:
+                name, parent = None, None
+            if uuid and name:
+                self.handler.update_cache(
+                    uuid, new_name=None, old_name=name, old_parent=parent
+                )
+            self.handler.delete_object(uuid)
+            if self.descriptions:
+                try:
+                    self.descriptions.delete_description(uuid)
+                except Exception as e:
+                    logger.warning(
+                        f"Could not delete tool description for {uuid}: {e}"
+                    )
+            emit_content_deleted("tool", uuid)
+            logger.info(f"Tool '{uuid_or_name}' deleted")
+            return {"uuid": uuid}
+        except KeyError:
+            raise
+        except Exception as e:
+            logger.error(f"Error deleting tool '{uuid_or_name}': {e}")
+            raise
 
     def add_from_python(
         self,
@@ -502,6 +624,7 @@ class ToolsService:
         """
         from skillberry_store.utils.python_utils import extract_docstring
 
+        add_tool_from_python_counter.inc()
         try:
             func_name, docstring_obj = extract_docstring(file_bytes, selected_func)
         except Exception as e:

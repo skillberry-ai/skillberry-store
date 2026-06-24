@@ -2,71 +2,16 @@
 
 from __future__ import annotations
 
-import logging
-import time
 import traceback
 from typing import Optional, Annotated, Dict, Any, List
 from fastapi import FastAPI, HTTPException, File, UploadFile, Query, Request
 from fastapi.responses import PlainTextResponse
-from prometheus_client import Counter, Histogram
 
-from skillberry_store.plugins.events import (
-    emit_content_added,
-    emit_content_updated,
-    emit_content_deleted,
-)
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
 from skillberry_store.services.exceptions import ObjectAlreadyExistsError
 from skillberry_store.services.tools_service import ToolsService
-
-logger = logging.getLogger(__name__)
-
-
-# observability - metrics
-prom_prefix = "sts_fastapi_tools_"
-create_tool_counter = Counter(
-    f"{prom_prefix}create_tool_counter", "Count number of tool create operations"
-)
-list_tools_counter = Counter(
-    f"{prom_prefix}list_tools_counter", "Count number of tool list operations"
-)
-get_tool_counter = Counter(
-    f"{prom_prefix}get_tool_counter", "Count number of tool get operations"
-)
-get_tool_module_counter = Counter(
-    f"{prom_prefix}get_tool_module_counter",
-    "Count number of tool module get operations",
-)
-delete_tool_counter = Counter(
-    f"{prom_prefix}delete_tool_counter", "Count number of tool delete operations"
-)
-update_tool_counter = Counter(
-    f"{prom_prefix}update_tool_counter", "Count number of tool update operations"
-)
-execute_tool_counter = Counter(
-    f"{prom_prefix}execute_tool_counter",
-    "Count number of tool execute operations",
-    ["name"],
-)
-execute_successfully_tool_counter = Counter(
-    f"{prom_prefix}execute_successfully_tool_counter",
-    "Count number of tool executed successfully operations",
-    ["name"],
-)
-execute_successfully_tool_latency = Histogram(
-    f"{prom_prefix}execute_successfully_tool_latency",
-    "Histogram of execute tool successfully latencies",
-    ["name"],
-)
-search_tools_counter = Counter(
-    f"{prom_prefix}search_tools_counter", "Count number of tool search operations"
-)
-add_tool_from_python_counter = Counter(
-    f"{prom_prefix}add_tool_from_python_counter",
-    "Count number of tool add from Python operations",
-)
 
 
 def register_tools_api(
@@ -114,8 +59,6 @@ def register_tools_api(
         Raises:
             HTTPException: 409 if tool already exists, 500 for other errors.
         """
-        logger.info(f"Request to create tool: {tool.name}")
-        create_tool_counter.inc()
         try:
             file_content = await module.read()
             module_filename = module.filename if module.filename else f"{tool.name}.py"
@@ -124,7 +67,6 @@ def register_tools_api(
                 module_content=file_content,
                 module_filename=module_filename,
             )
-            emit_content_added("tool", result["uuid"])
             return {
                 "message": f"Tool '{result['name']}' created successfully.",
                 "name": result["name"],
@@ -134,7 +76,6 @@ def register_tools_api(
         except ValueError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
-            logger.error(f"Error creating tool '{tool.name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error creating tool: {str(e)}"
             )
@@ -154,16 +95,12 @@ def register_tools_api(
         Raises:
             HTTPException: 500 if listing fails.
         """
-        logger.info("Request to list tools")
-        list_tools_counter.inc()
         try:
             return service.list_all()
         except Exception as e:
-            error_traceback = traceback.format_exc()
-            logger.error(f"Error listing tools: {e}\n{error_traceback}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Error listing tools: {str(e)}\n{error_traceback}",
+                detail=f"Error listing tools: {str(e)}\n{traceback.format_exc()}",
             )
 
     @app.get(
@@ -184,14 +121,11 @@ def register_tools_api(
         Raises:
             HTTPException: 404 if tool not found, 500 for other errors.
         """
-        logger.info(f"Request to get tool: {uuid_or_name}")
-        get_tool_counter.inc()
         try:
             return service.get(uuid_or_name)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error retrieving tool '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving tool: {str(e)}"
             )
@@ -218,8 +152,6 @@ def register_tools_api(
         Raises:
             HTTPException: 404 if tool not found, 500 for other errors.
         """
-        logger.info(f"Request to get module file for tool: {uuid_or_name}")
-        get_tool_module_counter.inc()
         try:
             return PlainTextResponse(
                 content=service.get_module(uuid_or_name),
@@ -228,7 +160,6 @@ def register_tools_api(
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error retrieving module for '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving module file: {str(e)}"
             )
@@ -253,18 +184,14 @@ def register_tools_api(
         Raises:
             HTTPException: 404 if tool not found, 500 for other errors.
         """
-        logger.info(f"Request to delete tool: {uuid_or_name}")
-        delete_tool_counter.inc()
         try:
-            result = service.delete(uuid_or_name)
-            emit_content_deleted("tool", result["uuid"])
+            service.delete(uuid_or_name)
             return {
                 "message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error deleting tool '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting tool: {str(e)}"
             )
@@ -291,18 +218,14 @@ def register_tools_api(
         Raises:
             HTTPException: 404 if tool not found, 500 for other errors.
         """
-        logger.info(f"Request to update tool: {uuid_or_name}")
-        update_tool_counter.inc()
         try:
-            result = service.update(uuid_or_name, tool.to_dict())
-            emit_content_updated("tool", result["uuid"])
+            service.update(uuid_or_name, tool.to_dict())
             return {
                 "message": f"Tool with UUID or name '{uuid_or_name}' updated successfully."
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error updating tool '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating tool: {str(e)}"
             )
@@ -331,15 +254,6 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or execution fails (500).
         """
-        logger.info(
-            f"[execute_tool] Received execute tool: {uuid_or_name} with parameters: {parameters}"
-        )
-        try:
-            tool_dict = service.get(uuid_or_name)
-        except KeyError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-        tool_uuid = tool_dict["uuid"]
-        execute_tool_counter.labels(name=tool_uuid).inc()
         headers_dict = dict(request.headers.items())
         skillberry_context = unflatten_keys(headers_dict).get(
             SKILLBERRY_CONTEXT.lower()
@@ -349,9 +263,8 @@ def register_tools_api(
             if skillberry_context is not None
             else None
         )
-        start_time = time.time()
         try:
-            result = await service.execute(
+            return await service.execute(
                 uuid_or_name, parameters=parameters, env_id=env_id
             )
         except KeyError as e:
@@ -359,14 +272,9 @@ def register_tools_api(
         except RuntimeError as e:
             raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
-            logger.error(f"Error executing tool '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error executing tool: {str(e)}"
             )
-        duration = time.time() - start_time
-        execute_successfully_tool_counter.labels(name=tool_uuid).inc()
-        execute_successfully_tool_latency.labels(name=tool_uuid).observe(duration)
-        return result
 
     @app.get("/search/tools", tags=[tags], openapi_extra={"x-cli-name": "search-tools"})
     def search_tools(
@@ -390,8 +298,6 @@ def register_tools_api(
         Returns:
             list: A list of matched tool names and similarity scores.
         """
-        logger.info(f"Request to search tool descriptions for term: {search_term}")
-        search_tools_counter.inc()
         try:
             return service.search(
                 search_term=search_term,
@@ -403,7 +309,6 @@ def register_tools_api(
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
-            logger.error(f"Error searching tools: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error searching tools: {str(e)}"
             )
@@ -433,9 +338,6 @@ def register_tools_api(
             HTTPException: If file is not Python (400), tool already exists (409),
                           or any other error occurs (500).
         """
-        logger.info(f"Request to add tool from Python file: {tool.filename}")
-        add_tool_from_python_counter.inc()
-
         if not tool.filename or not tool.filename.endswith(".py"):
             raise HTTPException(
                 status_code=400,
@@ -444,7 +346,7 @@ def register_tools_api(
         tool_bytes = await tool.read()
 
         try:
-            result = service.add_from_python(
+            return service.add_from_python(
                 file_bytes=tool_bytes,
                 file_name=tool.filename,
                 selected_func=selected_func,
@@ -455,11 +357,4 @@ def register_tools_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            logger.error(f"Error adding tool: {e}")
             raise HTTPException(status_code=500, detail=f"Error adding tool: {str(e)}")
-
-        if result.get("action") == "updated":
-            emit_content_updated("tool", result["uuid"])
-        else:
-            emit_content_added("tool", result["uuid"])
-        return result

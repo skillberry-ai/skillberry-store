@@ -2,44 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Optional, Annotated, List, Any
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Header
 from fastapi.responses import Response
-from prometheus_client import Counter
-from skillberry_store.plugins.events import (
-    emit_content_added,
-    emit_content_updated,
-    emit_content_deleted,
-)
 
 from skillberry_store.tools.endpoint_auth import ReauthRequired
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
 from skillberry_store.services.skills_service import SkillsService
-
-logger = logging.getLogger(__name__)
-
-# observability - metrics
-prom_prefix = "sts_fastapi_skills_"
-create_skill_counter = Counter(
-    f"{prom_prefix}create_skill_counter", "Count number of skill create operations"
-)
-list_skills_counter = Counter(
-    f"{prom_prefix}list_skills_counter", "Count number of skill list operations"
-)
-get_skill_counter = Counter(
-    f"{prom_prefix}get_skill_counter", "Count number of skill get operations"
-)
-delete_skill_counter = Counter(
-    f"{prom_prefix}delete_skill_counter", "Count number of skill delete operations"
-)
-update_skill_counter = Counter(
-    f"{prom_prefix}update_skill_counter", "Count number of skill update operations"
-)
-search_skills_counter = Counter(
-    f"{prom_prefix}search_skills_counter", "Count number of skill search operations"
-)
 
 
 def _auth_exception_to_http(exc: ReauthRequired) -> HTTPException:
@@ -97,11 +67,8 @@ def register_skills_api(
         Raises:
             HTTPException: 409 if skill already exists, 500 for other errors.
         """
-        logger.info(f"Request to create skill: {skill.name}")
-        create_skill_counter.inc()
         try:
             result = service.create(skill.to_dict())
-            emit_content_added("skill", result["uuid"])
             return {
                 "message": f"Skill '{result['name']}' created successfully.",
                 "name": result["name"],
@@ -110,7 +77,6 @@ def register_skills_api(
         except ValueError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
-            logger.error(f"Error creating skill '{skill.name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error creating skill: {str(e)}"
             )
@@ -130,12 +96,9 @@ def register_skills_api(
         Raises:
             HTTPException: 500 if listing fails.
         """
-        logger.info("Request to list skills")
-        list_skills_counter.inc()
         try:
             return service.list_all()
         except Exception as e:
-            logger.error(f"Error listing skills: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error listing skills: {str(e)}"
             )
@@ -158,8 +121,6 @@ def register_skills_api(
         Raises:
             HTTPException: 404 if skill not found, 505 if referenced resources are invalid, 500 for other errors.
         """
-        logger.info(f"Request to get skill: {uuid_or_name}")
-        get_skill_counter.inc()
         try:
             return service.get(uuid_or_name)
         except KeyError as e:
@@ -167,7 +128,6 @@ def register_skills_api(
         except RuntimeError as e:
             raise HTTPException(status_code=505, detail=str(e))
         except Exception as e:
-            logger.error(f"Error retrieving skill '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving skill: {str(e)}"
             )
@@ -203,15 +163,12 @@ def register_skills_api(
         Raises:
             HTTPException: 404 if skill not found, 500 for other errors.
         """
-        logger.info(f"Request to delete skill: {uuid_or_name}")
-        delete_skill_counter.inc()
         try:
             cascade = service.delete(
                 uuid_or_name,
                 delete_tools=delete_tools,
                 delete_snippets=delete_snippets,
             )
-            emit_content_deleted("skill", cascade["uuid"])
             return {
                 "message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully.",
                 "deleted_tools": cascade.get("deleted_tools", []),
@@ -220,7 +177,6 @@ def register_skills_api(
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error deleting skill '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting skill: {str(e)}"
             )
@@ -246,18 +202,14 @@ def register_skills_api(
         Raises:
             HTTPException: 404 if skill not found, 500 for other errors.
         """
-        logger.info(f"Request to update skill: {uuid_or_name}")
-        update_skill_counter.inc()
         try:
-            result = service.update(uuid_or_name, skill.to_dict())
-            emit_content_updated("skill", result["uuid"])
+            service.update(uuid_or_name, skill.to_dict())
             return {
                 "message": f"Skill with UUID or name '{uuid_or_name}' updated successfully."
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error updating skill '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating skill: {str(e)}"
             )
@@ -286,8 +238,6 @@ def register_skills_api(
         Returns:
             list: A list of matched skill names and similarity scores.
         """
-        logger.info(f"Request to search skill descriptions for term: {search_term}")
-        search_skills_counter.inc()
         try:
             return service.search(
                 search_term=search_term,
@@ -299,7 +249,6 @@ def register_skills_api(
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
-            logger.error(f"Error searching skills: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error searching skills: {str(e)}"
             )
@@ -334,7 +283,6 @@ def register_skills_api(
         """
         from skillberry_store.services.skills_service import GithubApiError
 
-        logger.info(f"Request to detect Anthropic skills from {source_type}")
         try:
             skill_paths = service.detect_anthropic_skills(
                 source_type=source_type,
@@ -355,7 +303,6 @@ def register_skills_api(
         except GithubApiError as e:
             raise HTTPException(status_code=e.status_code, detail=e.message)
         except Exception as e:
-            logger.error(f"Error detecting Anthropic skills: {e}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Error detecting skills: {str(e)}",
@@ -393,7 +340,6 @@ def register_skills_api(
         Raises:
             HTTPException: If import fails
         """
-        logger.info(f"Request to import Anthropic skill from {source_type}")
         # Convert the per-source-type input into a single ``source_data`` value
         # at the API boundary; the service validates ``source_type`` and the
         # presence of ``source_data``.
@@ -423,21 +369,16 @@ def register_skills_api(
         except ReauthRequired as e:
             raise _auth_exception_to_http(e)
         except Exception as e:
-            logger.error(f"Error importing Anthropic skill: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error importing Anthropic skill: {str(e)}"
             )
 
-        skill_uuid = result.get("skill_uuid")
-        if skill_uuid:
-            emit_content_added("skill", skill_uuid)
         skill_name = result.get("skill_name")
-        logger.info(f"Successfully imported Anthropic skill: {skill_name}")
         return {
             "success": True,
             "message": f"Successfully imported Anthropic skill '{skill_name}' (created)",
             "skill_name": skill_name,
-            "skill_uuid": skill_uuid,
+            "skill_uuid": result.get("skill_uuid"),
             "action": "created",
             "tools_created": result.get("tools_created", 0),
             "snippets_created": result.get("snippets_created", 0),
@@ -461,21 +402,14 @@ def register_skills_api(
         Raises:
             HTTPException: If skill not found or export fails
         """
-        logger.info(f"Request to export skill to Anthropic format: {uuid_or_name}")
         try:
             zip_content = service.export_anthropic(uuid_or_name)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(
-                f"Error exporting skill '{uuid_or_name}' to Anthropic format: {e}"
-            )
             raise HTTPException(
                 status_code=500, detail=f"Error exporting skill: {str(e)}"
             )
-        logger.info(
-            f"Successfully exported skill '{uuid_or_name}' to Anthropic format"
-        )
         return Response(
             content=zip_content,
             media_type="application/zip",
