@@ -110,6 +110,11 @@ def register_vmcp_api(
         Raises:
             HTTPException: 409 if server already exists or port conflict, 500 for other errors.
         """
+        from skillberry_store.services.exceptions import (
+            ObjectAlreadyExistsError,
+            PortConflictError,
+        )
+
         logger.info(f"Request to create vmcp server: {vmcp.name}")
         create_vmcp_counter.inc()
         try:
@@ -120,19 +125,12 @@ def register_vmcp_api(
                 "uuid": result["uuid"],
                 "port": result["port"],
             }
+        except ObjectAlreadyExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except PortConflictError as e:
+            raise HTTPException(status_code=409, detail=f"Port conflict: {e}")
         except ValueError as e:
-            error_msg = str(e)
-            if "already exists" in error_msg:
-                raise HTTPException(status_code=409, detail=error_msg)
-            if "port" in error_msg.lower() and (
-                "not available" in error_msg.lower()
-                or "already in use" in error_msg.lower()
-                or "in use" in error_msg.lower()
-            ):
-                raise HTTPException(
-                    status_code=409, detail=f"Port conflict: {error_msg}"
-                )
-            raise HTTPException(status_code=500, detail=error_msg)
+            raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
             logger.error(f"Error creating vmcp server '{vmcp.name}': {e}")
             raise HTTPException(
@@ -159,17 +157,7 @@ def register_vmcp_api(
         logger.info("Request to list vmcp servers")
         list_vmcp_counter.inc()
         try:
-            result = service.list_all()
-            if skill_uuid:
-                servers = result["virtual_mcp_servers"]
-                result = {
-                    "virtual_mcp_servers": {
-                        k: v
-                        for k, v in servers.items()
-                        if v.get("skill_uuid") == skill_uuid
-                    }
-                }
-            return result
+            return service.list_all(skill_uuid=skill_uuid)
         except Exception as e:
             logger.error(f"Error listing vmcp servers: {e}")
             raise HTTPException(

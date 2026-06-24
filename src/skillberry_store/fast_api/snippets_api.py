@@ -190,10 +190,8 @@ def register_snippets_api(
         logger.info(f"Request to delete snippet: {uuid_or_name}")
         delete_snippet_counter.inc()
         try:
-            snippet = service.get(uuid_or_name)
-            snippet_uuid = snippet["uuid"]
-            service.delete(uuid_or_name)
-            emit_content_deleted("snippet", snippet_uuid)
+            result = service.delete(uuid_or_name)
+            emit_content_deleted("snippet", result["uuid"])
             return {
                 "message": f"Snippet with UUID or name '{uuid_or_name}' deleted successfully."
             }

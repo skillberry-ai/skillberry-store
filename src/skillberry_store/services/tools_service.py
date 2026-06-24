@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from skillberry_store.modules.object_handler import ObjectHandler
 from skillberry_store.modules.file_executor import detect_tool_dependencies
+from skillberry_store.services.exceptions import ObjectAlreadyExistsError
 from skillberry_store.utils.utils import generate_or_validate_uuid
 from skillberry_store.tools.configure import is_auto_detect_dependencies_enabled
 
@@ -182,11 +183,13 @@ class ToolsService:
             Dict[str, Any]: The created tool data with UUID and timestamps.
 
         Raises:
-            ValueError: If tool with the same UUID already exists.
+            ObjectAlreadyExistsError: If tool with the same UUID already exists.
         """
         data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
         if self.handler.object_exists(data["uuid"]):
-            raise ValueError(f"Tool with UUID '{data['uuid']}' already exists")
+            raise ObjectAlreadyExistsError(
+                f"Tool with UUID '{data['uuid']}' already exists"
+            )
         now = datetime.now(timezone.utc).isoformat()
         data.setdefault("created_at", now)
         data["modified_at"] = now
@@ -262,19 +265,27 @@ class ToolsService:
 
     def get_module(self, uuid_or_name: str) -> str:
         """Get the module file content for a tool.
-        
+
+        For code-packaged tools, returns the module's source file content.
+        For MCP-packaged tools, returns a stub generated from the cached
+        manifest (no MCP round-trip required).
+
         Args:
             uuid_or_name: Tool UUID or name.
-            
+
         Returns:
-            str: Module file content as string.
-            
+            str: Module content (source code for code tools, MCP stub for MCP tools).
+
         Raises:
-            KeyError: If tool not found or has no module file.
+            KeyError: If tool not found, or if a code tool has no module file.
             RuntimeError: If module content type is invalid.
         """
+        from skillberry_store.fast_api.server_utils import mcp_content_from_manifest
+
         uuid = self._resolve_uuid(uuid_or_name)
         tool = self.handler.read_dict(uuid)
+        if tool.get("packaging_format") == "mcp":
+            return mcp_content_from_manifest(tool)
         module_name = tool.get("module_name")
         if not module_name:
             raise KeyError(f"Tool '{uuid_or_name}' has no module file")
@@ -419,14 +430,17 @@ class ToolsService:
         logger.info(f"Tool '{uuid_or_name}' updated")
         return merged
 
-    def delete(self, uuid_or_name: str) -> None:
+    def delete(self, uuid_or_name: str) -> Dict[str, Any]:
         """Delete a tool and its associated files.
-        
+
         Removes the tool metadata, module files, cache entries, and description indexes.
-        
+
         Args:
             uuid_or_name: Tool UUID or name to delete.
-            
+
+        Returns:
+            Dict[str, Any]: ``{"uuid": <deleted-tool-uuid>}``.
+
         Raises:
             KeyError: If tool not found.
         """
@@ -447,6 +461,7 @@ class ToolsService:
             except Exception as e:
                 logger.warning(f"Could not delete tool description for {uuid}: {e}")
         logger.info(f"Tool '{uuid_or_name}' deleted")
+        return {"uuid": uuid}
 
     def add_from_python(
         self,

@@ -206,14 +206,12 @@ def register_skills_api(
         logger.info(f"Request to delete skill: {uuid_or_name}")
         delete_skill_counter.inc()
         try:
-            skill = service.get(uuid_or_name)
-            skill_uuid = skill["uuid"]
             cascade = service.delete(
                 uuid_or_name,
                 delete_tools=delete_tools,
                 delete_snippets=delete_snippets,
             )
-            emit_content_deleted("skill", skill_uuid)
+            emit_content_deleted("skill", cascade["uuid"])
             return {
                 "message": f"Skill with UUID or name '{uuid_or_name}' deleted successfully.",
                 "deleted_tools": cascade.get("deleted_tools", []),
@@ -396,33 +394,18 @@ def register_skills_api(
             HTTPException: If import fails
         """
         logger.info(f"Request to import Anthropic skill from {source_type}")
-        # Validate inputs and convert UploadFile to bytes at the API boundary.
-        if source_type == "url":
-            if not github_url:
-                raise HTTPException(
-                    status_code=400,
-                    detail="github_url is required for source_type='url'",
-                )
-            source_data: Any = github_url
-        elif source_type == "zip":
-            if not zip_file:
-                raise HTTPException(
-                    status_code=400,
-                    detail="zip_file is required for source_type='zip'",
-                )
-            source_data = await zip_file.read()
+        # Convert the per-source-type input into a single ``source_data`` value
+        # at the API boundary; the service validates ``source_type`` and the
+        # presence of ``source_data``.
+        source_data: Any
+        if source_type == "zip":
+            source_data = await zip_file.read() if zip_file else None
+        elif source_type == "url":
+            source_data = github_url
         elif source_type == "folder":
-            if not folder_path:
-                raise HTTPException(
-                    status_code=400,
-                    detail="folder_path is required for source_type='folder'",
-                )
             source_data = folder_path
         else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid source_type: {source_type}. Must be 'url', 'zip', or 'folder'",
-            )
+            source_data = None
 
         try:
             result = service.import_anthropic(
@@ -435,6 +418,8 @@ def register_skills_api(
                 anonymous=anonymous,
                 github_url=github_url,
             )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except ReauthRequired as e:
             raise _auth_exception_to_http(e)
         except Exception as e:

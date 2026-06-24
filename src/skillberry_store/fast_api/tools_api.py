@@ -18,6 +18,7 @@ from skillberry_store.plugins.events import (
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
+from skillberry_store.services.exceptions import ObjectAlreadyExistsError
 from skillberry_store.services.tools_service import ToolsService
 
 logger = logging.getLogger(__name__)
@@ -205,7 +206,7 @@ def register_tools_api(
         """Get the module file content for a specific tool.
 
         Retrieves the Python source code or MCP content for a tool. For MCP-packaged
-        tools, returns the MCP manifest content. For code-packaged tools, returns
+        tools, returns the MCP manifest stub. For code-packaged tools, returns
         the Python module source.
 
         Args:
@@ -220,18 +221,12 @@ def register_tools_api(
         logger.info(f"Request to get module file for tool: {uuid_or_name}")
         get_tool_module_counter.inc()
         try:
-            tool_dict = service.get(uuid_or_name)
-            if tool_dict.get("packaging_format") == "mcp":
-                return PlainTextResponse(
-                    content=mcp_content_from_manifest(tool_dict),
-                    media_type="text/plain",
-                )
-            content = service.get_module(uuid_or_name)
-            return PlainTextResponse(content=content, media_type="text/plain")
+            return PlainTextResponse(
+                content=service.get_module(uuid_or_name),
+                media_type="text/plain",
+            )
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
-        except HTTPException:
-            raise
         except Exception as e:
             logger.error(f"Error retrieving module for '{uuid_or_name}': {e}")
             raise HTTPException(
@@ -261,10 +256,8 @@ def register_tools_api(
         logger.info(f"Request to delete tool: {uuid_or_name}")
         delete_tool_counter.inc()
         try:
-            tool = service.get(uuid_or_name)
-            tool_uuid = tool["uuid"]
-            service.delete(uuid_or_name)
-            emit_content_deleted("tool", tool_uuid)
+            result = service.delete(uuid_or_name)
+            emit_content_deleted("tool", result["uuid"])
             return {
                 "message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."
             }
@@ -457,12 +450,10 @@ def register_tools_api(
                 selected_func=selected_func,
                 update_existing=update,
             )
+        except ObjectAlreadyExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except ValueError as e:
-            # ValueError from extract_docstring/missing description -> 400.
-            # ValueError from ToolsService.create on UUID conflict -> 409.
-            msg = str(e)
-            status = 409 if "already exists" in msg else 400
-            raise HTTPException(status_code=status, detail=msg)
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.error(f"Error adding tool: {e}")
             raise HTTPException(status_code=500, detail=f"Error adding tool: {str(e)}")

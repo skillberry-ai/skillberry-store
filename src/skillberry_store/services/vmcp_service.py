@@ -102,23 +102,34 @@ class VmcpService:
 
     def create(self, data: Dict[str, Any], env_id: str = "") -> Dict[str, Any]:
         """Create a new virtual MCP server and start it.
-        
+
         Creates a VMCP server entry, starts the runtime server process, and updates
         caches and indexes.
-        
+
         Args:
             data: VMCP server metadata dictionary (name, skill_uuid, port, etc.).
             env_id: Optional environment ID for server isolation.
-            
+
         Returns:
             Dict[str, Any]: The created VMCP server data with UUID, timestamps, and assigned port.
-            
+
         Raises:
-            ValueError: If VMCP server with the same UUID already exists.
+            ObjectAlreadyExistsError: If VMCP server with the same UUID already
+                exists.
+            PortConflictError: If the runtime manager rejects the port as
+                unavailable / already in use.
+            ValueError: For other server-creation failures.
         """
+        from skillberry_store.services.exceptions import (
+            ObjectAlreadyExistsError,
+            PortConflictError,
+        )
+
         data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
         if self.handler.object_exists(data["uuid"]):
-            raise ValueError(f"VMCP server with UUID '{data['uuid']}' already exists")
+            raise ObjectAlreadyExistsError(
+                f"VMCP server with UUID '{data['uuid']}' already exists"
+            )
         now = datetime.now(timezone.utc).isoformat()
         data.setdefault("created_at", now)
         data["modified_at"] = now
@@ -127,15 +138,25 @@ class VmcpService:
                 data["uuid"], data["name"]
             )
         tool_uuids, snippet_uuids = self._resolve_skill_uuids(data.get("skill_uuid"))
-        server = self.server_manager.add_server(
-            name=data.get("name") or "",
-            uuid=data["uuid"],
-            description=data.get("description") or "",
-            port=data.get("port"),
-            tools=tool_uuids,
-            snippets=snippet_uuids,
-            env_id=env_id,
-        )
+        try:
+            server = self.server_manager.add_server(
+                name=data.get("name") or "",
+                uuid=data["uuid"],
+                description=data.get("description") or "",
+                port=data.get("port"),
+                tools=tool_uuids,
+                snippets=snippet_uuids,
+                env_id=env_id,
+            )
+        except ValueError as e:
+            msg = str(e).lower()
+            if "port" in msg and (
+                "not available" in msg
+                or "in use" in msg
+                or "already in use" in msg
+            ):
+                raise PortConflictError(str(e))
+            raise
         data["port"] = server.port
         self.handler.write_dict(data["uuid"], data)
         if data.get("name"):
@@ -190,14 +211,20 @@ class VmcpService:
             d["runtime"] = None
         return d
 
-    def list_all(self) -> Dict[str, Any]:
+    def list_all(self, skill_uuid: Optional[str] = None) -> Dict[str, Any]:
         """List all VMCP servers with runtime status.
+
+        Args:
+            skill_uuid: When provided, restrict the result to servers whose
+                ``skill_uuid`` matches this value.
 
         Returns:
             Dict[str, Any]: Dictionary with 'virtual_mcp_servers' key containing server info
                            indexed by UUID, including runtime status.
         """
         items = self.handler.list_all_dicts()
+        if skill_uuid:
+            items = [i for i in items if i.get("skill_uuid") == skill_uuid]
         servers = []
         for item in items:
             try:

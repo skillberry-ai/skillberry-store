@@ -70,6 +70,11 @@ def register_vnfs_api(
         Raises:
             HTTPException: 409 if server already exists or port conflict, 500 for other errors.
         """
+        from skillberry_store.services.exceptions import (
+            ObjectAlreadyExistsError,
+            PortConflictError,
+        )
+
         logger.info(f"Request to create vnfs server: {vnfs.name}")
         create_vnfs_counter.inc()
         try:
@@ -80,11 +85,12 @@ def register_vnfs_api(
                 "uuid": result["uuid"],
                 "port": result["port"],
             }
+        except ObjectAlreadyExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except PortConflictError as e:
+            raise HTTPException(status_code=409, detail=f"Port conflict: {e}")
         except ValueError as e:
-            status = (
-                409 if "already exists" in str(e) or "not available" in str(e) else 500
-            )
-            raise HTTPException(status_code=status, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e))
         except Exception as exc:
             logger.error(f"Error creating vnfs server '{vnfs.name}': {exc}")
             raise HTTPException(
@@ -111,17 +117,7 @@ def register_vnfs_api(
         logger.info("Request to list vnfs servers")
         list_vnfs_counter.inc()
         try:
-            result = service.list_all()
-            if skill_uuid:
-                servers = result["virtual_nfs_servers"]
-                result = {
-                    "virtual_nfs_servers": {
-                        k: v
-                        for k, v in servers.items()
-                        if v.get("skill_uuid") == skill_uuid
-                    }
-                }
-            return result
+            return service.list_all(skill_uuid=skill_uuid)
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")
             raise HTTPException(

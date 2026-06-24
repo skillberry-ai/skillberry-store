@@ -87,22 +87,32 @@ class VnfsService:
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new virtual NFS server and start it.
-        
+
         Creates a vNFS server entry, starts the runtime server process, and updates
         caches and indexes.
-        
+
         Args:
             data: vNFS server metadata dictionary (name, skill_uuid, port, protocol, etc.).
-            
+
         Returns:
             Dict[str, Any]: The created vNFS server data with UUID, timestamps, and assigned port.
-            
+
         Raises:
-            ValueError: If vNFS server with the same UUID already exists.
+            ObjectAlreadyExistsError: If vNFS server with the same UUID already exists.
+            PortConflictError: If the runtime manager rejects the port as
+                unavailable / already in use.
+            ValueError: For other server-creation failures.
         """
+        from skillberry_store.services.exceptions import (
+            ObjectAlreadyExistsError,
+            PortConflictError,
+        )
+
         data["uuid"] = generate_or_validate_uuid(data.get("uuid"))
         if self.handler.object_exists(data["uuid"]):
-            raise ValueError(f"vNFS server with UUID '{data['uuid']}' already exists")
+            raise ObjectAlreadyExistsError(
+                f"vNFS server with UUID '{data['uuid']}' already exists"
+            )
         now = datetime.now(timezone.utc).isoformat()
         data.setdefault("created_at", now)
         data["modified_at"] = now
@@ -110,7 +120,17 @@ class VnfsService:
             data["parent"] = self.handler.get_cache_parent_for_head(
                 data["uuid"], data["name"]
             )
-        server = self.server_manager.add_server(_to_ns(data))
+        try:
+            server = self.server_manager.add_server(_to_ns(data))
+        except ValueError as e:
+            msg = str(e).lower()
+            if "port" in msg and (
+                "not available" in msg
+                or "in use" in msg
+                or "already in use" in msg
+            ):
+                raise PortConflictError(str(e))
+            raise
         data["port"] = server.port
         self.handler.write_dict(data["uuid"], data)
         if data.get("name"):
@@ -165,14 +185,20 @@ class VnfsService:
             d["export_path"] = None
         return d
 
-    def list_all(self) -> Dict[str, Any]:
+    def list_all(self, skill_uuid: Optional[str] = None) -> Dict[str, Any]:
         """List all vNFS servers with runtime status.
-        
+
+        Args:
+            skill_uuid: When provided, restrict the result to servers whose
+                ``skill_uuid`` matches this value.
+
         Returns:
             Dict[str, Any]: Dictionary with 'virtual_nfs_servers' key containing server info
                            indexed by UUID, including runtime status and export paths.
         """
         items = self.handler.list_all_dicts()
+        if skill_uuid:
+            items = [i for i in items if i.get("skill_uuid") == skill_uuid]
         servers = []
         for item in items:
             try:

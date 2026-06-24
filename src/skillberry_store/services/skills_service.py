@@ -559,6 +559,9 @@ class SkillsService:
                 "snippets_created", "ignored_files"}``.
 
         Raises:
+            ValueError: If ``source_type`` is not one of ``"url"``, ``"zip"``,
+                or ``"folder"``, or if ``source_data`` is missing for the
+                given ``source_type``.
             ReauthRequired: If interactive re-authentication is required for
                 the import source's endpoint.
         """
@@ -567,6 +570,20 @@ class SkillsService:
             import_from_anthropic_skill,
             parse_github_origin,
         )
+
+        if source_type not in ("url", "zip", "folder"):
+            raise ValueError(
+                f"Invalid source_type: {source_type}. Must be 'url', 'zip', or 'folder'"
+            )
+        if not source_data:
+            required_field = {
+                "url": "github_url",
+                "zip": "zip_file",
+                "folder": "folder_path",
+            }[source_type]
+            raise ValueError(
+                f"{required_field} is required for source_type='{source_type}'"
+            )
 
         tags = tags or []
         tools_service = get_service("tool")
@@ -694,7 +711,7 @@ class SkillsService:
         uuid_or_name: str,
         delete_tools: bool = False,
         delete_snippets: bool = False,
-    ) -> Dict[str, List[str]]:
+    ) -> Dict[str, Any]:
         """Delete a skill, optionally cascading to its unshared tools and snippets.
 
         Removes the skill metadata, cache entries, and description indexes. When
@@ -711,10 +728,9 @@ class SkillsService:
                 referenced by any other skill.
 
         Returns:
-            Dict[str, List[str]]: ``{"deleted_tools": [...], "deleted_snippets": [...]}``
-                — UUIDs of cascade-deleted tools and snippets. Both lists are
-                empty when no cascade is requested or no unshared item is
-                found.
+            Dict[str, Any]: ``{"uuid": <deleted-skill-uuid>, "deleted_tools": [...],
+                "deleted_snippets": [...]}``. The two lists are empty when no
+                cascade is requested or no unshared item is found.
 
         Raises:
             KeyError: If skill not found.
@@ -773,4 +789,8 @@ class SkillsService:
             except Exception as e:
                 logger.warning(f"Could not delete skill description for {uuid}: {e}")
         logger.info(f"Skill '{uuid_or_name}' deleted")
-        return {"deleted_tools": deleted_tools, "deleted_snippets": deleted_snippets}
+        return {
+            "uuid": uuid,
+            "deleted_tools": deleted_tools,
+            "deleted_snippets": deleted_snippets,
+        }

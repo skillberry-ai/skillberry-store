@@ -250,14 +250,17 @@ class SnippetsService:
         logger.info(f"Snippet '{uuid_or_name}' updated")
         return merged
 
-    def delete(self, uuid_or_name: str) -> None:
+    def delete(self, uuid_or_name: str) -> Dict[str, Any]:
         """Delete a snippet.
-        
+
         Removes the snippet metadata, cache entries, and description indexes.
-        
+
         Args:
             uuid_or_name: Snippet UUID or name to delete.
-            
+
+        Returns:
+            Dict[str, Any]: ``{"uuid": <deleted-snippet-uuid>}``.
+
         Raises:
             KeyError: If snippet not found.
         """
@@ -278,3 +281,4 @@ class SnippetsService:
             except Exception as e:
                 logger.warning(f"Could not delete snippet description for {uuid}: {e}")
         logger.info(f"Snippet '{uuid_or_name}' deleted")
+        return {"uuid": uuid}
