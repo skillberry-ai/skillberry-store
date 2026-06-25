@@ -115,16 +115,29 @@ def emit_event(event_name: str, **kwargs):
     Returns immediately. Handlers run concurrently on the running event loop.
     If a handler raises, the error is logged and other handlers still run.
 
+    When no event loop is running (e.g., a synchronous caller from a unit test
+    or CLI), handlers are skipped silently — they are fire-and-forget by design.
+
     Args:
         event_name: Name of the event (e.g., "content_added:tool")
         **kwargs: Arguments to pass to event handlers
     """
     handlers = _event_handlers.get(event_name, [])
+    if not handlers:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.debug(
+            f"emit_event({event_name!r}): no running event loop, "
+            f"skipping {len(handlers)} handler(s)"
+        )
+        return
     for handler in handlers:
         owner = _handler_owners.get(handler)
         if owner is not None and _enabled_resolver is not None and not _enabled_resolver(owner):
             continue
-        task = asyncio.create_task(_run_handler(handler, **kwargs))
+        task = loop.create_task(_run_handler(handler, **kwargs))
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
 
