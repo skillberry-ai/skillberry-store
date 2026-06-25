@@ -28,6 +28,7 @@ class ShenanigaNFSBackend(FilesystemServerBackend):
     def __init__(self):
         self._thread = None
         self._loop = None
+        self._task = None
 
     def start(self, export_path: str, port: int) -> None:
         import asyncio
@@ -93,14 +94,22 @@ class ShenanigaNFSBackend(FilesystemServerBackend):
         transport_server.register_prog(NFSV3Service(fs_manager))
 
         self._loop = asyncio.new_event_loop()
+        self._task = None
 
         async def _serve():
             server = await transport_server.start()
             async with server:
                 await server.serve_forever()
 
+        async def _main():
+            self._task = asyncio.current_task()
+            await _serve()
+
         def _run():
-            self._loop.run_until_complete(_serve())
+            try:
+                self._loop.run_until_complete(_main())
+            except asyncio.CancelledError:
+                pass  # clean shutdown
 
         self._thread = threading.Thread(target=_run, daemon=True)
         self._thread.start()
@@ -109,8 +118,8 @@ class ShenanigaNFSBackend(FilesystemServerBackend):
         )
 
     def stop(self) -> None:
-        if self._loop and self._loop.is_running():
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._loop and self._loop.is_running() and self._task:
+            self._loop.call_soon_threadsafe(self._task.cancel)
         logger.info("ShenanigaNFS backend stopped")
 
 
