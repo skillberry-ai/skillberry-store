@@ -6,10 +6,15 @@ from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 def _app(servers):
     app = FastAPI()
     svc = MagicMock()
-    svc.list_all.return_value = {
-        "virtual_mcp_servers": {s["uuid"]: s for s in servers}
-    }
-    register_vmcp_api(app, sts_url="http://test", service=svc)
+
+    def _list_all(skill_uuid=None):
+        matches = servers if skill_uuid is None else [
+            s for s in servers if s.get("skill_uuid") == skill_uuid
+        ]
+        return {"virtual_mcp_servers": {s["uuid"]: s for s in matches}}
+
+    svc.list_all.side_effect = _list_all
+    register_vmcp_api(app, service=svc)
     return TestClient(app)
 
 SERVERS = [

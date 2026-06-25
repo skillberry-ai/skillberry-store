@@ -2,64 +2,19 @@
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING, Annotated, Optional
+from typing import Annotated, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from prometheus_client import Counter, Histogram
 
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.vmcp_schema import VmcpSchema
-from skillberry_store.fast_api.search_filters import apply_search_filters
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
 from skillberry_store.services.vmcp_service import VmcpService
-
-if TYPE_CHECKING:
-    from skillberry_store.modules.description import Description
-
-logger = logging.getLogger(__name__)
-
-prom_prefix = "sts_fastapi_vmcp_"
-create_vmcp_counter = Counter(
-    f"{prom_prefix}create_vmcp_counter", "Count number of vmcp create operations"
-)
-list_vmcp_counter = Counter(
-    f"{prom_prefix}list_vmcp_counter", "Count number of vmcp list operations"
-)
-get_vmcp_counter = Counter(
-    f"{prom_prefix}get_vmcp_counter", "Count number of vmcp get operations"
-)
-delete_vmcp_counter = Counter(
-    f"{prom_prefix}delete_vmcp_counter", "Count number of vmcp delete operations"
-)
-update_vmcp_counter = Counter(
-    f"{prom_prefix}update_vmcp_counter", "Count number of vmcp update operations"
-)
-search_vmcp_counter = Counter(
-    f"{prom_prefix}search_vmcp_counter", "Count number of vmcp search operations"
-)
-invoke_vmcp_tool_counter = Counter(
-    f"{prom_prefix}invoke_vmcp_tool_counter",
-    "Count number of vmcp tool invoke operations",
-    ["server_name", "tool_name"],
-)
-invoke_successfully_vmcp_tool_counter = Counter(
-    f"{prom_prefix}invoke_successfully_vmcp_tool_counter",
-    "Count number of vmcp tool invoked successfully operations",
-    ["server_name", "tool_name"],
-)
-invoke_successfully_vmcp_tool_latency = Histogram(
-    f"{prom_prefix}invoke_successfully_vmcp_tool_latency",
-    "Histogram of invoke vmcp tool successfully latencies",
-    ["server_name", "tool_name"],
-)
 
 
 def register_vmcp_api(
     app: FastAPI,
-    sts_url: str,
     tags: str = "vmcp_servers",
-    vmcp_descriptions: Optional[Description] = None,
     service: Optional[VmcpService] = None,
 ):
     """Register all Virtual MCP Server API endpoints with the FastAPI application.
@@ -69,24 +24,18 @@ def register_vmcp_api(
 
     Args:
         app: The FastAPI application instance to register routes with.
-        sts_url: The Skillberry Store URL for server communication.
         tags: OpenAPI tag for grouping these endpoints (default: "vmcp_servers").
-        vmcp_descriptions: Optional Description instance for semantic search functionality.
-        service: Optional VmcpService instance. If None, a new instance will be created.
+        service: Optional VmcpService instance. When ``None``, the singleton
+            from :func:`skillberry_store.services.registry.get_service` is used.
 
     Returns:
         None. Endpoints are registered directly on the app instance.
     """
     if service is None:
-        from skillberry_store.modules.object_handler import get_object_handler
-        from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
+        from skillberry_store.services.registry import get_service
 
-        service = VmcpService(
-            get_object_handler("vmcp"),
-            VirtualMcpServerManager(sts_url=sts_url, app=app),
-            get_object_handler("skill"),
-            vmcp_descriptions,
-        )
+        service = get_service("vmcp")
+    assert service is not None  # narrowed for type checker
     app.state.vmcp_server_manager = service.server_manager
 
     def _extract_env_id(request: Request) -> str:
@@ -122,8 +71,11 @@ def register_vmcp_api(
         Raises:
             HTTPException: 409 if server already exists or port conflict, 500 for other errors.
         """
-        logger.info(f"Request to create vmcp server: {vmcp.name}")
-        create_vmcp_counter.inc()
+        from skillberry_store.services.exceptions import (
+            ObjectAlreadyExistsError,
+            PortConflictError,
+        )
+
         try:
             result = service.create(vmcp.to_dict(), env_id=_extract_env_id(request))
             return {
@@ -132,21 +84,13 @@ def register_vmcp_api(
                 "uuid": result["uuid"],
                 "port": result["port"],
             }
+        except ObjectAlreadyExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except PortConflictError as e:
+            raise HTTPException(status_code=409, detail=f"Port conflict: {e}")
         except ValueError as e:
-            error_msg = str(e)
-            if "already exists" in error_msg:
-                raise HTTPException(status_code=409, detail=error_msg)
-            if "port" in error_msg.lower() and (
-                "not available" in error_msg.lower()
-                or "already in use" in error_msg.lower()
-                or "in use" in error_msg.lower()
-            ):
-                raise HTTPException(
-                    status_code=409, detail=f"Port conflict: {error_msg}"
-                )
-            raise HTTPException(status_code=500, detail=error_msg)
+            raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
-            logger.error(f"Error creating vmcp server '{vmcp.name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error creating vmcp server: {str(e)}"
             )
@@ -168,22 +112,9 @@ def register_vmcp_api(
         Raises:
             HTTPException: 500 if listing fails.
         """
-        logger.info("Request to list vmcp servers")
-        list_vmcp_counter.inc()
         try:
-            result = service.list_all()
-            if skill_uuid:
-                servers = result["virtual_mcp_servers"]
-                result = {
-                    "virtual_mcp_servers": {
-                        k: v
-                        for k, v in servers.items()
-                        if v.get("skill_uuid") == skill_uuid
-                    }
-                }
-            return result
+            return service.list_all(skill_uuid=skill_uuid)
         except Exception as e:
-            logger.error(f"Error listing vmcp servers: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error listing vmcp servers: {str(e)}"
             )
@@ -208,14 +139,11 @@ def register_vmcp_api(
         Raises:
             HTTPException: 404 if server not found, 500 for other errors.
         """
-        logger.info(f"Request to get vmcp server: {uuid_or_name}")
-        get_vmcp_counter.inc()
         try:
             return service.get(uuid_or_name)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error retrieving vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving vmcp server: {str(e)}"
             )
@@ -239,15 +167,12 @@ def register_vmcp_api(
         Raises:
             HTTPException: 404 if server not found, 500 for other errors.
         """
-        logger.info(f"Request to delete vmcp server: {uuid_or_name}")
-        delete_vmcp_counter.inc()
         try:
             service.delete(uuid_or_name)
             return {"message": f"VMCP server '{uuid_or_name}' deleted successfully."}
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error deleting vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting vmcp server: {str(e)}"
             )
@@ -276,8 +201,6 @@ def register_vmcp_api(
         Raises:
             HTTPException: 404 if server not found, 500 for other errors.
         """
-        logger.info(f"Request to update vmcp server: {uuid_or_name}")
-        update_vmcp_counter.inc()
         try:
             result = service.update(
                 uuid_or_name, vmcp.to_dict(), env_id=_extract_env_id(request)
@@ -289,7 +212,6 @@ def register_vmcp_api(
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error updating vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating vmcp server: {str(e)}"
             )
@@ -316,47 +238,21 @@ def register_vmcp_api(
         Raises:
             HTTPException: 404 if server or skill not found, 500 for other errors.
         """
-        logger.info(f"Request to start vmcp server: {uuid_or_name}")
         try:
-            vmcp_uuid = service._resolve_uuid(uuid_or_name)
-            vmcp_data = service.handler.read_dict(vmcp_uuid)
-            server_name = vmcp_data.get("name", "")
-            server_uuid = vmcp_data.get("uuid", "")
-            try:
-                existing = service.server_manager.get_server(server_name, server_uuid)
-                if existing:
-                    return {
-                        "message": f"VMCP server '{server_name}' is already running.",
-                        "port": existing.port,
-                    }
-            except Exception:
-                pass
-            env_id = _extract_env_id(request)
-            tool_uuids, snippet_uuids = service._resolve_skill_uuids(
-                vmcp_data.get("skill_uuid")
+            server, already_running = service.start(
+                uuid_or_name, env_id=_extract_env_id(request)
             )
-            server = service.server_manager.add_server(
-                name=server_name,
-                uuid=server_uuid,
-                description=vmcp_data.get("description", ""),
-                port=vmcp_data.get("port"),
-                tools=tool_uuids,
-                snippets=snippet_uuids,
-                env_id=env_id,
+            message = (
+                f"VMCP server '{server.name}' is already running."
+                if already_running
+                else f"VMCP server '{server.name}' started successfully."
             )
-            logger.info(f"VMCP server '{server_name}' started on port {server.port}")
-            return {
-                "message": f"VMCP server '{server_name}' started successfully.",
-                "port": server.port,
-            }
+            return {"message": message, "port": server.port}
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
-        except HTTPException:
-            raise
         except Exception as e:
-            logger.error(f"Error starting vmcp server '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error starting vmcp server: {str(e)}"
             )
@@ -391,48 +287,17 @@ def register_vmcp_api(
         Raises:
             HTTPException: 503 if search is not available, 500 for other errors.
         """
-        logger.info(f"Request to search vmcp servers for: {search_term}")
-        search_vmcp_counter.inc()
-        if not vmcp_descriptions:
-            raise HTTPException(
-                status_code=503, detail="VMCP server search is not available"
-            )
         try:
-            matched_entities = vmcp_descriptions.search_description(
-                search_term=search_term, k=max_number_of_results
-            )
-            filtered = [
-                m
-                for m in matched_entities
-                if float(m.get("similarity_score", 0)) <= similarity_threshold
-            ]
-            to_filter = []
-            for m in filtered:
-                vmcp_uuid = m.get("filename") or m.get("name")
-                if not vmcp_uuid:
-                    continue
-                try:
-                    d = service.handler.read_dict(vmcp_uuid)
-                    d["similarity_score"] = m.get("similarity_score", 0.0)
-                    to_filter.append(d)
-                except Exception as exc:
-                    logger.warning(f"Could not load vmcp '{vmcp_uuid}': {exc}")
-            result_items = apply_search_filters(
-                to_filter,
+            return service.search(
+                search_term=search_term,
+                max_number_of_results=max_number_of_results,
+                similarity_threshold=similarity_threshold,
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
             )
-            result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return [
-                {
-                    "filename": s.get("name", ""),
-                    "similarity_score": s.get("similarity_score", 0.0),
-                }
-                for s in result_items
-                if s.get("name")
-            ]
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
-            logger.error(f"Error searching vmcp servers: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error searching vmcp servers: {str(e)}"
             )

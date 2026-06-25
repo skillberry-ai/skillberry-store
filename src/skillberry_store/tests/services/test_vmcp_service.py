@@ -32,21 +32,20 @@ def _manager():
 
 
 def test_create_returns_dict_with_port():
-    skills_h = MagicMock()
-    svc = VmcpService(_handler(), _manager(), skills_handler=skills_h)
+    svc = VmcpService(_handler(), _manager())
     result = svc.create({"name": "vm1", "uuid": None}, env_id="")
     assert "uuid" in result
     assert result["port"] == 8100
 
 
 def test_create_raises_on_duplicate():
-    svc = VmcpService(_handler(exists=True), _manager(), skills_handler=MagicMock())
+    svc = VmcpService(_handler(exists=True), _manager())
     with pytest.raises(ValueError, match="already exists"):
         svc.create({"name": "vm1", "uuid": None}, env_id="")
 
 
 def test_list_includes_running_status():
-    svc = VmcpService(_handler(), _manager(), skills_handler=MagicMock())
+    svc = VmcpService(_handler(), _manager())
     result = svc.list_all()
     assert "virtual_mcp_servers" in result
 
@@ -54,7 +53,7 @@ def test_list_includes_running_status():
 def test_delete_stops_runtime_and_removes_persistent():
     h = _handler()
     mgr = _manager()
-    svc = VmcpService(h, mgr, skills_handler=MagicMock())
+    svc = VmcpService(h, mgr)
     svc.delete("vm1")
     mgr.remove_server.assert_called_once()
     h.delete_object.assert_called_once()

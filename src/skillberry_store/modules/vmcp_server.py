@@ -4,11 +4,32 @@ import socket
 import time
 
 import requests
+from prometheus_client import Counter, Histogram
 from pydantic import Field
 from typing import Annotated, Any, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 from skillberry_store.modules.object_handler import get_object_handler
+
+# observability - metrics for runtime tool invocation inside the VMCP server.
+# These belong here (not in the FastAPI layer) because they describe runtime
+# behaviour of the running VMCP server, not HTTP requests.
+_prom_prefix = "sts_vmcp_runtime_"
+invoke_vmcp_tool_counter = Counter(
+    f"{_prom_prefix}invoke_vmcp_tool_counter",
+    "Count number of vmcp tool invoke operations",
+    ["server_name", "tool_name"],
+)
+invoke_successfully_vmcp_tool_counter = Counter(
+    f"{_prom_prefix}invoke_successfully_vmcp_tool_counter",
+    "Count number of vmcp tool invoked successfully operations",
+    ["server_name", "tool_name"],
+)
+invoke_successfully_vmcp_tool_latency = Histogram(
+    f"{_prom_prefix}invoke_successfully_vmcp_tool_latency",
+    "Histogram of invoke vmcp tool successfully latencies",
+    ["server_name", "tool_name"],
+)
 
 
 def _patch_sse_starlette_for_multi_loop() -> None:
@@ -476,13 +497,6 @@ class VirtualMcpServer:
         Returns:
             result: The result of the tool invocation.
         """
-        # Import metrics here to avoid circular imports
-        from skillberry_store.fast_api.vmcp_api import (
-            invoke_vmcp_tool_counter,
-            invoke_successfully_vmcp_tool_counter,
-            invoke_successfully_vmcp_tool_latency,
-        )
-
         # Record invocation attempt
         invoke_vmcp_tool_counter.labels(
             server_name=self.name, tool_name=tool_name
@@ -494,13 +508,8 @@ class VirtualMcpServer:
             raise ValueError(f"Tool {tool_name} not found")
 
         try:
-            from skillberry_store.tools.configure import (
-                get_files_directory_path,
-                get_tools_directory,
-            )
-            from skillberry_store.modules.file_handler import FileHandler
             from skillberry_store.modules.file_executor import FileExecutor
-            from skillberry_store.fast_api.tools_api import find_tool_dependencies
+            from skillberry_store.services.registry import get_service
 
             # Use the manifest cached at server creation time so that a later overwrite of the
             # tool JSON file (e.g. by an MCP wrapper with the same name) cannot cause
@@ -526,13 +535,10 @@ class VirtualMcpServer:
             if not isinstance(module_content, str):
                 raise ValueError(f"Could not read module for tool '{tool_name}'")
 
-            # Load tool dependencies recursively using the shared function
+            # Load tool dependencies recursively via the shared service method.
             dependencies = tool_dict.get("dependencies", [])
-            tools_handler = FileHandler(get_tools_directory())
-            tool_dep_ids = find_tool_dependencies(
-                dependencies=dependencies,
-                tool_handler=self.tools_handler,
-                tool_uuid=tool_uuid,
+            tool_dep_ids = get_service("tool").find_dependencies(
+                dependencies, tool_uuid
             )
 
             dep_dicts = self.tools_handler.read_dicts(list(tool_dep_ids))
