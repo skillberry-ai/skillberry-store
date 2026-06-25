@@ -196,17 +196,18 @@ class VnfsService:
         get_vnfs_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            d = self._safe_read(uuid, uuid_or_name)
-            try:
-                runtime = self.server_manager.get_server(
-                    d.get("name", ""), d.get("uuid", "")
-                )
-                d["running"] = runtime is not None and runtime.running
-                d["export_path"] = str(runtime.export_path) if runtime else None
-            except Exception:
-                d["running"] = False
-                d["export_path"] = None
-            return d
+            with self.handler.read_lock(uuid):
+                d = self._safe_read(uuid, uuid_or_name)
+                try:
+                    runtime = self.server_manager.get_server(
+                        d.get("name", ""), d.get("uuid", "")
+                    )
+                    d["running"] = runtime is not None and runtime.running
+                    d["export_path"] = str(runtime.export_path) if runtime else None
+                except Exception:
+                    d["running"] = False
+                    d["export_path"] = None
+                return d
         except KeyError:
             raise
         except Exception as exc:
@@ -365,37 +366,38 @@ class VnfsService:
         update_vnfs_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            existing = self.handler.read_dict(uuid)
-            old_name = existing.get("name")
-            old_parent = existing.get("parent")
-            server_uuid = existing.get("uuid")
-            data["modified_at"] = datetime.now(timezone.utc).isoformat()
-            if not data.get("uuid"):
-                data["uuid"] = server_uuid
-            new_name = data.get("name")
-            if new_name:
-                data["parent"] = self.handler.get_cache_parent_for_head(
-                    data["uuid"] or "", new_name
-                )
-            try:
-                self.server_manager.remove_server(old_name or "", server_uuid or "")
-            except Exception as e:
-                logger.warning(f"Could not stop old runtime server: {e}")
-            server = self.server_manager.add_server(_to_ns(data))
-            data["port"] = server.port
-            self.handler.write_dict(data["uuid"] or "", data)
-            if new_name and old_name:
-                self.handler.update_cache(
-                    data["uuid"] or "",
-                    new_name=new_name,
-                    old_name=old_name,
-                    old_parent=old_parent,
-                )
-            uuid_value = data.get("uuid")
-            if self.descriptions and data.get("description") and uuid_value:
-                self.descriptions.write_description(uuid_value, data["description"])
-            logger.info(f"vNFS server '{new_name}' updated on port {server.port}")
-            return data
+            with self.handler.write_lock(uuid):
+                existing = self.handler.read_dict(uuid)
+                old_name = existing.get("name")
+                old_parent = existing.get("parent")
+                server_uuid = existing.get("uuid")
+                data["modified_at"] = datetime.now(timezone.utc).isoformat()
+                if not data.get("uuid"):
+                    data["uuid"] = server_uuid
+                new_name = data.get("name")
+                if new_name:
+                    data["parent"] = self.handler.get_cache_parent_for_head(
+                        data["uuid"] or "", new_name
+                    )
+                try:
+                    self.server_manager.remove_server(old_name or "", server_uuid or "")
+                except Exception as e:
+                    logger.warning(f"Could not stop old runtime server: {e}")
+                server = self.server_manager.add_server(_to_ns(data))
+                data["port"] = server.port
+                self.handler.write_dict(data["uuid"] or "", data)
+                if new_name and old_name:
+                    self.handler.update_cache(
+                        data["uuid"] or "",
+                        new_name=new_name,
+                        old_name=old_name,
+                        old_parent=old_parent,
+                    )
+                uuid_value = data.get("uuid")
+                if self.descriptions and data.get("description") and uuid_value:
+                    self.descriptions.write_description(uuid_value, data["description"])
+                logger.info(f"vNFS server '{new_name}' updated on port {server.port}")
+                return data
         except KeyError:
             raise
         except Exception as exc:
@@ -425,18 +427,19 @@ class VnfsService:
         start_vnfs_counter.inc()
         try:
             vnfs_uuid = self._resolve_uuid(uuid_or_name)
-            vnfs_data = self.handler.read_dict(vnfs_uuid)
-            server_name = vnfs_data.get("name", "")
-            server_uuid = vnfs_data.get("uuid", "")
-            try:
-                existing = self.server_manager.get_server(server_name, server_uuid)
-                if existing and existing.running:
-                    return existing, True
-            except Exception:
-                pass
-            server = self.server_manager.add_server(_to_ns(vnfs_data))
-            logger.info(f"vNFS server '{server_name}' started on port {server.port}")
-            return server, False
+            with self.handler.write_lock(vnfs_uuid):
+                vnfs_data = self.handler.read_dict(vnfs_uuid)
+                server_name = vnfs_data.get("name", "")
+                server_uuid = vnfs_data.get("uuid", "")
+                try:
+                    existing = self.server_manager.get_server(server_name, server_uuid)
+                    if existing and existing.running:
+                        return existing, True
+                except Exception:
+                    pass
+                server = self.server_manager.add_server(_to_ns(vnfs_data))
+                logger.info(f"vNFS server '{server_name}' started on port {server.port}")
+                return server, False
         except (KeyError, ValueError):
             raise
         except Exception as exc:
@@ -457,26 +460,27 @@ class VnfsService:
         delete_vnfs_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            d = self.handler.read_dict(uuid)
-            name = d.get("name")
-            parent = d.get("parent")
-            try:
-                self.server_manager.remove_server(name or "", uuid or "")
-            except Exception as e:
-                logger.warning(f"Could not stop runtime server: {e}")
-            if name and uuid:
-                self.handler.update_cache(
-                    uuid, new_name=None, old_name=name, old_parent=parent
-                )
-            self.handler.delete_object(uuid)
-            if self.descriptions:
+            with self.handler.write_lock(uuid):
+                d = self.handler.read_dict(uuid)
+                name = d.get("name")
+                parent = d.get("parent")
                 try:
-                    self.descriptions.delete_description(uuid)
+                    self.server_manager.remove_server(name or "", uuid or "")
                 except Exception as e:
-                    logger.warning(
-                        f"Could not delete vnfs description for {uuid}: {e}"
+                    logger.warning(f"Could not stop runtime server: {e}")
+                if name and uuid:
+                    self.handler.update_cache(
+                        uuid, new_name=None, old_name=name, old_parent=parent
                     )
-            logger.info(f"vNFS server '{uuid_or_name}' deleted")
+                self.handler.delete_object(uuid)
+                if self.descriptions:
+                    try:
+                        self.descriptions.delete_description(uuid)
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not delete vnfs description for {uuid}: {e}"
+                        )
+                logger.info(f"vNFS server '{uuid_or_name}' deleted")
         except KeyError:
             raise
         except Exception as exc:

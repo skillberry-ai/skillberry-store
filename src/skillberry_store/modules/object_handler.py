@@ -8,9 +8,12 @@ a type-specific dict file.
 import json
 import logging
 import os
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
+
+import fasteners
 
 from fastapi import HTTPException
 
@@ -140,9 +143,39 @@ class ObjectHandler:
         self.name_cache = LookupCache()
         self._initialize_name_cache()
 
+        # Per-UUID read/write lock registry
+        self._uuid_locks: Dict[str, fasteners.ReaderWriterLock] = {}
+        self._uuid_locks_mutex: threading.Lock = threading.Lock()
+        # Coarse handler-level lock for chain-repair walk
+        self._handler_lock: fasteners.ReaderWriterLock = fasteners.ReaderWriterLock()
+
         logger.info(
             f"Initialized ObjectHandler for {object_type} at {base_directory} (dict_cache={'enabled' if use_dict_cache else 'disabled'})"
         )
+
+    # ==================== Lock Registry Methods ====================
+
+    def _get_uuid_lock(self, uuid: str) -> fasteners.ReaderWriterLock:
+        """Return (or create) the ReaderWriterLock for the given UUID."""
+        # Fast path — no mutex needed for reads of an existing entry
+        lock = self._uuid_locks.get(uuid)
+        if lock is not None:
+            return lock
+        # Slow path — create under mutex (double-checked locking)
+        with self._uuid_locks_mutex:
+            lock = self._uuid_locks.get(uuid)
+            if lock is None:
+                lock = fasteners.ReaderWriterLock()
+                self._uuid_locks[uuid] = lock
+        return lock
+
+    def read_lock(self, uuid: str):
+        """Return a read-side context manager for the given UUID's RWLock."""
+        return self._get_uuid_lock(uuid).read_lock()
+
+    def write_lock(self, uuid: str):
+        """Return a write-side context manager for the given UUID's RWLock."""
+        return self._get_uuid_lock(uuid).write_lock()
 
     # ==================== Cache Management Methods ====================
 
@@ -348,38 +381,39 @@ class ObjectHandler:
         Raises:
             HTTPException: If unable to read an object in the chain (500).
         """
-        # Start from HEAD
-        head_uuid = self.name_cache.get_head(name)
-        if not head_uuid:
-            return
+        with self._handler_lock.write_lock():
+            # Start from HEAD
+            head_uuid = self.name_cache.get_head(name)
+            if not head_uuid:
+                return
 
-        # Walk the chain from HEAD
-        current_uuid = head_uuid
-        while current_uuid:
-            # Read current object - if this fails, it's a data integrity error
-            try:
-                current_object = self.read_dict(current_uuid)
-            except Exception as e:
-                error_msg = f"Data integrity error: Could not read {self.object_type} {current_uuid} while fixing parent chain for '{name}': {e}"
-                logger.error(error_msg)
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Internal error while updating {self.object_type} chain: {str(e)}",
-                )
+            # Walk the chain from HEAD
+            current_uuid = head_uuid
+            while current_uuid:
+                # Read current object - if this fails, it's a data integrity error
+                try:
+                    current_object = self.read_dict(current_uuid)
+                except Exception as e:
+                    error_msg = f"Data integrity error: Could not read {self.object_type} {current_uuid} while fixing parent chain for '{name}': {e}"
+                    logger.error(error_msg)
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Internal error while updating {self.object_type} chain: {str(e)}",
+                    )
 
-            # Check if this object points to the deleted object
-            current_parent = current_object.get("parent")
-            if current_parent == deleted_uuid:
-                # Found it! Update this object to point to deleted object's parent
-                current_object["parent"] = deleted_parent
-                self.write_dict(current_uuid, current_object)
-                logger.info(
-                    f"Fixed parent chain: {current_uuid} now points to {deleted_parent} (was {deleted_uuid})"
-                )
-                return  # Done, only one object can point to deleted object
+                # Check if this object points to the deleted object
+                current_parent = current_object.get("parent")
+                if current_parent == deleted_uuid:
+                    # Found it! Update this object to point to deleted object's parent
+                    current_object["parent"] = deleted_parent
+                    self.write_dict(current_uuid, current_object)
+                    logger.info(
+                        f"Fixed parent chain: {current_uuid} now points to {deleted_parent} (was {deleted_uuid})"
+                    )
+                    return  # Done, only one object can point to deleted object
 
-            # Move to next in chain
-            current_uuid = current_parent
+                # Move to next in chain
+                current_uuid = current_parent
 
     # ==================== Core ID Resolution Methods ====================
 

@@ -170,15 +170,22 @@ class ToolsService:
         from skillberry_store.fast_api.server_utils import mcp_content_from_manifest
         from skillberry_store.modules.file_executor import FileExecutor
 
-        tool_dict = self.get(uuid_or_name)
-        tool_uuid = tool_dict["uuid"]
-        tool_name = tool_dict.get("name", uuid_or_name)
-        execute_tool_counter.labels(name=tool_uuid).inc()
-        try:
+        uuid = self._resolve_uuid(uuid_or_name)
+        with self.handler.read_lock(uuid):
+            tool_dict = self._safe_read(uuid, uuid_or_name)
+            tool_uuid = tool_dict["uuid"]
+            tool_name = tool_dict.get("name", uuid_or_name)
             if tool_dict.get("packaging_format") == "mcp":
                 module_content = mcp_content_from_manifest(tool_dict)
             else:
-                module_content = self.get_module(uuid_or_name)
+                module_name = tool_dict.get("module_name")
+                if not module_name:
+                    raise KeyError(f"Tool '{uuid_or_name}' has no module file")
+                module_content = self.handler.read_file(uuid, module_name, raw_content=True)
+                if not isinstance(module_content, str):
+                    raise RuntimeError(
+                        f"Invalid module content type for tool '{uuid_or_name}'"
+                    )
             dep_uuids = self.find_dependencies(
                 tool_dict.get("dependencies", []), tool_uuid
             )
@@ -187,6 +194,8 @@ class ToolsService:
                 self.handler.read_file(m["uuid"], m["module_name"], raw_content=True)
                 for m in dep_dicts
             ]
+        execute_tool_counter.labels(name=tool_uuid).inc()
+        try:
             file_executor = FileExecutor(
                 name=tool_name,
                 file_content=module_content,
@@ -335,7 +344,8 @@ class ToolsService:
         get_tool_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            return self._safe_read(uuid, uuid_or_name)
+            with self.handler.read_lock(uuid):
+                return self._safe_read(uuid, uuid_or_name)
         except KeyError:
             raise
         except Exception as e:
@@ -364,18 +374,19 @@ class ToolsService:
         get_tool_module_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            tool = self.handler.read_dict(uuid)
-            if tool.get("packaging_format") == "mcp":
-                return mcp_content_from_manifest(tool)
-            module_name = tool.get("module_name")
-            if not module_name:
-                raise KeyError(f"Tool '{uuid_or_name}' has no module file")
-            content = self.handler.read_file(uuid, module_name, raw_content=True)
-            if not isinstance(content, str):
-                raise RuntimeError(
-                    f"Invalid module content type for tool '{uuid_or_name}'"
-                )
-            return content
+            with self.handler.read_lock(uuid):
+                tool = self.handler.read_dict(uuid)
+                if tool.get("packaging_format") == "mcp":
+                    return mcp_content_from_manifest(tool)
+                module_name = tool.get("module_name")
+                if not module_name:
+                    raise KeyError(f"Tool '{uuid_or_name}' has no module file")
+                content = self.handler.read_file(uuid, module_name, raw_content=True)
+                if not isinstance(content, str):
+                    raise RuntimeError(
+                        f"Invalid module content type for tool '{uuid_or_name}'"
+                    )
+                return content
         except (KeyError, RuntimeError):
             raise
         except Exception as e:
@@ -510,32 +521,33 @@ class ToolsService:
         update_tool_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            existing = self.handler.read_dict(uuid)
-            old_name = existing.get("name")
-            old_parent = existing.get("parent")
-            new_name = data.get("name") or old_name
-            if new_name:
-                data["parent"] = self.handler.get_cache_parent_for_head(uuid, new_name)
-            merged = {**existing, **data}
-            merged["uuid"] = existing.get("uuid", uuid)
-            merged["created_at"] = existing.get("created_at")
-            merged["modified_at"] = datetime.now(timezone.utc).isoformat()
-            self.handler.write_dict(uuid, merged)
-            if new_name:
-                self.handler.update_cache(
-                    uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
-                )
-            if self.descriptions and data.get("description"):
-                old_desc = existing.get("description")
-                if old_desc != data["description"]:
-                    try:
-                        self.descriptions.delete_description(uuid)
-                    except Exception:
-                        pass
-                    self.descriptions.write_description(uuid, data["description"])
-            emit_content_updated("tool", uuid)
-            logger.info(f"Tool '{uuid_or_name}' updated")
-            return merged
+            with self.handler.write_lock(uuid):
+                existing = self.handler.read_dict(uuid)
+                old_name = existing.get("name")
+                old_parent = existing.get("parent")
+                new_name = data.get("name") or old_name
+                if new_name:
+                    data["parent"] = self.handler.get_cache_parent_for_head(uuid, new_name)
+                merged = {**existing, **data}
+                merged["uuid"] = existing.get("uuid", uuid)
+                merged["created_at"] = existing.get("created_at")
+                merged["modified_at"] = datetime.now(timezone.utc).isoformat()
+                self.handler.write_dict(uuid, merged)
+                if new_name:
+                    self.handler.update_cache(
+                        uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
+                    )
+                if self.descriptions and data.get("description"):
+                    old_desc = existing.get("description")
+                    if old_desc != data["description"]:
+                        try:
+                            self.descriptions.delete_description(uuid)
+                        except Exception:
+                            pass
+                        self.descriptions.write_description(uuid, data["description"])
+                emit_content_updated("tool", uuid)
+                logger.info(f"Tool '{uuid_or_name}' updated")
+                return merged
         except KeyError:
             raise
         except Exception as e:
@@ -559,26 +571,27 @@ class ToolsService:
         delete_tool_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            try:
-                d = self.handler.read_dict(uuid)
-                name, parent = d.get("name"), d.get("parent")
-            except Exception:
-                name, parent = None, None
-            if uuid and name:
-                self.handler.update_cache(
-                    uuid, new_name=None, old_name=name, old_parent=parent
-                )
-            self.handler.delete_object(uuid)
-            if self.descriptions:
+            with self.handler.write_lock(uuid):
                 try:
-                    self.descriptions.delete_description(uuid)
-                except Exception as e:
-                    logger.warning(
-                        f"Could not delete tool description for {uuid}: {e}"
+                    d = self.handler.read_dict(uuid)
+                    name, parent = d.get("name"), d.get("parent")
+                except Exception:
+                    name, parent = None, None
+                if uuid and name:
+                    self.handler.update_cache(
+                        uuid, new_name=None, old_name=name, old_parent=parent
                     )
-            emit_content_deleted("tool", uuid)
-            logger.info(f"Tool '{uuid_or_name}' deleted")
-            return {"uuid": uuid}
+                self.handler.delete_object(uuid)
+                if self.descriptions:
+                    try:
+                        self.descriptions.delete_description(uuid)
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not delete tool description for {uuid}: {e}"
+                        )
+                emit_content_deleted("tool", uuid)
+                logger.info(f"Tool '{uuid_or_name}' deleted")
+                return {"uuid": uuid}
         except KeyError:
             raise
         except Exception as e:

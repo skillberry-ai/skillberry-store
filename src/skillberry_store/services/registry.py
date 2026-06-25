@@ -8,6 +8,7 @@ Initialize once at server startup with ``initialize_services(...)``; thereafter,
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 _services: Dict[str, Any] = {}
 _initialized = False
+_init_lock = threading.Lock()
 
 
 def initialize_services(
@@ -49,43 +51,44 @@ def initialize_services(
             vNFS service.
     """
     global _initialized
-    if _initialized:
-        logger.warning("Services already initialized, skipping")
-        return
+    with _init_lock:
+        if _initialized:
+            logger.warning("Services already initialized, skipping")
+            return
 
-    from skillberry_store.modules.object_handler import get_object_handler
-    from skillberry_store.services.skills_service import SkillsService
-    from skillberry_store.services.snippets_service import SnippetsService
-    from skillberry_store.services.tools_service import ToolsService
-    from skillberry_store.services.vmcp_service import VmcpService
-    from skillberry_store.services.vnfs_service import VnfsService
+        from skillberry_store.modules.object_handler import get_object_handler
+        from skillberry_store.services.skills_service import SkillsService
+        from skillberry_store.services.snippets_service import SnippetsService
+        from skillberry_store.services.tools_service import ToolsService
+        from skillberry_store.services.vmcp_service import VmcpService
+        from skillberry_store.services.vnfs_service import VnfsService
 
-    _services["tool"] = ToolsService(
-        get_object_handler("tool"),
-        tools_descriptions,
-    )
-    _services["snippet"] = SnippetsService(
-        get_object_handler("snippet"),
-        snippets_descriptions,
-    )
-    _services["skill"] = SkillsService(
-        handler=get_object_handler("skill"),
-        descriptions=skills_descriptions,
-    )
-    _services["vmcp"] = VmcpService(
-        get_object_handler("vmcp"),
-        vmcp_server_manager,
-        vmcp_descriptions,
-    )
-    _services["vnfs"] = VnfsService(
-        get_object_handler("vnfs"),
-        vnfs_server_manager,
-        vnfs_descriptions,
-    )
-    _initialized = True
-    logger.info(
-        f"Initialized {len(_services)} services: {list(_services.keys())}"
-    )
+        _services["tool"] = ToolsService(
+            get_object_handler("tool"),
+            tools_descriptions,
+        )
+        _services["snippet"] = SnippetsService(
+            get_object_handler("snippet"),
+            snippets_descriptions,
+        )
+        _services["skill"] = SkillsService(
+            handler=get_object_handler("skill"),
+            descriptions=skills_descriptions,
+        )
+        _services["vmcp"] = VmcpService(
+            get_object_handler("vmcp"),
+            vmcp_server_manager,
+            vmcp_descriptions,
+        )
+        _services["vnfs"] = VnfsService(
+            get_object_handler("vnfs"),
+            vnfs_server_manager,
+            vnfs_descriptions,
+        )
+        _initialized = True
+        logger.info(
+            f"Initialized {len(_services)} services: {list(_services.keys())}"
+        )
 
 
 def get_service(service_type: str) -> Any:

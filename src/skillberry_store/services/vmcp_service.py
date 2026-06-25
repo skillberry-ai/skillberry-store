@@ -238,17 +238,18 @@ class VmcpService:
         get_vmcp_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            d = self._safe_read(uuid, uuid_or_name)
-            try:
-                runtime_details = self.server_manager.get_server_details(
-                    d.get("name", ""), d.get("uuid", "")
-                )
-                d["runtime"] = runtime_details
-                d["running"] = True
-            except Exception:
-                d["running"] = False
-                d["runtime"] = None
-            return d
+            with self.handler.read_lock(uuid):
+                d = self._safe_read(uuid, uuid_or_name)
+                try:
+                    runtime_details = self.server_manager.get_server_details(
+                        d.get("name", ""), d.get("uuid", "")
+                    )
+                    d["runtime"] = runtime_details
+                    d["running"] = True
+                except Exception:
+                    d["running"] = False
+                    d["runtime"] = None
+                return d
         except KeyError:
             raise
         except Exception as e:
@@ -418,48 +419,49 @@ class VmcpService:
         update_vmcp_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            existing = self.handler.read_dict(uuid)
-            old_name = existing.get("name")
-            old_parent = existing.get("parent")
-            server_uuid = existing.get("uuid")
-            data["modified_at"] = datetime.now(timezone.utc).isoformat()
-            if not data.get("uuid"):
-                data["uuid"] = server_uuid
-            new_name = data.get("name")
-            if new_name:
-                data["parent"] = self.handler.get_cache_parent_for_head(
-                    data["uuid"] or "", new_name
+            with self.handler.write_lock(uuid):
+                existing = self.handler.read_dict(uuid)
+                old_name = existing.get("name")
+                old_parent = existing.get("parent")
+                server_uuid = existing.get("uuid")
+                data["modified_at"] = datetime.now(timezone.utc).isoformat()
+                if not data.get("uuid"):
+                    data["uuid"] = server_uuid
+                new_name = data.get("name")
+                if new_name:
+                    data["parent"] = self.handler.get_cache_parent_for_head(
+                        data["uuid"] or "", new_name
+                    )
+                try:
+                    self.server_manager.remove_server(old_name or "", server_uuid or "")
+                except Exception as e:
+                    logger.warning(f"Could not stop old runtime server: {e}")
+                tool_uuids, snippet_uuids = self._resolve_skill_uuids(
+                    data.get("skill_uuid")
                 )
-            try:
-                self.server_manager.remove_server(old_name or "", server_uuid or "")
-            except Exception as e:
-                logger.warning(f"Could not stop old runtime server: {e}")
-            tool_uuids, snippet_uuids = self._resolve_skill_uuids(
-                data.get("skill_uuid")
-            )
-            server = self.server_manager.add_server(
-                name=new_name or "",
-                uuid=data["uuid"] or "",
-                description=data.get("description") or "",
-                port=data.get("port"),
-                tools=tool_uuids,
-                snippets=snippet_uuids,
-                env_id=env_id,
-            )
-            data["port"] = server.port
-            self.handler.write_dict(data["uuid"] or "", data)
-            if new_name and old_name:
-                self.handler.update_cache(
-                    data["uuid"] or "",
-                    new_name=new_name,
-                    old_name=old_name,
-                    old_parent=old_parent,
+                server = self.server_manager.add_server(
+                    name=new_name or "",
+                    uuid=data["uuid"] or "",
+                    description=data.get("description") or "",
+                    port=data.get("port"),
+                    tools=tool_uuids,
+                    snippets=snippet_uuids,
+                    env_id=env_id,
                 )
-            uuid_value = data.get("uuid")
-            if self.descriptions and data.get("description") and uuid_value:
-                self.descriptions.write_description(uuid_value, data["description"])
-            logger.info(f"VMCP server '{new_name}' updated on port {server.port}")
-            return data
+                data["port"] = server.port
+                self.handler.write_dict(data["uuid"] or "", data)
+                if new_name and old_name:
+                    self.handler.update_cache(
+                        data["uuid"] or "",
+                        new_name=new_name,
+                        old_name=old_name,
+                        old_parent=old_parent,
+                    )
+                uuid_value = data.get("uuid")
+                if self.descriptions and data.get("description") and uuid_value:
+                    self.descriptions.write_description(uuid_value, data["description"])
+                logger.info(f"VMCP server '{new_name}' updated on port {server.port}")
+                return data
         except KeyError:
             raise
         except Exception as e:
@@ -494,29 +496,30 @@ class VmcpService:
         start_vmcp_counter.inc()
         try:
             vmcp_uuid = self._resolve_uuid(uuid_or_name)
-            vmcp_data = self.handler.read_dict(vmcp_uuid)
-            server_name = vmcp_data.get("name", "")
-            server_uuid = vmcp_data.get("uuid", "")
-            try:
-                existing = self.server_manager.get_server(server_name, server_uuid)
-                if existing:
-                    return existing, True
-            except Exception:
-                pass
-            tool_uuids, snippet_uuids = self._resolve_skill_uuids(
-                vmcp_data.get("skill_uuid")
-            )
-            server = self.server_manager.add_server(
-                name=server_name,
-                uuid=server_uuid,
-                description=vmcp_data.get("description", ""),
-                port=vmcp_data.get("port"),
-                tools=tool_uuids,
-                snippets=snippet_uuids,
-                env_id=env_id,
-            )
-            logger.info(f"VMCP server '{server_name}' started on port {server.port}")
-            return server, False
+            with self.handler.write_lock(vmcp_uuid):
+                vmcp_data = self.handler.read_dict(vmcp_uuid)
+                server_name = vmcp_data.get("name", "")
+                server_uuid = vmcp_data.get("uuid", "")
+                try:
+                    existing = self.server_manager.get_server(server_name, server_uuid)
+                    if existing:
+                        return existing, True
+                except Exception:
+                    pass
+                tool_uuids, snippet_uuids = self._resolve_skill_uuids(
+                    vmcp_data.get("skill_uuid")
+                )
+                server = self.server_manager.add_server(
+                    name=server_name,
+                    uuid=server_uuid,
+                    description=vmcp_data.get("description", ""),
+                    port=vmcp_data.get("port"),
+                    tools=tool_uuids,
+                    snippets=snippet_uuids,
+                    env_id=env_id,
+                )
+                logger.info(f"VMCP server '{server_name}' started on port {server.port}")
+                return server, False
         except (KeyError, ValueError):
             raise
         except Exception as e:
@@ -537,26 +540,27 @@ class VmcpService:
         delete_vmcp_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            d = self.handler.read_dict(uuid)
-            name = d.get("name")
-            parent = d.get("parent")
-            try:
-                self.server_manager.remove_server(name or "", uuid or "")
-            except Exception as e:
-                logger.warning(f"Could not stop runtime server: {e}")
-            if name and uuid:
-                self.handler.update_cache(
-                    uuid, new_name=None, old_name=name, old_parent=parent
-                )
-            self.handler.delete_object(uuid)
-            if self.descriptions:
+            with self.handler.write_lock(uuid):
+                d = self.handler.read_dict(uuid)
+                name = d.get("name")
+                parent = d.get("parent")
                 try:
-                    self.descriptions.delete_description(uuid)
+                    self.server_manager.remove_server(name or "", uuid or "")
                 except Exception as e:
-                    logger.warning(
-                        f"Could not delete vmcp description for {uuid}: {e}"
+                    logger.warning(f"Could not stop runtime server: {e}")
+                if name and uuid:
+                    self.handler.update_cache(
+                        uuid, new_name=None, old_name=name, old_parent=parent
                     )
-            logger.info(f"VMCP server '{uuid_or_name}' deleted")
+                self.handler.delete_object(uuid)
+                if self.descriptions:
+                    try:
+                        self.descriptions.delete_description(uuid)
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not delete vmcp description for {uuid}: {e}"
+                        )
+                logger.info(f"VMCP server '{uuid_or_name}' deleted")
         except KeyError:
             raise
         except Exception as e:

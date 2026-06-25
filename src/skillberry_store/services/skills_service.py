@@ -239,14 +239,15 @@ class SkillsService:
         get_skill_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            skill = self._safe_read(uuid, uuid_or_name)
-            try:
-                return self.populate_objects(skill)
-            except RuntimeError as e:
-                logger.warning(str(e))
-                skill.setdefault("tools", [])
-                skill.setdefault("snippets", [])
-                return skill
+            with self.handler.read_lock(uuid):
+                skill = self._safe_read(uuid, uuid_or_name)
+                try:
+                    return self.populate_objects(skill)
+                except RuntimeError as e:
+                    logger.warning(str(e))
+                    skill.setdefault("tools", [])
+                    skill.setdefault("snippets", [])
+                    return skill
         except KeyError:
             raise
         except Exception as e:
@@ -388,26 +389,27 @@ class SkillsService:
         update_skill_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            existing = self.handler.read_dict(uuid)
-            old_name = existing.get("name")
-            old_parent = existing.get("parent")
-            new_name = data.get("name") or old_name
-            if new_name:
-                data["parent"] = self.handler.get_cache_parent_for_head(uuid, new_name)
-            merged = {**existing, **data}
-            merged["uuid"] = existing.get("uuid", uuid)
-            merged["created_at"] = existing.get("created_at")
-            merged["modified_at"] = datetime.now(timezone.utc).isoformat()
-            self.handler.write_dict(uuid, merged)
-            if new_name:
-                self.handler.update_cache(
-                    uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
-                )
-            if self.descriptions and merged.get("description"):
-                self.descriptions.write_description(uuid, merged["description"])
-            emit_content_updated("skill", uuid)
-            logger.info(f"Skill '{uuid_or_name}' updated")
-            return merged
+            with self.handler.write_lock(uuid):
+                existing = self.handler.read_dict(uuid)
+                old_name = existing.get("name")
+                old_parent = existing.get("parent")
+                new_name = data.get("name") or old_name
+                if new_name:
+                    data["parent"] = self.handler.get_cache_parent_for_head(uuid, new_name)
+                merged = {**existing, **data}
+                merged["uuid"] = existing.get("uuid", uuid)
+                merged["created_at"] = existing.get("created_at")
+                merged["modified_at"] = datetime.now(timezone.utc).isoformat()
+                self.handler.write_dict(uuid, merged)
+                if new_name:
+                    self.handler.update_cache(
+                        uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
+                    )
+                if self.descriptions and merged.get("description"):
+                    self.descriptions.write_description(uuid, merged["description"])
+                emit_content_updated("skill", uuid)
+                logger.info(f"Skill '{uuid_or_name}' updated")
+                return merged
         except KeyError:
             raise
         except Exception as e:
@@ -589,36 +591,37 @@ class SkillsService:
         logger.info(f"Request to export skill to Anthropic format: {uuid_or_name}")
         try:
             skill_uuid = self._resolve_uuid(uuid_or_name)
-            skill_dict = self._safe_read(skill_uuid, uuid_or_name)
-            tools_service = get_service("tool")
-            snippets_service = get_service("snippet")
+            with self.handler.read_lock(skill_uuid):
+                skill_dict = self._safe_read(skill_uuid, uuid_or_name)
+                tools_service = get_service("tool")
+                snippets_service = get_service("snippet")
 
-            tools: List[Dict[str, Any]] = []
-            tool_modules: Dict[str, str] = {}
-            for tool_uuid in skill_dict.get("tool_uuids") or []:
-                tool_dict = tools_service.get(tool_uuid)
-                tools.append(tool_dict)
-                tool_name = tool_dict.get("name")
-                module_name = tool_dict.get("module_name")
-                if tool_name and module_name:
-                    try:
-                        tool_modules[tool_name] = tools_service.get_module(tool_uuid)
-                    except Exception as e:
-                        logger.warning(
-                            f"Could not read module for tool {tool_name}: {e}"
-                        )
+                tools: List[Dict[str, Any]] = []
+                tool_modules: Dict[str, str] = {}
+                for tool_uuid in skill_dict.get("tool_uuids") or []:
+                    tool_dict = tools_service.get(tool_uuid)
+                    tools.append(tool_dict)
+                    tool_name = tool_dict.get("name")
+                    module_name = tool_dict.get("module_name")
+                    if tool_name and module_name:
+                        try:
+                            tool_modules[tool_name] = tools_service.get_module(tool_uuid)
+                        except Exception as e:
+                            logger.warning(
+                                f"Could not read module for tool {tool_name}: {e}"
+                            )
 
-            snippets: List[Dict[str, Any]] = [
-                snippets_service.get(snippet_uuid)
-                for snippet_uuid in skill_dict.get("snippet_uuids") or []
-            ]
+                snippets: List[Dict[str, Any]] = [
+                    snippets_service.get(snippet_uuid)
+                    for snippet_uuid in skill_dict.get("snippet_uuids") or []
+                ]
 
-            zip_content = export_skill_to_anthropic_format(
-                skill=skill_dict,
-                tools=tools,
-                snippets=snippets,
-                tool_modules=tool_modules,
-            )
+                zip_content = export_skill_to_anthropic_format(
+                    skill=skill_dict,
+                    tools=tools,
+                    snippets=snippets,
+                    tool_modules=tool_modules,
+                )
             logger.info(
                 f"Successfully exported skill '{uuid_or_name}' to Anthropic format"
             )
@@ -868,65 +871,66 @@ class SkillsService:
         delete_skill_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            skill: Optional[Dict[str, Any]] = None
-            try:
-                skill = self.handler.read_dict(uuid)
-            except Exception:
-                pass
-            deleted_tools: List[str] = []
-            deleted_snippets: List[str] = []
-            if skill is not None and (delete_tools or delete_snippets):
-                tools_service = get_service("tool")
-                snippets_service = get_service("snippet")
-                skill_uuid = skill.get("uuid") or uuid
-                all_skills = self.handler.list_all_dicts()
-                shared_tool_uuids: set = set()
-                shared_snippet_uuids: set = set()
-                for s in all_skills:
-                    if s.get("uuid") != skill_uuid:
-                        shared_tool_uuids.update(s.get("tool_uuids") or [])
-                        shared_snippet_uuids.update(s.get("snippet_uuids") or [])
-                if delete_tools:
-                    for tool_uuid in skill.get("tool_uuids") or []:
-                        if tool_uuid not in shared_tool_uuids:
-                            try:
-                                tools_service.delete(tool_uuid)
-                                deleted_tools.append(tool_uuid)
-                            except Exception as e:
-                                logger.warning(
-                                    f"Could not cascade-delete tool {tool_uuid}: {e}"
-                                )
-                if delete_snippets:
-                    for snippet_uuid in skill.get("snippet_uuids") or []:
-                        if snippet_uuid not in shared_snippet_uuids:
-                            try:
-                                snippets_service.delete(snippet_uuid)
-                                deleted_snippets.append(snippet_uuid)
-                            except Exception as e:
-                                logger.warning(
-                                    f"Could not cascade-delete snippet {snippet_uuid}: {e}"
-                                )
-            name = (skill or {}).get("name")
-            parent = (skill or {}).get("parent")
-            if uuid and name:
-                self.handler.update_cache(
-                    uuid, new_name=None, old_name=name, old_parent=parent
-                )
-            self.handler.delete_object(uuid)
-            if self.descriptions:
+            with self.handler.write_lock(uuid):
+                skill: Optional[Dict[str, Any]] = None
                 try:
-                    self.descriptions.delete_description(uuid)
-                except Exception as e:
-                    logger.warning(
-                        f"Could not delete skill description for {uuid}: {e}"
+                    skill = self.handler.read_dict(uuid)
+                except Exception:
+                    pass
+                deleted_tools: List[str] = []
+                deleted_snippets: List[str] = []
+                if skill is not None and (delete_tools or delete_snippets):
+                    tools_service = get_service("tool")
+                    snippets_service = get_service("snippet")
+                    skill_uuid = skill.get("uuid") or uuid
+                    all_skills = self.handler.list_all_dicts()
+                    shared_tool_uuids: set = set()
+                    shared_snippet_uuids: set = set()
+                    for s in all_skills:
+                        if s.get("uuid") != skill_uuid:
+                            shared_tool_uuids.update(s.get("tool_uuids") or [])
+                            shared_snippet_uuids.update(s.get("snippet_uuids") or [])
+                    if delete_tools:
+                        for tool_uuid in skill.get("tool_uuids") or []:
+                            if tool_uuid not in shared_tool_uuids:
+                                try:
+                                    tools_service.delete(tool_uuid)
+                                    deleted_tools.append(tool_uuid)
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Could not cascade-delete tool {tool_uuid}: {e}"
+                                    )
+                    if delete_snippets:
+                        for snippet_uuid in skill.get("snippet_uuids") or []:
+                            if snippet_uuid not in shared_snippet_uuids:
+                                try:
+                                    snippets_service.delete(snippet_uuid)
+                                    deleted_snippets.append(snippet_uuid)
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Could not cascade-delete snippet {snippet_uuid}: {e}"
+                                    )
+                name = (skill or {}).get("name")
+                parent = (skill or {}).get("parent")
+                if uuid and name:
+                    self.handler.update_cache(
+                        uuid, new_name=None, old_name=name, old_parent=parent
                     )
-            emit_content_deleted("skill", uuid)
-            logger.info(f"Skill '{uuid_or_name}' deleted")
-            return {
-                "uuid": uuid,
-                "deleted_tools": deleted_tools,
-                "deleted_snippets": deleted_snippets,
-            }
+                self.handler.delete_object(uuid)
+                if self.descriptions:
+                    try:
+                        self.descriptions.delete_description(uuid)
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not delete skill description for {uuid}: {e}"
+                        )
+                emit_content_deleted("skill", uuid)
+                logger.info(f"Skill '{uuid_or_name}' deleted")
+                return {
+                    "uuid": uuid,
+                    "deleted_tools": deleted_tools,
+                    "deleted_snippets": deleted_snippets,
+                }
         except KeyError:
             raise
         except Exception as e:

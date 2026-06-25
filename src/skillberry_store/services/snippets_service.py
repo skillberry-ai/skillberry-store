@@ -165,7 +165,8 @@ class SnippetsService:
         get_snippet_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            return self._safe_read(uuid, uuid_or_name)
+            with self.handler.read_lock(uuid):
+                return self._safe_read(uuid, uuid_or_name)
         except KeyError:
             raise
         except Exception as e:
@@ -295,26 +296,27 @@ class SnippetsService:
         update_snippet_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            existing = self.handler.read_dict(uuid)
-            old_name = existing.get("name")
-            old_parent = existing.get("parent")
-            new_name = data.get("name") or old_name
-            if new_name:
-                data["parent"] = self.handler.get_cache_parent_for_head(uuid, new_name)
-            merged = {**existing, **data}
-            merged["uuid"] = existing.get("uuid", uuid)
-            merged["created_at"] = existing.get("created_at")
-            merged["modified_at"] = datetime.now(timezone.utc).isoformat()
-            self.handler.write_dict(uuid, merged)
-            if new_name:
-                self.handler.update_cache(
-                    uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
-                )
-            if self.descriptions and merged.get("description"):
-                self.descriptions.write_description(uuid, merged["description"])
-            emit_content_updated("snippet", uuid)
-            logger.info(f"Snippet '{uuid_or_name}' updated")
-            return merged
+            with self.handler.write_lock(uuid):
+                existing = self.handler.read_dict(uuid)
+                old_name = existing.get("name")
+                old_parent = existing.get("parent")
+                new_name = data.get("name") or old_name
+                if new_name:
+                    data["parent"] = self.handler.get_cache_parent_for_head(uuid, new_name)
+                merged = {**existing, **data}
+                merged["uuid"] = existing.get("uuid", uuid)
+                merged["created_at"] = existing.get("created_at")
+                merged["modified_at"] = datetime.now(timezone.utc).isoformat()
+                self.handler.write_dict(uuid, merged)
+                if new_name:
+                    self.handler.update_cache(
+                        uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
+                    )
+                if self.descriptions and merged.get("description"):
+                    self.descriptions.write_description(uuid, merged["description"])
+                emit_content_updated("snippet", uuid)
+                logger.info(f"Snippet '{uuid_or_name}' updated")
+                return merged
         except KeyError:
             raise
         except Exception as e:
@@ -338,26 +340,27 @@ class SnippetsService:
         delete_snippet_counter.inc()
         try:
             uuid = self._resolve_uuid(uuid_or_name)
-            try:
-                d = self.handler.read_dict(uuid)
-                name, parent = d.get("name"), d.get("parent")
-            except Exception:
-                name, parent = None, None
-            if uuid and name:
-                self.handler.update_cache(
-                    uuid, new_name=None, old_name=name, old_parent=parent
-                )
-            self.handler.delete_object(uuid)
-            if self.descriptions:
+            with self.handler.write_lock(uuid):
                 try:
-                    self.descriptions.delete_description(uuid)
-                except Exception as e:
-                    logger.warning(
-                        f"Could not delete snippet description for {uuid}: {e}"
+                    d = self.handler.read_dict(uuid)
+                    name, parent = d.get("name"), d.get("parent")
+                except Exception:
+                    name, parent = None, None
+                if uuid and name:
+                    self.handler.update_cache(
+                        uuid, new_name=None, old_name=name, old_parent=parent
                     )
-            emit_content_deleted("snippet", uuid)
-            logger.info(f"Snippet '{uuid_or_name}' deleted")
-            return {"uuid": uuid}
+                self.handler.delete_object(uuid)
+                if self.descriptions:
+                    try:
+                        self.descriptions.delete_description(uuid)
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not delete snippet description for {uuid}: {e}"
+                        )
+                emit_content_deleted("snippet", uuid)
+                logger.info(f"Snippet '{uuid_or_name}' deleted")
+                return {"uuid": uuid}
         except KeyError:
             raise
         except Exception as e:
