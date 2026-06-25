@@ -11,7 +11,6 @@ from typing import Annotated, Any, List, Optional
 from mcp.server.fastmcp import FastMCP
 from skillberry_store.modules.object_handler import get_object_handler
 
-
 # observability - metrics for runtime tool invocation inside the VMCP server.
 # These belong here (not in the FastAPI layer) because they describe runtime
 # behaviour of the running VMCP server, not HTTP requests.

@@ -259,9 +259,7 @@ def register_tools_api(
             SKILLBERRY_CONTEXT.lower()
         )
         env_id = (
-            skillberry_context.get("env_id")
-            if skillberry_context is not None
-            else None
+            skillberry_context.get("env_id") if skillberry_context is not None else None
         )
         try:
             return await service.execute(
