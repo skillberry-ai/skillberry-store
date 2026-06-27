@@ -18,6 +18,7 @@ import fasteners
 from fastapi import HTTPException
 
 from skillberry_store.fast_api.changes import bump
+from skillberry_store.modules.dependency_manager import DependencyManager
 from skillberry_store.modules.dict_cache import DictCache
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.lookup_cache import LookupCache
@@ -59,9 +60,37 @@ def initialize_object_handlers() -> None:
     _object_handlers["vnfs"] = ObjectHandler(get_vnfs_directory(), "vnfs")
 
     _initialized = True
+    _bootstrap_dependency_managers()
     logger.info(
         f"Initialized {len(_object_handlers)} object handlers: {list(_object_handlers.keys())}"
     )
+
+
+def _bootstrap_dependency_managers() -> None:
+    tool_handler = _object_handlers["tool"]
+    snippet_handler = _object_handlers["snippet"]
+    skill_handler = _object_handlers["skill"]
+
+    for handler in _object_handlers.values():
+        handler.dependency_manager.clear()
+
+    for d in tool_handler.iter_dicts():
+        tool_handler.dependency_manager.add("tool", d["uuid"], d.get("dependencies") or [])
+
+    for d in skill_handler.iter_dicts():
+        tool_handler.dependency_manager.add("skill", d["uuid"], d.get("tool_uuids") or [])
+        snippet_handler.dependency_manager.add(
+            "skill", d["uuid"], d.get("snippet_uuids") or []
+        )
+
+    for d in _object_handlers["vmcp"].iter_dicts():
+        if d.get("skill_uuid"):
+            skill_handler.dependency_manager.add("vmcp", d["uuid"], [d["skill_uuid"]])
+
+    for d in _object_handlers["vnfs"].iter_dicts():
+        if d.get("skill_uuid"):
+            skill_handler.dependency_manager.add("vnfs", d["uuid"], [d["skill_uuid"]])
+
 
 
 def get_object_handler(object_type: str) -> "ObjectHandler":
@@ -148,6 +177,7 @@ class ObjectHandler:
         self._uuid_locks_mutex: threading.Lock = threading.Lock()
         # Coarse handler-level lock for chain-repair walk
         self._handler_lock: fasteners.ReaderWriterLock = fasteners.ReaderWriterLock()
+        self.dependency_manager = DependencyManager()
 
         logger.info(
             f"Initialized ObjectHandler for {object_type} at {base_directory} (dict_cache={'enabled' if use_dict_cache else 'disabled'})"
@@ -747,6 +777,25 @@ class ObjectHandler:
             raise HTTPException(
                 status_code=500, detail=f"Error deleting {self.object_type}: {str(e)}"
             )
+
+    def purge_all(self) -> None:
+        """Delete all objects by wiping the base directory, then clear all in-memory state.
+
+        Removes every UUID subfolder (and its contents) by deleting and recreating the
+        base directory, then clears the dict cache, name cache, and dependency manager.
+        """
+        import shutil
+
+        if os.path.exists(self.base_directory):
+            shutil.rmtree(self.base_directory)
+            logger.info(f"Purged all {self.object_type} objects from {self.base_directory}")
+        Path(self.base_directory).mkdir(parents=True, exist_ok=True)
+
+        if self.dict_cache:
+            self.dict_cache.clear()
+        self.name_cache.clear()
+        self.dependency_manager.clear()
+        logger.info(f"Cleared all in-memory state for {self.object_type}")
 
     # ==================== Object File Operations ====================
 

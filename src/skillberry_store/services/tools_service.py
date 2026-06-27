@@ -17,7 +17,7 @@ from skillberry_store.plugins.events import (
     emit_content_deleted,
     emit_content_updated,
 )
-from skillberry_store.services.exceptions import ObjectAlreadyExistsError
+from skillberry_store.services.exceptions import ObjectAlreadyExistsError, ObjectInUseError
 from skillberry_store.utils.utils import generate_or_validate_uuid
 from skillberry_store.tools.configure import is_auto_detect_dependencies_enabled
 
@@ -114,6 +114,36 @@ class ToolsService:
             if hasattr(e, "status_code") and e.status_code == 404:
                 raise KeyError(f"Tool '{uuid_or_name}' not found")
             raise
+
+    def add_dependent(
+        self, referencing_type: str, referencing_uuid: str, referenced_tool_uuids: List[str]
+    ) -> None:
+        """Register that ``referencing_uuid`` depends on each UUID in ``referenced_tool_uuids``.
+
+        Called by sibling services (e.g. ``SkillsService``) when they create or
+        update an object that references tools.  Also called by this service for
+        tool-on-tool ``dependencies`` fields.
+
+        Args:
+            referencing_type: Object type of the referencing object (e.g. ``"skill"``).
+            referencing_uuid: UUID of the referencing object.
+            referenced_tool_uuids: UUIDs of the tools being depended on.
+        """
+        self.handler.dependency_manager.add(
+            referencing_type, referencing_uuid, referenced_tool_uuids
+        )
+
+    def remove_dependent(self, referencing_type: str, referencing_uuid: str) -> None:
+        """Remove all dependency records where ``referencing_uuid`` is the referencing side.
+
+        Called when the referencing object is updated (to re-register with new refs)
+        or deleted (to clean up).
+
+        Args:
+            referencing_type: Object type of the referencing object.
+            referencing_uuid: UUID of the referencing object.
+        """
+        self.handler.dependency_manager.remove_referencing(referencing_type, referencing_uuid)
 
     def find_dependencies(self, dependencies: List[str], tool_uuid: str) -> Set[str]:
         """Recursively resolve all transitive dependency UUIDs.
@@ -297,6 +327,7 @@ class ToolsService:
                 except Exception as e:
                     logger.warning(f"Failed to auto-detect dependencies: {e}")
             self.handler.write_dict(data["uuid"], data)
+            self.add_dependent("tool", data["uuid"], data.get("dependencies") or [])
             self.handler.update_cache(data["uuid"], new_name=data["name"])
             if self.descriptions and data.get("description"):
                 self.descriptions.write_description(data["uuid"], data["description"])
@@ -532,7 +563,9 @@ class ToolsService:
                 merged["uuid"] = existing.get("uuid", uuid)
                 merged["created_at"] = existing.get("created_at")
                 merged["modified_at"] = datetime.now(timezone.utc).isoformat()
+                self.remove_dependent("tool", uuid)
                 self.handler.write_dict(uuid, merged)
+                self.add_dependent("tool", uuid, merged.get("dependencies") or [])
                 if new_name:
                     self.handler.update_cache(
                         uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
@@ -572,6 +605,9 @@ class ToolsService:
         try:
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.write_lock(uuid):
+                dependents = self.handler.dependency_manager.get_dependents(uuid)
+                if dependents:
+                    raise ObjectInUseError("tool", uuid, dependents)
                 try:
                     d = self.handler.read_dict(uuid)
                     name, parent = d.get("name"), d.get("parent")
@@ -582,6 +618,7 @@ class ToolsService:
                         uuid, new_name=None, old_name=name, old_parent=parent
                     )
                 self.handler.delete_object(uuid)
+                self.remove_dependent("tool", uuid)
                 if self.descriptions:
                     try:
                         self.descriptions.delete_description(uuid)
@@ -592,7 +629,7 @@ class ToolsService:
                 emit_content_deleted("tool", uuid)
                 logger.info(f"Tool '{uuid_or_name}' deleted")
                 return {"uuid": uuid}
-        except KeyError:
+        except (KeyError, ObjectInUseError):
             raise
         except Exception as e:
             logger.error(f"Error deleting tool '{uuid_or_name}': {e}")

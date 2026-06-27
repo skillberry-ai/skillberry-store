@@ -10,7 +10,7 @@ from fastapi.responses import PlainTextResponse
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
-from skillberry_store.services.exceptions import ObjectAlreadyExistsError
+from skillberry_store.services.exceptions import ObjectAlreadyExistsError, ObjectInUseError
 from skillberry_store.services.tools_service import ToolsService
 
 
@@ -191,6 +191,8 @@ def register_tools_api(
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ObjectInUseError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error deleting tool: {str(e)}"

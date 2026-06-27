@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
+from skillberry_store.services.exceptions import ObjectInUseError
 from skillberry_store.services.snippets_service import SnippetsService
 
 
@@ -156,6 +157,8 @@ def register_snippets_api(
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ObjectInUseError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error deleting snippet: {str(e)}"

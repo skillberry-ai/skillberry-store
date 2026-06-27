@@ -147,6 +147,9 @@ class VnfsService:
                 raise
             data["port"] = server.port
             self.handler.write_dict(data["uuid"], data)
+            if data.get("skill_uuid"):
+                from skillberry_store.services.registry import get_service
+                get_service("skill").add_dependent("vnfs", data["uuid"], [data["skill_uuid"]])
             if data.get("name"):
                 self.handler.update_cache(data["uuid"], new_name=data["name"])
             if self.descriptions and data.get("description"):
@@ -385,7 +388,13 @@ class VnfsService:
                     logger.warning(f"Could not stop old runtime server: {e}")
                 server = self.server_manager.add_server(_to_ns(data))
                 data["port"] = server.port
+                from skillberry_store.services.registry import get_service
+                get_service("skill").remove_dependent("vnfs", uuid)
                 self.handler.write_dict(data["uuid"] or "", data)
+                if data.get("skill_uuid"):
+                    get_service("skill").add_dependent(
+                        "vnfs", data["uuid"] or uuid, [data["skill_uuid"]]
+                    )
                 if new_name and old_name:
                     self.handler.update_cache(
                         data["uuid"] or "",
@@ -473,6 +482,8 @@ class VnfsService:
                         uuid, new_name=None, old_name=name, old_parent=parent
                     )
                 self.handler.delete_object(uuid)
+                from skillberry_store.services.registry import get_service
+                get_service("skill").remove_dependent("vnfs", uuid)
                 if self.descriptions:
                     try:
                         self.descriptions.delete_description(uuid)

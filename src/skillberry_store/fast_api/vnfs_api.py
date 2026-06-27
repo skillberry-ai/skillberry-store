@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.vnfs_schema import VnfsSchema
+from skillberry_store.services.exceptions import ObjectInUseError
 from skillberry_store.services.vnfs_service import VnfsService
 
 
@@ -159,6 +160,8 @@ def register_vnfs_api(
             return {"message": f"vNFS server '{uuid_or_name}' deleted successfully."}
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ObjectInUseError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as exc:
             raise HTTPException(
                 status_code=500, detail=f"Error deleting vNFS server: {exc}"
