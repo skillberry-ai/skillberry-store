@@ -15,15 +15,10 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from skillberry_store.tools.configure import (
     _default_sbs_dir,
     get_files_directory_path,
-    get_tools_directory,
-    get_skills_directory,
-    get_snippets_directory,
     get_tools_descriptions_directory,
     get_skills_descriptions_directory,
     get_snippets_descriptions_directory,
-    get_vmcp_directory,
     get_vmcp_descriptions_directory,
-    get_vnfs_directory,
     get_vnfs_descriptions_directory,
 )
 
@@ -186,15 +181,10 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         # Step 2: Delete all data directories (including VMCP directory)
         directories_to_purge = [
             ("files", get_files_directory_path()),
-            ("tools", get_tools_directory()),
-            ("skills", get_skills_directory()),
-            ("snippets", get_snippets_directory()),
-            ("vmcp", get_vmcp_directory()),
             ("tools_descriptions", get_tools_descriptions_directory()),
             ("skills_descriptions", get_skills_descriptions_directory()),
             ("snippets_descriptions", get_snippets_descriptions_directory()),
             ("vmcp_descriptions", get_vmcp_descriptions_directory()),
-            ("vnfs", get_vnfs_directory()),
             ("vnfs_descriptions", get_vnfs_descriptions_directory()),
         ]
 
@@ -228,31 +218,23 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                     {"name": dir_name, "path": dir_path, "error": str(e)}
                 )
 
-        # Step 2.5: Clear ObjectHandler in-memory caches
+        # Step 2.5: Purge all ObjectHandler data and clear in-memory state
         caches_cleared = False
         try:
             from skillberry_store.modules.object_handler import get_object_handler
 
             for object_type in ["tool", "snippet", "skill", "vmcp", "vnfs"]:
                 try:
-                    handler = get_object_handler(object_type)
-                    # Clear dict cache
-                    if handler.dict_cache:
-                        handler.dict_cache.clear()
-                        logger.info(f"Cleared dict cache for {object_type}")
-                    # Clear name cache
-                    if handler.name_cache:
-                        handler.name_cache.clear()
-                        logger.info(f"Cleared name cache for {object_type}")
+                    get_object_handler(object_type).purge_all()
+                    deleted_dirs.append(object_type)
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to clear caches for {object_type}: {str(e)}"
-                    )
+                    logger.warning(f"Failed to purge {object_type}: {str(e)}")
+                    failed_dirs.append({"name": object_type, "error": str(e)})
 
             caches_cleared = True
-            logger.info("All ObjectHandler caches cleared")
+            logger.info("All ObjectHandler data and caches purged")
         except Exception as e:
-            logger.warning(f"Failed to clear ObjectHandler caches: {str(e)}")
+            logger.warning(f"Failed to purge ObjectHandler data: {str(e)}")
 
         # Step 3: Reset in-memory vector indexes
         vector_indexes_reset = False

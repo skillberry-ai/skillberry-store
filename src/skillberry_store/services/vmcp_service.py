@@ -189,6 +189,9 @@ class VmcpService:
                 raise
             data["port"] = server.port
             self.handler.write_dict(data["uuid"], data)
+            if data.get("skill_uuid"):
+                from skillberry_store.services.registry import get_service
+                get_service("skill").add_dependent("vmcp", data["uuid"], [data["skill_uuid"]])
             if data.get("name"):
                 self.handler.update_cache(data["uuid"], new_name=data["name"])
             if self.descriptions and data.get("description"):
@@ -449,7 +452,13 @@ class VmcpService:
                     env_id=env_id,
                 )
                 data["port"] = server.port
+                from skillberry_store.services.registry import get_service
+                get_service("skill").remove_dependent("vmcp", uuid)
                 self.handler.write_dict(data["uuid"] or "", data)
+                if data.get("skill_uuid"):
+                    get_service("skill").add_dependent(
+                        "vmcp", data["uuid"] or uuid, [data["skill_uuid"]]
+                    )
                 if new_name and old_name:
                     self.handler.update_cache(
                         data["uuid"] or "",
@@ -553,6 +562,8 @@ class VmcpService:
                         uuid, new_name=None, old_name=name, old_parent=parent
                     )
                 self.handler.delete_object(uuid)
+                from skillberry_store.services.registry import get_service
+                get_service("skill").remove_dependent("vmcp", uuid)
                 if self.descriptions:
                     try:
                         self.descriptions.delete_description(uuid)

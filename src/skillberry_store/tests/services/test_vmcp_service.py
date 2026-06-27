@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 from skillberry_store.services.vmcp_service import VmcpService
 
@@ -54,6 +54,7 @@ def test_delete_stops_runtime_and_removes_persistent():
     h = _handler()
     mgr = _manager()
     svc = VmcpService(h, mgr)
-    svc.delete("vm1")
+    with patch("skillberry_store.services.registry.get_service", return_value=MagicMock()):
+        svc.delete("vm1")
     mgr.remove_server.assert_called_once()
     h.delete_object.assert_called_once()

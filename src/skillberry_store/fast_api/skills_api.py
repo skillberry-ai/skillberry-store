@@ -9,6 +9,7 @@ from fastapi.responses import Response
 from skillberry_store.tools.endpoint_auth import ReauthRequired
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
+from skillberry_store.services.exceptions import ObjectInUseError
 from skillberry_store.services.skills_service import SkillsService
 
 
@@ -176,6 +177,8 @@ def register_skills_api(
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ObjectInUseError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error deleting skill: {str(e)}"

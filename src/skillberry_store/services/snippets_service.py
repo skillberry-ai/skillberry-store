@@ -14,6 +14,7 @@ from skillberry_store.plugins.events import (
     emit_content_deleted,
     emit_content_updated,
 )
+from skillberry_store.services.exceptions import ObjectInUseError
 from skillberry_store.utils.utils import generate_or_validate_uuid
 
 if TYPE_CHECKING:
@@ -85,6 +86,33 @@ class SnippetsService:
             if hasattr(e, "status_code") and e.status_code == 404:
                 raise KeyError(f"Snippet '{uuid_or_name}' not found")
             raise
+
+    def add_dependent(
+        self, referencing_type: str, referencing_uuid: str, referenced_snippet_uuids: List[str]
+    ) -> None:
+        """Register that ``referencing_uuid`` depends on each UUID in ``referenced_snippet_uuids``.
+
+        Called by ``SkillsService`` when it creates or updates a skill that references snippets.
+
+        Args:
+            referencing_type: Object type of the referencing object (e.g. ``"skill"``).
+            referencing_uuid: UUID of the referencing object.
+            referenced_snippet_uuids: UUIDs of the snippets being depended on.
+        """
+        self.handler.dependency_manager.add(
+            referencing_type, referencing_uuid, referenced_snippet_uuids
+        )
+
+    def remove_dependent(self, referencing_type: str, referencing_uuid: str) -> None:
+        """Remove all dependency records where ``referencing_uuid`` is the referencing side.
+
+        Called when the referencing object is updated or deleted.
+
+        Args:
+            referencing_type: Object type of the referencing object.
+            referencing_uuid: UUID of the referencing object.
+        """
+        self.handler.dependency_manager.remove_referencing(referencing_type, referencing_uuid)
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new snippet.
@@ -341,6 +369,9 @@ class SnippetsService:
         try:
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.write_lock(uuid):
+                dependents = self.handler.dependency_manager.get_dependents(uuid)
+                if dependents:
+                    raise ObjectInUseError("snippet", uuid, dependents)
                 try:
                     d = self.handler.read_dict(uuid)
                     name, parent = d.get("name"), d.get("parent")
@@ -361,7 +392,7 @@ class SnippetsService:
                 emit_content_deleted("snippet", uuid)
                 logger.info(f"Snippet '{uuid_or_name}' deleted")
                 return {"uuid": uuid}
-        except KeyError:
+        except (KeyError, ObjectInUseError):
             raise
         except Exception as e:
             logger.exception(f"Error deleting snippet '{uuid_or_name}': {e}")

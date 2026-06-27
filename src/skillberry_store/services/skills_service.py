@@ -14,6 +14,7 @@ from skillberry_store.plugins.events import (
     emit_content_deleted,
     emit_content_updated,
 )
+from skillberry_store.services.exceptions import ObjectInUseError
 from skillberry_store.utils.utils import generate_or_validate_uuid
 
 if TYPE_CHECKING:
@@ -97,6 +98,34 @@ class SkillsService:
         """
         self.handler = handler
         self.descriptions = descriptions
+
+    def add_dependent(
+        self, referencing_type: str, referencing_uuid: str, referenced_skill_uuids: List[str]
+    ) -> None:
+        """Register that ``referencing_uuid`` depends on each UUID in ``referenced_skill_uuids``.
+
+        Called by ``VmcpService`` and ``VnfsService`` when they create or update a server
+        that references a skill.
+
+        Args:
+            referencing_type: Object type of the referencing object (e.g. ``"vmcp"``).
+            referencing_uuid: UUID of the referencing object.
+            referenced_skill_uuids: UUIDs of the skills being depended on.
+        """
+        self.handler.dependency_manager.add(
+            referencing_type, referencing_uuid, referenced_skill_uuids
+        )
+
+    def remove_dependent(self, referencing_type: str, referencing_uuid: str) -> None:
+        """Remove all dependency records where ``referencing_uuid`` is the referencing side.
+
+        Called when the referencing object is updated or deleted.
+
+        Args:
+            referencing_type: Object type of the referencing object.
+            referencing_uuid: UUID of the referencing object.
+        """
+        self.handler.dependency_manager.remove_referencing(referencing_type, referencing_uuid)
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
         """Resolve a skill identifier to its UUID.
@@ -191,6 +220,13 @@ class SkillsService:
                     data["uuid"], data["name"]
                 )
             self.handler.write_dict(data["uuid"], data)
+            from skillberry_store.services.registry import get_service
+            get_service("tool").add_dependent(
+                "skill", data["uuid"], data.get("tool_uuids") or []
+            )
+            get_service("snippet").add_dependent(
+                "skill", data["uuid"], data.get("snippet_uuids") or []
+            )
             if data.get("name"):
                 self.handler.update_cache(data["uuid"], new_name=data["name"])
             if self.descriptions and data.get("description"):
@@ -400,7 +436,16 @@ class SkillsService:
                 merged["uuid"] = existing.get("uuid", uuid)
                 merged["created_at"] = existing.get("created_at")
                 merged["modified_at"] = datetime.now(timezone.utc).isoformat()
+                from skillberry_store.services.registry import get_service
+                get_service("tool").remove_dependent("skill", uuid)
+                get_service("snippet").remove_dependent("skill", uuid)
                 self.handler.write_dict(uuid, merged)
+                get_service("tool").add_dependent(
+                    "skill", uuid, merged.get("tool_uuids") or []
+                )
+                get_service("snippet").add_dependent(
+                    "skill", uuid, merged.get("snippet_uuids") or []
+                )
                 if new_name:
                     self.handler.update_cache(
                         uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
@@ -872,6 +917,9 @@ class SkillsService:
         try:
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.write_lock(uuid):
+                dependents = self.handler.dependency_manager.get_dependents(uuid)
+                if dependents:
+                    raise ObjectInUseError("skill", uuid, dependents)
                 skill: Optional[Dict[str, Any]] = None
                 try:
                     skill = self.handler.read_dict(uuid)
@@ -917,6 +965,8 @@ class SkillsService:
                         uuid, new_name=None, old_name=name, old_parent=parent
                     )
                 self.handler.delete_object(uuid)
+                get_service("tool").remove_dependent("skill", uuid)
+                get_service("snippet").remove_dependent("skill", uuid)
                 if self.descriptions:
                     try:
                         self.descriptions.delete_description(uuid)
@@ -931,7 +981,7 @@ class SkillsService:
                     "deleted_tools": deleted_tools,
                     "deleted_snippets": deleted_snippets,
                 }
-        except KeyError:
+        except (KeyError, ObjectInUseError):
             raise
         except Exception as e:
             logger.error(f"Error deleting skill '{uuid_or_name}': {e}")

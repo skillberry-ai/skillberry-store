@@ -6,6 +6,7 @@ from skillberry_store.services.tools_service import ToolsService
 
 def _handler(exists=False):
     h = MagicMock()
+    h.dependency_manager.get_dependents.return_value = []
     h.object_exists.return_value = exists
     h.get_cache_parent_for_head.return_value = None
     h.resolve_to_uuid_or_error.return_value = "cccc-3333"

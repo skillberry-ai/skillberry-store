@@ -1,11 +1,12 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 from skillberry_store.services.skills_service import SkillsService
 
 
 def _handler(exists=False):
     h = MagicMock()
+    h.dependency_manager.get_dependents.return_value = []
     h.object_exists.return_value = exists
     h.get_cache_parent_for_head.return_value = None
     h.resolve_to_uuid_or_error.return_value = "bbbb-2222"
@@ -21,8 +22,10 @@ def _handler(exists=False):
 
 
 def test_create_generates_uuid():
-    svc = SkillsService(_handler())
-    result = svc.create({"name": "sk1"})
+    mock_svc = MagicMock()
+    with patch("skillberry_store.services.registry.get_service", return_value=mock_svc):
+        svc = SkillsService(_handler())
+        result = svc.create({"name": "sk1"})
     assert "uuid" in result
 
 
@@ -69,8 +72,10 @@ def test_list_all_tolerates_skill_with_missing_tool():
 
 def test_delete_updates_cache_then_deletes():
     h = _handler()
-    svc = SkillsService(h)
-    svc.delete("sk1")
+    mock_svc = MagicMock()
+    with patch("skillberry_store.services.registry.get_service", return_value=mock_svc):
+        svc = SkillsService(h)
+        svc.delete("sk1")
     calls = [str(c) for c in h.mock_calls]
     assert any("update_cache" in c for c in calls)
     assert any("delete_object" in c for c in calls)

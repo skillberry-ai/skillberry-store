@@ -5,6 +5,7 @@ from skillberry_store.services.snippets_service import SnippetsService
 
 def _handler(exists=False):
     h = MagicMock()
+    h.dependency_manager.get_dependents.return_value = []
     h.object_exists.return_value = exists
     h.get_cache_parent_for_head.return_value = "some-parent"
     h.resolve_to_uuid_or_error.return_value = "aaaa-1111"
