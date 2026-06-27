@@ -5,6 +5,11 @@ import { toolsApi, snippetsApi, vmcpApi, vnfsApi } from '@/services/api';
 import type { Tool, Snippet, VMCPServer, VNFSServer } from '@/types';
 import JSZip from 'jszip';
 
+export interface ImportResult {
+  importedCount: number;
+  failures: { name: string; error: string }[];
+}
+
 /**
  * Export tools with their module content
  */
@@ -25,9 +30,10 @@ export async function exportTools(tools: Tool[]): Promise<(Tool & { module_conte
 /**
  * Import tools from exported data
  */
-export async function importTools(tools: (Tool & { module_content?: string })[]): Promise<number> {
+export async function importTools(tools: (Tool & { module_content?: string })[]): Promise<ImportResult> {
   let importedCount = 0;
-  
+  const failures: { name: string; error: string }[] = [];
+
   for (const tool of tools) {
     try {
       if (tool.module_content) {
@@ -35,27 +41,27 @@ export async function importTools(tools: (Tool & { module_content?: string })[])
         const lang = tool.programming_language?.toLowerCase() || 'python';
         const ext = lang === 'python' ? '.py' : lang === 'bash' || lang === 'sh' ? '.sh' : '.txt';
         const mimeType = lang === 'python' ? 'text/x-python' : 'text/plain';
-        
+
         // Create a File object from the module content
         const moduleBlob = new Blob([tool.module_content], { type: mimeType });
         const moduleFile = new File([moduleBlob], `${tool.name}${ext}`, { type: mimeType });
-        
+
         // Create the tool with the module file (this will auto-parse and create the tool)
         await toolsApi.create(moduleFile, tool.name, true);
-        
+
         // Update the tool with all the original metadata to preserve description, tags, params, returns, etc.
         // Remove module_content from the update payload as it's not part of the Tool schema
         const { module_content, ...toolMetadata } = tool;
         await toolsApi.update(tool.name, toolMetadata as Tool);
-        
+
         importedCount++;
       }
     } catch (error: any) {
-      console.error(`Failed to import tool ${tool.name}:`, error);
+      failures.push({ name: tool.name, error: error.message || String(error) });
     }
   }
-  
-  return importedCount;
+
+  return { importedCount, failures };
 }
 
 /**
@@ -68,19 +74,20 @@ export function exportSnippets(snippets: Snippet[]): Snippet[] {
 /**
  * Import snippets from exported data
  */
-export async function importSnippets(snippets: Snippet[]): Promise<number> {
+export async function importSnippets(snippets: Snippet[]): Promise<ImportResult> {
   let importedCount = 0;
-  
+  const failures: { name: string; error: string }[] = [];
+
   for (const snippet of snippets) {
     try {
       await snippetsApi.create(snippet);
       importedCount++;
     } catch (error: any) {
-      console.error(`Failed to import snippet ${snippet.name}:`, error);
+      failures.push({ name: snippet.name, error: error.message || String(error) });
     }
   }
-  
-  return importedCount;
+
+  return { importedCount, failures };
 }
 
 /**
@@ -92,7 +99,7 @@ export function exportSkills(skills: any[]): any[] {
     // Otherwise, extract from the populated tools and snippets arrays
     const tool_uuids = skill.tool_uuids || skill.tools?.map((t: any) => t.uuid) || [];
     const snippet_uuids = skill.snippet_uuids || skill.snippets?.map((s: any) => s.uuid) || [];
-    
+
     return {
       name: skill.name,
       version: skill.version || '1.0.0',
@@ -107,14 +114,18 @@ export function exportSkills(skills: any[]): any[] {
 /**
  * Import skills from exported data using query parameters
  */
-export async function importSkills(skills: any[]): Promise<number> {
+export async function importSkills(skills: any[]): Promise<ImportResult> {
   let importedCount = 0;
-  
+  const failures: { name: string; error: string }[] = [];
+
   for (const skill of skills) {
     try {
       // Validate required fields
       if (!skill.name || !skill.description) {
-        console.error(`Skipping skill with missing name or description:`, skill);
+        failures.push({
+          name: skill.name || '(unnamed)',
+          error: 'Missing required fields: name or description',
+        });
         continue;
       }
 
@@ -124,12 +135,12 @@ export async function importSkills(skills: any[]): Promise<number> {
         version: skill.version || '1.0.0',
         description: skill.description,
       });
-      
+
       // Add tags
       if (skill.tags && Array.isArray(skill.tags)) {
         skill.tags.forEach((tag: string) => params.append('tags', tag));
       }
-      
+
       // Add tool and snippet UUIDs
       if (skill.tool_uuids && Array.isArray(skill.tool_uuids)) {
         skill.tool_uuids.forEach((uuid: string) => params.append('tool_uuids', uuid));
@@ -137,24 +148,34 @@ export async function importSkills(skills: any[]): Promise<number> {
       if (skill.snippet_uuids && Array.isArray(skill.snippet_uuids)) {
         skill.snippet_uuids.forEach((uuid: string) => params.append('snippet_uuids', uuid));
       }
-      
+
       // Call API with query parameters
       const response = await fetch(`/api/skills/?${params}`, {
         method: 'POST',
       });
-      
+
       if (response.ok) {
         importedCount++;
       } else {
-        const errorText = await response.text();
-        console.error(`Failed to import skill ${skill.name}: ${errorText}`);
+        let errorText: string;
+        try {
+          const body = await response.json();
+          errorText = body.detail
+            ? (Array.isArray(body.detail)
+              ? body.detail.map((e: any) => e.msg || JSON.stringify(e)).join('; ')
+              : String(body.detail))
+            : response.statusText;
+        } catch {
+          errorText = response.statusText;
+        }
+        failures.push({ name: skill.name, error: errorText });
       }
     } catch (error: any) {
-      console.error(`Failed to import skill ${skill.name}:`, error);
+      failures.push({ name: skill.name, error: error.message || String(error) });
     }
   }
-  
-  return importedCount;
+
+  return { importedCount, failures };
 }
 
 /**
@@ -167,19 +188,20 @@ export function exportVMCPServers(servers: VMCPServer[]): VMCPServer[] {
 /**
  * Import VMCP servers from exported data
  */
-export async function importVMCPServers(servers: VMCPServer[]): Promise<number> {
+export async function importVMCPServers(servers: VMCPServer[]): Promise<ImportResult> {
   let importedCount = 0;
-  
+  const failures: { name: string; error: string }[] = [];
+
   for (const server of servers) {
     try {
       await vmcpApi.create(server);
       importedCount++;
     } catch (error: any) {
-      console.error(`Failed to import VMCP server ${server.name}:`, error);
+      failures.push({ name: server.name, error: error.message || String(error) });
     }
   }
-  
-  return importedCount;
+
+  return { importedCount, failures };
 }
 
 /**
@@ -207,17 +229,20 @@ export function exportVNFSServers(servers: VNFSServer[]): VNFSServer[] {
 /**
  * Import vNFS servers from exported data
  */
-export async function importVNFSServers(servers: VNFSServer[]): Promise<number> {
+export async function importVNFSServers(servers: VNFSServer[]): Promise<ImportResult> {
   let importedCount = 0;
+  const failures: { name: string; error: string }[] = [];
+
   for (const server of servers) {
     try {
       await vnfsApi.create(server);
       importedCount++;
     } catch (error: any) {
-      console.error(`Failed to import vNFS server ${server.name}:`, error);
+      failures.push({ name: server.name, error: error.message || String(error) });
     }
   }
-  return importedCount;
+
+  return { importedCount, failures };
 }
 
 // Made with Bob

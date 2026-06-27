@@ -67,6 +67,7 @@ export function SkillsPage() {
   const [createError, setCreateError] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [deleteTools, setDeleteTools] = useState(true);
   const [deleteSnippets, setDeleteSnippets] = useState(true);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -144,6 +145,10 @@ export function SkillsPage() {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
       setSelectedSkills([]);
       setIsDeleteModalOpen(false);
+      setDeleteError('');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete skill(s)');
     },
   });
 
@@ -152,55 +157,60 @@ export function SkillsPage() {
       setCreateError('Please fill in all required fields');
       return;
     }
-    
+
     try {
-      // Fetch tool and snippet UUIDs
-      const toolPromises = newSkill.toolNames.map(name =>
-        fetch(`/api/tools/${name}`).then(r => r.json())
+      // Resolve tool and snippet names to UUIDs before creating the skill
+      const toolResponses = await Promise.all(
+        newSkill.toolNames.map(name =>
+          fetch(`/api/tools/${name}`).then(async r => {
+            if (!r.ok) throw new Error(`Tool "${name}" not found (HTTP ${r.status})`);
+            return r.json();
+          })
+        )
       );
-      const snippetPromises = newSkill.snippetNames.map(name =>
-        fetch(`/api/snippets/${name}`).then(r => r.json())
+      const snippetResponses = await Promise.all(
+        newSkill.snippetNames.map(name =>
+          fetch(`/api/snippets/${name}`).then(async r => {
+            if (!r.ok) throw new Error(`Snippet "${name}" not found (HTTP ${r.status})`);
+            return r.json();
+          })
+        )
       );
-      
-      const tools = await Promise.all(toolPromises);
-      const snippets = await Promise.all(snippetPromises);
-      
+
       // Build query parameters
       const params = new URLSearchParams({
         name: newSkill.name,
         version: newSkill.version,
         description: newSkill.description,
       });
-      
-      // Add tags
+
       newSkill.tags.forEach(tag => params.append('tags', tag));
-      
-      // Add tool and snippet UUIDs
-      tools.forEach(t => params.append('tool_uuids', t.uuid));
-      snippets.forEach(s => params.append('snippet_uuids', s.uuid));
-      
-      // Call API with query parameters
-      const response = await fetch(`/api/skills/?${params}`, {
-        method: 'POST',
-      });
-      
+      toolResponses.forEach(t => params.append('tool_uuids', t.uuid));
+      snippetResponses.forEach(s => params.append('snippet_uuids', s.uuid));
+
+      const response = await fetch(`/api/skills/?${params}`, { method: 'POST' });
+
       if (response.ok) {
         queryClient.invalidateQueries({ queryKey: ['skills'] });
         setIsCreateModalOpen(false);
-        setNewSkill({
-          name: '',
-          version: '1.0.0',
-          description: '',
-          tags: [],
-          toolNames: [],
-          snippetNames: [],
-        });
+        setNewSkill({ name: '', version: '1.0.0', description: '', tags: [], toolNames: [], snippetNames: [] });
+        setCreateError('');
       } else {
-        const errorText = await response.text();
-        setCreateError(`Failed to create skill: ${errorText}`);
+        let detail: string;
+        try {
+          const body = await response.json();
+          detail = body.detail
+            ? (Array.isArray(body.detail)
+              ? body.detail.map((e: any) => e.msg || JSON.stringify(e)).join('; ')
+              : String(body.detail))
+            : response.statusText;
+        } catch {
+          detail = response.statusText;
+        }
+        setCreateError(`Failed to create skill "${newSkill.name}": ${detail}`);
       }
-    } catch (error) {
-      setCreateError('Failed to fetch tools or snippets. Please ensure they exist.');
+    } catch (error: any) {
+      setCreateError(error.message || 'Failed to create skill');
     }
   };
 
@@ -324,19 +334,27 @@ export function SkillsPage() {
     try {
       const text = await importFile.text();
       const importedSkills = JSON.parse(text);
-      
+
       if (!Array.isArray(importedSkills)) {
         setImportError('Invalid file format. Expected an array of skills.');
         return;
       }
 
-      // Use helper function to import skills
-      await importSkills(importedSkills);
-
+      const result = await importSkills(importedSkills);
       queryClient.invalidateQueries({ queryKey: ['skills'] });
-      setIsImportModalOpen(false);
-      setImportFile(null);
-      setImportError('');
+
+      if (result.failures.length > 0) {
+        const summary = result.failures
+          .map(f => `• ${f.name}: ${f.error}`)
+          .join('\n');
+        setImportError(
+          `Imported ${result.importedCount} of ${importedSkills.length} skill(s). Failures:\n${summary}`
+        );
+      } else {
+        setIsImportModalOpen(false);
+        setImportFile(null);
+        setImportError('');
+      }
     } catch (error) {
       setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
     }
@@ -905,7 +923,7 @@ export function SkillsPage() {
         variant={ModalVariant.small}
         title="Delete Skills"
         isOpen={isDeleteModalOpen}
-        onClose={() => { setIsDeleteModalOpen(false); setDeleteTools(true); setDeleteSnippets(true); }}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteTools(true); setDeleteSnippets(true); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -924,6 +942,11 @@ export function SkillsPage() {
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete {selectedSkills.length} skill{selectedSkills.length > 1 ? 's' : ''}?
           This action cannot be undone.
@@ -986,7 +1009,7 @@ export function SkillsPage() {
       >
         {importError && (
           <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
-            {importError}
+            <span style={{ whiteSpace: 'pre-wrap' }}>{importError}</span>
           </Alert>
         )}
         <Text style={{ marginBottom: '1rem' }}>

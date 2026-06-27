@@ -51,6 +51,7 @@ export function VNFSServerDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [editedServer, setEditedServer] = useState({
     name: '',
     version: '',
@@ -106,6 +107,9 @@ export function VNFSServerDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vnfs-servers'] });
       navigate('/vnfs-servers');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete vNFS server');
     },
   });
 
@@ -563,12 +567,17 @@ export function VNFSServerDetailPage() {
         variant={ModalVariant.small}
         title="Delete vNFS Server"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button key="delete" variant="danger" onClick={() => deleteMutation.mutate()} isLoading={deleteMutation.isPending}>Delete</Button>,
-          <Button key="cancel" variant="link" onClick={() => setIsDeleteModalOpen(false)}>Cancel</Button>,
+          <Button key="cancel" variant="link" onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}>Cancel</Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete vNFS server <strong>{server.name}</strong>? This action cannot be undone.
         </Text>

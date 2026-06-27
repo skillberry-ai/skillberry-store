@@ -71,6 +71,7 @@ export function VMCPServersPage() {
   const [isSkillSelectOpen, setIsSkillSelectOpen] = useState(false);
   const [skillSearchTerm, setSkillSearchTerm] = useState('');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importError, setImportError] = useState('');
@@ -128,6 +129,10 @@ export function VMCPServersPage() {
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
       setSelectedServers([]);
       setIsDeleteModalOpen(false);
+      setDeleteError('');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete VMCP server(s)');
     },
   });
 
@@ -235,19 +240,27 @@ export function VMCPServersPage() {
     try {
       const text = await importFile.text();
       const importedServers = JSON.parse(text) as VMCPServer[];
-      
+
       if (!Array.isArray(importedServers)) {
         setImportError('Invalid file format. Expected an array of VMCP servers.');
         return;
       }
 
-      // Use helper function to import VMCP servers
-      await importVMCPServers(importedServers);
-
+      const result = await importVMCPServers(importedServers);
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
-      setIsImportModalOpen(false);
-      setImportFile(null);
-      setImportError('');
+
+      if (result.failures.length > 0) {
+        const summary = result.failures
+          .map(f => `• ${f.name}: ${f.error}`)
+          .join('\n');
+        setImportError(
+          `Imported ${result.importedCount} of ${importedServers.length} server(s). Failures:\n${summary}`
+        );
+      } else {
+        setIsImportModalOpen(false);
+        setImportFile(null);
+        setImportError('');
+      }
     } catch (error) {
       setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
     }
@@ -771,7 +784,7 @@ export function VMCPServersPage() {
         variant={ModalVariant.small}
         title="Delete VMCP Servers"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -784,12 +797,17 @@ export function VMCPServersPage() {
           <Button
             key="cancel"
             variant="link"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
           >
             Cancel
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete {selectedServers.length} VMCP server{selectedServers.length > 1 ? 's' : ''}?
           This action cannot be undone.
@@ -834,7 +852,7 @@ export function VMCPServersPage() {
       >
         {importError && (
           <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
-            {importError}
+            <span style={{ whiteSpace: 'pre-wrap' }}>{importError}</span>
           </Alert>
         )}
         <Text style={{ marginBottom: '1rem' }}>
