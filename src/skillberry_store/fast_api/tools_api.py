@@ -10,7 +10,10 @@ from fastapi.responses import PlainTextResponse
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
-from skillberry_store.services.exceptions import ObjectAlreadyExistsError, ObjectInUseError
+from skillberry_store.services.exceptions import (
+    ObjectAlreadyExistsError,
+    ObjectInUseError,
+)
 from skillberry_store.services.tools_service import ToolsService
 
 

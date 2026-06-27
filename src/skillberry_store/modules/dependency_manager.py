@@ -8,10 +8,15 @@ class DependencyManager:
     """In-memory store for reverse dependency records for a single object type."""
 
     _data: Dict[str, Set[Tuple[str, str]]] = field(default_factory=dict)
-    _lock: fasteners.ReaderWriterLock = field(default_factory=fasteners.ReaderWriterLock)
+    _lock: fasteners.ReaderWriterLock = field(
+        default_factory=fasteners.ReaderWriterLock
+    )
 
     def add(
-        self, referencing_type: str, referencing_uuid: str, referenced_uuids: Iterable[str]
+        self,
+        referencing_type: str,
+        referencing_uuid: str,
+        referenced_uuids: Iterable[str],
     ):
         with self._lock.write_lock():
             dependent = (referencing_type, referencing_uuid)

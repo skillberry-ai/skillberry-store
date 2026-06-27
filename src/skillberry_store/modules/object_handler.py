@@ -75,10 +75,14 @@ def _bootstrap_dependency_managers() -> None:
         handler.dependency_manager.clear()
 
     for d in tool_handler.iter_dicts():
-        tool_handler.dependency_manager.add("tool", d["uuid"], d.get("dependencies") or [])
+        tool_handler.dependency_manager.add(
+            "tool", d["uuid"], d.get("dependencies") or []
+        )
 
     for d in skill_handler.iter_dicts():
-        tool_handler.dependency_manager.add("skill", d["uuid"], d.get("tool_uuids") or [])
+        tool_handler.dependency_manager.add(
+            "skill", d["uuid"], d.get("tool_uuids") or []
+        )
         snippet_handler.dependency_manager.add(
             "skill", d["uuid"], d.get("snippet_uuids") or []
         )
@@ -90,7 +94,6 @@ def _bootstrap_dependency_managers() -> None:
     for d in _object_handlers["vnfs"].iter_dicts():
         if d.get("skill_uuid"):
             skill_handler.dependency_manager.add("vnfs", d["uuid"], [d["skill_uuid"]])
-
 
 
 def get_object_handler(object_type: str) -> "ObjectHandler":
@@ -788,7 +791,9 @@ class ObjectHandler:
 
         if os.path.exists(self.base_directory):
             shutil.rmtree(self.base_directory)
-            logger.info(f"Purged all {self.object_type} objects from {self.base_directory}")
+            logger.info(
+                f"Purged all {self.object_type} objects from {self.base_directory}"
+            )
         Path(self.base_directory).mkdir(parents=True, exist_ok=True)
 
         if self.dict_cache:
