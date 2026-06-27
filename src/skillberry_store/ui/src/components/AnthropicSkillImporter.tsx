@@ -108,7 +108,7 @@ export function AnthropicSkillImporter({
     try {
       const skills = await skillsApi.list();
       const namespaceSet = new Set<string>();
-      
+
       skills.forEach(skill => {
         skill.tags?.forEach(tag => {
           if (tag.startsWith('namespace:')) {
@@ -117,10 +117,14 @@ export function AnthropicSkillImporter({
           }
         });
       });
-      
+
       setExistingNamespaces(Array.from(namespaceSet).sort());
-    } catch (error) {
-      console.error('Failed to fetch existing namespaces:', error);
+    } catch (error: any) {
+      // Non-critical: the namespace dropdown will be empty but import still works.
+      // Surface the error so users can see the fetch failed rather than wondering
+      // why the existing-namespace list is empty.
+      setExistingNamespaces([]);
+      console.warn('Could not load existing namespaces:', error?.message || error);
     }
   };
 

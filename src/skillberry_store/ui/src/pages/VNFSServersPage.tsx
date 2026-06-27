@@ -70,6 +70,7 @@ export function VNFSServersPage() {
   const [isSkillSelectOpen, setIsSkillSelectOpen] = useState(false);
   const [skillSearchTerm, setSkillSearchTerm] = useState('');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importError, setImportError] = useState('');
@@ -115,6 +116,10 @@ export function VNFSServersPage() {
       queryClient.invalidateQueries({ queryKey: ['vnfs-servers'] });
       setSelectedServers([]);
       setIsDeleteModalOpen(false);
+      setDeleteError('');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete vNFS server(s)');
     },
   });
 
@@ -185,11 +190,20 @@ export function VNFSServersPage() {
       const text = await importFile.text();
       const imported = JSON.parse(text) as VNFSServer[];
       if (!Array.isArray(imported)) { setImportError('Invalid file format. Expected an array of vNFS servers.'); return; }
-      await importVNFSServers(imported);
+
+      const result = await importVNFSServers(imported);
       queryClient.invalidateQueries({ queryKey: ['vnfs-servers'] });
-      setIsImportModalOpen(false);
-      setImportFile(null);
-      setImportError('');
+
+      if (result.failures.length > 0) {
+        const summary = result.failures.map(f => `• ${f.name}: ${f.error}`).join('\n');
+        setImportError(
+          `Imported ${result.importedCount} of ${imported.length} server(s). Failures:\n${summary}`
+        );
+      } else {
+        setIsImportModalOpen(false);
+        setImportFile(null);
+        setImportError('');
+      }
     } catch {
       setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
     }
@@ -501,12 +515,17 @@ export function VNFSServersPage() {
         variant={ModalVariant.small}
         title="Delete vNFS Servers"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button key="delete" variant="danger" onClick={handleDeleteSelected} isLoading={deleteMutation.isPending}>Delete</Button>,
-          <Button key="cancel" variant="link" onClick={() => setIsDeleteModalOpen(false)}>Cancel</Button>,
+          <Button key="cancel" variant="link" onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}>Cancel</Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete {selectedServers.length} vNFS server{selectedServers.length > 1 ? 's' : ''}? This action cannot be undone.
         </Text>
@@ -526,7 +545,11 @@ export function VNFSServersPage() {
           <Button key="cancel" variant="link" onClick={() => { setIsImportModalOpen(false); setImportFile(null); setImportError(''); }}>Cancel</Button>,
         ]}
       >
-        {importError && <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>{importError}</Alert>}
+        {importError && (
+          <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
+            <span style={{ whiteSpace: 'pre-wrap' }}>{importError}</span>
+          </Alert>
+        )}
         <Text style={{ marginBottom: '1rem' }}>
           Select a JSON file containing an array of vNFS server objects to import.
         </Text>

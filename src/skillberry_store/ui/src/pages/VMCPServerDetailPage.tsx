@@ -53,6 +53,8 @@ export function VMCPServerDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [openApiError, setOpenApiError] = useState('');
   const [editedServer, setEditedServer] = useState({
     name: '',
     version: '',
@@ -118,6 +120,9 @@ export function VMCPServerDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
       navigate('/vmcp-servers');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete VMCP server');
     },
   });
 
@@ -222,6 +227,7 @@ export function VMCPServerDetailPage() {
       return;
     }
 
+    setOpenApiError('');
     try {
       const spec = generateOpenAPISpec(
         server.name,
@@ -233,8 +239,8 @@ export function VMCPServerDetailPage() {
 
       const filename = `${server.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_openapi.json`;
       downloadOpenAPISpec(spec, filename);
-    } catch (error) {
-      console.error('Failed to generate or download OpenAPI spec:', error);
+    } catch (error: any) {
+      setOpenApiError(error.message || `Failed to generate OpenAPI spec for "${server.name}"`);
     }
   };
 
@@ -291,6 +297,19 @@ export function VMCPServerDetailPage() {
           </div>
         </div>
       </PageSection>
+
+      {openApiError && (
+        <PageSection>
+          <Alert
+            variant="danger"
+            title="OpenAPI spec generation failed"
+            isInline
+            actionClose={<Button variant="plain" aria-label="Close" onClick={() => setOpenApiError('')}>✕</Button>}
+          >
+            {openApiError}
+          </Alert>
+        </PageSection>
+      )}
 
       <PageSection>
         <Card>
@@ -899,7 +918,7 @@ export function VMCPServerDetailPage() {
         variant={ModalVariant.small}
         title="Delete VMCP Server"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -912,12 +931,17 @@ export function VMCPServerDetailPage() {
           <Button
             key="cancel"
             variant="link"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
           >
             Cancel
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete the VMCP server "{server.name}"?
           This action cannot be undone.

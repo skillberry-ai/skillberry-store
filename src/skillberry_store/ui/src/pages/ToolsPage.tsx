@@ -53,6 +53,7 @@ export function ToolsPage() {
   const [createError, setCreateError] = useState('');
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importError, setImportError] = useState('');
@@ -98,6 +99,10 @@ export function ToolsPage() {
       queryClient.invalidateQueries({ queryKey: ['tools'] });
       setSelectedTools([]);
       setIsDeleteModalOpen(false);
+      setDeleteError('');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete tool(s)');
     },
   });
 
@@ -154,19 +159,27 @@ export function ToolsPage() {
     try {
       const text = await importFile.text();
       const importedTools = JSON.parse(text) as (Tool & { module_content?: string })[];
-      
+
       if (!Array.isArray(importedTools)) {
         setImportError('Invalid file format. Expected an array of tools.');
         return;
       }
 
-      // Use helper function to import tools
-      await importTools(importedTools);
-
+      const result = await importTools(importedTools);
       queryClient.invalidateQueries({ queryKey: ['tools'] });
-      setIsImportModalOpen(false);
-      setImportFile(null);
-      setImportError('');
+
+      if (result.failures.length > 0) {
+        const summary = result.failures
+          .map(f => `• ${f.name}: ${f.error}`)
+          .join('\n');
+        setImportError(
+          `Imported ${result.importedCount} of ${importedTools.length} tool(s). Failures:\n${summary}`
+        );
+      } else {
+        setIsImportModalOpen(false);
+        setImportFile(null);
+        setImportError('');
+      }
     } catch (error) {
       setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
     }
@@ -599,7 +612,7 @@ export function ToolsPage() {
         variant={ModalVariant.small}
         title="Delete Tools"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -612,12 +625,17 @@ export function ToolsPage() {
           <Button
             key="cancel"
             variant="link"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
           >
             Cancel
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete {selectedTools.length} tool{selectedTools.length > 1 ? 's' : ''}?
           This action cannot be undone.
@@ -662,7 +680,7 @@ export function ToolsPage() {
       >
         {importError && (
           <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
-            {importError}
+            <span style={{ whiteSpace: 'pre-wrap' }}>{importError}</span>
           </Alert>
         )}
         <Text style={{ marginBottom: '1rem' }}>

@@ -53,6 +53,7 @@ export function ToolDetailPage() {
   const [executionParams, setExecutionParams] = useState('{}');
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [editedTool, setEditedTool] = useState({
     name: '',
     description: '',
@@ -126,6 +127,9 @@ export function ToolDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tools'] });
       navigate('/tools');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete tool');
     },
   });
 
@@ -928,7 +932,7 @@ export function ToolDetailPage() {
         variant={ModalVariant.small}
         title="Delete Tool"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -941,12 +945,17 @@ export function ToolDetailPage() {
           <Button
             key="cancel"
             variant="link"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
           >
             Cancel
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete the tool "{tool.name}"? This action cannot be undone.
         </Text>
