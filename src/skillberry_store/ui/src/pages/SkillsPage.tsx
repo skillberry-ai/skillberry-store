@@ -774,7 +774,7 @@ export function SkillsPage() {
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={toolSearchTerm}
@@ -849,7 +849,7 @@ export function SkillsPage() {
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={snippetSearchTerm}

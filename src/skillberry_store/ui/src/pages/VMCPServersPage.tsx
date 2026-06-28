@@ -652,7 +652,7 @@ export function VMCPServersPage() {
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={skillSearchTerm}
