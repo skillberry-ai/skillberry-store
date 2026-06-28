@@ -8,14 +8,10 @@ import json
 import zipfile
 import io
 from datetime import datetime
-from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
-from skillberry_store.tools.configure import (
-    _default_sbs_dir,
-    get_files_directory_path,
-)
+from skillberry_store.tools.configure import _default_sbs_dir
 
 logger = logging.getLogger(__name__)
 
@@ -173,25 +169,10 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         except Exception as e:
             logger.warning(f"Failed to stop vNFS servers: {str(e)}")
 
-        # Step 2: Delete the files directory (description dirs are owned by ObjectHandler)
+        # Step 2: Purge all ObjectHandler data and clear in-memory state
         deleted_dirs = []
         failed_dirs = []
 
-        files_dir = get_files_directory_path()
-        try:
-            if os.path.exists(files_dir):
-                logger.info(f"Deleting directory: {files_dir}")
-                shutil.rmtree(files_dir)
-                deleted_dirs.append("files")
-                logger.info(f"Successfully deleted: {files_dir}")
-            Path(files_dir).mkdir(parents=True, exist_ok=True)
-            logger.info(f"Recreated empty directory: {files_dir}")
-        except Exception as e:
-            error_msg = f"Failed to delete files at {files_dir}: {str(e)}"
-            logger.error(error_msg)
-            failed_dirs.append({"name": "files", "path": files_dir, "error": str(e)})
-
-        # Step 2.5: Purge all ObjectHandler data and clear in-memory state
         caches_cleared = False
         try:
             from skillberry_store.modules.object_handler import get_object_handler
@@ -433,7 +414,11 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             logger.info("Purge completed, starting restore...")
 
             # Now restore data
-            from skillberry_store.modules.object_handler import get_object_handler
+            from skillberry_store.modules.object_handler import (
+                get_object_handler,
+                clear_object_handlers,
+                initialize_object_handlers,
+            )
             from skillberry_store.schemas.vmcp_schema import VmcpSchema
             from skillberry_store.schemas.vnfs_schema import VnfsSchema
 
@@ -588,39 +573,16 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                     except Exception as e:
                         logger.error(f"Failed to import vNFS server: {e}")
 
-            # Rebuild caches for all object types
-            logger.info("Rebuilding caches after restore...")
-            for object_type in ["tool", "snippet", "skill", "vmcp", "vnfs"]:
-                try:
-                    handler = get_object_handler(object_type)
-                    # Iterate through all objects to populate caches
-                    for obj_dict in handler.iter_dicts():
-                        obj_uuid = obj_dict.get("uuid")
-                        obj_name = obj_dict.get("name")
-                        if obj_uuid and obj_name:
-                            handler.update_cache(obj_uuid, new_name=obj_name)
-                    logger.info(f"Rebuilt cache for {object_type}")
-                except Exception as e:
-                    logger.warning(f"Failed to rebuild cache for {object_type}: {e}")
-
-            # Rebuild description indexes via each handler's descriptions attribute
-            logger.info("Rebuilding description indexes after restore...")
-            for object_type in ["tool", "snippet", "skill", "vmcp", "vnfs"]:
-                handler = get_object_handler(object_type)
-                if handler.descriptions is None:
-                    continue
-                for obj_dict in handler.iter_dicts():
-                    if obj_dict.get("description") and obj_dict.get("uuid"):
-                        try:
-                            handler.descriptions.write_description(
-                                obj_dict["uuid"], obj_dict["description"]
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to write {object_type} description for "
-                                f"{obj_dict.get('uuid')}: {e}"
-                            )
-                logger.info(f"Rebuilt {object_type} descriptions index")
+            # Simulate a server reboot: reinitialise all object handlers from the
+            # now-populated data directories. This rebuilds name/dict caches,
+            # parent chains, description vector indexes, and the full dependency
+            # graph in one shot — identical to what happens at startup.
+            # Note: plugin emit_content_added events are intentionally not fired;
+            # a restore is not semantically equivalent to a series of creates.
+            logger.info("Reinitialising object handlers from restored data...")
+            clear_object_handlers()
+            initialize_object_handlers()
+            logger.info("Object handlers reinitialised")
 
             logger.info(
                 f"Restore completed successfully: {imported_counts['skills']} skills, "
@@ -689,10 +651,9 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                     "path": dir_path,
                     "exists": os.path.exists(dir_path),
                 }
-            else:
-                checks[f"{object_type}_descriptions"] = {"path": None, "exists": False}
+            # else: descriptions not configured for this handler — skip check
 
-        # Server is ready if all checks pass
+        # Server is ready only when every configured descriptions directory exists
         all_ready = all(check["exists"] for check in checks.values())
 
         if not all_ready:
