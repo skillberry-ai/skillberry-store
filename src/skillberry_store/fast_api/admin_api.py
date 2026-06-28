@@ -416,8 +416,7 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
             # Now restore data
             from skillberry_store.modules.object_handler import (
                 get_object_handler,
-                clear_object_handlers,
-                initialize_object_handlers,
+                reload_object_handlers,
             )
             from skillberry_store.schemas.vmcp_schema import VmcpSchema
             from skillberry_store.schemas.vnfs_schema import VnfsSchema
@@ -573,16 +572,17 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                     except Exception as e:
                         logger.error(f"Failed to import vNFS server: {e}")
 
-            # Simulate a server reboot: reinitialise all object handlers from the
-            # now-populated data directories. This rebuilds name/dict caches,
-            # parent chains, description vector indexes, and the full dependency
-            # graph in one shot — identical to what happens at startup.
+            # Refresh every handler from the now-populated data directories.
+            # This rebuilds name/dict caches, parent chains, description vector
+            # indexes, and the full dependency graph in one shot. Reloading in
+            # place (rather than replacing the singletons) keeps services and
+            # runtime managers pointed at the same handler instances they
+            # captured at startup.
             # Note: plugin emit_content_added events are intentionally not fired;
             # a restore is not semantically equivalent to a series of creates.
-            logger.info("Reinitialising object handlers from restored data...")
-            clear_object_handlers()
-            initialize_object_handlers()
-            logger.info("Object handlers reinitialised")
+            logger.info("Reloading object handlers from restored data...")
+            reload_object_handlers()
+            logger.info("Object handlers reloaded")
 
             logger.info(
                 f"Restore completed successfully: {imported_counts['skills']} skills, "

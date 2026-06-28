@@ -142,6 +142,26 @@ def clear_object_handlers() -> None:
     logger.debug("Cleared all object handlers")
 
 
+def reload_object_handlers() -> None:
+    """Refresh every singleton handler from disk in place.
+
+    Rebuilds dict caches, name caches, description stores, and the
+    cross-handler dependency graph by re-reading the data directories.
+    Unlike ``clear_object_handlers()`` followed by ``initialize_object_handlers()``,
+    this keeps singleton identity stable — services and runtime managers
+    that captured a handler reference at startup continue to point at the
+    same (now refreshed) instance.
+    """
+    if not _initialized:
+        raise RuntimeError(
+            "Object handlers not initialized. Call initialize_object_handlers() first."
+        )
+    for handler in _object_handlers.values():
+        handler.reload()
+    _bootstrap_dependency_managers()
+    logger.info("Reloaded object handlers from disk")
+
+
 class ObjectHandler:
     """
     Generic handler for managing objects (tools, snippets, skills, vmcp servers).
@@ -841,6 +861,26 @@ class ObjectHandler:
             self.descriptions = self._make_descriptions(self._vdb_type)
 
         logger.info(f"Cleared all in-memory state for {self.object_type}")
+
+    def reload(self) -> None:
+        """Refresh in-memory state from the on-disk data, preserving handler identity.
+
+        Rebuilds the dict cache, name cache, and description store by re-reading
+        ``base_directory``. Used after operations that mutate disk state behind
+        the handler's back (e.g. ``/admin/restore``); unlike replacing the handler
+        instance, this keeps references held by services and managers valid.
+
+        The dependency manager is intentionally left untouched here — callers
+        that need to refresh cross-handler dependencies should re-run the
+        module-level bootstrap after reloading every handler.
+        """
+        if self.dict_cache is not None:
+            self._initialize_dict_cache()
+        self.name_cache.clear()
+        self._initialize_name_cache()
+        if self._vdb_type is not None:
+            self.descriptions = self._make_descriptions(self._vdb_type)
+        logger.info(f"Reloaded {self.object_type} handler from {self.base_directory}")
 
     # ==================== Object File Operations ====================
 

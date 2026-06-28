@@ -31,10 +31,7 @@ try:
 except:
     __git_version__ = "unknown"
 
-from skillberry_store.fast_api.observability import (
-    observability_setup,
-    OTEL_TRACES_PORT,
-)
+from skillberry_store.fast_api.observability import observability_setup
 from prometheus_client import Counter, Histogram
 
 # this environment variable is used to enable the latest API version
@@ -176,7 +173,7 @@ class SBS(FastAPI):
         self.openapi = lambda: custom_openapi(self, [])
 
         # Add observability for FastAPI application
-        if OTEL_TRACES_PORT > 0:
+        if int(os.getenv("OTEL_TRACES_PORT", 0)) > 0:
             FastAPIInstrumentor.instrument_app(self)
 
     def run(self):
