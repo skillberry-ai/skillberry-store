@@ -103,6 +103,13 @@ class SBS(FastAPI):
         vnfs_service = get_service("vnfs")
         vmcp_service = get_service("vmcp")
 
+        from skillberry_store.services.admin_service import AdminService
+
+        admin_service = AdminService(
+            vmcp_server_manager=vmcp_service.server_manager,
+            vnfs_server_manager=vnfs_service.server_manager,
+        )
+
         # Initialize plugin system
         from skillberry_store.plugins.loader import PluginLoader
         from skillberry_store.plugins.store_api import StoreAPI
@@ -148,7 +155,7 @@ class SBS(FastAPI):
             tags="tools",
             service=tools_service,
         )
-        register_admin_api(self, tags="admin")
+        register_admin_api(self, tags="admin", service=admin_service)
 
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
 
