@@ -58,11 +58,21 @@ def initialize_object_handlers() -> None:
 
     vdb_type = os.getenv("SBS_VDB", "faiss")
 
-    _object_handlers["tool"] = ObjectHandler(get_tools_directory(), "tool", vdb_type=vdb_type)
-    _object_handlers["snippet"] = ObjectHandler(get_snippets_directory(), "snippet", vdb_type=vdb_type)
-    _object_handlers["skill"] = ObjectHandler(get_skills_directory(), "skill", vdb_type=vdb_type)
-    _object_handlers["vmcp"] = ObjectHandler(get_vmcp_directory(), "vmcp", vdb_type=vdb_type)
-    _object_handlers["vnfs"] = ObjectHandler(get_vnfs_directory(), "vnfs", vdb_type=vdb_type)
+    _object_handlers["tool"] = ObjectHandler(
+        get_tools_directory(), "tool", vdb_type=vdb_type
+    )
+    _object_handlers["snippet"] = ObjectHandler(
+        get_snippets_directory(), "snippet", vdb_type=vdb_type
+    )
+    _object_handlers["skill"] = ObjectHandler(
+        get_skills_directory(), "skill", vdb_type=vdb_type
+    )
+    _object_handlers["vmcp"] = ObjectHandler(
+        get_vmcp_directory(), "vmcp", vdb_type=vdb_type
+    )
+    _object_handlers["vnfs"] = ObjectHandler(
+        get_vnfs_directory(), "vnfs", vdb_type=vdb_type
+    )
 
     _initialized = True
     _bootstrap_dependency_managers()
@@ -231,6 +241,7 @@ class ObjectHandler:
         """Create a fresh Description instance rooted at {base_directory}/descriptions."""
         from skillberry_store.modules.description import Description
         from skillberry_store.vdbs.identify_vdb import identify_vector_db, VectorDBType
+
         descriptions_directory = os.path.join(self.base_directory, "descriptions")
         vector_index = identify_vector_db(VectorDBType(vdb_type))
         return Description(
