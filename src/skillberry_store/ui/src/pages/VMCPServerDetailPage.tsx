@@ -314,6 +314,15 @@ export function VMCPServerDetailPage() {
                 <DescriptionListTerm>Name</DescriptionListTerm>
                 <DescriptionListDescription>{server.name}</DescriptionListDescription>
               </DescriptionListGroup>
+
+              <DescriptionListGroup>
+                <DescriptionListTerm>UUID</DescriptionListTerm>
+                <DescriptionListDescription>
+                  <Text component="small" style={{ fontFamily: 'monospace' }}>
+                    {server.uuid}
+                  </Text>
+                </DescriptionListDescription>
+              </DescriptionListGroup>
               
               <DescriptionListGroup>
                 <DescriptionListTerm>Description</DescriptionListTerm>
@@ -419,15 +428,6 @@ export function VMCPServerDetailPage() {
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}
-
-              <DescriptionListGroup>
-                <DescriptionListTerm>UUID</DescriptionListTerm>
-                <DescriptionListDescription>
-                  <Text component="small" style={{ fontFamily: 'monospace' }}>
-                    {server.uuid}
-                  </Text>
-                </DescriptionListDescription>
-              </DescriptionListGroup>
 
               {server.extra && Object.keys(server.extra).length > 0 && (
                 <DescriptionListGroup>

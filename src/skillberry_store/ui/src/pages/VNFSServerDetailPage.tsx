@@ -242,6 +242,13 @@ export function VNFSServerDetailPage() {
               </DescriptionListGroup>
 
               <DescriptionListGroup>
+                <DescriptionListTerm>UUID</DescriptionListTerm>
+                <DescriptionListDescription>
+                  <Text component="small" style={{ fontFamily: 'monospace' }}>{server.uuid}</Text>
+                </DescriptionListDescription>
+              </DescriptionListGroup>
+
+              <DescriptionListGroup>
                 <DescriptionListTerm>Description</DescriptionListTerm>
                 <DescriptionListDescription>{server.description || 'No description'}</DescriptionListDescription>
               </DescriptionListGroup>
@@ -336,13 +343,6 @@ export function VNFSServerDetailPage() {
                   <DescriptionListDescription>{new Date(server.modified_at).toLocaleString()}</DescriptionListDescription>
                 </DescriptionListGroup>
               )}
-
-              <DescriptionListGroup>
-                <DescriptionListTerm>UUID</DescriptionListTerm>
-                <DescriptionListDescription>
-                  <Text component="small" style={{ fontFamily: 'monospace' }}>{server.uuid}</Text>
-                </DescriptionListDescription>
-              </DescriptionListGroup>
 
               {server.extra && Object.keys(server.extra).length > 0 && (
                 <DescriptionListGroup>
