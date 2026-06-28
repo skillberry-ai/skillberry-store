@@ -18,7 +18,6 @@ from skillberry_store.services.exceptions import ObjectInUseError
 from skillberry_store.utils.utils import generate_or_validate_uuid
 
 if TYPE_CHECKING:
-    from skillberry_store.modules.description import Description
     from skillberry_store.modules.lifecycle import LifecycleState
 
 logger = logging.getLogger(__name__)
@@ -53,20 +52,17 @@ class SnippetsService:
     
     Attributes:
         handler: ObjectHandler for snippet persistence operations.
-        descriptions: Optional Description instance for semantic search indexing.
+        descriptions: accessed via ``handler.descriptions`` (not stored as a separate attribute).
     """
     
-    def __init__(
-        self, handler: ObjectHandler, descriptions: Optional[Description] = None
-    ):
+    def __init__(self, handler: ObjectHandler):
         """Initialize the SnippetsService.
         
         Args:
             handler: ObjectHandler instance for snippet operations.
-            descriptions: Optional Description instance for managing snippet descriptions.
         """
         self.handler = handler
-        self.descriptions = descriptions
+
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
         """Resolve a snippet identifier to its UUID.
@@ -145,8 +141,8 @@ class SnippetsService:
             self.handler.write_dict(data["uuid"], data)
             if data.get("name"):
                 self.handler.update_cache(data["uuid"], new_name=data["name"])
-            if self.descriptions and data.get("description"):
-                self.descriptions.write_description(data["uuid"], data["description"])
+            if self.handler.descriptions and data.get("description"):
+                self.handler.descriptions.write_description(data["uuid"], data["description"])
             emit_content_added("snippet", data["uuid"])
             logger.info(
                 f"Snippet '{data.get('name')}' created with UUID {data['uuid']}"
@@ -263,10 +259,10 @@ class SnippetsService:
         try:
             if lifecycle_state is None:
                 lifecycle_state = LifecycleState.ANY
-            if not self.descriptions:
+            if not self.handler.descriptions:
                 raise RuntimeError("Snippet search is not available")
 
-            matched = self.descriptions.search_description(
+            matched = self.handler.descriptions.search_description(
                 search_term=search_term, k=max_number_of_results
             )
             filtered = [
@@ -340,8 +336,8 @@ class SnippetsService:
                     self.handler.update_cache(
                         uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
                     )
-                if self.descriptions and merged.get("description"):
-                    self.descriptions.write_description(uuid, merged["description"])
+                if self.handler.descriptions and merged.get("description"):
+                    self.handler.descriptions.write_description(uuid, merged["description"])
                 emit_content_updated("snippet", uuid)
                 logger.info(f"Snippet '{uuid_or_name}' updated")
                 return merged
@@ -382,9 +378,9 @@ class SnippetsService:
                         uuid, new_name=None, old_name=name, old_parent=parent
                     )
                 self.handler.delete_object(uuid)
-                if self.descriptions:
+                if self.handler.descriptions:
                     try:
-                        self.descriptions.delete_description(uuid)
+                        self.handler.descriptions.delete_description(uuid)
                     except Exception as e:
                         logger.warning(
                             f"Could not delete snippet description for {uuid}: {e}"

@@ -12,7 +12,6 @@ import threading
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
-    from skillberry_store.modules.description import Description
     from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
     from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
 
@@ -25,11 +24,6 @@ _init_lock = threading.Lock()
 
 def initialize_services(
     *,
-    tools_descriptions: Optional["Description"] = None,
-    snippets_descriptions: Optional["Description"] = None,
-    skills_descriptions: Optional["Description"] = None,
-    vmcp_descriptions: Optional["Description"] = None,
-    vnfs_descriptions: Optional["Description"] = None,
     vmcp_server_manager: Optional["VirtualMcpServerManager"] = None,
     vnfs_server_manager: Optional["VirtualNfsServerManager"] = None,
 ) -> None:
@@ -37,14 +31,10 @@ def initialize_services(
 
     Each service is keyed by its object type ("tool", "snippet", "skill",
     "vmcp", "vnfs") and uses the singleton object handler from
-    ``get_object_handler``.
+    ``get_object_handler``. Descriptions are sourced directly from
+    each handler's ``descriptions`` attribute.
 
     Args:
-        tools_descriptions: Optional Description for tools.
-        snippets_descriptions: Optional Description for snippets.
-        skills_descriptions: Optional Description for skills.
-        vmcp_descriptions: Optional Description for VMCP servers.
-        vnfs_descriptions: Optional Description for vNFS servers.
         vmcp_server_manager: Required ``VirtualMcpServerManager`` for the
             VMCP service.
         vnfs_server_manager: Required ``VirtualNfsServerManager`` for the
@@ -63,28 +53,11 @@ def initialize_services(
         from skillberry_store.services.vmcp_service import VmcpService
         from skillberry_store.services.vnfs_service import VnfsService
 
-        _services["tool"] = ToolsService(
-            get_object_handler("tool"),
-            tools_descriptions,
-        )
-        _services["snippet"] = SnippetsService(
-            get_object_handler("snippet"),
-            snippets_descriptions,
-        )
-        _services["skill"] = SkillsService(
-            handler=get_object_handler("skill"),
-            descriptions=skills_descriptions,
-        )
-        _services["vmcp"] = VmcpService(
-            get_object_handler("vmcp"),
-            vmcp_server_manager,
-            vmcp_descriptions,
-        )
-        _services["vnfs"] = VnfsService(
-            get_object_handler("vnfs"),
-            vnfs_server_manager,
-            vnfs_descriptions,
-        )
+        _services["tool"] = ToolsService(get_object_handler("tool"))
+        _services["snippet"] = SnippetsService(get_object_handler("snippet"))
+        _services["skill"] = SkillsService(get_object_handler("skill"))
+        _services["vmcp"] = VmcpService(get_object_handler("vmcp"), vmcp_server_manager)
+        _services["vnfs"] = VnfsService(get_object_handler("vnfs"), vnfs_server_manager)
         _initialized = True
         logger.info(
             f"Initialized {len(_services)} services: {list(_services.keys())}"

@@ -19,6 +19,7 @@ def _handler(exists=False):
     h.read_file.return_value = "def hello(): pass"
     h.read_dicts.return_value = []
     h.get_existing_names.return_value = []
+    h.descriptions = None
     return h
 
 

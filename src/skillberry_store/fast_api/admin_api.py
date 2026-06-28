@@ -15,11 +15,6 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 from skillberry_store.tools.configure import (
     _default_sbs_dir,
     get_files_directory_path,
-    get_tools_descriptions_directory,
-    get_skills_descriptions_directory,
-    get_snippets_descriptions_directory,
-    get_vmcp_descriptions_directory,
-    get_vnfs_descriptions_directory,
 )
 
 logger = logging.getLogger(__name__)
@@ -178,45 +173,23 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         except Exception as e:
             logger.warning(f"Failed to stop vNFS servers: {str(e)}")
 
-        # Step 2: Delete all data directories (including VMCP directory)
-        directories_to_purge = [
-            ("files", get_files_directory_path()),
-            ("tools_descriptions", get_tools_descriptions_directory()),
-            ("skills_descriptions", get_skills_descriptions_directory()),
-            ("snippets_descriptions", get_snippets_descriptions_directory()),
-            ("vmcp_descriptions", get_vmcp_descriptions_directory()),
-            ("vnfs_descriptions", get_vnfs_descriptions_directory()),
-        ]
-
+        # Step 2: Delete the files directory (description dirs are owned by ObjectHandler)
         deleted_dirs = []
         failed_dirs = []
 
-        for dir_name, dir_path in directories_to_purge:
-            try:
-                if os.path.exists(dir_path):
-                    logger.info(f"Deleting directory: {dir_path}")
-                    shutil.rmtree(dir_path)
-                    deleted_dirs.append(dir_name)
-                    logger.info(f"Successfully deleted: {dir_path}")
-                else:
-                    logger.info(f"Directory does not exist, skipping: {dir_path}")
-
-                # Recreate the directory
-                Path(dir_path).mkdir(parents=True, exist_ok=True)
-                logger.info(f"Recreated empty directory: {dir_path}")
-
-                # For description directories, also recreate the /index/ subdirectory
-                if "descriptions" in dir_name:
-                    index_dir = os.path.join(dir_path, "index")
-                    Path(index_dir).mkdir(parents=True, exist_ok=True)
-                    logger.info(f"Recreated index subdirectory: {index_dir}")
-
-            except Exception as e:
-                error_msg = f"Failed to delete {dir_name} at {dir_path}: {str(e)}"
-                logger.error(error_msg)
-                failed_dirs.append(
-                    {"name": dir_name, "path": dir_path, "error": str(e)}
-                )
+        files_dir = get_files_directory_path()
+        try:
+            if os.path.exists(files_dir):
+                logger.info(f"Deleting directory: {files_dir}")
+                shutil.rmtree(files_dir)
+                deleted_dirs.append("files")
+                logger.info(f"Successfully deleted: {files_dir}")
+            Path(files_dir).mkdir(parents=True, exist_ok=True)
+            logger.info(f"Recreated empty directory: {files_dir}")
+        except Exception as e:
+            error_msg = f"Failed to delete files at {files_dir}: {str(e)}"
+            logger.error(error_msg)
+            failed_dirs.append({"name": "files", "path": files_dir, "error": str(e)})
 
         # Step 2.5: Purge all ObjectHandler data and clear in-memory state
         caches_cleared = False
@@ -236,39 +209,8 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         except Exception as e:
             logger.warning(f"Failed to purge ObjectHandler data: {str(e)}")
 
-        # Step 3: Reset in-memory vector indexes
-        vector_indexes_reset = False
-        try:
-            if hasattr(app, "state"):
-                # Reinitialize all description instances with empty vector indexes
-                if hasattr(app.state, "descriptions"):
-                    app.state.descriptions.load_index()
-                    logger.info("Reset descriptions vector index")
-
-                if hasattr(app.state, "tools_descriptions"):
-                    app.state.tools_descriptions.load_index()
-                    logger.info("Reset tools_descriptions vector index")
-
-                if hasattr(app.state, "snippets_descriptions"):
-                    app.state.snippets_descriptions.load_index()
-                    logger.info("Reset snippets_descriptions vector index")
-
-                if hasattr(app.state, "skills_descriptions"):
-                    app.state.skills_descriptions.load_index()
-                    logger.info("Reset skills_descriptions vector index")
-
-                if hasattr(app.state, "vmcp_descriptions"):
-                    app.state.vmcp_descriptions.load_index()
-                    logger.info("Reset vmcp_descriptions vector index")
-
-                if hasattr(app.state, "vnfs_descriptions"):
-                    app.state.vnfs_descriptions.load_index()
-                    logger.info("Reset vnfs_descriptions vector index")
-
-                vector_indexes_reset = True
-                logger.info("All in-memory vector indexes reset successfully")
-        except Exception as e:
-            logger.warning(f"Failed to reset vector indexes: {str(e)}")
+        # Step 3: Vector indexes are reset inside purge_all() — no separate step needed.
+        vector_indexes_reset = caches_cleared
 
         if failed_dirs:
             raise HTTPException(
@@ -661,77 +603,24 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
                 except Exception as e:
                     logger.warning(f"Failed to rebuild cache for {object_type}: {e}")
 
-            # Rebuild description indexes
+            # Rebuild description indexes via each handler's descriptions attribute
             logger.info("Rebuilding description indexes after restore...")
-            if hasattr(app, "state"):
-                # Rebuild tools descriptions
-                if hasattr(app.state, "tools_descriptions"):
-                    tool_handler = get_object_handler("tool")
-                    for tool_dict in tool_handler.iter_dicts():
-                        if tool_dict.get("description") and tool_dict.get("uuid"):
-                            try:
-                                app.state.tools_descriptions.write_description(
-                                    tool_dict["uuid"], tool_dict["description"]
-                                )
-                            except Exception as e:
-                                logger.warning(f"Failed to write tool description: {e}")
-                    logger.info("Rebuilt tools descriptions index")
-
-                # Rebuild snippets descriptions
-                if hasattr(app.state, "snippets_descriptions"):
-                    snippet_handler = get_object_handler("snippet")
-                    for snippet_dict in snippet_handler.iter_dicts():
-                        if snippet_dict.get("description") and snippet_dict.get("uuid"):
-                            try:
-                                app.state.snippets_descriptions.write_description(
-                                    snippet_dict["uuid"], snippet_dict["description"]
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Failed to write snippet description: {e}"
-                                )
-                    logger.info("Rebuilt snippets descriptions index")
-
-                # Rebuild skills descriptions
-                if hasattr(app.state, "skills_descriptions"):
-                    skill_handler = get_object_handler("skill")
-                    for skill_dict in skill_handler.iter_dicts():
-                        if skill_dict.get("description") and skill_dict.get("uuid"):
-                            try:
-                                app.state.skills_descriptions.write_description(
-                                    skill_dict["uuid"], skill_dict["description"]
-                                )
-                            except Exception as e:
-                                logger.warning(
-                                    f"Failed to write skill description: {e}"
-                                )
-                    logger.info("Rebuilt skills descriptions index")
-
-                # Rebuild VMCP descriptions
-                if hasattr(app.state, "vmcp_descriptions"):
-                    vmcp_handler = get_object_handler("vmcp")
-                    for vmcp_dict in vmcp_handler.iter_dicts():
-                        if vmcp_dict.get("description") and vmcp_dict.get("uuid"):
-                            try:
-                                app.state.vmcp_descriptions.write_description(
-                                    vmcp_dict["uuid"], vmcp_dict["description"]
-                                )
-                            except Exception as e:
-                                logger.warning(f"Failed to write VMCP description: {e}")
-                    logger.info("Rebuilt VMCP descriptions index")
-
-                # Rebuild vNFS descriptions
-                if hasattr(app.state, "vnfs_descriptions"):
-                    vnfs_handler = get_object_handler("vnfs")
-                    for vnfs_dict in vnfs_handler.iter_dicts():
-                        if vnfs_dict.get("description") and vnfs_dict.get("uuid"):
-                            try:
-                                app.state.vnfs_descriptions.write_description(
-                                    vnfs_dict["uuid"], vnfs_dict["description"]
-                                )
-                            except Exception as e:
-                                logger.warning(f"Failed to write vNFS description: {e}")
-                    logger.info("Rebuilt vNFS descriptions index")
+            for object_type in ["tool", "snippet", "skill", "vmcp", "vnfs"]:
+                handler = get_object_handler(object_type)
+                if handler.descriptions is None:
+                    continue
+                for obj_dict in handler.iter_dicts():
+                    if obj_dict.get("description") and obj_dict.get("uuid"):
+                        try:
+                            handler.descriptions.write_description(
+                                obj_dict["uuid"], obj_dict["description"]
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to write {object_type} description for "
+                                f"{obj_dict.get('uuid')}: {e}"
+                            )
+                logger.info(f"Rebuilt {object_type} descriptions index")
 
             logger.info(
                 f"Restore completed successfully: {imported_counts['skills']} skills, "
@@ -787,26 +676,21 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
         Raises:
             HTTPException: 500 status when still initializing.
         """
+        from skillberry_store.modules.object_handler import get_object_handler
+
         checks = {}
 
-        # Check all known description objects in app.state
-        description_attrs = [
-            "tools_descriptions",
-            "snippets_descriptions",
-            "skills_descriptions",
-            "vmcp_descriptions",
-        ]
-
-        for attr_name in description_attrs:
-            desc_obj = getattr(app.state, attr_name, None)
-            if desc_obj and hasattr(desc_obj, "descriptions_directory"):
-                dir_path = desc_obj.descriptions_directory
-                checks[attr_name] = {
+        for object_type in ["tool", "snippet", "skill", "vmcp"]:
+            handler = get_object_handler(object_type)
+            desc = handler.descriptions
+            if desc is not None:
+                dir_path = desc.descriptions_directory
+                checks[f"{object_type}_descriptions"] = {
                     "path": dir_path,
                     "exists": os.path.exists(dir_path),
                 }
             else:
-                checks[attr_name] = {"path": None, "exists": False}
+                checks[f"{object_type}_descriptions"] = {"path": None, "exists": False}
 
         # Server is ready if all checks pass
         all_ready = all(check["exists"] for check in checks.values())

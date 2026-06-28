@@ -124,19 +124,6 @@ def get_files_directory_path():
     return default_path
 
 
-def get_tools_descriptions_directory():
-    """
-    Get the directory path for tool descriptions.
-    """
-    env_path = os.getenv("SBS_TOOLS_DESCRIPTIONS_DIRECTORY")
-    if env_path:
-        logger.info(f"Using tools descriptions directory from environment: {env_path}")
-        return env_path
-    default_path = _default_sbs_dir("tools_descriptions")
-    logger.info(f"Using default tools descriptions directory: {default_path}")
-    return default_path
-
-
 def get_metadata_directory():
     """
     Get the directory path for metadata.
@@ -189,34 +176,6 @@ def get_tools_directory():
     return default_path
 
 
-def get_snippets_descriptions_directory():
-    """
-    Get the directory path for snippet descriptions.
-    """
-    env_path = os.getenv("SBS_SNIPPETS_DESCRIPTIONS_DIRECTORY")
-    if env_path:
-        logger.info(
-            f"Using snippets descriptions directory from environment: {env_path}"
-        )
-        return env_path
-    default_path = _default_sbs_dir("snippets_descriptions")
-    logger.info(f"Using default snippets descriptions directory: {default_path}")
-    return default_path
-
-
-def get_skills_descriptions_directory():
-    """
-    Get the directory path for skill descriptions.
-    """
-    env_path = os.getenv("SBS_SKILLS_DESCRIPTIONS_DIRECTORY")
-    if env_path:
-        logger.info(f"Using skills descriptions directory from environment: {env_path}")
-        return env_path
-    default_path = _default_sbs_dir("skills_descriptions")
-    logger.info(f"Using default skills descriptions directory: {default_path}")
-    return default_path
-
-
 def get_vmcp_directory():
     """
     Get the directory path for virtual MCP servers.
@@ -230,19 +189,6 @@ def get_vmcp_directory():
     return default_path
 
 
-def get_vmcp_descriptions_directory():
-    """
-    Get the directory path for virtual MCP server descriptions.
-    """
-    env_path = os.getenv("SBS_VMCP_DESCRIPTIONS_DIRECTORY")
-    if env_path:
-        logger.info(f"Using vmcp descriptions directory from environment: {env_path}")
-        return env_path
-    default_path = _default_sbs_dir("vmcp_descriptions")
-    logger.info(f"Using default vmcp descriptions directory: {default_path}")
-    return default_path
-
-
 def get_vnfs_directory():
     """
     Get the directory path for virtual NFS servers.
@@ -253,19 +199,6 @@ def get_vnfs_directory():
         return env_path
     default_path = _default_sbs_dir("vnfs_servers")
     logger.info(f"Using default vnfs directory: {default_path}")
-    return default_path
-
-
-def get_vnfs_descriptions_directory():
-    """
-    Get the directory path for virtual NFS server descriptions.
-    """
-    env_path = os.getenv("SBS_VNFS_DESCRIPTIONS_DIRECTORY")
-    if env_path:
-        logger.info(f"Using vnfs descriptions directory from environment: {env_path}")
-        return env_path
-    default_path = _default_sbs_dir("vnfs_descriptions")
-    logger.info(f"Using default vnfs descriptions directory: {default_path}")
     return default_path
 
 
