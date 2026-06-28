@@ -630,10 +630,10 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
 
     @app.get("/health/ready", tags=[tags], openapi_extra={"x-cli-name": "health-ready"})
     def readiness_check():
-        """Readiness check endpoint - verifies all description directories are initialized.
+        """Readiness check endpoint - verifies all description stores are initialized.
 
         Returns:
-            dict: Readiness status with details about each directory (HTTP 200 when ready).
+            dict: Readiness status with details about each object type (HTTP 200 when ready).
 
         Raises:
             HTTPException: 500 status when still initializing.
@@ -642,19 +642,14 @@ def register_admin_api(app: FastAPI, tags: str = "admin"):
 
         checks = {}
 
-        for object_type in ["tool", "snippet", "skill", "vmcp"]:
+        for object_type in ["tool", "snippet", "skill", "vmcp", "vnfs"]:
             handler = get_object_handler(object_type)
             desc = handler.descriptions
             if desc is not None:
-                dir_path = desc.descriptions_directory
-                checks[f"{object_type}_descriptions"] = {
-                    "path": dir_path,
-                    "exists": os.path.exists(dir_path),
-                }
-            # else: descriptions not configured for this handler — skip check
+                checks[object_type] =  desc.is_ready
 
-        # Server is ready only when every configured descriptions directory exists
-        all_ready = all(check["exists"] for check in checks.values())
+        # Server is ready only when every configured descriptions store reports ready
+        all_ready = all(obj_check for obj_check in checks.values())
 
         if not all_ready:
             raise HTTPException(
