@@ -1,7 +1,7 @@
 import asyncio
 import json
-import os
 import shutil
+import os
 from urllib.parse import quote
 
 import httpx
@@ -10,25 +10,10 @@ from skillberry_store.tools.configure import _default_sbs_dir
 
 
 def clean_test_tmp_dir():
-    """Removes temporary directories used by the tools service."""
-
-    paths = [
-        _default_sbs_dir("files"),
-        _default_sbs_dir("snippets"),
-        _default_sbs_dir("tools"),
-        _default_sbs_dir("skills"),
-        _default_sbs_dir("vmcp"),
-        _default_sbs_dir("metadata"),
-        _default_sbs_dir("tools_descriptions"),
-        _default_sbs_dir("snippets_descriptions"),
-        _default_sbs_dir("skills_descriptions"),
-        _default_sbs_dir("vmcp_descriptions"),
-    ]
-
-    for path in paths:
-        if os.path.exists(path):
-            print(f"Removing: {path}")
-            shutil.rmtree(path, ignore_errors=False)
+    """Removes all persisted data under the skillberry-store root directory."""
+    root = _default_sbs_dir("")
+    if os.path.exists(root):
+        shutil.rmtree(root)
 
 
 async def wait_until_server_ready(url="http://127.0.0.1:8000/health/ready", timeout=60):

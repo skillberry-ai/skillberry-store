@@ -19,10 +19,11 @@ def _make_client(skill, all_skills):
     app = FastAPI()
     handler = MagicMock()
     handler.dependency_manager.get_dependents.return_value = []
+    handler.descriptions = None
     handler.resolve_to_uuid_or_error.return_value = skill["uuid"]
     handler.read_dict.return_value = skill
     handler.list_all_dicts.return_value = all_skills
-    svc = SkillsService(handler, descriptions=None)
+    svc = SkillsService(handler)
     register_skills_api(app, service=svc)
     return TestClient(app), handler
 
