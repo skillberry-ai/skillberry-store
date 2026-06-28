@@ -210,7 +210,8 @@ export function PluginActionForm({
     setJobId(null);
     setTimedOut(false);
 
-    // Coerce array-typed fields from comma-separated strings to string[]
+    // Coerce array-typed fields from comma-separated strings to string[], and
+    // object-typed fields from their JSON-textarea string back into an object.
     const coercedData: Record<string, any> = { ...formData };
     if (action.params_schema.properties) {
       for (const [key, schema] of Object.entries(action.params_schema.properties) as [string, any][]) {
@@ -224,6 +225,25 @@ export function PluginActionForm({
               .split(',')
               .map((s: string) => s.trim())
               .filter(Boolean);
+          }
+        } else if (schema.type === 'object') {
+          const v = coercedData[key];
+          if (typeof v === 'string') {
+            const trimmed = v.trim();
+            if (!trimmed) {
+              delete coercedData[key];
+            } else {
+              try {
+                coercedData[key] = JSON.parse(trimmed);
+              } catch {
+                setError(`${schema.title ?? key} must be valid JSON`);
+                setIsSubmitting(false);
+                return;
+              }
+            }
+          } else if (v && typeof v === 'object' && Object.keys(v).length === 0) {
+            // Drop empty objects (e.g. an example with no env overrides).
+            delete coercedData[key];
           }
         }
       }
@@ -639,6 +659,38 @@ export function PluginActionForm({
           <Button variant="link" onClick={addItem}>
             Add
           </Button>
+        </FormGroup>
+      );
+    }
+
+    // Object → JSON textarea (parsed back into an object on submit). Prefill may
+    // seed this with an object (e.g. a preset's env overrides), so stringify it.
+    if (propertySchema.type === 'object') {
+      const display =
+        typeof value === 'string'
+          ? value
+          : value && Object.keys(value).length
+          ? JSON.stringify(value, null, 2)
+          : '';
+      return (
+        <FormGroup
+          key={propertyName}
+          label={propertySchema.title ?? propertyName}
+          isRequired={isRequired}
+          fieldId={propertyName}
+        >
+          {propertySchema.description && (
+            <div style={{ fontSize: '0.875rem', color: '#6A6E73', marginBottom: '0.25rem' }}>
+              {propertySchema.description}
+            </div>
+          )}
+          <TextArea
+            id={propertyName}
+            value={display}
+            onChange={(_event, newValue) => handleChange(newValue)}
+            rows={4}
+            aria-label={propertySchema.title ?? propertyName}
+          />
         </FormGroup>
       );
     }

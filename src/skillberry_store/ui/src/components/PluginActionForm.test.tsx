@@ -224,6 +224,67 @@ describe('PluginActionForm — generic async actions', () => {
     expect(values).toContain('b');
   });
 
+  it('prefills an object field as JSON and submits it parsed back to an object', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          id: 'optimize',
+          label: 'Optimize',
+          prompt: 'optimize it',
+          skills: [],
+          env: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' },
+        },
+      ],
+    });
+    const onSubmit = vi.fn().mockResolvedValue({ success: true } as PluginActionResult);
+    const action = {
+      label: 'Run preset',
+      endpoint: '/plugins/ask-runspace/run',
+      method: 'POST',
+      params_schema: {
+        type: 'object',
+        properties: {
+          preset_id: {
+            type: 'string',
+            'x-options-from': '/x/presets',
+            'x-option-label': 'label',
+            'x-option-value': 'id',
+            'x-prefill': { request: 'prompt', skills: 'skills', agent_env: 'env' },
+          },
+          request: { type: 'string', format: 'textarea' },
+          skills: { type: 'array' },
+          agent_env: { type: 'object', title: 'Environment overrides (optional)' },
+        },
+      },
+    } as any;
+
+    renderForm(action, onSubmit);
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'Optimize' })).toBeDefined();
+    });
+
+    fireEvent.change(document.getElementById('preset_id') as HTMLSelectElement, {
+      target: { value: 'optimize' },
+    });
+
+    // The object field renders as a textarea prefilled with the env as JSON.
+    await waitFor(() => {
+      const env = document.getElementById('agent_env') as HTMLTextAreaElement;
+      expect(env.tagName).toBe('TEXTAREA');
+      expect(env.value).toContain('CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS');
+    });
+
+    // Submitting parses the JSON back into an object.
+    fireEvent.click(screen.getByRole('button', { name: /Execute/i }));
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ agent_env: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' } })
+      );
+    });
+  });
+
   it('renders an array field as an add/remove list', () => {
     const action = {
       label: 'Tag it',

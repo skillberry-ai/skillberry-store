@@ -18,6 +18,16 @@ def test_preset_skills_prefilled():
     assert any("skill-creator" in s for s in by_id["skill"]["skills"])
 
 
+def test_optimize_preset_enables_agent_teams():
+    # Every preset carries an env block so the x-prefill always seeds agent_env;
+    # only the optimize preset turns on the experimental agent-teams flag.
+    by_id = {p["id"]: p for p in PRESETS}
+    for p in PRESETS:
+        assert isinstance(p["env"], dict)
+    assert by_id["optimize"]["env"] == {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}
+    assert by_id["custom"]["env"] == {}
+
+
 def test_generic_custom_preset_is_empty():
     by_id = {p["id"]: p for p in PRESETS}
     assert by_id["custom"]["prompt"] == ""
@@ -173,7 +183,8 @@ def test_ui_config_shape():
     assert props["request"]["format"] == "textarea"
     assert action["params_schema"]["required"] == ["request"]
     assert props["preset_id"]["x-options-from"].endswith("/presets")
-    assert props["preset_id"]["x-prefill"] == {"request": "prompt", "skills": "skills"}
+    assert props["preset_id"]["x-prefill"] == {
+        "request": "prompt", "skills": "skills", "agent_env": "env"}
     # Local is the default so the agent can reach the localhost store MCP.
     assert props["execution_mode"]["default"] == "local"
     assert props["skills"]["type"] == "array"
@@ -250,6 +261,35 @@ def test_run_sends_request_verbatim(monkeypatch):
             break
     assert s["status"] == "ready"
     assert seen["prompt"] == "make a mul tool\n\n--- (edited guidance)"
+
+
+def test_run_merges_agent_env_override(monkeypatch):
+    # agent_env (seeded by the optimize preset's env) is merged into the agent's
+    # environment, so the experimental agent-teams flag reaches the run.
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    seen = {}
+
+    async def fake_run(prompt, editable_dir, context_dir, options, mode, remote_skills=None, skills_dir=None):
+        seen["env"] = dict(options.env or {})
+        class R: session_id = "s"
+        return R()
+
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.run_task_session", fake_run)
+    monkeypatch.setattr("skillberry_plugin_ask_runspace.runner.read_summary",
+                        lambda *a, **k: "# done")
+
+    client = _client(p)
+    job_id = client.post(
+        "/plugins/ask-runspace/run",
+        json={"request": "optimize it",
+              "agent_env": {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}},
+    ).json()["data"]["job_id"]
+    for _ in range(50):
+        s = client.get(f"/plugins/ask-runspace/status/{job_id}").json()
+        if s["status"] != "pending":
+            break
+    assert s["status"] == "ready"
+    assert seen["env"].get("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS") == "1"
 
 
 def test_rewrite_localhost_for_container():

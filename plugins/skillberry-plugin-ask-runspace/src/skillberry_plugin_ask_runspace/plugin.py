@@ -401,7 +401,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                                 "x-options-from": "/api/plugins/ask-runspace/presets",
                                 "x-option-label": "label",
                                 "x-option-value": "id",
-                                "x-prefill": {"request": "prompt", "skills": "skills"},
+                                "x-prefill": {"request": "prompt", "skills": "skills", "agent_env": "env"},
                             },
                             "request": {
                                 "type": "string",
@@ -468,10 +468,12 @@ class SkillberryPluginAskRunspace(PluginBase):
                                 "type": "object",
                                 "title": "Environment overrides (optional)",
                                 "description": (
-                                    "Per-run overrides for the Claude Code agent environment. "
-                                    "Your ~/.claude/settings.json env block and the server's "
-                                    "ANTHROPIC_*/CLAUDE_* variables are already loaded automatically; "
-                                    "only set this to override them."
+                                    "Per-run overrides for the Claude Code agent environment "
+                                    "(JSON object of NAME→value). Your ~/.claude/settings.json env "
+                                    "block and the server's ANTHROPIC_*/CLAUDE_* variables are "
+                                    "already loaded automatically; only set this to override them. "
+                                    "Some examples prefill this — e.g. \"Optimize a skill\" turns on "
+                                    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for the multi-agent workflow."
                                 ),
                             },
                             "keep_workspace": {
