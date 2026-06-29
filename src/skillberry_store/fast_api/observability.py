@@ -11,42 +11,43 @@ from prometheus_client import start_http_server
 
 logging.getLogger("opentelemetry").setLevel(logging.ERROR)
 
-PROMETHEUS_METRICS_PORT = int(os.getenv("PROMETHEUS_METRICS_PORT", 8090))
-OTEL_TRACES_PORT = int(os.getenv("OTEL_TRACES_PORT", 0))
 OTEL_SERVICE_NAME = "skillberry-store"
 
 
 def observability_setup():
-    if OTEL_TRACES_PORT == 0:
+    otel_traces_port = int(os.getenv("OTEL_TRACES_PORT", 0))
+    if otel_traces_port == 0:
         logging.info(
             "OpenTelemetry tracing is not configured. Set OTEL_TRACES_PORT to enable."
         )
     else:
-        otel_setup()
+        otel_setup(otel_traces_port)
     prometheus_setup()
 
 
 def prometheus_setup():
     """Configures Prometheus metrics for a FastAPI app."""
 
+    port = int(os.getenv("PROMETHEUS_METRICS_PORT", 8090))
+
     # Skip Prometheus if port is 0 (disabled)
-    if PROMETHEUS_METRICS_PORT == 0:
+    if port == 0:
         logging.info("Prometheus metrics disabled (PROMETHEUS_METRICS_PORT=0)")
         return
 
     # Setup Metrics
-    start_http_server(port=PROMETHEUS_METRICS_PORT)
-    logging.info(f"Prometheus metrics server started on port {PROMETHEUS_METRICS_PORT}")
+    start_http_server(port=port)
+    logging.info(f"Prometheus metrics server started on port {port}")
 
 
-def otel_setup():
+def otel_setup(otel_traces_port: int):
     """Configures OpenTelemetry tracing for a FastAPI app."""
 
     trace_provider = TracerProvider(
         resource=Resource.create({SERVICE_NAME: OTEL_SERVICE_NAME})
     )
     trace_exporter = OTLPSpanExporter(
-        endpoint=f"http://localhost:{OTEL_TRACES_PORT}", insecure=True
+        endpoint=f"http://localhost:{otel_traces_port}", insecure=True
     )
     trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
 

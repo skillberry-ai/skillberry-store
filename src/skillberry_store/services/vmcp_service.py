@@ -12,7 +12,6 @@ from skillberry_store.modules.object_handler import ObjectHandler
 from skillberry_store.utils.utils import generate_or_validate_uuid
 
 if TYPE_CHECKING:
-    from skillberry_store.modules.description import Description
     from skillberry_store.modules.lifecycle import LifecycleState
     from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
 
@@ -55,25 +54,23 @@ class VmcpService:
     Attributes:
         handler: ObjectHandler for VMCP server persistence operations.
         server_manager: VirtualMcpServerManager for runtime server management.
-        descriptions: Optional Description instance for semantic search indexing.
+        descriptions: accessed via ``handler.descriptions`` (not stored as a separate attribute).
     """
 
     def __init__(
         self,
         handler: ObjectHandler,
         server_manager: VirtualMcpServerManager,
-        descriptions: Optional[Description] = None,
     ):
         """Initialize the VmcpService.
 
         Args:
             handler: ObjectHandler instance for VMCP server operations.
             server_manager: VirtualMcpServerManager for managing runtime servers.
-            descriptions: Optional Description instance for managing VMCP descriptions.
         """
         self.handler = handler
         self.server_manager = server_manager
-        self.descriptions = descriptions
+
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
         """Resolve a VMCP server identifier to its UUID.
@@ -194,8 +191,8 @@ class VmcpService:
                 get_service("skill").add_dependent("vmcp", data["uuid"], [data["skill_uuid"]])
             if data.get("name"):
                 self.handler.update_cache(data["uuid"], new_name=data["name"])
-            if self.descriptions and data.get("description"):
-                self.descriptions.write_description(data["uuid"], data["description"])
+            if self.handler.descriptions and data.get("description"):
+                self.handler.descriptions.write_description(data["uuid"], data["description"])
             logger.info(
                 f"VMCP server '{data.get('name')}' created on port {server.port}"
             )
@@ -358,10 +355,10 @@ class VmcpService:
         try:
             if lifecycle_state is None:
                 lifecycle_state = LifecycleState.ANY
-            if not self.descriptions:
+            if not self.handler.descriptions:
                 raise RuntimeError("VMCP server search is not available")
 
-            matched_entities = self.descriptions.search_description(
+            matched_entities = self.handler.descriptions.search_description(
                 search_term=search_term, k=max_number_of_results
             )
             filtered = [
@@ -467,8 +464,8 @@ class VmcpService:
                         old_parent=old_parent,
                     )
                 uuid_value = data.get("uuid")
-                if self.descriptions and data.get("description") and uuid_value:
-                    self.descriptions.write_description(uuid_value, data["description"])
+                if self.handler.descriptions and data.get("description") and uuid_value:
+                    self.handler.descriptions.write_description(uuid_value, data["description"])
                 logger.info(f"VMCP server '{new_name}' updated on port {server.port}")
                 return data
         except KeyError:
@@ -564,9 +561,9 @@ class VmcpService:
                 self.handler.delete_object(uuid)
                 from skillberry_store.services.registry import get_service
                 get_service("skill").remove_dependent("vmcp", uuid)
-                if self.descriptions:
+                if self.handler.descriptions:
                     try:
-                        self.descriptions.delete_description(uuid)
+                        self.handler.descriptions.delete_description(uuid)
                     except Exception as e:
                         logger.warning(
                             f"Could not delete vmcp description for {uuid}: {e}"

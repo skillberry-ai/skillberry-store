@@ -531,6 +531,15 @@ export function SkillDetailPage() {
                 <DescriptionListTerm>Name</DescriptionListTerm>
                 <DescriptionListDescription>{skill.name}</DescriptionListDescription>
               </DescriptionListGroup>
+
+              <DescriptionListGroup>
+                <DescriptionListTerm>UUID</DescriptionListTerm>
+                <DescriptionListDescription>
+                  <Text component="small" style={{ fontFamily: 'monospace' }}>
+                    {skill.uuid}
+                  </Text>
+                </DescriptionListDescription>
+              </DescriptionListGroup>
               
               <DescriptionListGroup>
                 <DescriptionListTerm>Description</DescriptionListTerm>
@@ -623,15 +632,6 @@ export function SkillDetailPage() {
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}
-
-              <DescriptionListGroup>
-                <DescriptionListTerm>UUID</DescriptionListTerm>
-                <DescriptionListDescription>
-                  <Text component="small" style={{ fontFamily: 'monospace' }}>
-                    {skill.uuid}
-                  </Text>
-                </DescriptionListDescription>
-              </DescriptionListGroup>
 
               {skill.extra && Object.keys(skill.extra).length > 0 && (
                 <DescriptionListGroup>
@@ -947,7 +947,7 @@ export function SkillDetailPage() {
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={toolSearchTerm}
@@ -1022,7 +1022,7 @@ export function SkillDetailPage() {
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={snippetSearchTerm}

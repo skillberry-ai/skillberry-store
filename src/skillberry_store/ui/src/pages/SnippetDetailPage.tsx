@@ -207,6 +207,15 @@ export function SnippetDetailPage() {
                 <DescriptionListTerm>Name</DescriptionListTerm>
                 <DescriptionListDescription>{snippet.name}</DescriptionListDescription>
               </DescriptionListGroup>
+
+              <DescriptionListGroup>
+                <DescriptionListTerm>UUID</DescriptionListTerm>
+                <DescriptionListDescription>
+                  <Text component="small" style={{ fontFamily: 'monospace' }}>
+                    {snippet.uuid}
+                  </Text>
+                </DescriptionListDescription>
+              </DescriptionListGroup>
               
               <DescriptionListGroup>
                 <DescriptionListTerm>Description</DescriptionListTerm>
@@ -281,15 +290,6 @@ export function SnippetDetailPage() {
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}
-
-              <DescriptionListGroup>
-                <DescriptionListTerm>UUID</DescriptionListTerm>
-                <DescriptionListDescription>
-                  <Text component="small" style={{ fontFamily: 'monospace' }}>
-                    {snippet.uuid}
-                  </Text>
-                </DescriptionListDescription>
-              </DescriptionListGroup>
 
               {snippet.extra && Object.keys(snippet.extra).length > 0 && (
                 <DescriptionListGroup>

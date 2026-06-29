@@ -22,7 +22,6 @@ from skillberry_store.utils.utils import generate_or_validate_uuid
 from skillberry_store.tools.configure import is_auto_detect_dependencies_enabled
 
 if TYPE_CHECKING:
-    from skillberry_store.modules.description import Description
     from skillberry_store.modules.lifecycle import LifecycleState
 
 logger = logging.getLogger(__name__)
@@ -81,20 +80,17 @@ class ToolsService:
     
     Attributes:
         handler: ObjectHandler for tool persistence operations.
-        descriptions: Optional Description instance for semantic search indexing.
+        descriptions: accessed via ``handler.descriptions`` (not stored as a separate attribute).
     """
     
-    def __init__(
-        self, handler: ObjectHandler, descriptions: Optional[Description] = None
-    ):
+    def __init__(self, handler: ObjectHandler):
         """Initialize the ToolsService.
         
         Args:
             handler: ObjectHandler instance for tool operations.
-            descriptions: Optional Description instance for managing tool descriptions.
         """
         self.handler = handler
-        self.descriptions = descriptions
+
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
         """Resolve a tool identifier to its UUID.
@@ -329,8 +325,8 @@ class ToolsService:
             self.handler.write_dict(data["uuid"], data)
             self.add_dependent("tool", data["uuid"], data.get("dependencies") or [])
             self.handler.update_cache(data["uuid"], new_name=data["name"])
-            if self.descriptions and data.get("description"):
-                self.descriptions.write_description(data["uuid"], data["description"])
+            if self.handler.descriptions and data.get("description"):
+                self.handler.descriptions.write_description(data["uuid"], data["description"])
             emit_content_added("tool", data["uuid"])
             logger.info(f"Tool '{data.get('name')}' created with UUID {data['uuid']}")
             return data
@@ -487,12 +483,12 @@ class ToolsService:
         try:
             if lifecycle_state is None:
                 lifecycle_state = LifecycleState.ANY
-            if not self.descriptions:
+            if not self.handler.descriptions:
                 raise RuntimeError(
                     "Tool search is not available - descriptions not initialized"
                 )
 
-            matched_entities = self.descriptions.search_description(
+            matched_entities = self.handler.descriptions.search_description(
                 search_term=search_term, k=max_number_of_results
             )
             filtered_matched = [
@@ -570,14 +566,14 @@ class ToolsService:
                     self.handler.update_cache(
                         uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
                     )
-                if self.descriptions and data.get("description"):
+                if self.handler.descriptions and data.get("description"):
                     old_desc = existing.get("description")
                     if old_desc != data["description"]:
                         try:
-                            self.descriptions.delete_description(uuid)
+                            self.handler.descriptions.delete_description(uuid)
                         except Exception:
                             pass
-                        self.descriptions.write_description(uuid, data["description"])
+                        self.handler.descriptions.write_description(uuid, data["description"])
                 emit_content_updated("tool", uuid)
                 logger.info(f"Tool '{uuid_or_name}' updated")
                 return merged
@@ -619,9 +615,9 @@ class ToolsService:
                     )
                 self.handler.delete_object(uuid)
                 self.remove_dependent("tool", uuid)
-                if self.descriptions:
+                if self.handler.descriptions:
                     try:
-                        self.descriptions.delete_description(uuid)
+                        self.handler.descriptions.delete_description(uuid)
                     except Exception as e:
                         logger.warning(
                             f"Could not delete tool description for {uuid}: {e}"

@@ -17,6 +17,7 @@ def _handler(exists=False):
         {"name": "a", "modified_at": "2024-02-01"},
         {"name": "b", "modified_at": "2024-01-01"},
     ]
+    h.descriptions = None
     return h
 
 
@@ -44,10 +45,10 @@ def test_create_raises_on_duplicate_uuid():
 
 def test_create_writes_description_when_provided():
     h = _handler()
-    desc = MagicMock()
-    svc = SnippetsService(h, descriptions=desc)
+    h.descriptions = MagicMock()
+    svc = SnippetsService(h)
     svc.create({"name": "s1", "content": "x", "description": "about it"})
-    desc.write_description.assert_called_once()
+    h.descriptions.write_description.assert_called_once()
 
 
 def test_get_returns_dict():
@@ -93,7 +94,7 @@ def test_delete_updates_cache_before_delete():
 
 def test_delete_cleans_up_description():
     h = _handler()
-    desc = MagicMock()
-    svc = SnippetsService(h, descriptions=desc)
+    h.descriptions = MagicMock()
+    svc = SnippetsService(h)
     svc.delete("s1")
-    desc.delete_description.assert_called_once_with("aaaa-1111")
+    h.descriptions.delete_description.assert_called_once_with("aaaa-1111")

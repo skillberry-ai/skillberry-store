@@ -47,6 +47,11 @@ class Description:
             f"Initialized Descriptions with directory: {self.descriptions_directory}"
         )
 
+    @property
+    def is_ready(self) -> bool:
+        """Return True when the descriptions directory has been created on disk."""
+        return os.path.exists(self.descriptions_directory)
+
     def load_index(self):
         """
         Load the index if exists.

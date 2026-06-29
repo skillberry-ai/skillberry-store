@@ -18,7 +18,6 @@ from skillberry_store.services.exceptions import ObjectInUseError
 from skillberry_store.utils.utils import generate_or_validate_uuid
 
 if TYPE_CHECKING:
-    from skillberry_store.modules.description import Description
     from skillberry_store.modules.lifecycle import LifecycleState
 
 logger = logging.getLogger(__name__)
@@ -82,22 +81,20 @@ class SkillsService:
 
     Attributes:
         handler: ObjectHandler for skill persistence operations.
-        descriptions: Optional Description instance for semantic search indexing.
+        descriptions: accessed via ``handler.descriptions`` (not stored as a separate attribute).
     """
 
     def __init__(
         self,
         handler: ObjectHandler,
-        descriptions: Optional[Description] = None,
     ):
         """Initialize the SkillsService.
 
         Args:
             handler: ObjectHandler instance for skill operations.
-            descriptions: Optional Description instance for managing skill descriptions.
         """
         self.handler = handler
-        self.descriptions = descriptions
+
 
     def add_dependent(
         self, referencing_type: str, referencing_uuid: str, referenced_skill_uuids: List[str]
@@ -229,8 +226,8 @@ class SkillsService:
             )
             if data.get("name"):
                 self.handler.update_cache(data["uuid"], new_name=data["name"])
-            if self.descriptions and data.get("description"):
-                self.descriptions.write_description(data["uuid"], data["description"])
+            if self.handler.descriptions and data.get("description"):
+                self.handler.descriptions.write_description(data["uuid"], data["description"])
             emit_content_added("skill", data["uuid"])
             logger.info(f"Skill '{data.get('name')}' created with UUID {data['uuid']}")
             return data
@@ -360,12 +357,12 @@ class SkillsService:
         try:
             if lifecycle_state is None:
                 lifecycle_state = LifecycleState.ANY
-            if not self.descriptions:
+            if not self.handler.descriptions:
                 raise RuntimeError(
                     "Skill search is not available - descriptions not initialized"
                 )
 
-            matched_entities = self.descriptions.search_description(
+            matched_entities = self.handler.descriptions.search_description(
                 search_term=search_term, k=max_number_of_results
             )
             filtered_matched = [
@@ -450,8 +447,8 @@ class SkillsService:
                     self.handler.update_cache(
                         uuid, new_name=new_name, old_name=old_name, old_parent=old_parent
                     )
-                if self.descriptions and merged.get("description"):
-                    self.descriptions.write_description(uuid, merged["description"])
+                if self.handler.descriptions and merged.get("description"):
+                    self.handler.descriptions.write_description(uuid, merged["description"])
                 emit_content_updated("skill", uuid)
                 logger.info(f"Skill '{uuid_or_name}' updated")
                 return merged
@@ -967,9 +964,9 @@ class SkillsService:
                 self.handler.delete_object(uuid)
                 get_service("tool").remove_dependent("skill", uuid)
                 get_service("snippet").remove_dependent("skill", uuid)
-                if self.descriptions:
+                if self.handler.descriptions:
                     try:
-                        self.descriptions.delete_description(uuid)
+                        self.handler.descriptions.delete_description(uuid)
                     except Exception as e:
                         logger.warning(
                             f"Could not delete skill description for {uuid}: {e}"

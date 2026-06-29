@@ -20,16 +20,7 @@ from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.fast_api.vnfs_api import register_vnfs_api
 from skillberry_store.fast_api.plugins_api import register_plugins_api
-from skillberry_store.modules.description import Description
-from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.vdbs.identify_vdb import identify_vector_db
 from skillberry_store.tools.configure import (
-    get_files_directory_path,
-    get_tools_descriptions_directory,
-    get_snippets_descriptions_directory,
-    get_skills_descriptions_directory,
-    get_vmcp_descriptions_directory,
-    get_vnfs_descriptions_directory,
     configure_logging,
 )
 
@@ -38,10 +29,7 @@ try:
 except:
     __git_version__ = "unknown"
 
-from skillberry_store.fast_api.observability import (
-    observability_setup,
-    OTEL_TRACES_PORT,
-)
+from skillberry_store.fast_api.observability import observability_setup
 from prometheus_client import Counter, Histogram
 
 # this environment variable is used to enable the latest API version
@@ -86,20 +74,12 @@ class SBS(FastAPI):
 
         get_config()
 
-        # Initialize object handlers (singleton pattern)
+        # Initialize object handlers (singleton pattern). Descriptions are created
+        # inside each ObjectHandler using SBS_VDB (defaults to "faiss").
         from skillberry_store.modules.object_handler import initialize_object_handlers
 
         initialize_object_handlers()
         logger.info("Object handlers initialized")
-
-        # Store description instances in app state for access by admin API
-        self.state.tools_descriptions = tools_descriptions_api(self.settings.sbs_vdb)
-        self.state.snippets_descriptions = snippets_descriptions_api(
-            self.settings.sbs_vdb
-        )
-        self.state.skills_descriptions = skills_descriptions_api(self.settings.sbs_vdb)
-        self.state.vmcp_descriptions = vmcp_descriptions_api(self.settings.sbs_vdb)
-        self.state.vnfs_descriptions = vnfs_descriptions_api(self.settings.sbs_vdb)
 
         # Initialize service layer (singletons in services.registry)
         from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
@@ -112,11 +92,6 @@ class SBS(FastAPI):
         sts_url = f"http://{self.settings.sbs_host}:{self.settings.sbs_port}"
 
         initialize_services(
-            tools_descriptions=self.state.tools_descriptions,
-            snippets_descriptions=self.state.snippets_descriptions,
-            skills_descriptions=self.state.skills_descriptions,
-            vmcp_descriptions=self.state.vmcp_descriptions,
-            vnfs_descriptions=self.state.vnfs_descriptions,
             vmcp_server_manager=VirtualMcpServerManager(sts_url=sts_url, app=self),
             vnfs_server_manager=VirtualNfsServerManager(sts_url=sts_url, app=self),
         )
@@ -125,6 +100,13 @@ class SBS(FastAPI):
         snippets_service = get_service("snippet")
         vnfs_service = get_service("vnfs")
         vmcp_service = get_service("vmcp")
+
+        from skillberry_store.services.admin_service import AdminService
+
+        admin_service = AdminService(
+            vmcp_server_manager=vmcp_service.server_manager,
+            vnfs_server_manager=vnfs_service.server_manager,
+        )
 
         # Initialize plugin system
         from skillberry_store.plugins.loader import PluginLoader
@@ -171,7 +153,7 @@ class SBS(FastAPI):
             tags="tools",
             service=tools_service,
         )
-        register_admin_api(self, tags="admin")
+        register_admin_api(self, tags="admin", service=admin_service)
 
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
 
@@ -196,7 +178,7 @@ class SBS(FastAPI):
         self.openapi = lambda: custom_openapi(self, [])
 
         # Add observability for FastAPI application
-        if OTEL_TRACES_PORT > 0:
+        if int(os.getenv("OTEL_TRACES_PORT", 0)) > 0:
             FastAPIInstrumentor.instrument_app(self)
 
     def run(self):
@@ -232,97 +214,6 @@ class SBS(FastAPI):
             access_log=True,
             log_config=log_config,
         )
-
-
-def tools_descriptions_api(sbs_vdb: str):
-    """Initialize tools descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for tools.
-    """
-    tools_descriptions_directory = get_tools_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    tools_descriptions = Description(
-        descriptions_directory=tools_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return tools_descriptions
-
-
-def snippets_descriptions_api(sbs_vdb: str):
-    """Initialize snippets descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for snippets.
-    """
-    snippets_descriptions_directory = get_snippets_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    snippets_descriptions = Description(
-        descriptions_directory=snippets_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return snippets_descriptions
-
-
-def skills_descriptions_api(sbs_vdb: str):
-    """Initialize skills descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for skills.
-    """
-    skills_descriptions_directory = get_skills_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    skills_descriptions = Description(
-        descriptions_directory=skills_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return skills_descriptions
-
-
-def vmcp_descriptions_api(sbs_vdb: str):
-    """Initialize vmcp descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for vmcp servers.
-    """
-    vmcp_descriptions_directory = get_vmcp_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    vmcp_descriptions = Description(
-        descriptions_directory=vmcp_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return vmcp_descriptions
-
-
-def vnfs_descriptions_api(sbs_vdb: str):
-    """Initialize vnfs descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for vnfs servers.
-    """
-    vnfs_descriptions_directory = get_vnfs_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    vnfs_descriptions = Description(
-        descriptions_directory=vnfs_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return vnfs_descriptions
-
-
-def file_api():
-    """Initialize file APIs with proper persistency and APIs.
-
-    Returns:
-        FileHandler: File handler instance configured with files directory.
-    """
-    files_directory_path = get_files_directory_path()
-    file_handler = FileHandler(files_directory_path)
-    return file_handler
 
 
 def custom_openapi(app: FastAPI, openapi_tags):

@@ -18,6 +18,7 @@ def _handler(exists=False):
     h.list_all_dicts.return_value = [
         {"name": "a", "modified_at": "2024-02-01", "tool_uuids": [], "snippet_uuids": []},
     ]
+    h.descriptions = None
     return h
 
 

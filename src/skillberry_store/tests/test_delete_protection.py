@@ -33,6 +33,7 @@ def _make_handler(uuid: str, name: str, extra: dict | None = None) -> MagicMock:
     """Create a handler mock with a real DependencyManager embedded."""
     h = MagicMock()
     h.dependency_manager = DependencyManager()
+    h.descriptions = None
     h.resolve_to_uuid_or_error.return_value = uuid
     obj = {"uuid": uuid, "name": name, "parent": None, **(extra or {})}
     h.read_dict.return_value = obj
@@ -159,7 +160,7 @@ class TestSkillsServiceDeleteProtection:
         base = {"tool_uuids": [], "snippet_uuids": []}
         base.update(extra or {})
         h = _make_handler(skill_uuid, "my_skill", base)
-        return SkillsService(h, descriptions=None), h
+        return SkillsService(h), h
 
     def test_delete_succeeds_when_no_dependents(self):
         svc, _ = self._svc("sk-1")
@@ -190,7 +191,7 @@ class TestSkillsApiDeleteProtection:
     def _client(self, skill_uuid: str):
         app = FastAPI()
         h = _make_handler(skill_uuid, "my_skill", {"tool_uuids": [], "snippet_uuids": []})
-        svc = SkillsService(h, descriptions=None)
+        svc = SkillsService(h)
         register_skills_api(app, service=svc)
         return TestClient(app), h
 

@@ -60,8 +60,8 @@ export function SkillsPage() {
     version: '',
     description: '',
     tags: [] as string[],
-    toolNames: [] as string[],
-    snippetNames: [] as string[],
+    toolUuids: [] as string[],
+    snippetUuids: [] as string[],
   });
   const [tagInput, setTagInput] = useState('');
   const [createError, setCreateError] = useState('');
@@ -123,8 +123,8 @@ export function SkillsPage() {
         version: '',
         description: '',
         tags: [],
-        toolNames: [],
-        snippetNames: [],
+        toolUuids: [],
+        snippetUuids: [],
       });
       setTagInput('');
       setToolSearchTerm('');
@@ -159,25 +159,7 @@ export function SkillsPage() {
     }
 
     try {
-      // Resolve tool and snippet names to UUIDs before creating the skill
-      const toolResponses = await Promise.all(
-        newSkill.toolNames.map(name =>
-          fetch(`/api/tools/${name}`).then(async r => {
-            if (!r.ok) throw new Error(`Tool "${name}" not found (HTTP ${r.status})`);
-            return r.json();
-          })
-        )
-      );
-      const snippetResponses = await Promise.all(
-        newSkill.snippetNames.map(name =>
-          fetch(`/api/snippets/${name}`).then(async r => {
-            if (!r.ok) throw new Error(`Snippet "${name}" not found (HTTP ${r.status})`);
-            return r.json();
-          })
-        )
-      );
-
-      // Build query parameters
+      // Build query parameters — tool_uuids and snippet_uuids are already UUIDs
       const params = new URLSearchParams({
         name: newSkill.name,
         version: newSkill.version,
@@ -185,15 +167,15 @@ export function SkillsPage() {
       });
 
       newSkill.tags.forEach(tag => params.append('tags', tag));
-      toolResponses.forEach(t => params.append('tool_uuids', t.uuid));
-      snippetResponses.forEach(s => params.append('snippet_uuids', s.uuid));
+      newSkill.toolUuids.forEach(uuid => params.append('tool_uuids', uuid));
+      newSkill.snippetUuids.forEach(uuid => params.append('snippet_uuids', uuid));
 
       const response = await fetch(`/api/skills/?${params}`, { method: 'POST' });
 
       if (response.ok) {
         queryClient.invalidateQueries({ queryKey: ['skills'] });
         setIsCreateModalOpen(false);
-        setNewSkill({ name: '', version: '1.0.0', description: '', tags: [], toolNames: [], snippetNames: [] });
+        setNewSkill({ name: '', version: '1.0.0', description: '', tags: [], toolUuids: [], snippetUuids: [] });
         setCreateError('');
       } else {
         let detail: string;
@@ -237,9 +219,9 @@ export function SkillsPage() {
     const lowerSearch = toolSearchTerm.toLowerCase();
     return allTools.filter(tool =>
       tool.name.toLowerCase().includes(lowerSearch) &&
-      !newSkill.toolNames.includes(tool.name)
+      !newSkill.toolUuids.includes(tool.uuid)
     );
-  }, [isCreateModalOpen, allTools, toolSearchTerm, newSkill.toolNames]);
+  }, [isCreateModalOpen, allTools, toolSearchTerm, newSkill.toolUuids]);
 
   // Filter snippets based on search term - only when modal is open
   const filteredSnippets = useMemo(() => {
@@ -247,43 +229,43 @@ export function SkillsPage() {
     const lowerSearch = snippetSearchTerm.toLowerCase();
     return allSnippets.filter(snippet =>
       snippet.name.toLowerCase().includes(lowerSearch) &&
-      !newSkill.snippetNames.includes(snippet.name)
+      !newSkill.snippetUuids.includes(snippet.uuid)
     );
-  }, [isCreateModalOpen, allSnippets, snippetSearchTerm, newSkill.snippetNames]);
+  }, [isCreateModalOpen, allSnippets, snippetSearchTerm, newSkill.snippetUuids]);
 
   const handleSelectTool = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
-    if (typeof value === 'string' && value && !newSkill.toolNames.includes(value)) {
+    if (typeof value === 'string' && value && !newSkill.toolUuids.includes(value)) {
       setNewSkill({
         ...newSkill,
-        toolNames: [...newSkill.toolNames, value],
+        toolUuids: [...newSkill.toolUuids, value],
       });
       setIsToolSelectOpen(false);
       setToolSearchTerm('');
     }
   };
 
-  const handleRemoveTool = (toolToRemove: string) => {
+  const handleRemoveTool = (uuidToRemove: string) => {
     setNewSkill({
       ...newSkill,
-      toolNames: newSkill.toolNames.filter(tool => tool !== toolToRemove),
+      toolUuids: newSkill.toolUuids.filter(uuid => uuid !== uuidToRemove),
     });
   };
 
   const handleSelectSnippet = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
-    if (typeof value === 'string' && value && !newSkill.snippetNames.includes(value)) {
+    if (typeof value === 'string' && value && !newSkill.snippetUuids.includes(value)) {
       setNewSkill({
         ...newSkill,
-        snippetNames: [...newSkill.snippetNames, value],
+        snippetUuids: [...newSkill.snippetUuids, value],
       });
       setIsSnippetSelectOpen(false);
       setSnippetSearchTerm('');
     }
   };
 
-  const handleRemoveSnippet = (snippetToRemove: string) => {
+  const handleRemoveSnippet = (uuidToRemove: string) => {
     setNewSkill({
       ...newSkill,
-      snippetNames: newSkill.snippetNames.filter(snippet => snippet !== snippetToRemove),
+      snippetUuids: newSkill.snippetUuids.filter(uuid => uuid !== uuidToRemove),
     });
   };
 
@@ -659,8 +641,8 @@ export function SkillsPage() {
             version: '',
             description: '',
             tags: [],
-            toolNames: [],
-            snippetNames: [],
+            toolUuids: [],
+            snippetUuids: [],
           });
           setTagInput('');
           setToolSearchTerm('');
@@ -686,8 +668,8 @@ export function SkillsPage() {
                 version: '',
                 description: '',
                 tags: [],
-                toolNames: [],
-                snippetNames: [],
+                toolUuids: [],
+                snippetUuids: [],
               });
               setTagInput('');
               setToolSearchTerm('');
@@ -788,11 +770,11 @@ export function SkillsPage() {
                   isExpanded={isToolSelectOpen}
                   style={{ width: '100%' }}
                 >
-                  {toolSearchTerm || 'Select a tool...'}
+                  {'Select a tool...'}
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={toolSearchTerm}
@@ -806,7 +788,7 @@ export function SkillsPage() {
                   </SelectOption>
                 ) : (
                   filteredTools.map((tool) => (
-                    <SelectOption key={tool.uuid} value={tool.name}>
+                    <SelectOption key={tool.uuid} value={tool.uuid}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <div style={{ fontWeight: 'bold' }}>{tool.name}</div>
                         <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
@@ -823,23 +805,26 @@ export function SkillsPage() {
                 )}
               </SelectList>
             </Select>
-            {newSkill.toolNames.length > 0 && (
+            {newSkill.toolUuids.length > 0 && (
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {newSkill.toolNames.map((tool) => (
-                  <Button
-                    key={tool}
-                    variant="plain"
-                    onClick={() => handleRemoveTool(tool)}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      backgroundColor: '#e7f1fa',
-                      border: '1px solid #bee1f4',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {tool} ✕
-                  </Button>
-                ))}
+                {newSkill.toolUuids.map((uuid) => {
+                  const tool = allTools?.find(t => t.uuid === uuid);
+                  return (
+                    <Button
+                      key={uuid}
+                      variant="plain"
+                      onClick={() => handleRemoveTool(uuid)}
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#e7f1fa',
+                        border: '1px solid #bee1f4',
+                        borderRadius: '3px',
+                      }}
+                    >
+                      {tool?.name || uuid} ✕
+                    </Button>
+                  );
+                })}
               </div>
             )}
           </FormGroup>
@@ -860,11 +845,11 @@ export function SkillsPage() {
                   isExpanded={isSnippetSelectOpen}
                   style={{ width: '100%' }}
                 >
-                  {snippetSearchTerm || 'Select a snippet...'}
+                  {'Select a snippet...'}
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={snippetSearchTerm}
@@ -878,7 +863,7 @@ export function SkillsPage() {
                   </SelectOption>
                 ) : (
                   filteredSnippets.map((snippet) => (
-                    <SelectOption key={snippet.uuid} value={snippet.name}>
+                    <SelectOption key={snippet.uuid} value={snippet.uuid}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <div style={{ fontWeight: 'bold' }}>{snippet.name}</div>
                         <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
@@ -895,23 +880,26 @@ export function SkillsPage() {
                 )}
               </SelectList>
             </Select>
-            {newSkill.snippetNames.length > 0 && (
+            {newSkill.snippetUuids.length > 0 && (
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {newSkill.snippetNames.map((snippet) => (
-                  <Button
-                    key={snippet}
-                    variant="plain"
-                    onClick={() => handleRemoveSnippet(snippet)}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      backgroundColor: '#f4e7f7',
-                      border: '1px solid #d8bfd8',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {snippet} ✕
-                  </Button>
-                ))}
+                {newSkill.snippetUuids.map((uuid) => {
+                  const snippet = allSnippets?.find(s => s.uuid === uuid);
+                  return (
+                    <Button
+                      key={uuid}
+                      variant="plain"
+                      onClick={() => handleRemoveSnippet(uuid)}
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#f4e7f7',
+                        border: '1px solid #d8bfd8',
+                        borderRadius: '3px',
+                      }}
+                    >
+                      {snippet?.name || uuid} ✕
+                    </Button>
+                  );
+                })}
               </div>
             )}
           </FormGroup>

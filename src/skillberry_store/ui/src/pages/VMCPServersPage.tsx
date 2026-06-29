@@ -158,7 +158,7 @@ export function VMCPServersPage() {
 
   const handleSelectSkill = (_event: any, value: string | number | undefined) => {
     if (typeof value === 'string') {
-      const selectedSkill = allSkills?.find(s => s.name === value);
+      const selectedSkill = allSkills?.find(s => s.uuid === value);
       if (selectedSkill) {
         setNewServer({
           ...newServer,
@@ -166,7 +166,7 @@ export function VMCPServersPage() {
           name: selectedSkill.name,
           description: selectedSkill.description || '',
         });
-        setSkillSearchTerm(selectedSkill.name);
+        setSkillSearchTerm('');
         setIsSkillSelectOpen(false);
       }
     }
@@ -646,11 +646,13 @@ export function VMCPServersPage() {
                   isExpanded={isSkillSelectOpen}
                   style={{ width: '100%' }}
                 >
-                  {skillSearchTerm || 'Select a skill...'}
+                  {newServer.skill_uuid
+                    ? (allSkills?.find(s => s.uuid === newServer.skill_uuid)?.name || newServer.skill_uuid)
+                    : 'Select a skill...'}
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={skillSearchTerm}
@@ -664,8 +666,18 @@ export function VMCPServersPage() {
                   </SelectOption>
                 ) : (
                   filteredSkills.map((skill) => (
-                    <SelectOption key={skill.uuid} value={skill.name}>
-                      {skill.name} {skill.description && `- ${skill.description}`}
+                    <SelectOption key={skill.uuid} value={skill.uuid}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ fontWeight: 'bold' }}>{skill.name}</div>
+                        <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
+                          UUID: {skill.uuid}
+                        </div>
+                        {skill.description && (
+                          <div style={{ fontSize: '0.9em', color: '#6a6e73' }}>
+                            {skill.description}
+                          </div>
+                        )}
+                      </div>
                     </SelectOption>
                   ))
                 )}
@@ -683,7 +695,7 @@ export function VMCPServersPage() {
                     borderRadius: '3px',
                   }}
                 >
-                  {skillSearchTerm} ✕
+                  {allSkills?.find(s => s.uuid === newServer.skill_uuid)?.name || newServer.skill_uuid} ✕
                 </Button>
               </div>
             )}

@@ -142,10 +142,10 @@ export function VNFSServersPage() {
 
   const handleSelectSkill = (_event: any, value: string | number | undefined) => {
     if (typeof value === 'string') {
-      const selected = allSkills?.find(s => s.name === value);
+      const selected = allSkills?.find(s => s.uuid === value);
       if (selected) {
         setNewServer({ ...newServer, skill_uuid: selected.uuid, name: selected.name, description: selected.description || '' });
-        setSkillSearchTerm(selected.name);
+        setSkillSearchTerm('');
         setIsSkillSelectOpen(false);
       }
     }
@@ -420,11 +420,13 @@ export function VNFSServersPage() {
               onOpenChange={(isOpen) => setIsSkillSelectOpen(isOpen)}
               toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
                 <MenuToggle ref={toggleRef} onClick={() => setIsSkillSelectOpen(!isSkillSelectOpen)} isExpanded={isSkillSelectOpen} style={{ width: '100%' }}>
-                  {skillSearchTerm || 'Select a skill...'}
+                  {newServer.skill_uuid
+                    ? (allSkills?.find(s => s.uuid === newServer.skill_uuid)?.name || newServer.skill_uuid)
+                    : 'Select a skill...'}
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={skillSearchTerm}
@@ -436,8 +438,18 @@ export function VNFSServersPage() {
                   <SelectOption isDisabled>{skillSearchTerm ? 'No skills found' : 'Start typing to search...'}</SelectOption>
                 ) : (
                   filteredSkills.map(skill => (
-                    <SelectOption key={skill.uuid} value={skill.name}>
-                      {skill.name} {skill.description && `- ${skill.description}`}
+                    <SelectOption key={skill.uuid} value={skill.uuid}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ fontWeight: 'bold' }}>{skill.name}</div>
+                        <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
+                          UUID: {skill.uuid}
+                        </div>
+                        {skill.description && (
+                          <div style={{ fontSize: '0.9em', color: '#6a6e73' }}>
+                            {skill.description}
+                          </div>
+                        )}
+                      </div>
                     </SelectOption>
                   ))
                 )}
@@ -446,7 +458,7 @@ export function VNFSServersPage() {
             {newServer.skill_uuid && (
               <div style={{ marginTop: '0.5rem' }}>
                 <Button variant="plain" onClick={handleClearSkill} style={{ padding: '0.25rem 0.5rem', backgroundColor: '#e7f1fa', border: '1px solid #bee1f4', borderRadius: '3px' }}>
-                  {skillSearchTerm} ✕
+                  {allSkills?.find(s => s.uuid === newServer.skill_uuid)?.name || newServer.skill_uuid} ✕
                 </Button>
               </div>
             )}

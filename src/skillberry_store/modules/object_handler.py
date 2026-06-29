@@ -11,7 +11,7 @@ import os
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 import fasteners
 
@@ -23,6 +23,9 @@ from skillberry_store.modules.dict_cache import DictCache
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.lookup_cache import LookupCache
 from skillberry_store.utils.utils import normalize_uuid
+
+if TYPE_CHECKING:
+    from skillberry_store.modules.description import Description
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +56,23 @@ def initialize_object_handlers() -> None:
         get_vnfs_directory,
     )
 
-    _object_handlers["tool"] = ObjectHandler(get_tools_directory(), "tool")
-    _object_handlers["snippet"] = ObjectHandler(get_snippets_directory(), "snippet")
-    _object_handlers["skill"] = ObjectHandler(get_skills_directory(), "skill")
-    _object_handlers["vmcp"] = ObjectHandler(get_vmcp_directory(), "vmcp")
-    _object_handlers["vnfs"] = ObjectHandler(get_vnfs_directory(), "vnfs")
+    vdb_type = os.getenv("SBS_VDB", "faiss")
+
+    _object_handlers["tool"] = ObjectHandler(
+        get_tools_directory(), "tool", vdb_type=vdb_type
+    )
+    _object_handlers["snippet"] = ObjectHandler(
+        get_snippets_directory(), "snippet", vdb_type=vdb_type
+    )
+    _object_handlers["skill"] = ObjectHandler(
+        get_skills_directory(), "skill", vdb_type=vdb_type
+    )
+    _object_handlers["vmcp"] = ObjectHandler(
+        get_vmcp_directory(), "vmcp", vdb_type=vdb_type
+    )
+    _object_handlers["vnfs"] = ObjectHandler(
+        get_vnfs_directory(), "vnfs", vdb_type=vdb_type
+    )
 
     _initialized = True
     _bootstrap_dependency_managers()
@@ -137,6 +152,26 @@ def clear_object_handlers() -> None:
     logger.debug("Cleared all object handlers")
 
 
+def reload_object_handlers() -> None:
+    """Refresh every singleton handler from disk in place.
+
+    Rebuilds dict caches, name caches, description stores, and the
+    cross-handler dependency graph by re-reading the data directories.
+    Unlike ``clear_object_handlers()`` followed by ``initialize_object_handlers()``,
+    this keeps singleton identity stable — services and runtime managers
+    that captured a handler reference at startup continue to point at the
+    same (now refreshed) instance.
+    """
+    if not _initialized:
+        raise RuntimeError(
+            "Object handlers not initialized. Call initialize_object_handlers() first."
+        )
+    for handler in _object_handlers.values():
+        handler.reload()
+    _bootstrap_dependency_managers()
+    logger.info("Reloaded object handlers from disk")
+
+
 class ObjectHandler:
     """
     Generic handler for managing objects (tools, snippets, skills, vmcp servers).
@@ -150,7 +185,11 @@ class ObjectHandler:
     """
 
     def __init__(
-        self, base_directory: str, object_type: str, use_dict_cache: bool = True
+        self,
+        base_directory: str,
+        object_type: str,
+        use_dict_cache: bool = True,
+        vdb_type: Optional[str] = None,
     ):
         """
         Initialize ObjectHandler.
@@ -159,6 +198,9 @@ class ObjectHandler:
             base_directory: Base directory for objects (e.g., /tmp/tools)
             object_type: Type of object ('tool', 'snippet', 'skill', 'vmcp')
             use_dict_cache: If True, use in-memory dict cache for dicts (default: True)
+            vdb_type: Vector DB backend name (e.g. 'faiss'). When provided a
+                Description instance is created at ``{base_directory}/descriptions``.
+                When None, ``self.descriptions`` is None.
         """
         self.base_directory = base_directory
         self.object_type = object_type
@@ -182,8 +224,30 @@ class ObjectHandler:
         self._handler_lock: fasteners.ReaderWriterLock = fasteners.ReaderWriterLock()
         self.dependency_manager = DependencyManager()
 
+        # Description store — created only when a VDB backend is specified.
+        # _vdb_type is kept so purge_all can recreate the store with the same backend.
+        self._vdb_type: Optional[str] = vdb_type
+        self.descriptions: Optional["Description"] = None
+        if vdb_type is not None:
+            self.descriptions = self._make_descriptions(vdb_type)
+
         logger.info(
-            f"Initialized ObjectHandler for {object_type} at {base_directory} (dict_cache={'enabled' if use_dict_cache else 'disabled'})"
+            f"Initialized ObjectHandler for {object_type} at {base_directory} "
+            f"(dict_cache={'enabled' if use_dict_cache else 'disabled'}, "
+            f"descriptions={'enabled' if self.descriptions else 'disabled'})"
+        )
+
+    def _make_descriptions(self, vdb_type: str) -> "Description":
+        """Create a fresh Description instance rooted at {base_directory}/descriptions."""
+        from skillberry_store.modules.description import Description
+        from skillberry_store.vdbs.identify_vdb import identify_vector_db, VectorDBType
+
+        descriptions_directory = os.path.join(self.base_directory, "descriptions")
+        vector_index = identify_vector_db(VectorDBType(vdb_type))
+        return Description(
+            descriptions_directory=descriptions_directory,
+            vector_index=vector_index,
+            vdb_type=vdb_type,
         )
 
     # ==================== Lock Registry Methods ====================
@@ -785,7 +849,8 @@ class ObjectHandler:
         """Delete all objects by wiping the base directory, then clear all in-memory state.
 
         Removes every UUID subfolder (and its contents) by deleting and recreating the
-        base directory, then clears the dict cache, name cache, and dependency manager.
+        base directory, then clears the dict cache, name cache, dependency manager, and
+        the in-memory description vector index.
         """
         import shutil
 
@@ -800,7 +865,33 @@ class ObjectHandler:
             self.dict_cache.clear()
         self.name_cache.clear()
         self.dependency_manager.clear()
+
+        # Re-initialise the description store so its in-memory index is fresh
+        # and the descriptions/ subdirectory (just wiped) is recreated.
+        if self._vdb_type is not None:
+            self.descriptions = self._make_descriptions(self._vdb_type)
+
         logger.info(f"Cleared all in-memory state for {self.object_type}")
+
+    def reload(self) -> None:
+        """Refresh in-memory state from the on-disk data, preserving handler identity.
+
+        Rebuilds the dict cache, name cache, and description store by re-reading
+        ``base_directory``. Used after operations that mutate disk state behind
+        the handler's back (e.g. ``/admin/restore``); unlike replacing the handler
+        instance, this keeps references held by services and managers valid.
+
+        The dependency manager is intentionally left untouched here — callers
+        that need to refresh cross-handler dependencies should re-run the
+        module-level bootstrap after reloading every handler.
+        """
+        if self.dict_cache is not None:
+            self._initialize_dict_cache()
+        self.name_cache.clear()
+        self._initialize_name_cache()
+        if self._vdb_type is not None:
+            self.descriptions = self._make_descriptions(self._vdb_type)
+        logger.info(f"Reloaded {self.object_type} handler from {self.base_directory}")
 
     # ==================== Object File Operations ====================
 

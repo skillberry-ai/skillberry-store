@@ -271,6 +271,15 @@ export function ToolDetailPage() {
                     <DescriptionListTerm>Name</DescriptionListTerm>
                     <DescriptionListDescription>{tool.name}</DescriptionListDescription>
                   </DescriptionListGroup>
+
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>UUID</DescriptionListTerm>
+                    <DescriptionListDescription>
+                      <Text component="small" style={{ fontFamily: 'monospace' }}>
+                        {tool.uuid}
+                      </Text>
+                    </DescriptionListDescription>
+                  </DescriptionListGroup>
                   
                   <DescriptionListGroup>
                     <DescriptionListTerm>Description</DescriptionListTerm>
@@ -500,15 +509,6 @@ export function ToolDetailPage() {
                       </DescriptionListDescription>
                     </DescriptionListGroup>
                   )}
-
-                  <DescriptionListGroup>
-                    <DescriptionListTerm>UUID</DescriptionListTerm>
-                    <DescriptionListDescription>
-                      <Text component="small" style={{ fontFamily: 'monospace' }}>
-                        {tool.uuid}
-                      </Text>
-                    </DescriptionListDescription>
-                  </DescriptionListGroup>
 
                   {tool.extra && Object.keys(tool.extra).length > 0 && (
                     <DescriptionListGroup>
