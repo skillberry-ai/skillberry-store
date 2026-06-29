@@ -99,31 +99,6 @@ def configure_logger(logger_name, log_level=logging.INFO, colored=True, log_file
     return logger
 
 
-def get_files_directory_path():
-    """
-    Determine the directory path for file operations.
-
-    Priority:
-    1. Environment variable "DIRECTORY_PATH"
-    2. Default path: "/tmp/skillberry-store/files"
-
-    Returns:
-        str: The resolved directory path.
-    """
-    env_path = os.getenv("SBS_DIRECTORY_PATH")
-    if env_path:
-        logger.info(f"Using directory path from environment: {env_path}")
-        return env_path
-    # Commented out: sys.argv[1] is unreliable when running inside pytest
-    # as it picks up pytest's test directory argument instead of server config
-    # if len(sys.argv) > 1:
-    #     logger.info(f"Using directory path from command line: {sys.argv[1]}")
-    #     return sys.argv[1]
-    default_path = _default_sbs_dir("files")
-    logger.info(f"Using default directory path: {default_path}")
-    return default_path
-
-
 def get_metadata_directory():
     """
     Get the directory path for metadata.

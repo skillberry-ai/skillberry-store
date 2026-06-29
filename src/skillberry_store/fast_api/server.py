@@ -20,9 +20,7 @@ from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.fast_api.vnfs_api import register_vnfs_api
 from skillberry_store.fast_api.plugins_api import register_plugins_api
-from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.tools.configure import (
-    get_files_directory_path,
     configure_logging,
 )
 
@@ -216,17 +214,6 @@ class SBS(FastAPI):
             access_log=True,
             log_config=log_config,
         )
-
-
-def file_api():
-    """Initialize file APIs with proper persistency and APIs.
-
-    Returns:
-        FileHandler: File handler instance configured with files directory.
-    """
-    files_directory_path = get_files_directory_path()
-    file_handler = FileHandler(files_directory_path)
-    return file_handler
 
 
 def custom_openapi(app: FastAPI, openapi_tags):
