@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillberry-plugin-dast"
+version = "0.1.0"
+description = "Skillberry Store plugin for dynamic application security testing (DAST) of skills: discovers entry points, exercises them with adversarial inputs, and observes effects (detect-and-report)"
+readme = "README.md"
+requires-python = ">=3.10"
+# Core install is light. The input-generator engine is an OPTIONAL extra (like
+# the SAST plugin + bandit): without it the DAST scanner reports disabled and
+# does not run. `requests` is only for vMCP-twin reachability and is already a
+# store dependency.
+dependencies = [
+    "requests",
+]
+
+[project.entry-points."skillberry_store.plugins"]
+dast = "skillberry_plugin_dast.plugin:SkillberryPluginDast"
+
+[project.optional-dependencies]
+# Pluggable input-generator engines (each optional; install one to enable
+# scanning). Add a new engine's extra here alongside its registry entry.
+# e.g. `pip install 'skillberry-plugin-dast[hypothesis]'`
+hypothesis = [
+    "hypothesis>=6.0",
+]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "fastapi",
+    "hypothesis>=6.0",
+]
+
+[tool.setuptools]
+packages = [
+    "skillberry_plugin_dast",
+    "skillberry_plugin_dast.engine",
+    "skillberry_plugin_dast.engine.generators",
+]
+package-dir = {"" = "src"}
