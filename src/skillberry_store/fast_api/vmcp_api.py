@@ -54,7 +54,7 @@ def register_vmcp_api(
     @app.post(
         "/vmcp_servers/",
         tags=[tags],
-        openapi_extra={"x-cli-name": "create-vmcp-server"},
+        openapi_extra={"x-cli-name": "create-vmcp-server", "x-mcp-tool": True},
     )
     def create_vmcp_server(vmcp: Annotated[VmcpSchema, Query()], request: Request):
         """Create a new virtual MCP server.
@@ -97,7 +97,9 @@ def register_vmcp_api(
             )
 
     @app.get(
-        "/vmcp_servers/", tags=[tags], openapi_extra={"x-cli-name": "list-vmcp-servers"}
+        "/vmcp_servers/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "list-vmcp-servers", "x-mcp-tool": True},
     )
     def list_vmcp_servers(skill_uuid: Optional[str] = None):
         """List all virtual MCP servers in the store.
@@ -123,7 +125,7 @@ def register_vmcp_api(
     @app.get(
         "/vmcp_servers/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "get-vmcp-server"},
+        openapi_extra={"x-cli-name": "get-vmcp-server", "x-mcp-tool": True},
     )
     def get_vmcp_server(uuid_or_name: str):
         """Get metadata for a specific virtual MCP server by UUID or name.
@@ -152,7 +154,7 @@ def register_vmcp_api(
     @app.delete(
         "/vmcp_servers/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "delete-vmcp-server"},
+        openapi_extra={"x-cli-name": "delete-vmcp-server", "x-mcp-tool": True},
     )
     def delete_vmcp_server(uuid_or_name: str):
         """Delete a virtual MCP server from the store.
@@ -183,7 +185,7 @@ def register_vmcp_api(
     @app.put(
         "/vmcp_servers/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "update-vmcp-server"},
+        openapi_extra={"x-cli-name": "update-vmcp-server", "x-mcp-tool": True},
     )
     def update_vmcp_server(
         uuid_or_name: str, vmcp: Annotated[VmcpSchema, Query()], request: Request
@@ -222,7 +224,7 @@ def register_vmcp_api(
     @app.post(
         "/vmcp_servers/{uuid_or_name}/start",
         tags=[tags],
-        openapi_extra={"x-cli-name": "start-vmcp-server"},
+        openapi_extra={"x-cli-name": "start-vmcp-server", "x-mcp-tool": True},
     )
     def start_vmcp_server(uuid_or_name: str, request: Request):
         """Start or restart a virtual MCP server.
@@ -263,7 +265,7 @@ def register_vmcp_api(
     @app.get(
         "/search/vmcp_servers",
         tags=[tags],
-        openapi_extra={"x-cli-name": "search-vmcp-servers"},
+        openapi_extra={"x-cli-name": "search-vmcp-servers", "x-mcp-tool": True},
     )
     def search_vmcp_servers(
         search_term: str,

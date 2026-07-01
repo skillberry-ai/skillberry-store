@@ -36,7 +36,11 @@ def register_snippets_api(
         service = get_service("snippet")
     assert service is not None  # narrowed for type checker
 
-    @app.post("/snippets/", tags=[tags], openapi_extra={"x-cli-name": "create-snippet"})
+    @app.post(
+        "/snippets/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "create-snippet", "x-mcp-tool": True},
+    )
     async def create_snippet(
         snippet: Annotated[SnippetSchema, Query()],
         file: Optional[UploadFile] = File(None),
@@ -79,7 +83,11 @@ def register_snippets_api(
                 status_code=500, detail=f"Error creating snippet: {str(e)}"
             )
 
-    @app.get("/snippets/", tags=[tags], openapi_extra={"x-cli-name": "list-snippets"})
+    @app.get(
+        "/snippets/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "list-snippets", "x-mcp-tool": True},
+    )
     def list_snippets():
         """List all snippets in the store.
 
@@ -104,7 +112,7 @@ def register_snippets_api(
     @app.get(
         "/snippets/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "get-snippet"},
+        openapi_extra={"x-cli-name": "get-snippet", "x-mcp-tool": True},
     )
     def get_snippet(uuid_or_name: str):
         """Get metadata for a specific snippet by UUID or name.
@@ -133,7 +141,7 @@ def register_snippets_api(
     @app.delete(
         "/snippets/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "delete-snippet"},
+        openapi_extra={"x-cli-name": "delete-snippet", "x-mcp-tool": True},
     )
     async def delete_snippet(uuid_or_name: str):
         """Delete a snippet from the store.
@@ -167,7 +175,7 @@ def register_snippets_api(
     @app.put(
         "/snippets/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "update-snippet"},
+        openapi_extra={"x-cli-name": "update-snippet", "x-mcp-tool": True},
     )
     async def update_snippet(uuid_or_name: str, snippet: SnippetSchema):
         """Update an existing snippet's metadata and content.
@@ -198,7 +206,9 @@ def register_snippets_api(
             )
 
     @app.get(
-        "/search/snippets", tags=[tags], openapi_extra={"x-cli-name": "search-snippets"}
+        "/search/snippets",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "search-snippets", "x-mcp-tool": True},
     )
     def search_snippets(
         search_term: str,
