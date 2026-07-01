@@ -6,6 +6,7 @@ import traceback
 from typing import Optional, Annotated, Dict, Any, List
 from fastapi import FastAPI, HTTPException, File, UploadFile, Query, Request
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema
@@ -15,6 +16,15 @@ from skillberry_store.services.exceptions import (
     ObjectInUseError,
 )
 from skillberry_store.services.tools_service import ToolsService
+
+
+class AddToolFromCodeRequest(BaseModel):
+    """Body for ``POST /tools/add_code`` — Python source as a string, not a file."""
+
+    code: str
+    selected_func: Optional[str] = None
+    update: bool = False
+    module_name: Optional[str] = None
 
 
 def register_tools_api(
@@ -354,6 +364,50 @@ def register_tools_api(
                 file_name=tool.filename,
                 selected_func=selected_func,
                 update_existing=update,
+            )
+        except ObjectAlreadyExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error adding tool: {str(e)}")
+
+    @app.post(
+        "/tools/add_code",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "add-tool-code", "x-mcp-tool": True},
+    )
+    async def add_tool_from_code(req: AddToolFromCodeRequest) -> Dict[str, Any]:
+        """Add a tool from Python source passed as a string (MCP-friendly).
+
+        Same behavior as ``POST /tools/add`` (auto-extracts the manifest from the
+        function docstring) but takes the source as a normal JSON ``code`` field
+        instead of a file upload — so it works over the MCP bridge, which cannot
+        transmit ``multipart``/octet-stream file bodies.
+
+        Args:
+            req: ``code`` (the Python source), optional ``selected_func`` (which
+                function to extract; defaults to the first), ``update`` (update an
+                existing tool of the same name), and ``module_name`` (stored file
+                name; defaults to ``tool.py``).
+
+        Returns:
+            dict: Success message with the tool name, uuid, and module_name.
+
+        Raises:
+            HTTPException: tool already exists (409), parse/validation error
+                (400), or any other error (500).
+        """
+        module_name = req.module_name or "tool.py"
+        if not module_name.endswith(".py"):
+            module_name += ".py"
+
+        try:
+            return service.add_from_python(
+                file_bytes=req.code.encode("utf-8"),
+                file_name=module_name,
+                selected_func=req.selected_func,
+                update_existing=req.update,
             )
         except ObjectAlreadyExistsError as e:
             raise HTTPException(status_code=409, detail=str(e))
