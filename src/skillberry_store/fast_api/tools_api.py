@@ -2,169 +2,76 @@
 
 from __future__ import annotations
 
-import json
-import logging
-from io import BytesIO
-import os
-from skillberry_store.plugins.events import (
-    emit_content_added,
-    emit_content_updated,
-    emit_content_deleted,
-)
-from starlette.responses import PlainTextResponse
 import traceback
-import uuid
-from datetime import datetime, timezone
-from typing import Optional, Type, TypeVar, Annotated, Dict, Any, List, Set, Tuple
-from inspect import Parameter, Signature
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Query, Request
+from typing import Optional, Annotated, Dict, Any, List
+from fastapi import FastAPI, HTTPException, File, UploadFile, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
-from prometheus_client import Counter, Histogram
-import time
 
-from skillberry_store.modules.object_handler import ObjectHandler, get_object_handler
-from skillberry_store.modules.file_executor import (
-    FileExecutor,
-    detect_tool_dependencies,
-)
-from skillberry_store.modules.description import Description
 from skillberry_store.modules.lifecycle import LifecycleState
-from skillberry_store.schemas.tool_schema import (
-    ToolSchema,
-    ToolParamsSchema,
-    ToolReturnsSchema,
+from skillberry_store.schemas.tool_schema import ToolSchema
+from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
+from skillberry_store.services.exceptions import (
+    ObjectAlreadyExistsError,
+    ObjectInUseError,
 )
-from skillberry_store.schemas.manifest_schema import ManifestState
-from skillberry_store.tools.configure import (
-    is_auto_detect_dependencies_enabled,
-    get_tools_directory,
-    get_files_directory_path,
-)
-from skillberry_store.utils.utils import (
-    SKILLBERRY_CONTEXT,
-    unflatten_keys,
-    normalize_uuid,
-    generate_or_validate_uuid,
-)
-from skillberry_store.utils.python_utils import extract_docstring
-from skillberry_store.fast_api.server_utils import (
-    mcp_json_converter,
-    mcp_content_from_manifest,
-)
-from skillberry_store.fast_api.search_filters import apply_search_filters
 from skillberry_store.services.tools_service import ToolsService
 
-logger = logging.getLogger(__name__)
 
+class AddToolFromCodeRequest(BaseModel):
+    """Body for ``POST /tools/add_code`` — Python source as a string, not a file."""
 
-def find_tool_dependencies(
-    dependencies: List[str], tool_handler: ObjectHandler, tool_uuid: str
-) -> Set[str]:
-    """
-    Recursively locate UUIDs of all dependencies of a given tool.
-
-    Args:
-        dependencies: List of current dependency tool UUIDs
-        tool_handler: ObjectHandler for tools
-        tool_uuid: UUID of the tool whose dependencies are found (for logging)
-
-    Returns:
-        - Set of UUIDs of all dependencies (transitive closure) of the given tool.
-    """
-    dependencies_uuids: Set[str] = set()
-
-    if not dependencies:
-        return dependencies_uuids
-
-    logger.info(f"Scanning {len(dependencies)} dependencies for tool '{tool_uuid}'")
-
-    for dep_uuid in dependencies:
-        # Skip if already visited (avoid circular dependencies)
-        if dep_uuid in dependencies_uuids:
-            logger.debug(f"Skipping already found dependency: {dep_uuid}")
-            continue
-
-        dependencies_uuids.add(dep_uuid)
-
-        dep_dict = tool_handler.read_dict(dep_uuid)
-
-        # Recursively load nested dependencies first
-        nested_dependencies = dep_dict.get("dependencies", [])
-        if nested_dependencies:
-            logger.info(f"Finding dependencies for '{dep_uuid}'")
-            nested_deps = find_tool_dependencies(
-                dependencies=nested_dependencies,
-                tool_handler=tool_handler,
-                tool_uuid=dep_uuid,
-            )
-            dependencies_uuids.update(nested_deps)
-
-    return dependencies_uuids
-
-
-# observability - metrics
-prom_prefix = "sts_fastapi_tools_"
-create_tool_counter = Counter(
-    f"{prom_prefix}create_tool_counter", "Count number of tool create operations"
-)
-list_tools_counter = Counter(
-    f"{prom_prefix}list_tools_counter", "Count number of tool list operations"
-)
-get_tool_counter = Counter(
-    f"{prom_prefix}get_tool_counter", "Count number of tool get operations"
-)
-get_tool_module_counter = Counter(
-    f"{prom_prefix}get_tool_module_counter",
-    "Count number of tool module get operations",
-)
-delete_tool_counter = Counter(
-    f"{prom_prefix}delete_tool_counter", "Count number of tool delete operations"
-)
-update_tool_counter = Counter(
-    f"{prom_prefix}update_tool_counter", "Count number of tool update operations"
-)
-execute_tool_counter = Counter(
-    f"{prom_prefix}execute_tool_counter",
-    "Count number of tool execute operations",
-    ["name"],
-)
-execute_successfully_tool_counter = Counter(
-    f"{prom_prefix}execute_successfully_tool_counter",
-    "Count number of tool executed successfully operations",
-    ["name"],
-)
-execute_successfully_tool_latency = Histogram(
-    f"{prom_prefix}execute_successfully_tool_latency",
-    "Histogram of execute tool successfully latencies",
-    ["name"],
-)
-search_tools_counter = Counter(
-    f"{prom_prefix}search_tools_counter", "Count number of tool search operations"
-)
-add_tool_from_python_counter = Counter(
-    f"{prom_prefix}add_tool_from_python_counter",
-    "Count number of tool add from Python operations",
-)
+    code: str
+    selected_func: Optional[str] = None
+    update: bool = False
+    module_name: Optional[str] = None
 
 
 def register_tools_api(
     app: FastAPI,
     tags: str = "tools",
-    tools_descriptions: Optional[Description] = None,
     service: Optional[ToolsService] = None,
 ):
+    """Register all tools-related API endpoints with the FastAPI application.
+
+    This function sets up all REST API endpoints for managing tools including
+    create, read, update, delete, execute, and search operations.
+
+    Args:
+        app: The FastAPI application instance to register routes with.
+        tags: OpenAPI tag for grouping these endpoints (default: "tools").
+        service: Optional ToolsService instance. When ``None``, the singleton
+            from :func:`skillberry_store.services.registry.get_service` is used.
+
+    Returns:
+        None. Endpoints are registered directly on the app instance.
+    """
     if service is None:
-        service = ToolsService(get_object_handler("tool"), tools_descriptions)
-    tool_handler = service.handler  # kept for add_tool_from_python and search endpoints
+        from skillberry_store.services.registry import get_service
+
+        service = get_service("tool")
+    assert service is not None  # narrowed for type checker
 
     @app.post("/tools/", tags=[tags], openapi_extra={"x-cli-name": "create-tool"})
     async def create_tool(
         tool: Annotated[ToolSchema, Query()],
         module: UploadFile = File(...),
     ) -> Dict[str, Any]:
-        logger.info(f"Request to create tool: {tool.name}")
-        create_tool_counter.inc()
+        """Create a new tool with its module file.
+
+        Creates a new tool entry in the store along with its associated Python module file.
+        The tool metadata is validated against the ToolSchema and stored as a manifest.
+
+        Args:
+            tool: Tool metadata conforming to ToolSchema (name, description, params, etc.).
+            module: Python module file to upload for the tool.
+
+        Returns:
+            dict: Contains success message, tool name, UUID, and module_name.
+
+        Raises:
+            HTTPException: 409 if tool already exists, 500 for other errors.
+        """
         try:
             file_content = await module.read()
             module_filename = module.filename if module.filename else f"{tool.name}.py"
@@ -173,7 +80,6 @@ def register_tools_api(
                 module_content=file_content,
                 module_filename=module_filename,
             )
-            emit_content_added("tool", result["uuid"])
             return {
                 "message": f"Tool '{result['name']}' created successfully.",
                 "name": result["name"],
@@ -183,37 +89,62 @@ def register_tools_api(
         except ValueError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
-            logger.error(f"Error creating tool '{tool.name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error creating tool: {str(e)}"
             )
 
-    @app.get("/tools/", tags=[tags], openapi_extra={"x-cli-name": "list-tools"})
+    @app.get(
+        "/tools/",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "list-tools", "x-mcp-tool": True},
+    )
     def list_tools() -> List[Dict[str, Any]]:
-        logger.info("Request to list tools")
-        list_tools_counter.inc()
+        """List all tools in the store.
+
+        Retrieves metadata for all tools currently stored in the system.
+
+        Args:
+            None.
+
+        Returns:
+            list: List of dictionaries, each containing tool metadata (name, uuid, description, etc.).
+
+        Raises:
+            HTTPException: 500 if listing fails.
+        """
         try:
             return service.list_all()
         except Exception as e:
-            error_traceback = traceback.format_exc()
-            logger.error(f"Error listing tools: {e}\n{error_traceback}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Error listing tools: {str(e)}\n{error_traceback}",
+                detail=f"Error listing tools: {str(e)}\n{traceback.format_exc()}",
             )
 
     @app.get(
-        "/tools/{uuid_or_name}", tags=[tags], openapi_extra={"x-cli-name": "get-tool"}
+        "/tools/{uuid_or_name}",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "get-tool", "x-mcp-tool": True},
     )
     def get_tool(uuid_or_name: str) -> Dict[str, Any]:
-        logger.info(f"Request to get tool: {uuid_or_name}")
-        get_tool_counter.inc()
+        """Get metadata for a specific tool by UUID or name.
+
+        Retrieves the complete manifest/metadata for a tool identified by either
+        its UUID or its unique name.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool to retrieve.
+
+        Returns:
+            dict: Tool metadata including name, uuid, description, parameters, dependencies, etc.
+
+        Raises:
+            HTTPException: 404 if tool not found, 500 for other errors.
+        """
         try:
             return service.get(uuid_or_name)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error retrieving tool '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving tool: {str(e)}"
             )
@@ -222,26 +153,32 @@ def register_tools_api(
         "/tools/{uuid_or_name}/module",
         tags=[tags],
         response_class=PlainTextResponse,
-        openapi_extra={"x-cli-name": "get-tool-module"},
+        openapi_extra={"x-cli-name": "get-tool-module", "x-mcp-tool": True},
     )
     async def get_tool_module(uuid_or_name: str) -> PlainTextResponse:
-        logger.info(f"Request to get module file for tool: {uuid_or_name}")
-        get_tool_module_counter.inc()
+        """Get the module file content for a specific tool.
+
+        Retrieves the Python source code or MCP content for a tool. For MCP-packaged
+        tools, returns the MCP manifest stub. For code-packaged tools, returns
+        the Python module source.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool whose module to retrieve.
+
+        Returns:
+            PlainTextResponse: The module file content as plain text.
+
+        Raises:
+            HTTPException: 404 if tool not found, 500 for other errors.
+        """
         try:
-            tool_dict = service.get(uuid_or_name)
-            if tool_dict.get("packaging_format") == "mcp":
-                return PlainTextResponse(
-                    content=mcp_content_from_manifest(tool_dict),
-                    media_type="text/plain",
-                )
-            content = service.get_module(uuid_or_name)
-            return PlainTextResponse(content=content, media_type="text/plain")
+            return PlainTextResponse(
+                content=service.get_module(uuid_or_name),
+                media_type="text/plain",
+            )
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
-        except HTTPException:
-            raise
         except Exception as e:
-            logger.error(f"Error retrieving module for '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving module file: {str(e)}"
             )
@@ -249,23 +186,33 @@ def register_tools_api(
     @app.delete(
         "/tools/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "delete-tool"},
+        openapi_extra={"x-cli-name": "delete-tool", "x-mcp-tool": True},
     )
     async def delete_tool(uuid_or_name: str) -> Dict:
-        logger.info(f"Request to delete tool: {uuid_or_name}")
-        delete_tool_counter.inc()
+        """Delete a tool from the store.
+
+        Removes a tool and its associated files from the store. This operation
+        also triggers a content deletion event for plugin processing.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool to delete.
+
+        Returns:
+            dict: Success message confirming deletion.
+
+        Raises:
+            HTTPException: 404 if tool not found, 500 for other errors.
+        """
         try:
-            tool = service.get(uuid_or_name)
-            tool_uuid = tool["uuid"]
             service.delete(uuid_or_name)
-            emit_content_deleted("tool", tool_uuid)
             return {
                 "message": f"Tool with UUID or name '{uuid_or_name}' deleted successfully."
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ObjectInUseError as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except Exception as e:
-            logger.error(f"Error deleting tool '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error deleting tool: {str(e)}"
             )
@@ -273,21 +220,33 @@ def register_tools_api(
     @app.put(
         "/tools/{uuid_or_name}",
         tags=[tags],
-        openapi_extra={"x-cli-name": "update-tool"},
+        openapi_extra={"x-cli-name": "update-tool", "x-mcp-tool": True},
     )
     async def update_tool(uuid_or_name: str, tool: ToolSchema) -> Dict:
-        logger.info(f"Request to update tool: {uuid_or_name}")
-        update_tool_counter.inc()
+        """Update an existing tool's metadata.
+
+        Updates the manifest/metadata for an existing tool. The module file is not
+        updated by this endpoint. This operation triggers a content update event
+        for plugin processing.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool to update.
+            tool: Updated tool metadata conforming to ToolSchema.
+
+        Returns:
+            dict: Success message confirming update.
+
+        Raises:
+            HTTPException: 404 if tool not found, 500 for other errors.
+        """
         try:
-            result = service.update(uuid_or_name, tool.to_dict())
-            emit_content_updated("tool", result["uuid"])
+            service.update(uuid_or_name, tool.to_dict())
             return {
                 "message": f"Tool with UUID or name '{uuid_or_name}' updated successfully."
             }
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"Error updating tool '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error updating tool: {str(e)}"
             )
@@ -295,7 +254,7 @@ def register_tools_api(
     @app.post(
         "/tools/{uuid_or_name}/execute",
         tags=[tags],
-        openapi_extra={"x-cli-name": "execute-tool"},
+        openapi_extra={"x-cli-name": "execute-tool", "x-mcp-tool": True},
     )
     async def execute_tool(
         uuid_or_name: str, request: Request, parameters: Optional[Dict[str, Any]] = None
@@ -316,71 +275,31 @@ def register_tools_api(
         Raises:
             HTTPException: If tool not found (404) or execution fails (500).
         """
-        logger.info(
-            f"[execute_tool] Received execute tool: {uuid_or_name} with parameters: {parameters}"
+        headers_dict = dict(request.headers.items())
+        skillberry_context = unflatten_keys(headers_dict).get(
+            SKILLBERRY_CONTEXT.lower()
+        )
+        env_id = (
+            skillberry_context.get("env_id") if skillberry_context is not None else None
         )
         try:
-            tool_dict = service.get(uuid_or_name)
-            tool_uuid = tool_dict["uuid"]
-            tool_name = tool_dict.get("name", uuid_or_name)
-            execute_tool_counter.labels(name=tool_uuid).inc()
-            start_time = time.time()
-            headers_dict = dict(request.headers.items())
-            skillberry_context = unflatten_keys(headers_dict).get(
-                SKILLBERRY_CONTEXT.lower()
+            return await service.execute(
+                uuid_or_name, parameters=parameters, env_id=env_id
             )
-            env_id = (
-                skillberry_context.get("env_id")
-                if skillberry_context is not None
-                else None
-            )
-            if tool_dict.get("packaging_format") == "mcp":
-                module_content = mcp_content_from_manifest(tool_dict)
-            else:
-                module_content = service.get_module(uuid_or_name)
-            dep_uuids = service.find_dependencies(
-                tool_dict.get("dependencies", []), tool_uuid
-            )
-            dep_dicts = service.handler.read_dicts(list(dep_uuids))
-            dep_files = [
-                service.handler.read_file(m["uuid"], m["module_name"], raw_content=True)
-                for m in dep_dicts
-            ]
-            file_executor = FileExecutor(
-                name=tool_name,
-                file_content=module_content,
-                file_manifest=tool_dict,
-                dependent_file_contents=dep_files,
-                dependent_tools_as_dict=dep_dicts,
-            )
-            result = await file_executor.execute_file(
-                parameters=parameters or {}, env_id=env_id
-            )
-            if not (isinstance(result, dict) and "error" in result):
-                duration = time.time() - start_time
-                execute_successfully_tool_counter.labels(name=tool_uuid).inc()
-                execute_successfully_tool_latency.labels(name=tool_uuid).observe(
-                    duration
-                )
-                logger.info(
-                    f"Tool '{tool_name}' (UUID: {tool_uuid}) executed successfully"
-                )
-            else:
-                error_message = result.get("error", "Unknown Error")
-                status_code = 404 if "not found" in error_message.lower() else 500
-                raise HTTPException(status_code=status_code, detail=error_message)
-            return result
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
-        except HTTPException:
-            raise
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
         except Exception as e:
-            logger.error(f"Error executing tool '{uuid_or_name}': {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error executing tool: {str(e)}"
             )
 
-    @app.get("/search/tools", tags=[tags], openapi_extra={"x-cli-name": "search-tools"})
+    @app.get(
+        "/search/tools",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "search-tools", "x-mcp-tool": True},
+    )
     def search_tools(
         search_term: str,
         max_number_of_results: int = 5,
@@ -402,51 +321,17 @@ def register_tools_api(
         Returns:
             list: A list of matched tool names and similarity scores.
         """
-        logger.info(f"Request to search tool descriptions for term: {search_term}")
-        search_tools_counter.inc()
-        if not tools_descriptions:
-            raise HTTPException(
-                status_code=503,
-                detail="Tool search is not available - descriptions not initialized",
-            )
         try:
-            matched_entities = tools_descriptions.search_description(
-                search_term=search_term, k=max_number_of_results
-            )
-            filtered_matched_entities = [
-                m
-                for m in matched_entities
-                if float(m["similarity_score"]) <= similarity_threshold
-            ]
-            tools_to_filter = []
-            for matched_entity in filtered_matched_entities:
-                tool_name = matched_entity.get("filename") or matched_entity.get("name")
-                if not tool_name:
-                    continue
-                try:
-                    tool_dict = service.get(tool_name)
-                    tool_dict["similarity_score"] = matched_entity.get(
-                        "similarity_score", 0.0
-                    )
-                    tools_to_filter.append(tool_dict)
-                except Exception as e:
-                    logger.warning(f"Could not load tool {tool_name}: {e}")
-            filtered_tools = apply_search_filters(
-                tools_to_filter,
+            return service.search(
+                search_term=search_term,
+                max_number_of_results=max_number_of_results,
+                similarity_threshold=similarity_threshold,
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
             )
-            filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return [
-                {
-                    "filename": t.get("name", ""),
-                    "similarity_score": t.get("similarity_score", 0.0),
-                }
-                for t in filtered_tools
-                if t.get("name")
-            ]
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
-            logger.error(f"Error searching tools: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error searching tools: {str(e)}"
             )
@@ -476,170 +361,67 @@ def register_tools_api(
             HTTPException: If file is not Python (400), tool already exists (409),
                           or any other error occurs (500).
         """
-        logger.info(f"Request to add tool from Python file: {tool.filename}")
-        add_tool_from_python_counter.inc()
-
-        # Validate that the uploaded file is a Python file
         if not tool.filename or not tool.filename.endswith(".py"):
             raise HTTPException(
                 status_code=400,
                 detail="Only Python (.py) files are supported. Please upload a valid Python file.",
             )
+        tool_bytes = await tool.read()
 
         try:
-            tool_bytes = await tool.read()
-
-            try:
-                func_name, docstring_obj = extract_docstring(tool_bytes, selected_func)  # type: ignore
-                logger.info(f"Extracted function '{func_name}' from uploaded file")
-            except Exception as e:
-                logger.error(f"Failed to extract docstring: {e}")
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Failed to parse Python code or extract docstring: {str(e)}. "
-                    "Ensure the function has a properly formatted docstring with parameters.",
-                )
-
-            description = docstring_obj.short_description  # type: ignore
-            if not description:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Function docstring must include a description.",
-                )
-
-            params_properties = {}
-            required_params = []
-
-            for param in docstring_obj.params:  # type: ignore
-                params_properties[param.arg_name] = {
-                    "type": param.type_name if param.type_name else "string",
-                    "description": param.description if param.description else "",
-                }
-                required_params.append(param.arg_name)
-
-            returns_schema = None
-            if docstring_obj.returns:  # type: ignore
-                returns_schema = ToolReturnsSchema(
-                    type=docstring_obj.returns.type_name if docstring_obj.returns.type_name else None,  # type: ignore
-                    description=docstring_obj.returns.description if docstring_obj.returns.description else None,  # type: ignore
-                )
-
-            # Check if tool with this name already exists
-            existing_tool = tool_handler.lookup_by_name(func_name)
-
-            # Auto-detect dependencies if enabled
-            dependencies = None
-            if is_auto_detect_dependencies_enabled():
-                try:
-                    available_tools = tool_handler.get_existing_names()
-                    detected_deps = detect_tool_dependencies(
-                        (
-                            tool_bytes.decode("utf-8")
-                            if isinstance(tool_bytes, bytes)
-                            else tool_bytes
-                        ),
-                        func_name,
-                        available_tools,
-                    )
-                    if detected_deps:
-                        dependencies = detected_deps
-                        logger.info(
-                            f"Auto-detected dependencies for '{func_name}': {detected_deps}"
-                        )
-                except Exception as e:
-                    logger.warning(f"Failed to auto-detect dependencies: {e}")
-
-            if update and existing_tool:
-
-                logger.info(f"Updating existing tool: {func_name}")
-
-                # Use existing UUID for update
-                tool_uuid = existing_tool.get("uuid")
-                tool_uuid = generate_or_validate_uuid(tool_uuid)
-
-                # Update the module file in UUID sub-folder (update_tool doesn't handle files)
-                module_filename = tool.filename if tool.filename else f"{func_name}.py"
-                tool_handler.write_file(tool_uuid, module_filename, tool_bytes)
-                logger.info(
-                    f"Updated module file in UUID sub-folder: {module_filename}"
-                )
-
-                # Create the tool schema for update (parent will be set by update_tool)
-                tool_schema = ToolSchema(
-                    name=func_name,
-                    uuid=tool_uuid,
-                    description=description,
-                    programming_language="python",
-                    packaging_format="code",
-                    module_name=module_filename,
-                    version="0.0.1",
-                    state=ManifestState.APPROVED,
-                    parent=None,  # Will be set correctly by update_tool
-                    params=ToolParamsSchema(
-                        type="object",
-                        properties=params_properties,
-                        required=required_params,
-                        optional=[],
-                    ),
-                    returns=returns_schema,
-                    dependencies=dependencies,
-                )
-
-                # Delegate to update_tool to handle manifest merge and description update
-                update_result = await update_tool(tool_uuid, tool_schema)
-                logger.info(f"Tool '{func_name}' updated successfully")
-
-                return {
-                    "message": f"Tool '{func_name}' created successfully.",
-                    "name": func_name,
-                    "uuid": tool_uuid,
-                    "module_name": module_filename,
-                    "parameters": params_properties,
-                    "description": description,
-                }
-            else:
-                # Generate new UUID for new tool
-                tool_uuid = generate_or_validate_uuid(None)
-                logger.info(f"Generated UUID for tool '{func_name}': {tool_uuid}")
-
-                # Create the tool schema for new tool (parent will be set by create_tool)
-                tool_schema = ToolSchema(
-                    name=func_name,
-                    uuid=tool_uuid,
-                    module_name=tool.filename if tool.filename else f"{func_name}.py",
-                    description=description,
-                    programming_language="python",
-                    packaging_format="code",
-                    version="0.0.1",
-                    state=ManifestState.APPROVED,
-                    parent=None,  # Will be set correctly by create_tool
-                    params=ToolParamsSchema(
-                        type="object",
-                        properties=params_properties,
-                        required=required_params,
-                        optional=[],
-                    ),
-                    returns=returns_schema,
-                    dependencies=dependencies,
-                )
-
-                # Delegate to create_tool to handle everything (file, manifest, description)
-                create_response = await create_tool(
-                    tool=tool_schema,
-                    module=UploadFile(filename=tool.filename, file=BytesIO(tool_bytes)),
-                )
-
-                logger.info(
-                    f"Tool '{func_name}' added successfully with UUID {tool_uuid}"
-                )
-                return {
-                    **create_response,
-                    "parameters": params_properties,
-                    "description": description,
-                }
-
-        except HTTPException:
-            raise
+            return service.add_from_python(
+                file_bytes=tool_bytes,
+                file_name=tool.filename,
+                selected_func=selected_func,
+                update_existing=update,
+            )
+        except ObjectAlreadyExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            logger.error(f"Error adding tool: {e}")
+            raise HTTPException(status_code=500, detail=f"Error adding tool: {str(e)}")
+
+    @app.post(
+        "/tools/add_code",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "add-tool-code", "x-mcp-tool": True},
+    )
+    async def add_tool_from_code(req: AddToolFromCodeRequest) -> Dict[str, Any]:
+        """Add a tool from Python source passed as a string (MCP-friendly).
+
+        Same behavior as ``POST /tools/add`` (auto-extracts the manifest from the
+        function docstring) but takes the source as a normal JSON ``code`` field
+        instead of a file upload — so it works over the MCP bridge, which cannot
+        transmit ``multipart``/octet-stream file bodies.
+
+        Args:
+            req: ``code`` (the Python source), optional ``selected_func`` (which
+                function to extract; defaults to the first), ``update`` (update an
+                existing tool of the same name), and ``module_name`` (stored file
+                name; defaults to ``tool.py``).
+
+        Returns:
+            dict: Success message with the tool name, uuid, and module_name.
+
+        Raises:
+            HTTPException: tool already exists (409), parse/validation error
+                (400), or any other error (500).
+        """
+        module_name = req.module_name or "tool.py"
+        if not module_name.endswith(".py"):
+            module_name += ".py"
+
+        try:
+            return service.add_from_python(
+                file_bytes=req.code.encode("utf-8"),
+                file_name=module_name,
+                selected_func=req.selected_func,
+                update_existing=req.update,
+            )
+        except ObjectAlreadyExistsError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error adding tool: {str(e)}")

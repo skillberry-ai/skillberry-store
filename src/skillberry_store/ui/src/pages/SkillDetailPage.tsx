@@ -56,6 +56,8 @@ export function SkillDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [exportError, setExportError] = useState('');
   const [deleteTools, setDeleteTools] = useState(true);
   const [deleteSnippets, setDeleteSnippets] = useState(true);
   const [activeTabKey, setActiveTabKey] = useState<string | number>(0);
@@ -142,6 +144,9 @@ export function SkillDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
       navigate('/skills');
     },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete skill');
+    },
   });
 
   const handleEditClick = () => {
@@ -160,12 +165,12 @@ export function SkillDetailPage() {
     }
   };
 
-  const handleUpdateSkill = async () => {
+  const handleUpdateSkill = () => {
     if (!editedSkill.name || !editedSkill.description) {
       setEditError('Please fill in all required fields');
       return;
     }
-    
+
     // Parse extra field
     let parsedExtra = {};
     try {
@@ -178,39 +183,20 @@ export function SkillDetailPage() {
       setEditError('Additional Information must be valid JSON');
       return;
     }
-    
-    try {
-      // Build skill object for request body - UUIDs are already available
-      const updatedSkill = {
-        uuid: skill!.uuid,
-        name: editedSkill.name,
-        version: editedSkill.version,
-        description: editedSkill.description,
-        tags: editedSkill.tags,
-        tool_uuids: editedSkill.toolUuids,
-        snippet_uuids: editedSkill.snippetUuids,
-        state: skill!.state,
-        extra: Object.keys(parsedExtra).length > 0 ? parsedExtra : undefined,
-      };
-      
-      // Call API with JSON body using skill UUID
-      const response = await fetch(`/api/skills/${skill!.uuid}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedSkill),
-      });
-      
-      if (response.ok) {
-        queryClient.invalidateQueries({ queryKey: ['skills'] });
-        queryClient.invalidateQueries({ queryKey: ['skills', name] });
-        setIsEditModalOpen(false);
-      } else {
-        const errorText = await response.text();
-        setEditError(`Failed to update skill: ${errorText}`);
-      }
-    } catch (error) {
-      setEditError('Failed to fetch tools or snippets. Please ensure they exist.');
-    }
+
+    const updatedSkill = {
+      uuid: skill!.uuid,
+      name: editedSkill.name,
+      version: editedSkill.version,
+      description: editedSkill.description,
+      tags: editedSkill.tags,
+      tool_uuids: editedSkill.toolUuids,
+      snippet_uuids: editedSkill.snippetUuids,
+      state: skill!.state,
+      extra: Object.keys(parsedExtra).length > 0 ? parsedExtra : undefined,
+    } as unknown as Skill;
+
+    updateMutation.mutate(updatedSkill);
   };
 
   const handleAddTag = () => {
@@ -288,16 +274,22 @@ export function SkillDetailPage() {
 
   const handleExportToAnthropic = async () => {
     if (!skill) return;
-    
+    setExportError('');
+
     try {
-      // Call backend export endpoint
       const response = await fetch(`/api/skills/${skill.name}/export-anthropic`);
-      
+
       if (!response.ok) {
-        throw new Error(`Export failed: ${response.statusText}`);
+        let detail: string;
+        try {
+          const body = await response.json();
+          detail = body.detail ? String(body.detail) : response.statusText;
+        } catch {
+          detail = response.statusText;
+        }
+        throw new Error(`Export failed for skill "${skill.name}": ${detail}`);
       }
-      
-      // Download the ZIP file
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -307,9 +299,8 @@ export function SkillDetailPage() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to export skill:', error);
-      alert('Failed to export skill. Please try again.');
+    } catch (error: any) {
+      setExportError(error.message || 'Failed to export skill');
     }
   };
 
@@ -518,6 +509,19 @@ export function SkillDetailPage() {
         </div>
       </PageSection>
 
+      {exportError && (
+        <PageSection>
+          <Alert
+            variant="danger"
+            title="Export failed"
+            isInline
+            actionClose={<Button variant="plain" aria-label="Close" onClick={() => setExportError('')}>✕</Button>}
+          >
+            {exportError}
+          </Alert>
+        </PageSection>
+      )}
+
       <PageSection>
         <Card>
           <CardTitle>Skill Information</CardTitle>
@@ -526,6 +530,15 @@ export function SkillDetailPage() {
               <DescriptionListGroup>
                 <DescriptionListTerm>Name</DescriptionListTerm>
                 <DescriptionListDescription>{skill.name}</DescriptionListDescription>
+              </DescriptionListGroup>
+
+              <DescriptionListGroup>
+                <DescriptionListTerm>UUID</DescriptionListTerm>
+                <DescriptionListDescription>
+                  <Text component="small" style={{ fontFamily: 'monospace' }}>
+                    {skill.uuid}
+                  </Text>
+                </DescriptionListDescription>
               </DescriptionListGroup>
               
               <DescriptionListGroup>
@@ -619,15 +632,6 @@ export function SkillDetailPage() {
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}
-
-              <DescriptionListGroup>
-                <DescriptionListTerm>UUID</DescriptionListTerm>
-                <DescriptionListDescription>
-                  <Text component="small" style={{ fontFamily: 'monospace' }}>
-                    {skill.uuid}
-                  </Text>
-                </DescriptionListDescription>
-              </DescriptionListGroup>
 
               {skill.extra && Object.keys(skill.extra).length > 0 && (
                 <DescriptionListGroup>
@@ -943,7 +947,7 @@ export function SkillDetailPage() {
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={toolSearchTerm}
@@ -1018,7 +1022,7 @@ export function SkillDetailPage() {
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={snippetSearchTerm}
@@ -1092,7 +1096,7 @@ export function SkillDetailPage() {
         variant={ModalVariant.small}
         title="Delete Skill"
         isOpen={isDeleteModalOpen}
-        onClose={() => { setIsDeleteModalOpen(false); setDeleteTools(true); setDeleteSnippets(true); }}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteTools(true); setDeleteSnippets(true); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -1105,12 +1109,17 @@ export function SkillDetailPage() {
           <Button
             key="cancel"
             variant="link"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
           >
             Cancel
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete the skill "{skill?.name}"? This action cannot be undone.
         </Text>

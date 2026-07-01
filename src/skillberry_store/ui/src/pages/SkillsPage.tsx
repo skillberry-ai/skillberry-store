@@ -60,13 +60,14 @@ export function SkillsPage() {
     version: '',
     description: '',
     tags: [] as string[],
-    toolNames: [] as string[],
-    snippetNames: [] as string[],
+    toolUuids: [] as string[],
+    snippetUuids: [] as string[],
   });
   const [tagInput, setTagInput] = useState('');
   const [createError, setCreateError] = useState('');
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [deleteTools, setDeleteTools] = useState(true);
   const [deleteSnippets, setDeleteSnippets] = useState(true);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -122,8 +123,8 @@ export function SkillsPage() {
         version: '',
         description: '',
         tags: [],
-        toolNames: [],
-        snippetNames: [],
+        toolUuids: [],
+        snippetUuids: [],
       });
       setTagInput('');
       setToolSearchTerm('');
@@ -144,6 +145,10 @@ export function SkillsPage() {
       queryClient.invalidateQueries({ queryKey: ['skills'] });
       setSelectedSkills([]);
       setIsDeleteModalOpen(false);
+      setDeleteError('');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete skill(s)');
     },
   });
 
@@ -152,55 +157,42 @@ export function SkillsPage() {
       setCreateError('Please fill in all required fields');
       return;
     }
-    
+
     try {
-      // Fetch tool and snippet UUIDs
-      const toolPromises = newSkill.toolNames.map(name =>
-        fetch(`/api/tools/${name}`).then(r => r.json())
-      );
-      const snippetPromises = newSkill.snippetNames.map(name =>
-        fetch(`/api/snippets/${name}`).then(r => r.json())
-      );
-      
-      const tools = await Promise.all(toolPromises);
-      const snippets = await Promise.all(snippetPromises);
-      
-      // Build query parameters
+      // Build query parameters — tool_uuids and snippet_uuids are already UUIDs
       const params = new URLSearchParams({
         name: newSkill.name,
         version: newSkill.version,
         description: newSkill.description,
       });
-      
-      // Add tags
+
       newSkill.tags.forEach(tag => params.append('tags', tag));
-      
-      // Add tool and snippet UUIDs
-      tools.forEach(t => params.append('tool_uuids', t.uuid));
-      snippets.forEach(s => params.append('snippet_uuids', s.uuid));
-      
-      // Call API with query parameters
-      const response = await fetch(`/api/skills/?${params}`, {
-        method: 'POST',
-      });
-      
+      newSkill.toolUuids.forEach(uuid => params.append('tool_uuids', uuid));
+      newSkill.snippetUuids.forEach(uuid => params.append('snippet_uuids', uuid));
+
+      const response = await fetch(`/api/skills/?${params}`, { method: 'POST' });
+
       if (response.ok) {
         queryClient.invalidateQueries({ queryKey: ['skills'] });
         setIsCreateModalOpen(false);
-        setNewSkill({
-          name: '',
-          version: '1.0.0',
-          description: '',
-          tags: [],
-          toolNames: [],
-          snippetNames: [],
-        });
+        setNewSkill({ name: '', version: '1.0.0', description: '', tags: [], toolUuids: [], snippetUuids: [] });
+        setCreateError('');
       } else {
-        const errorText = await response.text();
-        setCreateError(`Failed to create skill: ${errorText}`);
+        let detail: string;
+        try {
+          const body = await response.json();
+          detail = body.detail
+            ? (Array.isArray(body.detail)
+              ? body.detail.map((e: any) => e.msg || JSON.stringify(e)).join('; ')
+              : String(body.detail))
+            : response.statusText;
+        } catch {
+          detail = response.statusText;
+        }
+        setCreateError(`Failed to create skill "${newSkill.name}": ${detail}`);
       }
-    } catch (error) {
-      setCreateError('Failed to fetch tools or snippets. Please ensure they exist.');
+    } catch (error: any) {
+      setCreateError(error.message || 'Failed to create skill');
     }
   };
 
@@ -227,9 +219,9 @@ export function SkillsPage() {
     const lowerSearch = toolSearchTerm.toLowerCase();
     return allTools.filter(tool =>
       tool.name.toLowerCase().includes(lowerSearch) &&
-      !newSkill.toolNames.includes(tool.name)
+      !newSkill.toolUuids.includes(tool.uuid)
     );
-  }, [isCreateModalOpen, allTools, toolSearchTerm, newSkill.toolNames]);
+  }, [isCreateModalOpen, allTools, toolSearchTerm, newSkill.toolUuids]);
 
   // Filter snippets based on search term - only when modal is open
   const filteredSnippets = useMemo(() => {
@@ -237,43 +229,43 @@ export function SkillsPage() {
     const lowerSearch = snippetSearchTerm.toLowerCase();
     return allSnippets.filter(snippet =>
       snippet.name.toLowerCase().includes(lowerSearch) &&
-      !newSkill.snippetNames.includes(snippet.name)
+      !newSkill.snippetUuids.includes(snippet.uuid)
     );
-  }, [isCreateModalOpen, allSnippets, snippetSearchTerm, newSkill.snippetNames]);
+  }, [isCreateModalOpen, allSnippets, snippetSearchTerm, newSkill.snippetUuids]);
 
   const handleSelectTool = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
-    if (typeof value === 'string' && value && !newSkill.toolNames.includes(value)) {
+    if (typeof value === 'string' && value && !newSkill.toolUuids.includes(value)) {
       setNewSkill({
         ...newSkill,
-        toolNames: [...newSkill.toolNames, value],
+        toolUuids: [...newSkill.toolUuids, value],
       });
       setIsToolSelectOpen(false);
       setToolSearchTerm('');
     }
   };
 
-  const handleRemoveTool = (toolToRemove: string) => {
+  const handleRemoveTool = (uuidToRemove: string) => {
     setNewSkill({
       ...newSkill,
-      toolNames: newSkill.toolNames.filter(tool => tool !== toolToRemove),
+      toolUuids: newSkill.toolUuids.filter(uuid => uuid !== uuidToRemove),
     });
   };
 
   const handleSelectSnippet = (_event: React.MouseEvent | undefined, value: string | number | undefined) => {
-    if (typeof value === 'string' && value && !newSkill.snippetNames.includes(value)) {
+    if (typeof value === 'string' && value && !newSkill.snippetUuids.includes(value)) {
       setNewSkill({
         ...newSkill,
-        snippetNames: [...newSkill.snippetNames, value],
+        snippetUuids: [...newSkill.snippetUuids, value],
       });
       setIsSnippetSelectOpen(false);
       setSnippetSearchTerm('');
     }
   };
 
-  const handleRemoveSnippet = (snippetToRemove: string) => {
+  const handleRemoveSnippet = (uuidToRemove: string) => {
     setNewSkill({
       ...newSkill,
-      snippetNames: newSkill.snippetNames.filter(snippet => snippet !== snippetToRemove),
+      snippetUuids: newSkill.snippetUuids.filter(uuid => uuid !== uuidToRemove),
     });
   };
 
@@ -324,19 +316,27 @@ export function SkillsPage() {
     try {
       const text = await importFile.text();
       const importedSkills = JSON.parse(text);
-      
+
       if (!Array.isArray(importedSkills)) {
         setImportError('Invalid file format. Expected an array of skills.');
         return;
       }
 
-      // Use helper function to import skills
-      await importSkills(importedSkills);
-
+      const result = await importSkills(importedSkills);
       queryClient.invalidateQueries({ queryKey: ['skills'] });
-      setIsImportModalOpen(false);
-      setImportFile(null);
-      setImportError('');
+
+      if (result.failures.length > 0) {
+        const summary = result.failures
+          .map(f => `• ${f.name}: ${f.error}`)
+          .join('\n');
+        setImportError(
+          `Imported ${result.importedCount} of ${importedSkills.length} skill(s). Failures:\n${summary}`
+        );
+      } else {
+        setIsImportModalOpen(false);
+        setImportFile(null);
+        setImportError('');
+      }
     } catch (error) {
       setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
     }
@@ -641,8 +641,8 @@ export function SkillsPage() {
             version: '',
             description: '',
             tags: [],
-            toolNames: [],
-            snippetNames: [],
+            toolUuids: [],
+            snippetUuids: [],
           });
           setTagInput('');
           setToolSearchTerm('');
@@ -668,8 +668,8 @@ export function SkillsPage() {
                 version: '',
                 description: '',
                 tags: [],
-                toolNames: [],
-                snippetNames: [],
+                toolUuids: [],
+                snippetUuids: [],
               });
               setTagInput('');
               setToolSearchTerm('');
@@ -770,11 +770,11 @@ export function SkillsPage() {
                   isExpanded={isToolSelectOpen}
                   style={{ width: '100%' }}
                 >
-                  {toolSearchTerm || 'Select a tool...'}
+                  {'Select a tool...'}
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={toolSearchTerm}
@@ -788,7 +788,7 @@ export function SkillsPage() {
                   </SelectOption>
                 ) : (
                   filteredTools.map((tool) => (
-                    <SelectOption key={tool.uuid} value={tool.name}>
+                    <SelectOption key={tool.uuid} value={tool.uuid}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <div style={{ fontWeight: 'bold' }}>{tool.name}</div>
                         <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
@@ -805,23 +805,26 @@ export function SkillsPage() {
                 )}
               </SelectList>
             </Select>
-            {newSkill.toolNames.length > 0 && (
+            {newSkill.toolUuids.length > 0 && (
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {newSkill.toolNames.map((tool) => (
-                  <Button
-                    key={tool}
-                    variant="plain"
-                    onClick={() => handleRemoveTool(tool)}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      backgroundColor: '#e7f1fa',
-                      border: '1px solid #bee1f4',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {tool} ✕
-                  </Button>
-                ))}
+                {newSkill.toolUuids.map((uuid) => {
+                  const tool = allTools?.find(t => t.uuid === uuid);
+                  return (
+                    <Button
+                      key={uuid}
+                      variant="plain"
+                      onClick={() => handleRemoveTool(uuid)}
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#e7f1fa',
+                        border: '1px solid #bee1f4',
+                        borderRadius: '3px',
+                      }}
+                    >
+                      {tool?.name || uuid} ✕
+                    </Button>
+                  );
+                })}
               </div>
             )}
           </FormGroup>
@@ -842,11 +845,11 @@ export function SkillsPage() {
                   isExpanded={isSnippetSelectOpen}
                   style={{ width: '100%' }}
                 >
-                  {snippetSearchTerm || 'Select a snippet...'}
+                  {'Select a snippet...'}
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={snippetSearchTerm}
@@ -860,7 +863,7 @@ export function SkillsPage() {
                   </SelectOption>
                 ) : (
                   filteredSnippets.map((snippet) => (
-                    <SelectOption key={snippet.uuid} value={snippet.name}>
+                    <SelectOption key={snippet.uuid} value={snippet.uuid}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                         <div style={{ fontWeight: 'bold' }}>{snippet.name}</div>
                         <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
@@ -877,23 +880,26 @@ export function SkillsPage() {
                 )}
               </SelectList>
             </Select>
-            {newSkill.snippetNames.length > 0 && (
+            {newSkill.snippetUuids.length > 0 && (
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {newSkill.snippetNames.map((snippet) => (
-                  <Button
-                    key={snippet}
-                    variant="plain"
-                    onClick={() => handleRemoveSnippet(snippet)}
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      backgroundColor: '#f4e7f7',
-                      border: '1px solid #d8bfd8',
-                      borderRadius: '3px',
-                    }}
-                  >
-                    {snippet} ✕
-                  </Button>
-                ))}
+                {newSkill.snippetUuids.map((uuid) => {
+                  const snippet = allSnippets?.find(s => s.uuid === uuid);
+                  return (
+                    <Button
+                      key={uuid}
+                      variant="plain"
+                      onClick={() => handleRemoveSnippet(uuid)}
+                      style={{
+                        padding: '0.25rem 0.5rem',
+                        backgroundColor: '#f4e7f7',
+                        border: '1px solid #d8bfd8',
+                        borderRadius: '3px',
+                      }}
+                    >
+                      {snippet?.name || uuid} ✕
+                    </Button>
+                  );
+                })}
               </div>
             )}
           </FormGroup>
@@ -905,7 +911,7 @@ export function SkillsPage() {
         variant={ModalVariant.small}
         title="Delete Skills"
         isOpen={isDeleteModalOpen}
-        onClose={() => { setIsDeleteModalOpen(false); setDeleteTools(true); setDeleteSnippets(true); }}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteTools(true); setDeleteSnippets(true); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -924,6 +930,11 @@ export function SkillsPage() {
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete {selectedSkills.length} skill{selectedSkills.length > 1 ? 's' : ''}?
           This action cannot be undone.
@@ -986,7 +997,7 @@ export function SkillsPage() {
       >
         {importError && (
           <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
-            {importError}
+            <span style={{ whiteSpace: 'pre-wrap' }}>{importError}</span>
           </Alert>
         )}
         <Text style={{ marginBottom: '1rem' }}>

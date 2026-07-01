@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Literal
+from typing import Any, List, Literal
 
 import uvicorn
 
@@ -20,16 +20,7 @@ from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.fast_api.vnfs_api import register_vnfs_api
 from skillberry_store.fast_api.plugins_api import register_plugins_api
-from skillberry_store.modules.description import Description
-from skillberry_store.modules.file_handler import FileHandler
-from skillberry_store.vdbs.identify_vdb import identify_vector_db
 from skillberry_store.tools.configure import (
-    get_files_directory_path,
-    get_tools_descriptions_directory,
-    get_snippets_descriptions_directory,
-    get_skills_descriptions_directory,
-    get_vmcp_descriptions_directory,
-    get_vnfs_descriptions_directory,
     configure_logging,
 )
 
@@ -38,10 +29,7 @@ try:
 except:
     __git_version__ = "unknown"
 
-from skillberry_store.fast_api.observability import (
-    observability_setup,
-    OTEL_TRACES_PORT,
-)
+from skillberry_store.fast_api.observability import observability_setup
 from prometheus_client import Counter, Histogram
 
 # this environment variable is used to enable the latest API version
@@ -86,55 +74,38 @@ class SBS(FastAPI):
 
         get_config()
 
-        # Initialize object handlers (singleton pattern)
+        # Initialize object handlers (singleton pattern). Descriptions are created
+        # inside each ObjectHandler using SBS_VDB (defaults to "faiss").
         from skillberry_store.modules.object_handler import initialize_object_handlers
 
         initialize_object_handlers()
         logger.info("Object handlers initialized")
 
-        # Store description instances in app state for access by admin API
-        self.state.tools_descriptions = tools_descriptions_api(self.settings.sbs_vdb)
-        self.state.snippets_descriptions = snippets_descriptions_api(
-            self.settings.sbs_vdb
-        )
-        self.state.skills_descriptions = skills_descriptions_api(self.settings.sbs_vdb)
-        self.state.vmcp_descriptions = vmcp_descriptions_api(self.settings.sbs_vdb)
-        self.state.vnfs_descriptions = vnfs_descriptions_api(self.settings.sbs_vdb)
-
-        # Initialize service layer
-        from skillberry_store.modules.object_handler import get_object_handler
+        # Initialize service layer (singletons in services.registry)
         from skillberry_store.modules.vnfs_server_manager import VirtualNfsServerManager
         from skillberry_store.modules.vmcp_server_manager import VirtualMcpServerManager
-        from skillberry_store.services.tools_service import ToolsService
-        from skillberry_store.services.skills_service import SkillsService
-        from skillberry_store.services.snippets_service import SnippetsService
-        from skillberry_store.services.vnfs_service import VnfsService
-        from skillberry_store.services.vmcp_service import VmcpService
+        from skillberry_store.services.registry import (
+            initialize_services,
+            get_service,
+        )
 
         sts_url = f"http://{self.settings.sbs_host}:{self.settings.sbs_port}"
 
-        tools_service = ToolsService(
-            get_object_handler("tool"), self.state.tools_descriptions
+        initialize_services(
+            vmcp_server_manager=VirtualMcpServerManager(sts_url=sts_url, app=self),
+            vnfs_server_manager=VirtualNfsServerManager(sts_url=sts_url, app=self),
         )
-        skills_service = SkillsService(
-            handler=get_object_handler("skill"),
-            tools_handler=get_object_handler("tool"),
-            snippets_handler=get_object_handler("snippet"),
-            descriptions=self.state.skills_descriptions,
-        )
-        snippets_service = SnippetsService(
-            get_object_handler("snippet"), self.state.snippets_descriptions
-        )
-        vnfs_service = VnfsService(
-            get_object_handler("vnfs"),
-            VirtualNfsServerManager(sts_url=sts_url, app=self),
-            self.state.vnfs_descriptions,
-        )
-        vmcp_service = VmcpService(
-            get_object_handler("vmcp"),
-            VirtualMcpServerManager(sts_url=sts_url, app=self),
-            get_object_handler("skill"),
-            self.state.vmcp_descriptions,
+        tools_service = get_service("tool")
+        skills_service = get_service("skill")
+        snippets_service = get_service("snippet")
+        vnfs_service = get_service("vnfs")
+        vmcp_service = get_service("vmcp")
+
+        from skillberry_store.services.admin_service import AdminService
+
+        admin_service = AdminService(
+            vmcp_server_manager=vmcp_service.server_manager,
+            vnfs_server_manager=vnfs_service.server_manager,
         )
 
         # Initialize plugin system
@@ -159,37 +130,30 @@ class SBS(FastAPI):
 
         register_vmcp_api(
             self,
-            sts_url=sts_url,
             tags="vmcp_servers",
-            vmcp_descriptions=self.state.vmcp_descriptions,
             service=vmcp_service,
         )
         register_vnfs_api(
             self,
-            sts_url=sts_url,
             tags="vnfs_servers",
-            vnfs_descriptions=self.state.vnfs_descriptions,
             service=vnfs_service,
         )
         register_skills_api(
             self,
             tags="skills",
-            skills_descriptions=self.state.skills_descriptions,
             service=skills_service,
         )
         register_snippets_api(
             self,
             tags="snippets",
-            snippets_descriptions=self.state.snippets_descriptions,
             service=snippets_service,
         )
         register_tools_api(
             self,
             tags="tools",
-            tools_descriptions=self.state.tools_descriptions,
             service=tools_service,
         )
-        register_admin_api(self, tags="admin")
+        register_admin_api(self, tags="admin", service=admin_service)
 
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
 
@@ -197,9 +161,32 @@ class SBS(FastAPI):
         plugin_loader.mount_routers(self)
         logger.info("Plugin routers mounted")
 
-        # Mount MCP server
-        mcp_server = FastApiMCP(self)
+        # Mount the Control MCP with a CURATED surface. The store auto-generates an
+        # MCP tool per REST endpoint, but agents only need the content operations,
+        # and many endpoints either don't belong on the agent surface (health,
+        # readiness, metrics, admin backup/restore/purge, change polling, provenance)
+        # or can't be MCP tools at all (file-upload endpoints — an MCP call has no
+        # file body). Rather than maintaining a separate allow-list that drifts as
+        # endpoints come and go, each endpoint opts in where it is declared via
+        # ``openapi_extra={"x-mcp-tool": True}`` (alongside the existing
+        # ``x-cli-name``). We derive the allow-list from those markers here.
+        mcp_included_operations = self._mcp_included_operations()
+        logger.info(
+            "Exposing %d operations on the Control MCP: %s",
+            len(mcp_included_operations),
+            ", ".join(sorted(mcp_included_operations)),
+        )
+        mcp_server = FastApiMCP(self, include_operations=mcp_included_operations)
         mcp_server.mount_sse(mount_path="/control_sse")
+
+    def _mcp_included_operations(self) -> List[str]:
+        """Operation ids opted in to the Control MCP via ``x-mcp-tool``.
+
+        Reads the generated OpenAPI schema (the same source ``FastApiMCP``
+        consumes) so the Control MCP surface stays in sync with the endpoints
+        automatically — there is no list to maintain in parallel.
+        """
+        return mcp_operations_from_openapi(self.openapi())
 
     def configure_fastapi(self):
         """Configures CORS middleware and OpenAPI documentation settings."""
@@ -214,7 +201,7 @@ class SBS(FastAPI):
         self.openapi = lambda: custom_openapi(self, [])
 
         # Add observability for FastAPI application
-        if OTEL_TRACES_PORT > 0:
+        if int(os.getenv("OTEL_TRACES_PORT", 0)) > 0:
             FastAPIInstrumentor.instrument_app(self)
 
     def run(self):
@@ -252,95 +239,24 @@ class SBS(FastAPI):
         )
 
 
-def tools_descriptions_api(sbs_vdb: str):
-    """Initialize tools descriptions APIs with proper persistency/db and APIs.
+def mcp_operations_from_openapi(openapi_schema: dict) -> List[str]:
+    """Collect ``operationId``s opted in to the Control MCP via ``x-mcp-tool``.
 
-    Returns:
-        Description: Description instance configured with vector index for tools.
+    An endpoint joins the Control MCP surface by declaring
+    ``openapi_extra={"x-mcp-tool": True}`` (next to the existing ``x-cli-name``).
+    FastAPI merges ``openapi_extra`` into each operation object, so the marker
+    and the ``operationId`` both live in the generated schema — the same schema
+    ``FastApiMCP`` consumes. Deriving the allow-list from there keeps the CLI and
+    Control MCP aligned and avoids maintaining a parallel list that drifts.
     """
-    tools_descriptions_directory = get_tools_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    tools_descriptions = Description(
-        descriptions_directory=tools_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return tools_descriptions
-
-
-def snippets_descriptions_api(sbs_vdb: str):
-    """Initialize snippets descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for snippets.
-    """
-    snippets_descriptions_directory = get_snippets_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    snippets_descriptions = Description(
-        descriptions_directory=snippets_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return snippets_descriptions
-
-
-def skills_descriptions_api(sbs_vdb: str):
-    """Initialize skills descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for skills.
-    """
-    skills_descriptions_directory = get_skills_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    skills_descriptions = Description(
-        descriptions_directory=skills_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return skills_descriptions
-
-
-def vmcp_descriptions_api(sbs_vdb: str):
-    """Initialize vmcp descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for vmcp servers.
-    """
-    vmcp_descriptions_directory = get_vmcp_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    vmcp_descriptions = Description(
-        descriptions_directory=vmcp_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return vmcp_descriptions
-
-
-def vnfs_descriptions_api(sbs_vdb: str):
-    """Initialize vnfs descriptions APIs with proper persistency/db and APIs.
-
-    Returns:
-        Description: Description instance configured with vector index for vnfs servers.
-    """
-    vnfs_descriptions_directory = get_vnfs_descriptions_directory()
-    vector_index = identify_vector_db(sbs_vdb)
-    vnfs_descriptions = Description(
-        descriptions_directory=vnfs_descriptions_directory,
-        vector_index=vector_index,
-        vdb_type=sbs_vdb,
-    )
-    return vnfs_descriptions
-
-
-def file_api():
-    """Initialize file APIs with proper persistency and APIs.
-
-    Returns:
-        FileHandler: File handler instance configured with files directory.
-    """
-    files_directory_path = get_files_directory_path()
-    file_handler = FileHandler(files_directory_path)
-    return file_handler
+    operations: List[str] = []
+    for path_item in openapi_schema.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            if operation.get("x-mcp-tool") and operation.get("operationId"):
+                operations.append(operation["operationId"])
+    return operations
 
 
 def custom_openapi(app: FastAPI, openapi_tags):

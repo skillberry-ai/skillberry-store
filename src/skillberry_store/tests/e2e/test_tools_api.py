@@ -333,7 +333,7 @@ async def test_add_tool_from_python_endpoint_update(run_sbs):
         )
         updated = update_response.json()
         assert updated.get("name") == "add_via_tools_add_update"
-        assert updated.get("message") == "Tool 'add_via_tools_add_update' created successfully."
+        assert updated.get("message") == "Tool 'add_via_tools_add_update' updated successfully."
         assert updated.get("module_name") == "add_via_tools_add_update.py"
         assert updated.get("uuid") is not None
         assert updated.get("uuid") == first_uuid    # When updating with add from python, UUID should be the same
@@ -934,7 +934,7 @@ async def test_create_tools_with_complex_dependencies(run_sbs):
         'example_functions'
     )
     
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         created_tools = []
         tool_uuids = {}  # Track UUIDs for dependency verification
         

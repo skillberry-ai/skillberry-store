@@ -5,7 +5,7 @@ The store emits these events when content changes occur.
 """
 
 import asyncio
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,26 @@ _event_handlers: Dict[str, List[Callable]] = {}
 # Holds strong references to background tasks so they are not garbage-collected
 # before they complete.
 _background_tasks: set = set()
+
+# Maps each registered handler callable to the slug of the plugin that owns it.
+# Populated by the plugin loader via register_handler_owner(); plugins themselves
+# are unchanged. A handler with no recorded owner always runs.
+_handler_owners: Dict[Callable, str] = {}
+
+# Optional resolver injected by the loader: slug -> bool (is the plugin enabled?).
+# When None, every handler runs (default-on / backward compatible).
+_enabled_resolver: Optional[Callable[[str], bool]] = None
+
+
+def register_handler_owner(func: Callable, slug: str) -> None:
+    """Record which plugin owns a handler callable (called by the loader)."""
+    _handler_owners[func] = slug
+
+
+def set_enabled_resolver(resolver: Optional[Callable[[str], bool]]) -> None:
+    """Inject the loader's 'is this plugin enabled?' resolver (or None to clear)."""
+    global _enabled_resolver
+    _enabled_resolver = resolver
 
 
 def on_content_added(content_type: str):
@@ -95,13 +115,29 @@ def emit_event(event_name: str, **kwargs):
     Returns immediately. Handlers run concurrently on the running event loop.
     If a handler raises, the error is logged and other handlers still run.
 
+    When no event loop is running (e.g., a synchronous caller from a unit test
+    or CLI), handlers are skipped silently — they are fire-and-forget by design.
+
     Args:
         event_name: Name of the event (e.g., "content_added:tool")
         **kwargs: Arguments to pass to event handlers
     """
     handlers = _event_handlers.get(event_name, [])
+    if not handlers:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.debug(
+            f"emit_event({event_name!r}): no running event loop, "
+            f"skipping {len(handlers)} handler(s)"
+        )
+        return
     for handler in handlers:
-        task = asyncio.create_task(_run_handler(handler, **kwargs))
+        owner = _handler_owners.get(handler)
+        if owner is not None and _enabled_resolver is not None and not _enabled_resolver(owner):
+            continue
+        task = loop.create_task(_run_handler(handler, **kwargs))
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
 

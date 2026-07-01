@@ -63,6 +63,7 @@ export function SnippetsPage() {
   const [createError, setCreateError] = useState('');
   const [selectedSnippets, setSelectedSnippets] = useState<string[]>([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importError, setImportError] = useState('');
@@ -114,6 +115,10 @@ export function SnippetsPage() {
       queryClient.invalidateQueries({ queryKey: ['snippets'] });
       setSelectedSnippets([]);
       setIsDeleteModalOpen(false);
+      setDeleteError('');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete snippet(s)');
     },
   });
 
@@ -186,19 +191,27 @@ export function SnippetsPage() {
     try {
       const text = await importFile.text();
       const importedSnippets = JSON.parse(text) as Snippet[];
-      
+
       if (!Array.isArray(importedSnippets)) {
         setImportError('Invalid file format. Expected an array of snippets.');
         return;
       }
 
-      // Use helper function to import snippets
-      await importSnippets(importedSnippets);
-
+      const result = await importSnippets(importedSnippets);
       queryClient.invalidateQueries({ queryKey: ['snippets'] });
-      setIsImportModalOpen(false);
-      setImportFile(null);
-      setImportError('');
+
+      if (result.failures.length > 0) {
+        const summary = result.failures
+          .map(f => `• ${f.name}: ${f.error}`)
+          .join('\n');
+        setImportError(
+          `Imported ${result.importedCount} of ${importedSnippets.length} snippet(s). Failures:\n${summary}`
+        );
+      } else {
+        setIsImportModalOpen(false);
+        setImportFile(null);
+        setImportError('');
+      }
     } catch (error) {
       setImportError('Failed to parse JSON file. Please ensure it is valid JSON.');
     }
@@ -701,7 +714,7 @@ export function SnippetsPage() {
         variant={ModalVariant.small}
         title="Delete Snippets"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -714,12 +727,17 @@ export function SnippetsPage() {
           <Button
             key="cancel"
             variant="link"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
           >
             Cancel
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete {selectedSnippets.length} snippet{selectedSnippets.length > 1 ? 's' : ''}?
           This action cannot be undone.
@@ -764,7 +782,7 @@ export function SnippetsPage() {
       >
         {importError && (
           <Alert variant="danger" title="Error" isInline style={{ marginBottom: '1rem' }}>
-            {importError}
+            <span style={{ whiteSpace: 'pre-wrap' }}>{importError}</span>
           </Alert>
         )}
         <Text style={{ marginBottom: '1rem' }}>

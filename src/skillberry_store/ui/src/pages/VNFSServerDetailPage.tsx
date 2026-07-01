@@ -51,6 +51,7 @@ export function VNFSServerDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [editedServer, setEditedServer] = useState({
     name: '',
     version: '',
@@ -107,6 +108,9 @@ export function VNFSServerDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['vnfs-servers'] });
       navigate('/vnfs-servers');
     },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete vNFS server');
+    },
   });
 
   const filteredSkills = useMemo(() => {
@@ -120,10 +124,10 @@ export function VNFSServerDetailPage() {
 
   const handleSelectSkill = (_event: any, value: string | number | undefined) => {
     if (typeof value === 'string') {
-      const selected = allSkills?.find(s => s.name === value);
+      const selected = allSkills?.find(s => s.uuid === value);
       if (selected) {
         setEditedServer({ ...editedServer, skill_uuid: selected.uuid });
-        setSkillSearchTerm(selected.name);
+        setSkillSearchTerm('');
         setIsSkillSelectOpen(false);
       }
     }
@@ -148,10 +152,7 @@ export function VNFSServerDetailPage() {
         extra: server.extra || {},
       });
       setExtraInput(JSON.stringify(server.extra || {}, null, 2));
-      if (server.skill_uuid && allSkills) {
-        const currentSkill = allSkills.find(s => s.uuid === server.skill_uuid);
-        if (currentSkill) setSkillSearchTerm(currentSkill.name);
-      }
+      setSkillSearchTerm('');
       setIsEditModalOpen(true);
     }
   };
@@ -238,6 +239,13 @@ export function VNFSServerDetailPage() {
               <DescriptionListGroup>
                 <DescriptionListTerm>Name</DescriptionListTerm>
                 <DescriptionListDescription>{server.name}</DescriptionListDescription>
+              </DescriptionListGroup>
+
+              <DescriptionListGroup>
+                <DescriptionListTerm>UUID</DescriptionListTerm>
+                <DescriptionListDescription>
+                  <Text component="small" style={{ fontFamily: 'monospace' }}>{server.uuid}</Text>
+                </DescriptionListDescription>
               </DescriptionListGroup>
 
               <DescriptionListGroup>
@@ -335,13 +343,6 @@ export function VNFSServerDetailPage() {
                   <DescriptionListDescription>{new Date(server.modified_at).toLocaleString()}</DescriptionListDescription>
                 </DescriptionListGroup>
               )}
-
-              <DescriptionListGroup>
-                <DescriptionListTerm>UUID</DescriptionListTerm>
-                <DescriptionListDescription>
-                  <Text component="small" style={{ fontFamily: 'monospace' }}>{server.uuid}</Text>
-                </DescriptionListDescription>
-              </DescriptionListGroup>
 
               {server.extra && Object.keys(server.extra).length > 0 && (
                 <DescriptionListGroup>
@@ -479,11 +480,13 @@ export function VNFSServerDetailPage() {
               onOpenChange={(isOpen) => setIsSkillSelectOpen(isOpen)}
               toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
                 <MenuToggle ref={toggleRef} onClick={() => setIsSkillSelectOpen(!isSkillSelectOpen)} isExpanded={isSkillSelectOpen} style={{ width: '100%' }}>
-                  {skillSearchTerm || 'Select a skill...'}
+                  {editedServer.skill_uuid
+                    ? (allSkills?.find(s => s.uuid === editedServer.skill_uuid)?.name || editedServer.skill_uuid)
+                    : 'Select a skill...'}
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={skillSearchTerm}
@@ -495,8 +498,18 @@ export function VNFSServerDetailPage() {
                   <SelectOption isDisabled>{skillSearchTerm ? 'No skills found' : 'Start typing to search...'}</SelectOption>
                 ) : (
                   filteredSkills.map(skill => (
-                    <SelectOption key={skill.uuid} value={skill.name}>
-                      {skill.name} {skill.description && `- ${skill.description}`}
+                    <SelectOption key={skill.uuid} value={skill.uuid}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ fontWeight: 'bold' }}>{skill.name}</div>
+                        <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
+                          UUID: {skill.uuid}
+                        </div>
+                        {skill.description && (
+                          <div style={{ fontSize: '0.9em', color: '#6a6e73' }}>
+                            {skill.description}
+                          </div>
+                        )}
+                      </div>
                     </SelectOption>
                   ))
                 )}
@@ -505,7 +518,7 @@ export function VNFSServerDetailPage() {
             {editedServer.skill_uuid && (
               <div style={{ marginTop: '0.5rem' }}>
                 <Button variant="plain" onClick={handleClearSkill} style={{ padding: '0.25rem 0.5rem', backgroundColor: '#e7f1fa', border: '1px solid #bee1f4', borderRadius: '3px' }}>
-                  {skillSearchTerm} ✕
+                  {allSkills?.find(s => s.uuid === editedServer.skill_uuid)?.name || editedServer.skill_uuid} ✕
                 </Button>
               </div>
             )}
@@ -563,12 +576,17 @@ export function VNFSServerDetailPage() {
         variant={ModalVariant.small}
         title="Delete vNFS Server"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button key="delete" variant="danger" onClick={() => deleteMutation.mutate()} isLoading={deleteMutation.isPending}>Delete</Button>,
-          <Button key="cancel" variant="link" onClick={() => setIsDeleteModalOpen(false)}>Cancel</Button>,
+          <Button key="cancel" variant="link" onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}>Cancel</Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete vNFS server <strong>{server.name}</strong>? This action cannot be undone.
         </Text>

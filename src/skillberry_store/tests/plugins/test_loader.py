@@ -219,49 +219,58 @@ def test_plugin_loader_mount_routers_to_app():
     assert call_args[1]["tags"] == ["plugins", "router_plugin"]
 
 
-def test_plugin_loader_mount_routers_skips_disabled():
-    """Test that disabled plugins' routers are not mounted."""
+def test_plugin_loader_mount_routers_mounts_with_guard():
+    """Routers are always mounted (live toggling); a guard dependency enforces state.
+
+    Previously disabled plugins were skipped at mount time. Now every plugin with a
+    router is mounted with a guard dependency so it can be enabled/disabled live;
+    the guard returns 404 while the plugin is inactive (see
+    test_router_guard_404s_when_disabled for the runtime behavior).
+    """
     from skillberry_store.plugins.loader import PluginLoader
     from skillberry_store.plugins.store_api import StoreAPI
     from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
-    
+
     mock_router = APIRouter()
-    
-    class DisabledPluginWithRouter(PluginBase):
+
+    class PluginWithRouter(PluginBase):
         @property
         def metadata(self) -> PluginMetadata:
             return PluginMetadata(
-                name="Disabled Router Plugin",
-                description="Disabled plugin with router",
+                name="Router Plugin",
+                description="Plugin with router",
                 version="1.0.0",
                 plugin_type=PluginType.CREATOR
             )
-        
+
         def is_enabled(self) -> bool:
-            return False
-        
+            return True
+
         def get_router(self) -> Optional[APIRouter]:
             return mock_router
-        
+
         def get_cli_commands(self) -> Optional[Dict[str, Any]]:
             return None
-        
+
         def get_ui_config(self) -> Optional[Dict[str, Any]]:
             return None
-    
+
     mock_store_api = Mock(spec=StoreAPI)
     loader = PluginLoader(store_api=mock_store_api)
-    
-    plugin = DisabledPluginWithRouter()
+
+    plugin = PluginWithRouter()
     plugin.set_store_api(mock_store_api)
-    loader.plugins["disabled_router"] = plugin
-    
+    loader.plugins["routed"] = plugin
+
     mock_app = Mock(spec=FastAPI)
-    
+
     loader.mount_routers(mock_app)
-    
-    # Should not mount disabled plugin's router
-    mock_app.include_router.assert_not_called()
+
+    # Router is mounted, and a guard dependency is attached.
+    mock_app.include_router.assert_called_once()
+    _, kwargs = mock_app.include_router.call_args
+    assert kwargs["prefix"] == "/plugins/routed"
+    assert len(kwargs["dependencies"]) == 1
 
 
 def test_plugin_loader_mount_routers_skips_none():
@@ -449,7 +458,126 @@ def test_plugin_loader_list_plugins_empty():
     loader = PluginLoader(store_api=mock_store_api)
     
     all_plugins = loader.list_plugins()
-    
+
     assert all_plugins == []
+
+
+def _make_plugin_class(name, capability=True):
+    from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+    from skillberry_store.plugins.events import _event_handlers
+
+    class _P(PluginBase):
+        def __init__(self):
+            super().__init__()
+            async def _handler(uuid: str):
+                pass
+            _event_handlers.setdefault("content_added:skill", []).append(_handler)
+            self._handler = _handler
+
+        @property
+        def metadata(self):
+            return PluginMetadata(name=name, description="d", version="1.0",
+                                  plugin_type=PluginType.EVALUATOR)
+
+        def is_enabled(self):
+            return capability
+
+        def get_router(self):
+            return None
+
+        def get_cli_commands(self):
+            return None
+
+        def get_ui_config(self):
+            return None
+
+    return _P
+
+
+def test_set_enabled_persists_and_affects_is_active(tmp_path):
+    from skillberry_store.plugins.loader import PluginLoader
+    from skillberry_store.plugins.config import PluginConfigStore
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    cfg = PluginConfigStore(path=tmp_path / "plugins.json")
+    loader = PluginLoader(store_api=Mock(spec=StoreAPI), config_store=cfg)
+    loader.plugins["plugin-a"] = _make_plugin_class("plugin-a")()
+
+    assert loader.is_active("plugin-a") is True
+    loader.set_enabled("plugin-a", False)
+    assert loader.is_active("plugin-a") is False
+    assert cfg.is_enabled("plugin-a") is False  # persisted
+
+
+def test_is_active_false_when_capability_off(tmp_path):
+    from skillberry_store.plugins.loader import PluginLoader
+    from skillberry_store.plugins.config import PluginConfigStore
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    cfg = PluginConfigStore(path=tmp_path / "plugins.json")
+    loader = PluginLoader(store_api=Mock(spec=StoreAPI), config_store=cfg)
+    loader.plugins["plugin-a"] = _make_plugin_class("plugin-a", capability=False)()
+
+    assert loader.is_active("plugin-a") is False  # admin on, capability off
+
+
+def test_get_plugin_info_reports_admin_enabled(tmp_path):
+    from skillberry_store.plugins.loader import PluginLoader
+    from skillberry_store.plugins.config import PluginConfigStore
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    cfg = PluginConfigStore(path=tmp_path / "plugins.json")
+    loader = PluginLoader(store_api=Mock(spec=StoreAPI), config_store=cfg)
+    loader.plugins["plugin-a"] = _make_plugin_class("plugin-a")()
+
+    info = loader.get_plugin_info("plugin-a")
+    assert info["admin_enabled"] is True
+    assert info["enabled"] is True
+
+    loader.set_enabled("plugin-a", False)
+    info = loader.get_plugin_info("plugin-a")
+    assert info["admin_enabled"] is False
+    assert info["enabled"] is False
+
+
+def test_router_guard_404s_when_disabled(tmp_path):
+    from fastapi import APIRouter, FastAPI
+    from fastapi.testclient import TestClient
+    from skillberry_store.plugins.loader import PluginLoader
+    from skillberry_store.plugins.config import PluginConfigStore
+    from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    router = APIRouter()
+
+    @router.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    class RoutedPlugin(PluginBase):
+        @property
+        def metadata(self):
+            return PluginMetadata(name="routed", description="d", version="1.0",
+                                  plugin_type=PluginType.CREATOR)
+        def is_enabled(self):
+            return True
+        def get_router(self):
+            return router
+        def get_cli_commands(self):
+            return None
+        def get_ui_config(self):
+            return None
+
+    cfg = PluginConfigStore(path=tmp_path / "plugins.json")
+    loader = PluginLoader(store_api=Mock(spec=StoreAPI), config_store=cfg)
+    loader.plugins["routed"] = RoutedPlugin()
+
+    app = FastAPI()
+    loader.mount_routers(app)
+    client = TestClient(app)
+
+    assert client.get("/plugins/routed/ping").status_code == 200
+    loader.set_enabled("routed", False)
+    assert client.get("/plugins/routed/ping").status_code == 404
 
 # Made with Bob

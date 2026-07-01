@@ -200,6 +200,7 @@ export interface Plugin {
   author?: string;
   homepage?: string;
   enabled: boolean;
+  admin_enabled: boolean;
   status: string;
   has_router: boolean;
   has_cli: boolean;

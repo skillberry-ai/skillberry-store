@@ -50,6 +50,7 @@ export function SnippetDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [editedSnippet, setEditedSnippet] = useState({
     name: '',
     version: '',
@@ -91,6 +92,9 @@ export function SnippetDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['snippets'] });
       navigate('/snippets');
+    },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete snippet');
     },
   });
 
@@ -203,6 +207,15 @@ export function SnippetDetailPage() {
                 <DescriptionListTerm>Name</DescriptionListTerm>
                 <DescriptionListDescription>{snippet.name}</DescriptionListDescription>
               </DescriptionListGroup>
+
+              <DescriptionListGroup>
+                <DescriptionListTerm>UUID</DescriptionListTerm>
+                <DescriptionListDescription>
+                  <Text component="small" style={{ fontFamily: 'monospace' }}>
+                    {snippet.uuid}
+                  </Text>
+                </DescriptionListDescription>
+              </DescriptionListGroup>
               
               <DescriptionListGroup>
                 <DescriptionListTerm>Description</DescriptionListTerm>
@@ -277,15 +290,6 @@ export function SnippetDetailPage() {
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}
-
-              <DescriptionListGroup>
-                <DescriptionListTerm>UUID</DescriptionListTerm>
-                <DescriptionListDescription>
-                  <Text component="small" style={{ fontFamily: 'monospace' }}>
-                    {snippet.uuid}
-                  </Text>
-                </DescriptionListDescription>
-              </DescriptionListGroup>
 
               {snippet.extra && Object.keys(snippet.extra).length > 0 && (
                 <DescriptionListGroup>
@@ -505,7 +509,7 @@ export function SnippetDetailPage() {
         variant={ModalVariant.small}
         title="Delete Snippet"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -518,12 +522,17 @@ export function SnippetDetailPage() {
           <Button
             key="cancel"
             variant="link"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
           >
             Cancel
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete the snippet "{snippet?.name}"? This action cannot be undone.
         </Text>

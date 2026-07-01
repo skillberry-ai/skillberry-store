@@ -53,6 +53,8 @@ export function VMCPServerDetailPage() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [openApiError, setOpenApiError] = useState('');
   const [editedServer, setEditedServer] = useState({
     name: '',
     version: '',
@@ -119,6 +121,9 @@ export function VMCPServerDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['vmcp-servers'] });
       navigate('/vmcp-servers');
     },
+    onError: (error: any) => {
+      setDeleteError(error.message || 'Failed to delete VMCP server');
+    },
   });
 
   // Filter skills based on search term
@@ -134,13 +139,13 @@ export function VMCPServerDetailPage() {
 
   const handleSelectSkill = (_event: any, value: string | number | undefined) => {
     if (typeof value === 'string') {
-      const selectedSkill = allSkills?.find(s => s.name === value);
+      const selectedSkill = allSkills?.find(s => s.uuid === value);
       if (selectedSkill) {
         setEditedServer({
           ...editedServer,
           skill_uuid: selectedSkill.uuid,
         });
-        setSkillSearchTerm(selectedSkill.name);
+        setSkillSearchTerm('');
         setIsSkillSelectOpen(false);
       }
     }
@@ -167,13 +172,7 @@ export function VMCPServerDetailPage() {
         extra: server.extra || {},
       });
       setExtraInput(JSON.stringify(server.extra || {}, null, 2));
-      // Set the skill search term to the current skill name if available
-      if (server.skill_uuid && allSkills) {
-        const currentSkill = allSkills.find(s => s.uuid === server.skill_uuid);
-        if (currentSkill) {
-          setSkillSearchTerm(currentSkill.name);
-        }
-      }
+      setSkillSearchTerm('');
       setIsEditModalOpen(true);
     }
   };
@@ -222,6 +221,7 @@ export function VMCPServerDetailPage() {
       return;
     }
 
+    setOpenApiError('');
     try {
       const spec = generateOpenAPISpec(
         server.name,
@@ -233,8 +233,8 @@ export function VMCPServerDetailPage() {
 
       const filename = `${server.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_openapi.json`;
       downloadOpenAPISpec(spec, filename);
-    } catch (error) {
-      console.error('Failed to generate or download OpenAPI spec:', error);
+    } catch (error: any) {
+      setOpenApiError(error.message || `Failed to generate OpenAPI spec for "${server.name}"`);
     }
   };
 
@@ -292,6 +292,19 @@ export function VMCPServerDetailPage() {
         </div>
       </PageSection>
 
+      {openApiError && (
+        <PageSection>
+          <Alert
+            variant="danger"
+            title="OpenAPI spec generation failed"
+            isInline
+            actionClose={<Button variant="plain" aria-label="Close" onClick={() => setOpenApiError('')}>✕</Button>}
+          >
+            {openApiError}
+          </Alert>
+        </PageSection>
+      )}
+
       <PageSection>
         <Card>
           <CardTitle>Server Information</CardTitle>
@@ -300,6 +313,15 @@ export function VMCPServerDetailPage() {
               <DescriptionListGroup>
                 <DescriptionListTerm>Name</DescriptionListTerm>
                 <DescriptionListDescription>{server.name}</DescriptionListDescription>
+              </DescriptionListGroup>
+
+              <DescriptionListGroup>
+                <DescriptionListTerm>UUID</DescriptionListTerm>
+                <DescriptionListDescription>
+                  <Text component="small" style={{ fontFamily: 'monospace' }}>
+                    {server.uuid}
+                  </Text>
+                </DescriptionListDescription>
               </DescriptionListGroup>
               
               <DescriptionListGroup>
@@ -406,15 +428,6 @@ export function VMCPServerDetailPage() {
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               )}
-
-              <DescriptionListGroup>
-                <DescriptionListTerm>UUID</DescriptionListTerm>
-                <DescriptionListDescription>
-                  <Text component="small" style={{ fontFamily: 'monospace' }}>
-                    {server.uuid}
-                  </Text>
-                </DescriptionListDescription>
-              </DescriptionListGroup>
 
               {server.extra && Object.keys(server.extra).length > 0 && (
                 <DescriptionListGroup>
@@ -798,11 +811,13 @@ export function VMCPServerDetailPage() {
                   isExpanded={isSkillSelectOpen}
                   style={{ width: '100%' }}
                 >
-                  {skillSearchTerm || 'Select a skill...'}
+                  {editedServer.skill_uuid
+                    ? (allSkills?.find(s => s.uuid === editedServer.skill_uuid)?.name || editedServer.skill_uuid)
+                    : 'Select a skill...'}
                 </MenuToggle>
               )}
             >
-              <SelectList>
+              <SelectList style={{ maxHeight: '300px', overflowY: 'auto' }}>
                 <TextInput
                   type="search"
                   value={skillSearchTerm}
@@ -816,8 +831,18 @@ export function VMCPServerDetailPage() {
                   </SelectOption>
                 ) : (
                   filteredSkills.map((skill) => (
-                    <SelectOption key={skill.uuid} value={skill.name}>
-                      {skill.name} {skill.description && `- ${skill.description}`}
+                    <SelectOption key={skill.uuid} value={skill.uuid}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ fontWeight: 'bold' }}>{skill.name}</div>
+                        <div style={{ fontSize: '0.85em', color: '#6a6e73', fontFamily: 'monospace' }}>
+                          UUID: {skill.uuid}
+                        </div>
+                        {skill.description && (
+                          <div style={{ fontSize: '0.9em', color: '#6a6e73' }}>
+                            {skill.description}
+                          </div>
+                        )}
+                      </div>
                     </SelectOption>
                   ))
                 )}
@@ -835,7 +860,7 @@ export function VMCPServerDetailPage() {
                     borderRadius: '3px',
                   }}
                 >
-                  {skillSearchTerm} ✕
+                  {allSkills?.find(s => s.uuid === editedServer.skill_uuid)?.name || editedServer.skill_uuid} ✕
                 </Button>
               </div>
             )}
@@ -899,7 +924,7 @@ export function VMCPServerDetailPage() {
         variant={ModalVariant.small}
         title="Delete VMCP Server"
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
         actions={[
           <Button
             key="delete"
@@ -912,12 +937,17 @@ export function VMCPServerDetailPage() {
           <Button
             key="cancel"
             variant="link"
-            onClick={() => setIsDeleteModalOpen(false)}
+            onClick={() => { setIsDeleteModalOpen(false); setDeleteError(''); }}
           >
             Cancel
           </Button>,
         ]}
       >
+        {deleteError && (
+          <Alert variant="danger" title="Delete failed" isInline style={{ marginBottom: '1rem' }}>
+            {deleteError}
+          </Alert>
+        )}
         <Text>
           Are you sure you want to delete the VMCP server "{server.name}"?
           This action cannot be undone.

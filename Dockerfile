@@ -12,6 +12,10 @@ ARG BUILD_DATE
 ARG SERVICE_NAME
 ARG SERVICE_PORTS
 ARG SERVICE_ENTRY_MODULE
+# Optional dependency group to install (see pyproject [project.optional-dependencies]).
+# Defaults to "plugins-all" so the image ships every bundled plugin; pass an empty
+# value (--build-arg PLUGIN_EXTRAS=) to build a slim, core-only image.
+ARG PLUGIN_EXTRAS=plugins-all
 
 # Python, NodeJS and venv are already set in the base image
 # WORKDIR is already set in the base image to /app
@@ -27,7 +31,7 @@ COPY . .
 #     ssh -o StrictHostKeyChecking=accept-new -T git@github.ibm.com || true
 
 # Install dependencies (requires SSH key for git+ssh)
-RUN --mount=type=ssh make install-requirements
+RUN --mount=type=ssh make install-requirements ODEPS=${PLUGIN_EXTRAS}
 
 ###########################################
 # Runtime Stage - Clean, no SSH key

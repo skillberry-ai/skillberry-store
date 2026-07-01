@@ -8,17 +8,24 @@ a type-specific dict file.
 import json
 import logging
 import os
+import threading
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Union
+
+import fasteners
 
 from fastapi import HTTPException
 
 from skillberry_store.fast_api.changes import bump
+from skillberry_store.modules.dependency_manager import DependencyManager
 from skillberry_store.modules.dict_cache import DictCache
 from skillberry_store.modules.file_handler import FileHandler
 from skillberry_store.modules.lookup_cache import LookupCache
 from skillberry_store.utils.utils import normalize_uuid
+
+if TYPE_CHECKING:
+    from skillberry_store.modules.description import Description
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +56,59 @@ def initialize_object_handlers() -> None:
         get_vnfs_directory,
     )
 
-    _object_handlers["tool"] = ObjectHandler(get_tools_directory(), "tool")
-    _object_handlers["snippet"] = ObjectHandler(get_snippets_directory(), "snippet")
-    _object_handlers["skill"] = ObjectHandler(get_skills_directory(), "skill")
-    _object_handlers["vmcp"] = ObjectHandler(get_vmcp_directory(), "vmcp")
-    _object_handlers["vnfs"] = ObjectHandler(get_vnfs_directory(), "vnfs")
+    vdb_type = os.getenv("SBS_VDB", "faiss")
+
+    _object_handlers["tool"] = ObjectHandler(
+        get_tools_directory(), "tool", vdb_type=vdb_type
+    )
+    _object_handlers["snippet"] = ObjectHandler(
+        get_snippets_directory(), "snippet", vdb_type=vdb_type
+    )
+    _object_handlers["skill"] = ObjectHandler(
+        get_skills_directory(), "skill", vdb_type=vdb_type
+    )
+    _object_handlers["vmcp"] = ObjectHandler(
+        get_vmcp_directory(), "vmcp", vdb_type=vdb_type
+    )
+    _object_handlers["vnfs"] = ObjectHandler(
+        get_vnfs_directory(), "vnfs", vdb_type=vdb_type
+    )
 
     _initialized = True
+    _bootstrap_dependency_managers()
     logger.info(
         f"Initialized {len(_object_handlers)} object handlers: {list(_object_handlers.keys())}"
     )
+
+
+def _bootstrap_dependency_managers() -> None:
+    tool_handler = _object_handlers["tool"]
+    snippet_handler = _object_handlers["snippet"]
+    skill_handler = _object_handlers["skill"]
+
+    for handler in _object_handlers.values():
+        handler.dependency_manager.clear()
+
+    for d in tool_handler.iter_dicts():
+        tool_handler.dependency_manager.add(
+            "tool", d["uuid"], d.get("dependencies") or []
+        )
+
+    for d in skill_handler.iter_dicts():
+        tool_handler.dependency_manager.add(
+            "skill", d["uuid"], d.get("tool_uuids") or []
+        )
+        snippet_handler.dependency_manager.add(
+            "skill", d["uuid"], d.get("snippet_uuids") or []
+        )
+
+    for d in _object_handlers["vmcp"].iter_dicts():
+        if d.get("skill_uuid"):
+            skill_handler.dependency_manager.add("vmcp", d["uuid"], [d["skill_uuid"]])
+
+    for d in _object_handlers["vnfs"].iter_dicts():
+        if d.get("skill_uuid"):
+            skill_handler.dependency_manager.add("vnfs", d["uuid"], [d["skill_uuid"]])
 
 
 def get_object_handler(object_type: str) -> "ObjectHandler":
@@ -102,6 +152,26 @@ def clear_object_handlers() -> None:
     logger.debug("Cleared all object handlers")
 
 
+def reload_object_handlers() -> None:
+    """Refresh every singleton handler from disk in place.
+
+    Rebuilds dict caches, name caches, description stores, and the
+    cross-handler dependency graph by re-reading the data directories.
+    Unlike ``clear_object_handlers()`` followed by ``initialize_object_handlers()``,
+    this keeps singleton identity stable — services and runtime managers
+    that captured a handler reference at startup continue to point at the
+    same (now refreshed) instance.
+    """
+    if not _initialized:
+        raise RuntimeError(
+            "Object handlers not initialized. Call initialize_object_handlers() first."
+        )
+    for handler in _object_handlers.values():
+        handler.reload()
+    _bootstrap_dependency_managers()
+    logger.info("Reloaded object handlers from disk")
+
+
 class ObjectHandler:
     """
     Generic handler for managing objects (tools, snippets, skills, vmcp servers).
@@ -115,7 +185,11 @@ class ObjectHandler:
     """
 
     def __init__(
-        self, base_directory: str, object_type: str, use_dict_cache: bool = True
+        self,
+        base_directory: str,
+        object_type: str,
+        use_dict_cache: bool = True,
+        vdb_type: Optional[str] = None,
     ):
         """
         Initialize ObjectHandler.
@@ -124,6 +198,9 @@ class ObjectHandler:
             base_directory: Base directory for objects (e.g., /tmp/tools)
             object_type: Type of object ('tool', 'snippet', 'skill', 'vmcp')
             use_dict_cache: If True, use in-memory dict cache for dicts (default: True)
+            vdb_type: Vector DB backend name (e.g. 'faiss'). When provided a
+                Description instance is created at ``{base_directory}/descriptions``.
+                When None, ``self.descriptions`` is None.
         """
         self.base_directory = base_directory
         self.object_type = object_type
@@ -140,9 +217,62 @@ class ObjectHandler:
         self.name_cache = LookupCache()
         self._initialize_name_cache()
 
+        # Per-UUID read/write lock registry
+        self._uuid_locks: Dict[str, fasteners.ReaderWriterLock] = {}
+        self._uuid_locks_mutex: threading.Lock = threading.Lock()
+        # Coarse handler-level lock for chain-repair walk
+        self._handler_lock: fasteners.ReaderWriterLock = fasteners.ReaderWriterLock()
+        self.dependency_manager = DependencyManager()
+
+        # Description store — created only when a VDB backend is specified.
+        # _vdb_type is kept so purge_all can recreate the store with the same backend.
+        self._vdb_type: Optional[str] = vdb_type
+        self.descriptions: Optional["Description"] = None
+        if vdb_type is not None:
+            self.descriptions = self._make_descriptions(vdb_type)
+
         logger.info(
-            f"Initialized ObjectHandler for {object_type} at {base_directory} (dict_cache={'enabled' if use_dict_cache else 'disabled'})"
+            f"Initialized ObjectHandler for {object_type} at {base_directory} "
+            f"(dict_cache={'enabled' if use_dict_cache else 'disabled'}, "
+            f"descriptions={'enabled' if self.descriptions else 'disabled'})"
         )
+
+    def _make_descriptions(self, vdb_type: str) -> "Description":
+        """Create a fresh Description instance rooted at {base_directory}/descriptions."""
+        from skillberry_store.modules.description import Description
+        from skillberry_store.vdbs.identify_vdb import identify_vector_db, VectorDBType
+
+        descriptions_directory = os.path.join(self.base_directory, "descriptions")
+        vector_index = identify_vector_db(VectorDBType(vdb_type))
+        return Description(
+            descriptions_directory=descriptions_directory,
+            vector_index=vector_index,
+            vdb_type=vdb_type,
+        )
+
+    # ==================== Lock Registry Methods ====================
+
+    def _get_uuid_lock(self, uuid: str) -> fasteners.ReaderWriterLock:
+        """Return (or create) the ReaderWriterLock for the given UUID."""
+        # Fast path — no mutex needed for reads of an existing entry
+        lock = self._uuid_locks.get(uuid)
+        if lock is not None:
+            return lock
+        # Slow path — create under mutex (double-checked locking)
+        with self._uuid_locks_mutex:
+            lock = self._uuid_locks.get(uuid)
+            if lock is None:
+                lock = fasteners.ReaderWriterLock()
+                self._uuid_locks[uuid] = lock
+        return lock
+
+    def read_lock(self, uuid: str):
+        """Return a read-side context manager for the given UUID's RWLock."""
+        return self._get_uuid_lock(uuid).read_lock()
+
+    def write_lock(self, uuid: str):
+        """Return a write-side context manager for the given UUID's RWLock."""
+        return self._get_uuid_lock(uuid).write_lock()
 
     # ==================== Cache Management Methods ====================
 
@@ -348,38 +478,39 @@ class ObjectHandler:
         Raises:
             HTTPException: If unable to read an object in the chain (500).
         """
-        # Start from HEAD
-        head_uuid = self.name_cache.get_head(name)
-        if not head_uuid:
-            return
+        with self._handler_lock.write_lock():
+            # Start from HEAD
+            head_uuid = self.name_cache.get_head(name)
+            if not head_uuid:
+                return
 
-        # Walk the chain from HEAD
-        current_uuid = head_uuid
-        while current_uuid:
-            # Read current object - if this fails, it's a data integrity error
-            try:
-                current_object = self.read_dict(current_uuid)
-            except Exception as e:
-                error_msg = f"Data integrity error: Could not read {self.object_type} {current_uuid} while fixing parent chain for '{name}': {e}"
-                logger.error(error_msg)
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Internal error while updating {self.object_type} chain: {str(e)}",
-                )
+            # Walk the chain from HEAD
+            current_uuid = head_uuid
+            while current_uuid:
+                # Read current object - if this fails, it's a data integrity error
+                try:
+                    current_object = self.read_dict(current_uuid)
+                except Exception as e:
+                    error_msg = f"Data integrity error: Could not read {self.object_type} {current_uuid} while fixing parent chain for '{name}': {e}"
+                    logger.error(error_msg)
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Internal error while updating {self.object_type} chain: {str(e)}",
+                    )
 
-            # Check if this object points to the deleted object
-            current_parent = current_object.get("parent")
-            if current_parent == deleted_uuid:
-                # Found it! Update this object to point to deleted object's parent
-                current_object["parent"] = deleted_parent
-                self.write_dict(current_uuid, current_object)
-                logger.info(
-                    f"Fixed parent chain: {current_uuid} now points to {deleted_parent} (was {deleted_uuid})"
-                )
-                return  # Done, only one object can point to deleted object
+                # Check if this object points to the deleted object
+                current_parent = current_object.get("parent")
+                if current_parent == deleted_uuid:
+                    # Found it! Update this object to point to deleted object's parent
+                    current_object["parent"] = deleted_parent
+                    self.write_dict(current_uuid, current_object)
+                    logger.info(
+                        f"Fixed parent chain: {current_uuid} now points to {deleted_parent} (was {deleted_uuid})"
+                    )
+                    return  # Done, only one object can point to deleted object
 
-            # Move to next in chain
-            current_uuid = current_parent
+                # Move to next in chain
+                current_uuid = current_parent
 
     # ==================== Core ID Resolution Methods ====================
 
@@ -713,6 +844,54 @@ class ObjectHandler:
             raise HTTPException(
                 status_code=500, detail=f"Error deleting {self.object_type}: {str(e)}"
             )
+
+    def purge_all(self) -> None:
+        """Delete all objects by wiping the base directory, then clear all in-memory state.
+
+        Removes every UUID subfolder (and its contents) by deleting and recreating the
+        base directory, then clears the dict cache, name cache, dependency manager, and
+        the in-memory description vector index.
+        """
+        import shutil
+
+        if os.path.exists(self.base_directory):
+            shutil.rmtree(self.base_directory)
+            logger.info(
+                f"Purged all {self.object_type} objects from {self.base_directory}"
+            )
+        Path(self.base_directory).mkdir(parents=True, exist_ok=True)
+
+        if self.dict_cache:
+            self.dict_cache.clear()
+        self.name_cache.clear()
+        self.dependency_manager.clear()
+
+        # Re-initialise the description store so its in-memory index is fresh
+        # and the descriptions/ subdirectory (just wiped) is recreated.
+        if self._vdb_type is not None:
+            self.descriptions = self._make_descriptions(self._vdb_type)
+
+        logger.info(f"Cleared all in-memory state for {self.object_type}")
+
+    def reload(self) -> None:
+        """Refresh in-memory state from the on-disk data, preserving handler identity.
+
+        Rebuilds the dict cache, name cache, and description store by re-reading
+        ``base_directory``. Used after operations that mutate disk state behind
+        the handler's back (e.g. ``/admin/restore``); unlike replacing the handler
+        instance, this keeps references held by services and managers valid.
+
+        The dependency manager is intentionally left untouched here — callers
+        that need to refresh cross-handler dependencies should re-run the
+        module-level bootstrap after reloading every handler.
+        """
+        if self.dict_cache is not None:
+            self._initialize_dict_cache()
+        self.name_cache.clear()
+        self._initialize_name_cache()
+        if self._vdb_type is not None:
+            self.descriptions = self._make_descriptions(self._vdb_type)
+        logger.info(f"Reloaded {self.object_type} handler from {self.base_directory}")
 
     # ==================== Object File Operations ====================
 
