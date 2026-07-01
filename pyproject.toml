@@ -205,6 +205,10 @@ plugin-dependency-tracker = [
   "skillberry-plugin-dependency-tracker>=0.1.0",
 ]
 
+plugin-ask-runspace = [
+  "skillberry-plugin-ask-runspace>=0.1.0",
+]
+
 plugin-dast = [
   "skillberry-plugin-dast>=0.1.0",
 ]
@@ -224,6 +228,7 @@ plugins-all = [
   "skillberry-plugin-provenance>=0.1.0",
   "skillberry-plugin-doc-generator>=0.1.0",
   "skillberry-plugin-dependency-tracker>=0.1.0",
+  "skillberry-plugin-ask-runspace>=0.1.0",
   "skillberry-plugin-dast>=0.1.0",
 ]
 
@@ -246,6 +251,7 @@ skillberry-plugin-simulate = { path = "plugins/skillberry-plugin-simulate", edit
 skillberry-plugin-provenance = { path = "plugins/skillberry-plugin-provenance", editable = true }
 skillberry-plugin-doc-generator = { path = "plugins/skillberry-plugin-doc-generator", editable = true }
 skillberry-plugin-dependency-tracker = { path = "plugins/skillberry-plugin-dependency-tracker", editable = true }
+skillberry-plugin-ask-runspace = { path = "plugins/skillberry-plugin-ask-runspace", editable = true }
 skillberry-plugin-dast = { path = "plugins/skillberry-plugin-dast", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
 torch = { index = "pytorch-cpu" }
