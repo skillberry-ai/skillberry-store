@@ -81,11 +81,11 @@ class SkillsImporter:
         
         # Set default for max_skills based on mode
         if args.max_skills is None:
-            if args.import_only:
-                # Import-only mode: no limit (import all discovered skills)
+            if args.import_only or getattr(args, 'sitemap_only', False):
+                # import-only / sitemap-only: no limit (process all available skills)
                 self.max_skills = None
             else:
-                # Clone-only or full mode: default to 10
+                # clone-only or full mode: default to 10
                 self.max_skills = 10
         else:
             # User explicitly specified max_skills
@@ -111,71 +111,160 @@ class SkillsImporter:
     
     # ========== PHASE 1: Extract Repository URLs ==========
     
+    def _fetch_repos_from_sitemaps(self) -> List[str]:
+        """
+        Fetch all owner/repo sources from the skills.sh sitemap index.
+
+        skills.sh publishes a sitemap-owners.xml that lists every known
+        repository as  https://www.skills.sh/<owner>/<repo>  — one URL per
+        <loc> element.  This is a fully public, plain-XML endpoint that
+        contains the complete catalog (9 700+ repos as of mid-2026),
+        compared to the ~81 repos embedded in the JavaScript-rendered HTML.
+
+        Returns:
+            Ordered list of "owner/repo" source strings, deduplicated.
+        """
+        base_url = self.args.skills_url.rstrip('/')  # e.g. "https://skills.sh"
+        sitemap_url = f"{base_url}/sitemap-owners.xml"
+        logger.info(f"  Fetching owners sitemap: {sitemap_url}")
+        response = requests.get(sitemap_url, timeout=60)
+        response.raise_for_status()
+        logger.info(f"  Received {len(response.text)} bytes from sitemap")
+
+        # Extract <loc> values: https://www.skills.sh/<owner>/<repo>
+        # We strip the host prefix to get "owner/repo".
+        loc_pattern = re.compile(r'<loc>(https?://[^/]+/([^/<]+/[^/<]+))</loc>')
+        seen: set = set()
+        sources: List[str] = []
+        for m in loc_pattern.finditer(response.text):
+            source = m.group(2)  # "owner/repo"
+            if source not in seen:
+                seen.add(source)
+                sources.append(source)
+        return sources
+
+    def _fetch_skills_from_sitemaps(self) -> List[Dict[str, str]]:
+        """
+        Fetch every individual skill listed in the skills.sh skill sitemaps.
+
+        skills.sh publishes up to two skill sitemaps (sitemap-skills-1.xml,
+        sitemap-skills-2.xml), each capped at 10 000 entries.  Together they
+        expose ~20 000 directly-downloadable skills with known owner/repo/slug
+        triples, which is the complete set accessible without authentication.
+
+        Returns:
+            Ordered list of dicts with keys: 'owner', 'repo', 'slug', 'source'.
+            Deduplicated; ordering matches sitemap appearance order.
+        """
+        base_url = self.args.skills_url.rstrip('/')
+        # Extract three-segment paths: owner/repo/slug
+        loc_pattern = re.compile(
+            r'<loc>https?://[^/]+/([^/<]+)/([^/<]+)/([^/<\s]+)</loc>'
+        )
+        seen: set = set()
+        skills: List[Dict[str, str]] = []
+        for n in [1, 2]:
+            sitemap_url = f"{base_url}/sitemap-skills-{n}.xml"
+            logger.info(f"  Fetching skill sitemap: {sitemap_url}")
+            try:
+                response = requests.get(sitemap_url, timeout=60)
+                response.raise_for_status()
+                logger.info(f"  Received {len(response.text)} bytes")
+            except Exception as e:
+                logger.warning(f"  Could not fetch {sitemap_url}: {e}")
+                continue
+            for m in loc_pattern.finditer(response.text):
+                owner, repo, slug = m.group(1), m.group(2), m.group(3).rstrip('/')
+                key = f"{owner}/{repo}/{slug}"
+                if key not in seen:
+                    seen.add(key)
+                    skills.append({
+                        'owner': owner,
+                        'repo': repo,
+                        'slug': slug,
+                        'source': f"{owner}/{repo}",
+                    })
+        return skills
+
     def extract_skills_metadata(self) -> List[Dict[str, Any]]:
         """
         Phase 1: Extract unique repository metadata from skills.sh
-        
+
+        Primary strategy: parse the public sitemap-owners.xml, which lists
+        every repository in the catalog (~17 000+ repos).
+
+        Fallback strategy: regex-scrape the JavaScript-rendered homepage HTML,
+        which only contains the ~80 seed repos baked into the initial payload.
+
         Returns:
             List of repository metadata dictionaries
         """
         logger.info("=" * 60)
         logger.info("PHASE 1: Extracting repository URLs from skills.sh")
         logger.info("=" * 60)
-        
+
         try:
-            logger.info(f"Fetching {self.args.skills_url}...")
-            response = requests.get(self.args.skills_url, timeout=30)
-            response.raise_for_status()
-            
-            html_content = response.text
-            logger.info(f"Received {len(html_content)} bytes")
-            
-            # Extract repository sources from skills.sh HTML.
-            # The page may contain multiple skill entries for the same repository,
-            # so Phase 1 deduplicates by source and keeps only repo-level fields.
-            pattern = r'\\"source\\":\\"([^\\]+)\\"'
-            matches = re.findall(pattern, html_content)
-            
-            if not matches:
-                logger.warning("No repositories found with primary pattern, trying alternative...")
-                pattern2 = r'"source":"([^"]+)"'
-                matches = re.findall(pattern2, html_content)
-            
-            if not matches:
-                logger.error("Could not extract repository sources from HTML")
-                return []
-            
-            # Deduplicate while preserving order of first appearance
-            seen_sources = set()
-            repos = []
-            for source in matches:
-                if source in seen_sources:
-                    continue
-                seen_sources.add(source)
-                repo_name = source.replace('/', '__').replace(':', '_')
-                repo_path = str(self.repos_dir / repo_name)
-                repos.append({
-                    "source": source,
-                    "repo_name": repo_name,
-                    "repo_path": repo_path,
-                    "skills_count": None,
-                })
-            
-            logger.info(f"Extracted {len(repos)} unique repositories from skills.sh")
-            
-            logger.info(f"\nTop 10 repositories by appearance order:")
-            for i, repo in enumerate(repos[:10], 1):
-                logger.info(f"  {i}. {repo['source']} -> {repo['repo_name']}")
-            
-            logger.info(f"\nTotal: {len(repos)} unique repositories")
-            logger.info(f"Phase 2 will clone repos until finding {self.max_skills if self.max_skills is not None else 'all available'} actual skills (subfolders with SKILL.md)")
-            
-            self.metadata = repos
-            return repos
-            
+            # --- Primary: sitemaps ---
+            logger.info("Strategy: sitemap-owners.xml (full catalog)")
+            matches = self._fetch_repos_from_sitemaps()
+            if matches:
+                logger.info(f"  Sitemap returned {len(matches)} unique repositories")
+            else:
+                logger.warning("  Sitemap returned no results, falling back to HTML scrape")
         except Exception as e:
-            logger.error(f"Error extracting metadata: {e}", exc_info=True)
-            return []
+            logger.warning(f"  Sitemap fetch failed ({e}), falling back to HTML scrape")
+            matches = []
+
+        # --- Fallback: HTML regex scrape ---
+        if not matches:
+            try:
+                logger.info(f"Strategy: HTML scrape of {self.args.skills_url}")
+                response = requests.get(self.args.skills_url, timeout=30)
+                response.raise_for_status()
+                html_content = response.text
+                logger.info(f"  Received {len(html_content)} bytes")
+
+                pattern = r'\\"source\\":\\"([^\\]+)\\"'
+                raw = re.findall(pattern, html_content)
+                if not raw:
+                    pattern2 = r'"source":"([^"]+)"'
+                    raw = re.findall(pattern2, html_content)
+
+                seen: set = set()
+                for source in raw:
+                    if source not in seen:
+                        seen.add(source)
+                        matches.append(source)
+
+                if not matches:
+                    logger.error("Could not extract repository sources from HTML")
+                    return []
+                logger.info(f"  HTML scrape returned {len(matches)} unique repositories")
+            except Exception as e:
+                logger.error(f"Error extracting metadata: {e}", exc_info=True)
+                return []
+
+        # Build repo metadata records
+        repos = []
+        for source in matches:
+            repo_name = source.replace('/', '__').replace(':', '_')
+            repo_path = str(self.repos_dir / repo_name)
+            repos.append({
+                "source": source,
+                "repo_name": repo_name,
+                "repo_path": repo_path,
+                "skills_count": None,
+            })
+
+        logger.info(f"\nTop 10 repositories by appearance order:")
+        for i, repo in enumerate(repos[:10], 1):
+            logger.info(f"  {i}. {repo['source']} -> {repo['repo_name']}")
+
+        logger.info(f"\nTotal: {len(repos)} unique repositories")
+        logger.info(f"Phase 2 will clone repos until finding {self.max_skills if self.max_skills is not None else 'all available'} actual skills (subfolders with SKILL.md)")
+
+        self.metadata = repos
+        return repos
     
     # ========== PHASE 2: Clone Repositories ==========
     
@@ -348,7 +437,125 @@ class SkillsImporter:
         
         self.cloned_repos = cloned_repos
         return cloned_repos
-    
+
+    # ========== PHASE 2b: Sitemap Direct Download ==========
+
+    def download_skills_from_sitemap(self) -> List[Dict[str, Any]]:
+        """
+        Alternative to clone_repositories: download skills directly from
+        the skills.sh /api/download endpoint using the skill sitemaps.
+
+        This avoids any git operations.  For each skill listed in
+        sitemap-skills-1.xml and sitemap-skills-2.xml the method calls
+            GET https://skills.sh/api/download/{owner}/{repo}/{slug}
+        which returns a JSON snapshot of the skill's files.  Those files are
+        written to disk under:
+            <skills_dir>/<owner>__<repo>/skills/<slug>/
+
+        That layout is identical to what a git clone produces, so Phase 3
+        (discover_skills) works unchanged.
+
+        Returns:
+            List of repo-info dicts (same schema as clone_repositories).
+        """
+        logger.info("\n" + "=" * 60)
+        logger.info("PHASE 2 (sitemap): Downloading skills via /api/download")
+        logger.info("=" * 60)
+
+        base_url = self.args.skills_url.rstrip('/')
+        skills_list = self._fetch_skills_from_sitemaps()
+
+        if not skills_list:
+            logger.error("No skills found in skill sitemaps")
+            return []
+
+        total_available = len(skills_list)
+        target = self.max_skills if self.max_skills is not None else total_available
+        logger.info(f"  Skills in sitemaps : {total_available}")
+        logger.info(f"  Target             : {target}")
+
+        # Apply limit up front to avoid unnecessary HTTP requests
+        if self.max_skills is not None:
+            skills_list = skills_list[:self.max_skills]
+
+        # Track which repo dirs we've written to (for the Phase-3 handoff)
+        repo_skill_counts: Dict[str, int] = {}  # repo_dir_name -> count
+
+        succeeded = 0
+        failed = 0
+
+        for i, entry in enumerate(skills_list, 1):
+            owner = entry['owner']
+            repo  = entry['repo']
+            slug  = entry['slug']
+            source = entry['source']
+
+            repo_dir_name = f"{owner}__{repo}"
+            skill_dir = self.repos_dir / repo_dir_name / 'skills' / slug
+            skill_md_path = skill_dir / 'SKILL.md'
+
+            # Skip if already downloaded (idempotent re-runs)
+            if skill_md_path.exists():
+                logger.info(f"  [{i}/{len(skills_list)}] Already exists: {source}/{slug}")
+                repo_skill_counts[repo_dir_name] = repo_skill_counts.get(repo_dir_name, 0) + 1
+                succeeded += 1
+                continue
+
+            url = f"{base_url}/api/download/{owner}/{repo}/{slug}"
+            logger.info(f"  [{i}/{len(skills_list)}] GET {url}")
+            try:
+                resp = requests.get(url, timeout=30)
+                if resp.status_code == 404:
+                    logger.warning(f"    ⊘ Not found (404) — skipping")
+                    failed += 1
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                logger.error(f"    ✗ Request failed: {e}")
+                failed += 1
+                continue
+
+            files = data.get('files', [])
+            if not any(f['path'].upper() == 'SKILL.MD' for f in files):
+                logger.warning(f"    ⊘ Response has no SKILL.md — skipping")
+                failed += 1
+                continue
+
+            skill_dir.mkdir(parents=True, exist_ok=True)
+            for file_entry in files:
+                dest = skill_dir / file_entry['path']
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(file_entry['contents'], encoding='utf-8')
+
+            repo_skill_counts[repo_dir_name] = repo_skill_counts.get(repo_dir_name, 0) + 1
+            succeeded += 1
+            logger.info(f"    ✓ Written {len(files)} file(s)")
+
+        # Build the cloned_repos list expected by discover_skills / scan_existing_repos
+        cloned_repos = []
+        for repo_dir_name, count in repo_skill_counts.items():
+            parts = repo_dir_name.split('__', 1)
+            source = '/'.join(parts) if len(parts) == 2 else repo_dir_name
+            cloned_repos.append({
+                'source': source,
+                'repo_name': repo_dir_name,
+                'repo_path': str(self.repos_dir / repo_dir_name),
+                'skills_count': count,
+                'already_existed': False,
+            })
+
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Sitemap Download Summary:")
+        logger.info(f"  Skills attempted : {len(skills_list)}")
+        logger.info(f"  Skills downloaded: {succeeded}")
+        logger.info(f"  Failures/skipped : {failed}")
+        logger.info(f"  Repos with skills: {len(cloned_repos)}")
+        logger.info(f"{'='*60}")
+
+        self.cloned_repos = cloned_repos
+        return cloned_repos
+
     # ========== PHASE 3: Auto-discover Skills ==========
     
     def scan_existing_repos(self) -> List[Dict[str, Any]]:
@@ -922,31 +1129,43 @@ class SkillsImporter:
         
         try:
             # Check for mutually exclusive modes
-            if self.args.clone_only and self.args.import_only:
-                logger.error("Cannot use --clone-only and --import-only together")
+            exclusive = sum([
+                bool(self.args.clone_only),
+                bool(self.args.import_only),
+                bool(getattr(self.args, 'sitemap_only', False)),
+            ])
+            if exclusive > 1:
+                logger.error("--clone-only, --import-only, and --sitemap-only are mutually exclusive")
                 return
-            
-            # Import-only mode: skip phases 1-2
+
+            sitemap_only = getattr(self.args, 'sitemap_only', False)
+
+            # Import-only mode: skip phases 1-2, scan existing local repos
             if self.args.import_only:
                 logger.info("\n" + "="*60)
                 logger.info("IMPORT-ONLY MODE: Using existing repositories")
                 logger.info("="*60)
-                
-                # Scan existing repos instead of cloning
                 cloned = self.scan_existing_repos()
                 if not cloned:
                     logger.error("No existing repositories found. Aborting.")
                     return
-                
-                # Continue to Phase 3
+
+            # Sitemap mode: download skills via /api/download (no git)
+            elif sitemap_only:
+                logger.info("\n" + "="*60)
+                logger.info("SITEMAP MODE: Downloading skills via skills.sh API")
+                logger.info("="*60)
+                cloned = self.download_skills_from_sitemap()
+                if not cloned:
+                    logger.error("No skills downloaded. Aborting.")
+                    return
+
             else:
-                # Normal mode: Phase 1: Extract metadata
+                # Normal mode: Phase 1 + Phase 2 (git clone)
                 metadata = self.extract_skills_metadata()
                 if not metadata:
                     logger.error("Failed to extract metadata. Aborting.")
                     return
-                
-                # Phase 2: Clone repositories
                 cloned = self.clone_repositories(metadata)
                 if not cloned:
                     logger.error("No repositories cloned. Aborting.")
@@ -1063,7 +1282,18 @@ def parse_arguments():
         action='store_true',
         help='Skip phases 1-2, use existing downloaded skills from skills-dir and start from phase 3. If --max-skills specified, import up to that limit; otherwise import all discovered skills.'
     )
-    
+
+    parser.add_argument(
+        '--sitemap-only',
+        action='store_true',
+        help=(
+            'Download skills directly from the skills.sh /api/download endpoint '
+            'using the public skill sitemaps (~20 000 skills). '
+            'No git clone required. If --max-skills is specified, stop after that '
+            'many skills; otherwise download all available skills.'
+        )
+    )
+
     return parser.parse_args()
 
 
