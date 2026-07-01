@@ -1,0 +1,261 @@
+1
+00:00:00,045 --> 00:00:05,605
+Welcome to Skillberry Store — a smart skills repository
+for agentic workflows.
+
+2
+00:00:09,021 --> 00:00:16,186
+Skillberry Store centralises every tool your AI agents
+need. Upload once, execute anywhere. It manages tools,
+
+3
+00:00:16,236 --> 00:00:23,401
+skills, and snippets with semantic search, lifecycle
+management, virtual MCP servers, and a plugin ecosystem.
+
+4
+00:00:24,017 --> 00:00:30,235
+Installation is simple. Install with pip, optionally
+bundle the AI plugins. Run with Docker using a single make
+
+5
+00:00:30,285 --> 00:00:36,503
+command. The web UI starts on port 8002, the REST API on
+8000, and the MCP control endpoint is ready for any AI
+
+6
+00:00:36,553 --> 00:00:42,772
+client.
+
+7
+00:00:44,035 --> 00:00:52,585
+The auto-generated CLI is called sbs. Built on restish, it
+mirrors every REST endpoint. Run sbs connect to point it
+
+8
+00:00:52,635 --> 00:01:01,185
+at your server. Skills, tools, snippets, virtual servers,
+and admin commands are all available.
+
+9
+00:01:02,004 --> 00:01:09,428
+Let's import a skill. Three paths are supported: GitHub
+URL, zip file, or local folder. Here we point the API at
+
+10
+00:01:09,478 --> 00:01:16,902
+the PPTX skill on disk. The response confirms 66 tools and
+43 snippets created in one call.
+
+11
+00:01:18,019 --> 00:01:22,693
+The web UI starts automatically. From the dashboard
+navigate to Skills, Tools, Snippets, virtual servers,
+
+12
+00:01:22,743 --> 00:01:27,416
+Plugins, Observability, and Admin.
+
+13
+00:01:28,021 --> 00:01:34,465
+The Skills library shows our two imported skills — pptx
+with 66 tools, summarizer with 29. Tags like
+
+14
+00:01:34,515 --> 00:01:40,959
+quality-score, performance-score, and security-score were
+auto-applied by the AI plugins on import.
+
+15
+00:01:42,038 --> 00:01:50,681
+The Import Anthropic Skill dialog offers three sources:
+GitHub URL, zip file for air-gapped environments, or local
+
+16
+00:01:50,731 --> 00:01:59,373
+folder for CI/CD pipelines. One click imports the full
+skill tree — tools, snippets, and documentation.
+
+17
+00:02:00,042 --> 00:02:06,464
+Here's the pptx skill after import — 66 tools, 43
+snippets, full metadata. You can export back to Anthropic
+
+18
+00:02:06,514 --> 00:02:12,937
+format, edit metadata, or delete with a cascade option to
+clean up all linked objects.
+
+19
+00:02:14,022 --> 00:02:20,598
+The Summarizer skill: 29 tools, 2 snippets. The evaluator
+scored it 9 out of 10 for quality, 8 for performance, 8
+
+20
+00:02:20,648 --> 00:02:27,224
+for security. Scores are searchable and filterable across
+the library.
+
+21
+00:02:28,050 --> 00:02:34,825
+The Tools page shows all 95 tools in one sortable table.
+Filter by tags, switch between text and semantic search,
+
+22
+00:02:34,875 --> 00:02:41,649
+and select multiple tools for bulk export or deletion.
+
+23
+00:02:44,034 --> 00:02:50,098
+Clicking a tool opens its detail page — programming
+language, packaging format, dependencies, and the JSON
+
+24
+00:02:50,148 --> 00:02:56,213
+parameter schema. A Source Code tab shows the raw Python
+module.
+
+25
+00:02:57,049 --> 00:03:04,681
+Hit Execute to run a tool. Parameters go in as JSON, and
+the tool runs inside a Docker sandbox — isolated from the
+
+26
+00:03:04,731 --> 00:03:12,364
+host. From the CLI: sbs execute-tool with a body flag.
+Same sandbox, scriptable.
+
+27
+00:03:13,050 --> 00:03:17,383
+Snippets are code fragments and docs imported with the
+skill. Syntax-highlighted and searchable — perfect for
+
+28
+00:03:17,433 --> 00:03:21,766
+shared utility code.
+
+29
+00:03:23,001 --> 00:03:28,128
+Virtual MCP Servers expose a skill's tools as a standalone
+MCP endpoint. Each gets its own port and SSE URL — connect
+
+30
+00:03:28,178 --> 00:03:33,305
+Claude, Cursor, or any MCP client directly.
+
+31
+00:03:34,003 --> 00:03:38,481
+Virtual NFS Servers expose a skill as a mountable
+read-only filesystem over WebDAV or NFSv3 — Claude Code
+
+32
+00:03:38,531 --> 00:03:43,009
+and rclone can read files without the REST API.
+
+33
+00:03:44,049 --> 00:03:48,686
+The Plugins page shows all AI-powered extensions. Enable
+or disable each independently. Let's walk through the five
+
+34
+00:03:48,736 --> 00:03:53,373
+key plugins.
+
+35
+00:03:58,022 --> 00:04:03,070
+The Content Evaluator tags skills and tools with quality,
+performance, and security scores. The Summarizer scored 9
+
+36
+00:04:03,120 --> 00:04:08,168
+for quality, 8 for performance, 8 for security. Each score
+includes a written explanation. Triggered on import or on
+
+37
+00:04:08,218 --> 00:04:13,266
+demand.
+
+38
+00:04:14,026 --> 00:04:19,069
+The Security Evaluator finds vulnerabilities — path
+traversal, injection, missing auth. The pptx skill scored
+
+39
+00:04:19,119 --> 00:04:24,162
+4 out of 10 because it accepts arbitrary file paths with
+no validation. Visible as a security-score tag before you
+
+40
+00:04:24,212 --> 00:04:29,256
+deploy.
+
+41
+00:04:30,027 --> 00:04:37,406
+The Skill Deduplicator uses LLM semantic comparison to
+find near-identical skills. When duplicates are found, a
+
+42
+00:04:37,456 --> 00:04:44,834
+notification appears with Keep or Delete decisions. The
+decision API lets you automate this in CI pipelines.
+
+43
+00:04:46,023 --> 00:04:53,605
+The Snippet Creator generates code from a natural language
+description. Describe what you want, the LLM writes it,
+
+44
+00:04:53,655 --> 00:05:01,238
+infers the language and tags, and saves it to the store.
+No copy-paste. Works with OpenAI, WatsonX, or LiteLLM.
+
+45
+00:05:02,038 --> 00:05:09,584
+The Skill Optimizer exports a skill, runs Claude Code in a
+RunSpace container, and imports the optimized result with
+
+46
+00:05:09,634 --> 00:05:17,180
+an optimized suffix. Rationale and changes are saved as
+metadata. Safe to re-run any time.
+
+47
+00:05:18,072 --> 00:05:25,690
+From the CLI, use sbs search-tools to find the right tool,
+then sbs execute-tool with a JSON body. Results pipe into
+
+48
+00:05:25,740 --> 00:05:33,357
+jq, files, or any CI pipeline. Every operation is
+scriptable.
+
+49
+00:05:34,026 --> 00:05:40,616
+Built-in observability: live time-series charts for
+skills, tools, snippets, and system metrics. Prometheus on
+
+50
+00:05:40,666 --> 00:05:47,257
+port 8090. Jaeger traces. Drop a Grafana dashboard on top
+for full monitoring.
+
+51
+00:05:48,028 --> 00:05:55,599
+The architecture is layered: Web UI and REST API at the
+top, MCP frontend and virtual NFS alongside, core data
+
+52
+00:05:55,649 --> 00:06:03,220
+model in the middle, Docker sandbox and pluggable storage
+below, and the AI plugin layer at the base.
+
+53
+00:06:04,039 --> 00:06:11,383
+That's Skillberry Store — one service for every skill your
+agents need. Install with pip, start with make docker-run,
+
+54
+00:06:11,433 --> 00:06:18,777
+live in under a minute. Find us at github.com slash
+skillberry-ai slash skillberry-store.
+

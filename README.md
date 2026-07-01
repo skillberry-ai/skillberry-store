@@ -2,7 +2,9 @@
 
 This service implements a smart skills repository for agentic workflows. Manage, execute, and organize your skills, tools and snippets with powerful search and lifecycle management.
 
-![Skillberry screenshot](docs/images/skillberry-store-screenshot.jpg)
+![Skillberry Store demo](docs/images/skillberry-demo.gif)
+
+▶ [Watch full highlights video](https://github.com/user-attachments/assets/eab2f9f1-1196-4858-b4ca-72d6c664d9f3)
 
 ## Features ✨
 
@@ -136,7 +138,7 @@ See [DESIGN_REQUIREMENTS.md](DESIGN_REQUIREMENTS.md)
 We support Linux, macOS, and Windows.
 
 ```bash
-git clone git@github.ibm.com:skillberry/skillberry-store.git
+git clone git@github.com:skillberry-ai/skillberry-store.git
 cd skillberry-store
 ```
 
