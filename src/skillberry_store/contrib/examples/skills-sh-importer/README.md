@@ -14,16 +14,36 @@ This tool implements a 6-phase process to:
 
 **Key Features:**
 - A "skill" is defined as a subfolder in `/skills/` directory containing a `SKILL.md` file
-- The tool clones repositories from skills.sh (by popularity) until it finds N such skills
+- **Clone mode** clones repositories from skills.sh until it finds N such skills (up to ~9,700 repos)
+- **Sitemap mode** downloads skills directly from the skills.sh API without git (up to ~20,000 skills)
 - **Automatic benchmarking** of all import operations (timing, size, file counts, throughput)
 - **Clone-only mode** for downloading skills without importing (Phases 1-2)
-- **Import-only mode** for importing downloaed skills (Phases 3-6) - can be used for repeated benchmarking over the same skill set
+- **Sitemap-only mode** for downloading ~20K skills via HTTP without any git clone
+- **Import-only mode** for importing downloaded skills (Phases 3-6) — useful for repeated benchmarking
+
+## How skills.sh exposes its catalog
+
+skills.sh publishes two public XML sitemaps that the tool uses to discover repositories and skills:
+
+| Sitemap | Contents | Used by |
+|---------|----------|---------|
+| `sitemap-owners.xml` | ~9,700 `owner/repo` entries — every GitHub repository skills.sh knows about | Clone mode (Phase 1) |
+| `sitemap-skills-1.xml` + `sitemap-skills-2.xml` | ~20,000 individual `owner/repo/slug` skill entries — skills pre-snapshotted by skills.sh | Sitemap mode |
+
+The skill sitemaps are a **subset** of the owners sitemap: the ~20,000 snapshotted skills come from 2,462 of the 9,700 repos. The remaining ~7,200 repos are only reachable by cloning.
+
+**Estimated total coverage:**
+
+| Mode | Skills accessible | Requires git |
+|------|-------------------|--------------|
+| `--sitemap-only` | ~20,000 (guaranteed) | No |
+| Clone (default) | ~38,000–79,000 (estimated) | Yes |
 
 ## Prerequisites
 
 ### System Requirements
 - Python 3.8+
-- Git installed and in PATH
+- Git installed and in PATH (not required for `--sitemap-only`)
 - Network access to GitHub and skills.sh
 - Skillberry-store running locally (for API imports)
 
@@ -42,20 +62,29 @@ pip install -r requirements.txt
 # Import top 10 skills (default) with automatic benchmarking
 python3 download_and_import_skills.py
 
-# Clone only (no discovery or import)
+# Clone only — download repos without importing
 python3 download_and_import_skills.py --clone-only
 
-# Import only (use existing downloaded skills, benchmark again)
+# Sitemap only — download ~20K skills via HTTP (no git required)
+python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills
+
+# Import only — use existing downloaded skills, skip phases 1-2
 python3 download_and_import_skills.py --import-only
 ```
 
 ### Advanced Usage
 ```bash
-# Clone repos until finding 20 skills
-python3 download_and_import_skills.py --max-skills 20
+# Clone repos until finding 1000 skills
+python3 download_and_import_skills.py --max-skills 1000
 
 # Clone repos until finding 50 skills, without importing
 python3 download_and_import_skills.py --max-skills 50 --clone-only
+
+# Download all ~20K sitemap skills to a custom directory
+python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills2
+
+# Download first 500 sitemap skills, then import
+python3 download_and_import_skills.py --sitemap-only --max-skills 500 --skills-dir ./skills2
 
 # Import only first 10 skills from existing downloads (for benchmarking)
 python3 download_and_import_skills.py --import-only --max-skills 10
@@ -73,502 +102,280 @@ python3 download_and_import_skills.py \
     --output-dir ./results
 ```
 
-**Note:** `--max-skills` limits the number of actual skills found (subfolders with SKILL.md in /skills/ directories). The tool clones repositories one at a time until reaching or exceeding this target. Repositories without /skills/ folders are skipped. The final count may exceed the target if the last repository cloned contains multiple skills.
+**Note on `--max-skills`:** limits the number of actual skills found (subfolders with SKILL.md). In clone mode the tool stops cloning once the target is reached; the final count may slightly exceed the target if the last cloned repository contains multiple skills. In sitemap mode the list is truncated exactly before downloading begins.
 
 ### CLI Arguments
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--max-skills` | 10 (clone/full mode), unlimited (import-only mode) | Target number of skills (may exceed if last repo has multiple skills in clone mode) |
-| `--sbs-url` | http://localhost:8000 | Skillberry Store URL |
-| `--skills-url` | https://skills.sh | Skills.sh marketplace URL |
-| `--clone-depth` | 1 | Git clone depth (1 = shallow clone) |
-| `--timeout` | 30 | API request timeout in seconds |
-| `--skills-dir` | `<temp>/skills-sh-repos` | Directory for cloned skill repositories (absolute or relative path) |
-| `--output-dir` | `.` (current directory) | Directory for output files (absolute or relative path). A timestamped subdirectory is created for each run |
-| `--clone-only` | false | Only clone repositories, skip phases 3-6 |
-| `--import-only` | false | Skip phases 1-2, use existing skills from skills-dir. If --max-skills not specified, imports all discovered skills; if specified, imports up to that limit |
+| `--max-skills` | 10 (clone/full mode), unlimited (import-only / sitemap-only) | Target number of skills |
+| `--sbs-url` | `http://localhost:8000` | Skillberry Store URL |
+| `--skills-url` | `https://skills.sh` | Skills.sh URL |
+| `--clone-depth` | `1` | Git clone depth (1 = shallow clone) |
+| `--timeout` | `30` | API request timeout in seconds |
+| `--skills-dir` | `<temp>/skills-sh-repos` | Directory for skill repositories (absolute or relative) |
+| `--output-dir` | `.` (current directory) | Directory for output files. A timestamped subdirectory is created per run |
+| `--clone-only` | false | Run only Phases 1-2 (extract + clone); skip discovery and import |
+| `--sitemap-only` | false | Download ~20K skills via `/api/download` (no git). Replaces Phases 1-2 |
+| `--import-only` | false | Skip Phases 1-2; use existing skills from `--skills-dir` |
+
+`--clone-only`, `--sitemap-only`, and `--import-only` are mutually exclusive.
 
 **Note on directories:**
-- **--skills-dir**: Where skill repositories are cloned
-  - **Default**: System temp directory (e.g., `/tmp/skills-sh-repos` on Linux, `C:\Users\<user>\AppData\Local\Temp\skills-sh-repos` on Windows)
-  - **Custom**: Can be absolute (e.g., `/home/user/my-skills`) or relative (e.g., `./my-skills`)
-- **--output-dir**: Where result files are saved
+- **--skills-dir**: Where skill repositories are stored
+  - **Default**: System temp directory (e.g., `/tmp/skills-sh-repos` on Linux)
+  - **Custom**: Absolute (e.g., `/home/user/my-skills`) or relative (e.g., `./my-skills`)
+- **--output-dir**: Where result files (JSON, logs) are saved
   - **Default**: Current working directory
-  - **Custom**: Can be absolute or relative
-  - **Timestamped subdirectories**: Each run creates a subdirectory named `YYYYMMDD_HHMMSS` (e.g., `20260519_180804`)
+  - Each run creates a subdirectory named `YYYYMMDD_HHMMSS` (e.g., `20260702_001751`)
 
 ## Clone-Only Mode
 
-Use `--clone-only` to only clone repositories without discovering or importing skills. This is useful for:
+Use `--clone-only` to clone repositories without discovering or importing skills. Useful for:
 
-- **Quick repository collection**: Clone repos until finding N skills for later analysis
-- **Offline analysis**: Clone repos when you have good internet, analyze later
+- **Offline analysis**: Clone repos with good internet, analyze later
 - **Manual review**: Inspect repositories before deciding what to import
 - **Batch operations**: Clone repos for many skills without API overhead
 
 ### Example Usage
 
 ```bash
-# Clone repos until finding 50 skills for later analysis
-python3 download_and_import_skills.py --max-skills 50 --clone-only
+# Clone repos until finding 1000 skills (uses ~9,700-repo catalog from sitemap-owners.xml)
+python3 download_and_import_skills.py --max-skills 1000 --clone-only --skills-dir ./skills2
 
-# Clone to custom directory
-python3 download_and_import_skills.py --clone-only --skills-dir /home/user/my-skills-repos
-
-# Clone with full history (not shallow)
-python3 download_and_import_skills.py --clone-only --clone-depth 0
+# Clone to custom directory with full history
+python3 download_and_import_skills.py --clone-only --clone-depth 0 --skills-dir ./skills2
 ```
 
 ### Output in Clone-Only Mode
 
 When using `--clone-only`, the script will:
-1. ✅ Execute Phase 1 (Extract metadata)
-2. ✅ Execute Phase 2 (Clone repositories)
+1. ✅ Execute Phase 1 (Extract repo list from `sitemap-owners.xml`)
+2. ✅ Execute Phase 2 (Clone repositories until N skills found)
 3. ⏭️ Skip Phases 3-6 (Discovery, Import, Validate, Report)
 
-**Files created in clone-only mode:**
-- `<output-dir>/<timestamp>/clone-results.json` - Clone status (includes skill counts per repo)
-- `<output-dir>/<timestamp>/import-skills.log` - Execution log
-- `<skills-dir>/` - Cloned repositories (only those with skills)
+**Files created:**
+- `<output-dir>/<timestamp>/clone-results.json` — Clone status with skill counts per repo
+- `<output-dir>/<timestamp>/import-skills.log` — Execution log
+- `<skills-dir>/` — Cloned repositories (only those containing skills)
 
-## Import-Only Mode
+## Sitemap-Only Mode
 
-Use `--import-only` to skip cloning and use existing downloaded skills. This is ideal for:
+Use `--sitemap-only` to download skills directly from the skills.sh `/api/download` endpoint, without cloning any git repositories. This covers all ~20,000 skills pre-snapshotted by skills.sh.
 
-- **Repeated benchmarking**: Test import performance multiple times on the same skill set
-- **Performance optimization**: Benchmark after making changes to the import process
-- **Selective importing**: Import a subset of previously downloaded skills
-- **Development/testing**: Quickly test import logic without re-downloading
+### How it works
+
+1. Fetches `sitemap-skills-1.xml` and `sitemap-skills-2.xml` — the complete list of ~20,000 `owner/repo/slug` triples
+2. For each skill, calls `GET https://skills.sh/api/download/{owner}/{repo}/{slug}`, which returns a JSON snapshot of the skill's files
+3. Writes the files to `<skills-dir>/<owner>__<repo>/skills/<slug>/` — the same layout a git clone produces
+4. Hands off to Phase 3 (discover), which works identically for both clone and sitemap modes
+
+Re-runs are **idempotent**: already-downloaded skills are skipped.
 
 ### Example Usage
 
 ```bash
-# Import all skills from existing downloads (with benchmarking)
-python3 download_and_import_skills.py --import-only
+# Download all ~20K skills (no git required)
+python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills2
 
-# Import only first 10 skills from existing downloads
-python3 download_and_import_skills.py --import-only --max-skills 10
+# Download first 500 skills, then import into Skillberry Store
+python3 download_and_import_skills.py --sitemap-only --max-skills 500 --skills-dir ./skills2
 
-# Import from custom skills directory
-python3 download_and_import_skills.py --import-only --skills-dir /home/user/my-skills-repos
+# Re-run safely — existing skills are skipped
+python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills2
+```
 
-# Benchmark with different SBS instance and save results to custom output directory
-python3 download_and_import_skills.py --import-only --sbs-url http://localhost:9000 --output-dir ./benchmark-results
+### Output in Sitemap-Only Mode
+
+When using `--sitemap-only`, the script will:
+1. ⏭️ Skip Phase 1 (HTML scrape / sitemap-owners)
+2. ✅ Execute Phase 2b (Download via `/api/download` from skill sitemaps)
+3. ✅ Execute Phase 3 (Discover skills in downloaded folders)
+4. ✅ Execute Phase 4 (Import with benchmarking)
+5. ✅ Execute Phase 5 (Validate)
+6. ✅ Execute Phase 6 (Report with benchmark statistics)
+
+To stop after downloading without importing, combine with `--import-only` on a subsequent run:
+```bash
+# Step 1: download only
+python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills2
+
+# Step 2: import from what was downloaded
+python3 download_and_import_skills.py --import-only --skills-dir ./skills2
+```
+
+## Import-Only Mode
+
+Use `--import-only` to skip cloning/downloading and use existing skills already on disk. Ideal for:
+
+- **Repeated benchmarking**: Test import performance multiple times on the same skill set
+- **Performance optimization**: Benchmark after making changes to the import process
+- **Selective importing**: Import a subset of previously downloaded skills
+
+### Example Usage
+
+```bash
+# Import all skills from existing downloads
+python3 download_and_import_skills.py --import-only --skills-dir ./skills2
+
+# Import only first 10 skills
+python3 download_and_import_skills.py --import-only --max-skills 10 --skills-dir ./skills2
+
+# Benchmark with a different SBS instance
+python3 download_and_import_skills.py --import-only --sbs-url http://localhost:9000 --output-dir ./benchmarks
 ```
 
 ### Output in Import-Only Mode
 
 When using `--import-only`, the script will:
 1. ⏭️ Skip Phase 1 (Extract metadata)
-2. ⏭️ Skip Phase 2 (Clone repositories)
+2. ⏭️ Skip Phase 2 (Clone/download repositories)
 3. ✅ Execute Phase 3 (Discover skills in existing repos)
 4. ✅ Execute Phase 4 (Import with benchmarking)
 5. ✅ Execute Phase 5 (Validate)
 6. ✅ Execute Phase 6 (Report with benchmark statistics)
 
-**Additional files created in full mode (without --clone-only or --import-only):**
-All files are saved in `<output-dir>/<timestamp>/`:
-- `discovered-skills.json` - All discovered skills with SKILL.md content
-- `import-results.json` - Import status for each skill
-- `validation-report.json` - Validation results
-- `final-report.json` - Complete execution summary
-- `benchmark-results.json` - Detailed benchmark data and statistics
-- `import-skills.log` - Detailed execution log
-
 ## Process Flow
 
-### Phase 1: Extract Repository Metadata from skills.sh
-- Fetches skills.sh homepage
-- Parses HTML to extract repository sources
-- Prepares repository records for cloning
-- **No limiting at this phase** - Phase 2 will clone until N skills found
+### Phase 1: Extract Repository List from skills.sh
 
-**Example:** Extracts repository records from skills.sh for Phase 2 cloning.
+Reads `sitemap-owners.xml` to obtain the full catalog of ~9,700 `owner/repo` pairs (sorted by popularity order on skills.sh). Falls back to HTML scraping if the sitemap is unavailable.
+
+> **Before this fix**, Phase 1 scraped the skills.sh homepage HTML, which only embedded ~81 seed repositories in its JavaScript payload. The sitemap approach returns the full ~9,700-repo catalog.
+
+**No limiting at this phase** — Phase 2 clones repositories one by one and stops when the skill target is reached.
 
 ### Phase 2: Clone Repositories Until N Skills Found
-- Clones repositories one at a time from the extracted repository list
-- After each clone, checks for `/skills/` directory
-- Counts subfolders in `/skills/` that contain `SKILL.md`
-- Accumulates skill count until reaching `--max-skills` target
-- **Skips repositories without `/skills/` folder**
-- Stops cloning once target is reached
 
-**Skill Definition:** A skill = a subfolder in `/skills/` directory containing `SKILL.md` file
+- Clones repositories from the list produced by Phase 1
+- After each clone, counts subfolders in `/skills/` that contain `SKILL.md`
+- Accumulates the count until reaching `--max-skills`
+- Skips repositories without a `/skills/` folder
+- Already-cloned repositories are reused (idempotent re-runs)
 
 **Output:**
-- `clone-results.json` - Contains:
-  - `cloned_repos`: Repositories with skills
-  - `skipped_repos`: Repositories without `/skills/` folder
-  - `failed_repos`: Repositories that failed to clone
-  - `summary`: Statistics
-- `skills-sh-repos/` - Cloned repositories
+- `clone-results.json` — `cloned_repos`, `skipped_repos`, `failed_repos`, `summary`
+- `<skills-dir>/` — Cloned repositories
 
-**Example:** `--max-skills 10` clones repos until finding 10 skill subfolders. This might require cloning 5-15 repositories depending on how many skills each contains.
+### Phase 2b (Sitemap Mode): Download Skills via `/api/download`
+
+Used instead of Phase 2 when `--sitemap-only` is passed.
+
+- Reads `sitemap-skills-1.xml` and `sitemap-skills-2.xml` (~20,000 skills)
+- For each skill, fetches `https://skills.sh/api/download/{owner}/{repo}/{slug}`
+- Writes files to `<skills-dir>/<owner>__<repo>/skills/<slug>/`
+- Skips skills already downloaded (idempotent)
 
 ### Phase 3: Discover Skills in /skills/ Folders
-- Scans cloned repositories for `/skills/` directory
-- Iterates through all subfolders
-- Checks each subfolder for `SKILL.md` file
-- Extracts SKILL.md content and metadata
 
-**Output:**
-- `discovered-skills.json` - All discovered skills with their SKILL.md content
+Scans the skill directories on disk (produced by Phase 2 or 2b), finds every subfolder containing `SKILL.md`, and loads content and metadata.
 
-**Example Output:**
-```json
-{
-  "repo_source": "vercel/ai",
-  "repo_name": "vercel__ai",
-  "skill_folder": "ai-sdk",
-  "skill_path": "skills/ai-sdk",
-  "skill_md_path": "skills/ai-sdk/SKILL.md",
-  "skill_name": "ai-sdk",
-  "content": "... full SKILL.md content ...",
-  "full_path": "/path/to/repo/skills/ai-sdk"
-}
-```
+**Output:** `discovered-skills.json`
 
 ### Phase 4: Import via Anthropic API (with Benchmarking)
-- Uses `/skills/import-anthropic` endpoint with folder source
-- API automatically handles:
-  - Parsing SKILL.md for metadata
-  - Extracting tools from code files
-  - Creating snippets from text files
-  - Creating skill with proper schema
-- Imports each skill folder separately
-- **Automatically collects benchmark data for each successful import:**
-  - Import duration (seconds)
-  - Skill size (KB)
-  - File count
-  - Tool count (Python scripts in /scripts/)
-  - Snippet count (all .md files including SKILL.md)
 
-**Output:**
-- `import-results.json` - Import status for each skill
-- `benchmark-results.json` - Detailed benchmark data for all successful imports
+- Uses the `/skills/import-anthropic` endpoint
+- Automatically parses SKILL.md, extracts tools and snippets
+- Collects per-import benchmark data: duration, size, file count, tool count, snippet count
+
+**Output:** `import-results.json`, `benchmark-results.json`
 
 ### Phase 5: Validation
-- Verifies API accessibility
-- Checks the number of skills returned by the API
-- Validates data integrity
 
-**Output:**
-- `validation-report.json` - Validation results
+Verifies API accessibility and checks the number of skills returned by the store.
+
+**Output:** `validation-report.json`
 
 ### Phase 6: Documentation and Benchmarking Report
-- Generates comprehensive final report
-- Summarizes all phases
-- Provides success metrics
-- **Calculates and displays benchmark statistics:**
-  - Total import time
-  - Average, median, and standard deviation of import times
-  - Fastest and slowest imports with skill details
-  - Import throughput (KB/sec, skills/sec, objects/sec)
 
-**Output:**
-- `final-report.json` - Complete execution summary with benchmark statistics
-- `benchmark-results.json` - Detailed benchmark data for each import
-- `import-skills.log` - Detailed execution log
+Generates a comprehensive report including benchmark statistics (total time, average, median, std dev, fastest/slowest, throughput).
+
+**Output:** `final-report.json`, updated `benchmark-results.json`, `import-skills.log`
 
 ## Output Files
 
-After execution, files are organized into two directories:
-
 ### Skills Directory (--skills-dir)
-Contains cloned skill repositories:
 ```
-/tmp/skills-sh-repos/                # Default location on Linux
-├── vercel__ai/
-│   └── skills/
-│       ├── ai-sdk/
-│       ├── streaming/
-│       └── ...
+./skills2/                           # Example: --skills-dir ./skills2
 ├── anthropics__skills/
 │   └── skills/
+│       ├── frontend-design/
+│       │   └── SKILL.md
 │       └── ...
+├── vercel-labs__agent-skills/
+│   └── skills/
+│       └── vercel-react-best-practices/
+│           ├── SKILL.md
+│           └── rules/
 └── ...
 ```
 
 ### Output Directory (--output-dir)
-Contains timestamped subdirectories with result files:
 ```
 ./                                   # Default: current directory
-├── 20260519_180804/                 # Timestamped run folder
-│   ├── clone-results.json           # Repository clone results
+├── 20260702_001751/                 # Timestamped run folder
+│   ├── clone-results.json           # Repository clone/download results
 │   ├── discovered-skills.json       # Discovered skills
 │   ├── import-results.json          # Import results
 │   ├── benchmark-results.json       # Benchmark data and statistics
 │   ├── validation-report.json       # Validation results
 │   ├── final-report.json            # Final summary report with benchmarks
 │   └── import-skills.log            # Detailed execution log
-├── 20260519_181205/                 # Another run
+├── 20260702_010523/                 # Another run
 │   └── ...
 └── ...
 ```
 
-## Example Output
-
-### Successful Execution
-```
-╔═══════════════════════════════════════════════════════════╗
-║  Skills.sh Importer for Skillberry Store                 ║
-║  6-Phase Import Process with Benchmarking                ║
-╚═══════════════════════════════════════════════════════════╝
-
-============================================================
-PHASE 1: Extracting repository URLs from skills.sh
-============================================================
-Fetching https://skills.sh/...
-Received 1234567 bytes
-Extracted 500 repositories
-Sorted by popularity
-
-Top 10 most popular repositories:
-  1. nextjs (vercel/next.js) - 1,234,567 installs
-  2. ai-sdk (vercel/ai) - 234,567 installs
-  ...
-
-============================================================
-PHASE 2: Cloning repositories to find skills
-============================================================
-Target: 10 skills
-Strategy: Clone repos by popularity, count /skills/ subfolders with SKILL.md
-
-[Repo 1] Processing vercel/ai...
-  ✓ Successfully cloned to skills-sh-repos/vercel__ai
-  ✓ Found 3 skill(s) in /skills/ folder
-  Progress: 3/10 skills found
-
-[Repo 2] Processing anthropics/skills...
-  ✓ Successfully cloned
-  ✓ Found 5 skill(s) in /skills/ folder
-  Progress: 8/10 skills found
-
-[Repo 3] Processing nextlevelbuilder/ui-ux-pro-max-skill...
-  ⊘ No /skills/ folder or no SKILL.md files found - skipping
-
-[Repo 4] Processing someuser/another-repo...
-  ✓ Successfully cloned
-  ✓ Found 2 skill(s) in /skills/ folder
-  Progress: 10/10 skills found
-
-✓ Reached target of 10 skills!
-
-Clone Summary:
-  Repositories processed: 4
-  Repositories with skills: 3
-  Repositories skipped (no skills): 1
-  Total skills found: 10/10
-
-============================================================
-PHASE 3: Discovering skills in /skills/ folders
-============================================================
-Scanning vercel__ai...
-  Expected skills: 3
-  ✓ Found skill: ai-sdk
-  ✓ Found skill: streaming
-  ✓ Found skill: tools
-  Total: 3 skill(s) found
-
-Discovery Summary:
-  Total skills discovered: 10
-
-============================================================
-PHASE 4: Importing skills via Anthropic API
-============================================================
-[1/10] Importing ai-sdk...
-  Folder: /tmp/skills-sh-repos/vercel__ai/skills/ai-sdk
-  ✓ Successfully imported in 1.23s
-    Skill: ai-sdk
-    Tools: 3
-    Snippets: 2
-
-
 ## Benchmarking
 
-The tool automatically collects benchmark data during Phase 4 (import operations) for all successful imports. This feature is always active and requires no configuration.
+The tool automatically collects benchmark data during Phase 4 for all successful imports. No configuration required.
 
 ### What is Benchmarked
 
-For each successful skill import, the following metrics are collected:
-- **Import duration**: Time taken to import the skill (seconds)
-- **Skill size**: Total size of all files in the skill folder (KB)
-- **File count**: Total number of files in the skill folder
-- **Tool count**: Number of Python scripts in the `/scripts/` subfolder
-- **Snippet count**: Number of `.md` files (including SKILL.md)
+For each successful skill import:
+- **Import duration** — time taken (seconds)
+- **Skill size** — total size of all files in the skill folder (KB)
+- **File count** — total number of files
+- **Tool count** — Python scripts in `/scripts/`
+- **Snippet count** — `.md` files including SKILL.md
 
-### Benchmark Statistics
+### Benchmark Statistics (Phase 6)
 
-After all imports complete, Phase 6 calculates and reports:
-- **Total import time**: Sum of all import durations
-- **Average import time**: Mean import duration
-- **Median import time**: Median import duration
-- **Standard deviation**: Variability in import times
-- **Fastest import**: Minimum import time with skill details
-- **Slowest import**: Maximum import time with skill details
-- **Import throughput**:
-  - KB/sec: Total size divided by total time
-  - Skills/sec: Total skills divided by total time
-  - Objects/sec: (Skills + Tools + Snippets) divided by total time
-
-### Benchmark Output Files
-
-Benchmark data is saved to the timestamped output directory:
-- `<output-dir>/<timestamp>/benchmark-results.json`: Detailed data for each import plus statistics
-- `<output-dir>/<timestamp>/final-report.json`: Includes benchmark statistics in the report
+- Total, average, median, and std dev of import times
+- Fastest and slowest imports with skill details
+- Throughput: KB/sec, skills/sec, objects/sec
 
 ### Use Cases
 
-**Performance Testing:**
+**Repeated benchmarking with clone:**
 ```bash
-# Benchmark import performance on 20 skills
-python3 download_and_import_skills.py --max-skills 20
+# Download once
+python3 download_and_import_skills.py --max-skills 50 --clone-only --skills-dir ./skills2
 
-# Review results in timestamped output directory
-cat ./20260519_180804/benchmark-results.json
+# Benchmark multiple times
+python3 download_and_import_skills.py --import-only --max-skills 10 --skills-dir ./skills2
+python3 download_and_import_skills.py --import-only --max-skills 50 --skills-dir ./skills2
 ```
 
-**Repeated Benchmarking:**
+**Repeated benchmarking with sitemap:**
 ```bash
-# First, download skills
-python3 download_and_import_skills.py --max-skills 50 --clone-only
+# Download once (no git)
+python3 download_and_import_skills.py --sitemap-only --max-skills 50 --skills-dir ./skills2
 
-# Then benchmark multiple times (each creates a new timestamped directory)
-python3 download_and_import_skills.py --import-only --max-skills 10
-python3 download_and_import_skills.py --import-only --max-skills 20
-python3 download_and_import_skills.py --import-only --max-skills 50
-
-# Results are in separate timestamped directories:
-# ./20260519_180804/benchmark-results.json
-# ./20260519_180912/benchmark-results.json
-# ./20260519_181023/benchmark-results.json
+# Benchmark multiple times
+python3 download_and_import_skills.py --import-only --max-skills 10 --skills-dir ./skills2
+python3 download_and_import_skills.py --import-only --max-skills 50 --skills-dir ./skills2
 ```
 
-**Optimization Testing:**
+**Optimization testing:**
 ```bash
 # Benchmark before optimization
-python3 download_and_import_skills.py --import-only --output-dir ./benchmarks
+python3 download_and_import_skills.py --import-only --output-dir ./benchmarks --skills-dir ./skills2
 
 # Make changes to skillberry-store import logic
 
 # Benchmark after optimization
-python3 download_and_import_skills.py --import-only --output-dir ./benchmarks
+python3 download_and_import_skills.py --import-only --output-dir ./benchmarks --skills-dir ./skills2
 
-# Compare benchmark results from timestamped directories:
-# ./benchmarks/20260519_180804/benchmark-results.json (before)
-# ./benchmarks/20260519_181205/benchmark-results.json (after)
-```
-
-[2/10] Importing streaming...
-  Folder: /tmp/skills-sh-repos/vercel__ai/skills/streaming
-  ✓ Successfully imported in 0.87s
-    Skill: streaming
-    Tools: 2
-    Snippets: 1
-
-Import Summary:
-  Total: 10
-  Successful: 10
-  Failed: 0
-
-============================================================
-PHASE 5: Validating imports
-============================================================
-  ✓ API accessible
-  ✓ Found 10 skills in store
-
-============================================================
-PHASE 6: Generating final report
-============================================================
-FINAL REPORT
-============================================================
-Repositories extracted: 500
-Unique repos cloned: 3
-Repositories cloned: 3
-Skills discovered in repos: 10
-Skills imported: 10
-Import failures: 0
-Validation: ✓ PASSED
-============================================================
-
-============================================================
-BENCHMARK RESULTS
-============================================================
-Total import time: 12.45 seconds
-Average import time: 1.245 seconds
-Median import time: 1.180 seconds
-Std deviation: 0.342 seconds
-
-Fastest import: 0.87s - streaming
-  (125.5 KB, 8 files, 2 tools, 1 snippets)
-Slowest import: 2.15s - pdf-processing
-  (450.2 KB, 25 files, 8 tools, 3 snippets)
-
-Import throughput:
-  - 198.4 KB/sec
-  - 0.80 skills/sec
-  - 4.82 objects/sec (60 total: 10 skills + 35 tools + 15 snippets)
-============================================================
-
-Full report saved to: final-report.json
-
-Total execution time: 45.67 seconds
-```
-
-## Troubleshooting
-
-### Git Clone Failures
-**Problem:** Repositories fail to clone
-**Solution:**
-- Check network connectivity
-- Verify GitHub is accessible
-- Try increasing timeout
-- Check if repo is private (requires authentication)
-
-### API Import Failures
-**Problem:** Skills fail to import via API
-**Solution:**
-- Ensure skillberry-store is running: `http://localhost:8000`
-- Check API logs for errors
-- Verify skill schema is valid
-- Try importing manually to debug
-
-### No Skills Discovered
-**Problem:** No skills found in cloned repositories
-**Solution:**
-- Check repository structure manually
-- Verify search patterns match repo layout
-- Look for skills in non-standard locations
-- Adjust discovery logic if needed
-
-### Validation Failures
-**Problem:** Validation reports failures
-**Solution:**
-- Check API is accessible
-- Verify imported skills exist
-- Review validation-report.json for details
-- Check skillberry-store logs
-
-## Performance Tips
-
-1. **Use shallow clones** (default): `--clone-depth 1`
-2. **Start small**: Test with `--max-skills 5` first
-3. **Increase timeout** for slow networks: `--timeout 60`
-4. **Run in background**: `nohup python3 download_and_import_skills.py &`
-5. **Monitor progress**: `tail -f import-skills.log`
-
-## Integration with Skillberry Store
-
-The imported skills are immediately available via:
-
-```bash
-# List all skills
-curl http://localhost:8000/skills/
-
-# Get specific skill
-curl http://localhost:8000/skills/{uuid}
-
-# Search skills
-curl "http://localhost:8000/skills/search?query=ai"
+# Compare: ./benchmarks/<timestamp-before>/ vs ./benchmarks/<timestamp-after>/
 ```
