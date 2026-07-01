@@ -136,7 +136,7 @@ See [DESIGN_REQUIREMENTS.md](DESIGN_REQUIREMENTS.md)
 We support Linux, macOS, and Windows.
 
 ```bash
-git clone git@github.ibm.com:skillberry/skillberry-store.git
+git clone git@github.com:skillberry-ai/skillberry-store.git
 cd skillberry-store
 ```
 

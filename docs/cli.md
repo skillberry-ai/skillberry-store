@@ -361,7 +361,7 @@ echo "Result: $RESULT"
 
 - [Skillberry Store API Documentation](http://localhost:8000/docs)
 - [Restish Documentation](https://rest.sh/)
-- [Python SDK Documentation](https://github.ibm.com/skillberry/skillberry-store-sdk)
+- [Python SDK Documentation](https://github.com/skillberry-ai/skillberry-store-sdk)
 - [Configuration Guide](config-env-vars.md)
 
 ## Support
