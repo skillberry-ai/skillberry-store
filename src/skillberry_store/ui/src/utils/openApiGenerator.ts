@@ -35,6 +35,50 @@ interface OpenAPISpec {
 }
 
 /**
+ * Recursively down-convert a JSON-Schema-2020-12 (MCP) schema to the
+ * OpenAPI 3.0.x dialect so it validates under `openapi: 3.0.3`.
+ * 
+ * Key transformations:
+ * - Sets `nullable: true` on any typed node that has `default: null`
+ * - Converts array-form types like `type: ["string", "null"]` to single type with `nullable: true`
+ * - Recursively processes nested objects and arrays
+ */
+function sanitizeFor30x(node: any): any {
+  if (Array.isArray(node)) {
+    return node.map(sanitizeFor30x);
+  }
+  
+  if (node && typeof node === 'object') {
+    const out: any = {};
+    
+    // Recursively process all properties
+    for (const [k, v] of Object.entries(node)) {
+      out[k] = sanitizeFor30x(v);
+    }
+
+    // Handle default: null - requires nullable: true in OpenAPI 3.0.x
+    if (Object.prototype.hasOwnProperty.call(out, 'default') && out.default === null) {
+      out.nullable = true;
+    }
+    
+    // Handle array-form type (e.g., type: ["string", "null"])
+    // OpenAPI 3.0.x doesn't support array types, convert to single type with nullable
+    if (Array.isArray(out.type)) {
+      const nonNullTypes = out.type.filter((t: string) => t !== 'null');
+      if (out.type.includes('null')) {
+        out.nullable = true;
+      }
+      // Use the first non-null type, or 'object' if only null was present
+      out.type = nonNullTypes.length > 0 ? nonNullTypes[0] : 'object';
+    }
+
+    return out;
+  }
+  
+  return node;
+}
+
+/**
  * Converts MCP tool input schema to OpenAPI request body schema
  */
 function convertToolSchemaToOpenAPI(inputSchema: any): any {
@@ -45,12 +89,14 @@ function convertToolSchemaToOpenAPI(inputSchema: any): any {
     };
   }
 
-  // MCP tools use JSON Schema format, which is compatible with OpenAPI
-  // We just need to ensure it's properly structured
+  // MCP tools use JSON Schema 2020-12 format, which needs to be converted
+  // to OpenAPI 3.0.3 dialect for proper validation
+  const sanitized = sanitizeFor30x(inputSchema);
+  
   return {
-    ...inputSchema,
+    ...sanitized,
     // Ensure we have a type
-    type: inputSchema.type || 'object',
+    type: sanitized.type || 'object',
   };
 }
 
