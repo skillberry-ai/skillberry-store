@@ -110,26 +110,6 @@ class SBS(FastAPI):
             vnfs_server_manager=vnfs_service.server_manager,
         )
 
-        # Initialize plugin system
-        from skillberry_store.plugins.loader import PluginLoader
-        from skillberry_store.plugins.store_api import StoreAPI
-
-        store_api = StoreAPI(
-            {
-                "tools": tools_service,
-                "skills": skills_service,
-                "snippets": snippets_service,
-                "vnfs": vnfs_service,
-                "vmcp": vmcp_service,
-            }
-        )
-
-        plugin_loader = PluginLoader(store_api=store_api)
-        discovered = plugin_loader.discover_plugins()
-        logger.info(f"Discovered {len(discovered)} plugins: {discovered}")
-
-        self.state.plugin_loader = plugin_loader
-
         register_vmcp_api(
             self,
             tags="vmcp_servers",
@@ -177,14 +157,9 @@ class SBS(FastAPI):
 
         register_plugins_api(
             self,
-            plugin_loader=plugin_loader,
             plugin_manager=plugin_manager,
             tags="plugins",
         )
-
-        # Mount plugin routers first so in-process routes win over the catch-all.
-        plugin_loader.mount_routers(self)
-        logger.info("Plugin routers mounted")
 
         add_plugin_proxy(self, plugin_registry)
 
