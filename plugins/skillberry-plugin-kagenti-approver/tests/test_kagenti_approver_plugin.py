@@ -186,228 +186,160 @@ def test_evaluate_criteria_empty_groups_returns_false():
     assert evaluate_criteria([], {"security-score": 9.0}) is False
 
 
-# ── plugin class ──────────────────────────────────────────────────────────────
+# ── plugin class (SDK-based) ──────────────────────────────────────────────────
 
-from skillberry_store.plugins.base import PluginType
+from unittest.mock import AsyncMock
+
 from skillberry_plugin_kagenti_approver.plugin import SkillberryPluginKagentiApprover
+from skillberry_plugin_sdk.testing import dummy_event
 
 
-def test_plugin_metadata_name():
+def _plugin_with_store(skill=None):
+    """Return a plugin instance with an AsyncMock StoreClient wired in."""
     plugin = SkillberryPluginKagentiApprover()
-    assert plugin.metadata.name == "Kagenti Approver"
+    store = AsyncMock()
+    store.get_skill = AsyncMock(return_value=skill)
+    store.update_skill = AsyncMock(return_value=skill)
+    store.update_skill_tags = AsyncMock(return_value=skill)
+    plugin._store = store
+    return plugin, store
 
 
-def test_plugin_metadata_type():
+def test_plugin_manifest_slug():
     plugin = SkillberryPluginKagentiApprover()
-    assert plugin.metadata.plugin_type == PluginType.EVALUATOR
+    assert plugin.manifest.slug == "kagenti-approver"
 
 
-def test_plugin_metadata_version():
+def test_plugin_manifest_type_evaluator():
     plugin = SkillberryPluginKagentiApprover()
-    assert plugin.metadata.version == "0.1.0"
+    assert plugin.manifest.plugin_type == "evaluator"
 
 
-def test_plugin_is_always_enabled():
+def test_plugin_manifest_version():
     plugin = SkillberryPluginKagentiApprover()
-    assert plugin.is_enabled() is True
+    assert plugin.manifest.version == "0.1.0"
 
 
-def test_plugin_get_router_returns_none():
+def test_plugin_has_no_api_by_default():
     plugin = SkillberryPluginKagentiApprover()
-    assert plugin.get_router() is None
-
-
-def test_plugin_get_cli_commands_returns_none():
-    plugin = SkillberryPluginKagentiApprover()
-    assert plugin.get_cli_commands() is None
-
-
-def test_plugin_get_ui_config_returns_none():
-    plugin = SkillberryPluginKagentiApprover()
-    assert plugin.get_ui_config() is None
+    assert plugin.manifest.has_api is False
 
 
 # ── _evaluate_skill ───────────────────────────────────────────────────────────
 
-def _make_plugin():
-    """Return a plugin with event handlers NOT registered (isolated)."""
-    from skillberry_store.plugins import events as events_module
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
-    try:
-        p = SkillberryPluginKagentiApprover()
-    finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
-    return p
-
-
-def _mock_store(skill=None):
-    store = MagicMock()
-    store.get_skill.return_value = skill
-    store.update_skill.return_value = True
-    store.update_skill_tags.return_value = True
-    return store
-
-
 @pytest.mark.asyncio
 async def test_evaluate_skill_approves_when_criteria_met():
-    plugin = _make_plugin()
     skill = {"uuid": "s-1", "tags": ["security-score:9"], "name": "x"}
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    store.update_skill_tags.assert_called_once_with("s-1", [APPROVED_TAG])
+    store.update_skill_tags.assert_awaited_once_with("s-1", [APPROVED_TAG])
 
 
 @pytest.mark.asyncio
 async def test_evaluate_skill_does_not_approve_when_criteria_not_met():
-    plugin = _make_plugin()
     skill = {"uuid": "s-1", "tags": ["security-score:6", "performance-score:8"], "name": "x"}
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    store.update_skill_tags.assert_not_called()
-    store.update_skill.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
+    store.update_skill.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_evaluate_skill_no_duplicate_tag_when_already_approved():
-    plugin = _make_plugin()
-    skill = {
-        "uuid": "s-1",
-        "tags": ["security-score:9", APPROVED_TAG],
-        "name": "x",
-    }
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    skill = {"uuid": "s-1", "tags": ["security-score:9", APPROVED_TAG], "name": "x"}
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    # Tag already present — no write at all
-    store.update_skill_tags.assert_not_called()
-    store.update_skill.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
+    store.update_skill.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_evaluate_skill_revokes_when_criteria_no_longer_met():
-    plugin = _make_plugin()
     skill = {
         "uuid": "s-1",
         "tags": ["security-score:6", "performance-score:8", APPROVED_TAG],
         "name": "x",
     }
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    store.update_skill.assert_called_once()
-    written_skill = store.update_skill.call_args[0][1]
-    assert APPROVED_TAG not in written_skill["tags"]
+    store.update_skill.assert_awaited_once()
+    written = store.update_skill.call_args[0][1]
+    assert APPROVED_TAG not in written["tags"]
 
 
 @pytest.mark.asyncio
 async def test_evaluate_skill_revoke_preserves_other_tags():
-    plugin = _make_plugin()
     skill = {
         "uuid": "s-1",
         "tags": ["security-score:6", "mcp", "imported", APPROVED_TAG],
         "name": "x",
     }
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    written_skill = store.update_skill.call_args[0][1]
-    assert "mcp" in written_skill["tags"]
-    assert "imported" in written_skill["tags"]
-    assert APPROVED_TAG not in written_skill["tags"]
+    written = store.update_skill.call_args[0][1]
+    assert "mcp" in written["tags"]
+    assert "imported" in written["tags"]
+    assert APPROVED_TAG not in written["tags"]
 
 
 @pytest.mark.asyncio
 async def test_evaluate_skill_no_op_when_criteria_fail_and_not_approved():
-    plugin = _make_plugin()
     skill = {"uuid": "s-1", "tags": ["security-score:6", "mcp"], "name": "x"}
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    store.update_skill_tags.assert_not_called()
-    store.update_skill.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
+    store.update_skill.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_evaluate_skill_skill_not_found_no_crash():
-    plugin = _make_plugin()
-    store = _mock_store(skill=None)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill=None)
 
-    await plugin._evaluate_skill("missing-uuid")  # must not raise
+    await plugin._evaluate_skill("missing-uuid")
 
-    store.update_skill_tags.assert_not_called()
-    store.update_skill.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
+    store.update_skill.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_evaluate_skill_missing_score_tag_fails_criteria():
-    plugin = _make_plugin()
-    # Only has performance-score, no security-score
     skill = {"uuid": "s-1", "tags": ["performance-score:9"], "name": "x"}
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    store.update_skill_tags.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
 
 
-# ── event handler registration ────────────────────────────────────────────────
+# ── event handler dispatch ────────────────────────────────────────────────────
 
-def test_event_handlers_registered_for_skill_added_and_updated():
-    from skillberry_store.plugins import events as events_module
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
-    try:
-        SkillberryPluginKagentiApprover()
-        assert len(events_module._event_handlers.get("content_added:skill", [])) > 0
-        assert len(events_module._event_handlers.get("content_updated:skill", [])) > 0
-    finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
+@pytest.mark.asyncio
+async def test_on_skill_change_dispatches_evaluate():
+    skill = {"uuid": "s-1", "tags": ["security-score:9"], "name": "x"}
+    plugin, store = _plugin_with_store(skill)
 
+    await plugin.on_skill_change(dummy_event("content.skill.added", {"uuid": "s-1"}))
 
-def test_event_handlers_not_registered_for_tools_or_snippets():
-    from skillberry_store.plugins import events as events_module
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
-    try:
-        SkillberryPluginKagentiApprover()
-        assert "content_added:tool" not in events_module._event_handlers
-        assert "content_added:snippet" not in events_module._event_handlers
-    finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
+    store.update_skill_tags.assert_awaited_once_with("s-1", [APPROVED_TAG])
 
 
 @pytest.mark.asyncio
-async def test_event_handler_no_op_when_store_not_set():
-    from skillberry_store.plugins import events as events_module
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
-    try:
-        SkillberryPluginKagentiApprover()
-        handler = events_module._event_handlers["content_added:skill"][0]
-        await handler(uuid="any-uuid")  # must not raise
-    finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
+async def test_on_skill_change_ignores_missing_uuid():
+    plugin, store = _plugin_with_store(skill=None)
+    await plugin.on_skill_change(dummy_event("content.skill.updated", {}))
+    store.get_skill.assert_not_awaited()
 
 
 # ── env var configuration ─────────────────────────────────────────────────────
@@ -415,34 +347,28 @@ async def test_event_handler_no_op_when_store_not_set():
 @pytest.mark.asyncio
 async def test_env_var_overrides_default_criteria(monkeypatch):
     monkeypatch.setenv("KAGENTI_CRITERIA", "security-score>=10")
-    plugin = _make_plugin()
-    # Score 9 is not enough with the override (needs >=10)
     skill = {"uuid": "s-1", "tags": ["security-score:9"], "name": "x"}
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    store.update_skill_tags.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_env_var_override_approves_with_custom_threshold(monkeypatch):
     monkeypatch.setenv("KAGENTI_CRITERIA", "security-score>=9")
-    plugin = _make_plugin()
     skill = {"uuid": "s-1", "tags": ["security-score:9"], "name": "x"}
-    store = _mock_store(skill)
-    plugin.set_store_api(store)
+    plugin, store = _plugin_with_store(skill)
 
     await plugin._evaluate_skill("s-1")
 
-    store.update_skill_tags.assert_called_once_with("s-1", [APPROVED_TAG])
+    store.update_skill_tags.assert_awaited_once_with("s-1", [APPROVED_TAG])
 
 
 def test_missing_env_var_falls_back_to_default(monkeypatch):
     monkeypatch.delenv("KAGENTI_CRITERIA", raising=False)
-    plugin = _make_plugin()
+    plugin = SkillberryPluginKagentiApprover()
     groups = plugin._load_criteria()
-    # Default: security-score>=9 → 1 OR-group, 1 condition
     assert len(groups) == 1
     assert len(groups[0]) == 1
