@@ -20,6 +20,8 @@ from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.fast_api.vnfs_api import register_vnfs_api
 from skillberry_store.fast_api.plugins_api import register_plugins_api
+from skillberry_store.fast_api.events_api import register_events_api
+from skillberry_store.fast_api.plugin_proxy import PluginRegistry, add_plugin_proxy
 from skillberry_store.tools.configure import (
     configure_logging,
 )
@@ -157,9 +159,19 @@ class SBS(FastAPI):
 
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
 
-        # Mount plugin routers
+        # Register SSE events endpoint and out-of-process plugin proxy.
+        # The registry is empty at this stage — the in-process PluginLoader still
+        # mounts routers, so the proxy is a no-op fallback path until Stage 3
+        # starts registering out-of-process plugins.
+        plugin_registry = PluginRegistry()
+        self.state.plugin_registry = plugin_registry
+        register_events_api(self, tags="events")
+
+        # Mount plugin routers first so in-process routes win over the catch-all.
         plugin_loader.mount_routers(self)
         logger.info("Plugin routers mounted")
+
+        add_plugin_proxy(self, plugin_registry)
 
         # Mount the Control MCP with a CURATED surface. The store auto-generates an
         # MCP tool per REST endpoint, but agents only need the content operations,

@@ -142,33 +142,41 @@ def emit_event(event_name: str, **kwargs):
         task.add_done_callback(_background_tasks.discard)
 
 
+def _publish_to_sse(topic: str, payload: Dict[str, str]) -> None:
+    """Publish an event to the SSE hub, tolerating failures silently."""
+    try:
+        from skillberry_store.plugins.sse_hub import get_hub
+
+        get_hub().publish(topic, payload)
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("SSE publish failed", exc_info=True)
+
+
 def emit_content_added(content_type: str, uuid: str):
     """Convenience function to emit content_added event.
 
-    Args:
-        content_type: Type of content (tool, skill, snippet, etc.)
-        uuid: UUID of the added content
+    Also publishes ``content.<type>.added`` on the SSE hub for out-of-process
+    plugin subscribers.
     """
     emit_event(f"content_added:{content_type}", uuid=uuid)
+    _publish_to_sse(f"content.{content_type}.added", {"uuid": uuid, "type": content_type})
 
 
 def emit_content_updated(content_type: str, uuid: str):
     """Convenience function to emit content_updated event.
 
-    Args:
-        content_type: Type of content (tool, skill, snippet, etc.)
-        uuid: UUID of the updated content
+    Also publishes ``content.<type>.updated`` on the SSE hub.
     """
     emit_event(f"content_updated:{content_type}", uuid=uuid)
+    _publish_to_sse(f"content.{content_type}.updated", {"uuid": uuid, "type": content_type})
 
 
 def emit_content_deleted(content_type: str, uuid: str):
     """Convenience function to emit content_deleted event.
 
-    Args:
-        content_type: Type of content (tool, skill, snippet, etc.)
-        uuid: UUID of the deleted content
+    Also publishes ``content.<type>.deleted`` on the SSE hub.
     """
     emit_event(f"content_deleted:{content_type}", uuid=uuid)
+    _publish_to_sse(f"content.{content_type}.deleted", {"uuid": uuid, "type": content_type})
 
 # Made with Bob
