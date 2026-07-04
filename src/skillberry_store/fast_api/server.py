@@ -157,21 +157,51 @@ class SBS(FastAPI):
         )
         register_admin_api(self, tags="admin", service=admin_service)
 
-        register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
-
         # Register SSE events endpoint and out-of-process plugin proxy.
-        # The registry is empty at this stage — the in-process PluginLoader still
-        # mounts routers, so the proxy is a no-op fallback path until Stage 3
-        # starts registering out-of-process plugins.
         plugin_registry = PluginRegistry()
         self.state.plugin_registry = plugin_registry
         register_events_api(self, tags="events")
+
+        # Build the plugin state store + manager. Test suites set
+        # SKILLBERRY_PLUGIN_STATE_FILE="" so SBS boots with no plugins persisted.
+        from skillberry_store.plugins.manager import PluginManager
+        from skillberry_store.plugins.state_store import PluginStateStore
+
+        state_store = PluginStateStore()
+        plugin_manager = PluginManager(
+            registry=plugin_registry,
+            state_store=state_store,
+            sbs_base_url=sts_url,
+        )
+        self.state.plugin_manager = plugin_manager
+
+        register_plugins_api(
+            self,
+            plugin_loader=plugin_loader,
+            plugin_manager=plugin_manager,
+            tags="plugins",
+        )
 
         # Mount plugin routers first so in-process routes win over the catch-all.
         plugin_loader.mount_routers(self)
         logger.info("Plugin routers mounted")
 
         add_plugin_proxy(self, plugin_registry)
+
+        # Autostart plugins whose state entries request it, without blocking boot.
+        @self.on_event("startup")
+        async def _bootstrap_plugins() -> None:
+            try:
+                await plugin_manager.bootstrap()
+            except Exception:
+                logger.exception("plugin bootstrap failed")
+
+        @self.on_event("shutdown")
+        async def _shutdown_plugins() -> None:
+            try:
+                await plugin_manager.stop_all()
+            except Exception:
+                logger.exception("plugin stop_all failed")
 
         # Mount the Control MCP with a CURATED surface. The store auto-generates an
         # MCP tool per REST endpoint, but agents only need the content operations,
