@@ -1,0 +1,8 @@
+name: Stub Plugin
+slug: stub
+version: 0.1.0
+description: Minimal stub plugin for tests
+plugin_type: evaluator
+sdk_version: ^0.1
+has_api: true
+required_env: []

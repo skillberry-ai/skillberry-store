@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillberry-plugin-stub"
+version = "0.1.0"
+description = "Stub plugin used by lifecycle e2e tests"
+requires-python = ">=3.10"
+dependencies = ["skillberry-plugin-sdk"]
+
+[tool.setuptools]
+packages = ["skillberry_plugin_stub"]
+package-dir = {"" = "src"}
