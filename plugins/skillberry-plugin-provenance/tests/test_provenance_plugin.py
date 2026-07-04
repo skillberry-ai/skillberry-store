@@ -1,7 +1,7 @@
-"""Tests for the provenance plugin (fake source + mocked store, no network)."""
+"""Tests for the provenance plugin (fake source + AsyncMock store, no network)."""
 
 import contextlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -10,7 +10,7 @@ from skillberry_plugin_provenance.plugin import (
     _compute_drift,
 )
 from skillberry_plugin_provenance.sources.base import Background
-from skillberry_store.plugins.base import PluginType
+from skillberry_plugin_sdk.testing import dummy_event
 
 # ── a fake source so the plugin never hits the network ───────────────────────
 
@@ -50,26 +50,48 @@ def _make_plugin(source=None):
         yield SkillberryPluginProvenance()
 
 
-def _mock_store(skill=None):
-    store = MagicMock()
-    store.get_skill.return_value = skill
-    store.get_tool.return_value = None
-    store.get_snippet.return_value = None
-    store.skills = MagicMock()
-    store.skills.write_dict.return_value = {"success": True}
-    store.tools = MagicMock()
+def _mock_store(skill=None, tool=None, tool_module=None, snippet=None):
+    """Build an AsyncMock StoreClient wired for provenance's access patterns."""
+    store = AsyncMock()
+    store.get_skill = AsyncMock(return_value=skill)
+    store.get_tool = AsyncMock(return_value=tool)
+    store.get_snippet = AsyncMock(return_value=snippet)
+    store.update_skill = AsyncMock(return_value={"success": True})
+
+    async def _get(path, params=None):
+        if path.startswith("/tools/") and path.endswith("/module"):
+            return tool_module
+        return None
+
+    store.get = AsyncMock(side_effect=_get)
     return store
 
 
-# ── metadata / enablement ────────────────────────────────────────────────────
+def _plugin_with_store(**kwargs):
+    """Helper: yields a plugin instance with `_store` attached."""
+    cm = _make_plugin(source=kwargs.pop("source", None))
+    plugin = cm.__enter__()
+    store = _mock_store(**kwargs)
+    plugin._store = store
+    return cm, plugin, store
 
 
-def test_metadata():
+# ── manifest ─────────────────────────────────────────────────────────────────
+
+
+def test_plugin_manifest_slug():
     with _make_plugin() as plugin:
-        md = plugin.metadata
-        assert md.name == "Skill Provenance & Background"
-        assert md.plugin_type == PluginType.EVALUATOR
-        assert plugin.is_enabled() is True
+        assert plugin.manifest.slug == "provenance"
+
+
+def test_plugin_manifest_type_evaluator():
+    with _make_plugin() as plugin:
+        assert plugin.manifest.plugin_type == "evaluator"
+
+
+def test_plugin_manifest_has_api():
+    with _make_plugin() as plugin:
+        assert plugin.manifest.has_api is True
 
 
 # ── gather: pre-import (url) ─────────────────────────────────────────────────
@@ -78,7 +100,8 @@ def test_metadata():
 @pytest.mark.asyncio
 async def test_gather_pre_import_url_no_store():
     with _make_plugin() as plugin:
-        # no store needed for a pure url check; behavior degrades to unavailable
+        # No uuid → behavior degrades to unavailable and no store methods hit.
+        plugin._store = _mock_store()
         data = await plugin.gather_background(url="https://github.com/anthropics/skills")
         assert data["confidence"] == "high"
         assert data["license"]["spdx_id"] == "MIT"
@@ -98,14 +121,16 @@ async def test_gather_post_import_persists_baseline_and_tags():
         "tool_uuids": [],
         "snippet_uuids": [],
     }
-    store = _mock_store(skill=skill)
-    with _make_plugin() as plugin:
-        plugin.set_store_api(store)
+    cm, plugin, store = _plugin_with_store(skill=skill)
+    try:
         data = await plugin.gather_background(uuid="s1", persist_baseline=True)
+    finally:
+        cm.__exit__(None, None, None)
 
     assert data["confidence"] == "high"
-    # persisted into extra["provenance"].baseline + latest
-    written = store.skills.write_dict.call_args[0][1]
+    # persisted into extra["provenance"].baseline + latest via update_skill
+    store.update_skill.assert_awaited()
+    written = store.update_skill.call_args[0][1]
     assert written["extra"]["provenance"]["baseline"]["confidence"] == "high"
     assert written["extra"]["provenance"]["latest"]["confidence"] == "high"
     # roll-up tags added, old provenance tags would be stripped
@@ -119,11 +144,12 @@ async def test_gather_post_import_persists_baseline_and_tags():
 @pytest.mark.asyncio
 async def test_gather_uuid_without_origin_raises_valueerror():
     skill = {"uuid": "s2", "name": "x", "tags": [], "extra": {}}
-    store = _mock_store(skill=skill)
-    with _make_plugin() as plugin:
-        plugin.set_store_api(store)
+    cm, plugin, store = _plugin_with_store(skill=skill)
+    try:
         with pytest.raises(ValueError):
             await plugin.gather_background(uuid="s2")
+    finally:
+        cm.__exit__(None, None, None)
 
 
 # ── behavior section over child code ─────────────────────────────────────────
@@ -137,15 +163,18 @@ async def test_behavior_detects_domains_and_ops():
                   "evaluation": {"sast": {"summary": {"high": 1}}}},
         "tool_uuids": ["t1"], "snippet_uuids": [],
     }
-    store = _mock_store(skill=skill)
-    store.get_tool.return_value = {"uuid": "t1", "name": "t", "module_name": "tool.py"}
-    store.tools.read_file.return_value = (
+    tool = {"uuid": "t1", "name": "t", "module_name": "tool.py"}
+    tool_module = (
         "import requests\nrequests.get('https://evil.example.com/x')\n"
         "import subprocess\nsubprocess.run(['ls'])\n"
     )
-    with _make_plugin() as plugin:
-        plugin.set_store_api(store)
+    cm, plugin, store = _plugin_with_store(
+        skill=skill, tool=tool, tool_module=tool_module
+    )
+    try:
         data = await plugin.gather_background(uuid="s3")
+    finally:
+        cm.__exit__(None, None, None)
 
     beh = data["behavior"]
     assert beh["status"] == "ok"
@@ -197,10 +226,11 @@ async def test_recheck_reports_no_drift_against_matching_baseline():
         },
         "tool_uuids": [], "snippet_uuids": [],
     }
-    store = _mock_store(skill=skill)
-    with _make_plugin(source=_FakeSource(bg=bg)) as plugin:
-        plugin.set_store_api(store)
+    cm, plugin, store = _plugin_with_store(source=_FakeSource(bg=bg), skill=skill)
+    try:
         out = await plugin.recheck("s4")
+    finally:
+        cm.__exit__(None, None, None)
     assert out["drift"] == []
 
 
@@ -212,12 +242,13 @@ def _client(plugin):
     from fastapi.testclient import TestClient
 
     app = FastAPI()
-    app.include_router(plugin.get_router(), prefix="/plugins/provenance")
+    app.include_router(plugin.get_router())
     return TestClient(app)
 
 
 def test_router_check_with_url_200():
     with _make_plugin() as plugin:
+        plugin._store = _mock_store()
         resp = _client(plugin).post(
             "/plugins/provenance/check",
             json={"github_url": "https://github.com/anthropics/skills"},
@@ -230,9 +261,8 @@ def test_router_check_with_url_200():
 
 
 def test_router_check_unknown_uuid_404():
-    store = _mock_store(skill=None)
     with _make_plugin() as plugin:
-        plugin.set_store_api(store)
+        plugin._store = _mock_store(skill=None)
         resp = _client(plugin).post(
             "/plugins/provenance/check", json={"uuid": "missing"}
         )
@@ -241,21 +271,49 @@ def test_router_check_unknown_uuid_404():
 
 def test_router_check_no_args_404():
     with _make_plugin() as plugin:
+        plugin._store = _mock_store()
         resp = _client(plugin).post("/plugins/provenance/check", json={})
         assert resp.status_code == 404
 
 
-# ── event handler registration ───────────────────────────────────────────────
+# ── event handler dispatch ───────────────────────────────────────────────────
 
 
-def test_event_handler_registered_for_skill_add():
-    from skillberry_store.plugins import events as events_module
-
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
+@pytest.mark.asyncio
+async def test_on_skill_added_triggers_baseline_when_origin_present():
+    skill = {
+        "uuid": "s5", "name": "x", "tags": [],
+        "extra": {"origin": {"type": "github", "url": "https://github.com/a/b"}},
+        "tool_uuids": [], "snippet_uuids": [],
+    }
+    cm, plugin, store = _plugin_with_store(skill=skill)
     try:
-        with _make_plugin():
-            assert len(events_module._event_handlers.get("content_added:skill", [])) > 0
+        await plugin.on_skill_added(dummy_event("content.skill.added", {"uuid": "s5"}))
     finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
+        cm.__exit__(None, None, None)
+    # baseline was persisted → update_skill called at least once with prov data
+    store.update_skill.assert_awaited()
+    written = store.update_skill.call_args[0][1]
+    assert "baseline" in written["extra"]["provenance"]
+
+
+@pytest.mark.asyncio
+async def test_on_skill_added_ignores_skills_without_origin():
+    skill = {"uuid": "s6", "name": "x", "tags": [], "extra": {}}
+    cm, plugin, store = _plugin_with_store(skill=skill)
+    try:
+        await plugin.on_skill_added(dummy_event("content.skill.added", {"uuid": "s6"}))
+    finally:
+        cm.__exit__(None, None, None)
+    # nothing persisted — origin missing means no baseline attempt
+    store.update_skill.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_on_skill_added_ignores_missing_uuid():
+    cm, plugin, store = _plugin_with_store(skill=None)
+    try:
+        await plugin.on_skill_added(dummy_event("content.skill.added", {}))
+    finally:
+        cm.__exit__(None, None, None)
+    store.get_skill.assert_not_awaited()

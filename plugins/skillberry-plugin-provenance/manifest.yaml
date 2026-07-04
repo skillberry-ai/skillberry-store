@@ -1,0 +1,8 @@
+name: Content Provenance
+slug: provenance
+version: 0.1.0
+description: Track content provenance (source, hashes, timestamps)
+plugin_type: evaluator
+sdk_version: ^0.1
+has_api: true
+required_env: []

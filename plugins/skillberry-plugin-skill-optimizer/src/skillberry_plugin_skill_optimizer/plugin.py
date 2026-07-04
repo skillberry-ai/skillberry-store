@@ -1,6 +1,10 @@
 """
 Skillberry Plugin Skill Optimizer — optimizes existing skills using RunSpace.
+
+Ported to the skillberry-plugin-sdk (out-of-process plugin).
 """
+
+from __future__ import annotations
 
 import asyncio
 import json
@@ -12,9 +16,12 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from pydantic import BaseModel
+
+from skillberry_plugin_sdk import PluginLifecycleBase
+
 from skillberry_plugin_skill_optimizer.prompt import (
     DEFAULT_OPTIMIZATION_GOAL,
     REQUIRED_OUTPUTS_FILENAME,
@@ -43,6 +50,20 @@ try:
     from skillberry_store.tools.anthropic.exporter import export_skill_to_directory
 except ImportError:
     export_skill_to_directory = None
+
+
+class OptimizeSkillRequest(BaseModel):
+    """Request body for POST /optimize-skill."""
+
+    skill_uuid: str
+    output_skill_name: Optional[str] = None
+    include_metadata: bool = True
+    trajectories_dir: Optional[str] = None
+    additional_context_dir: Optional[str] = None
+    agent_env: Optional[Dict[str, str]] = None
+    execution_mode: Optional[str] = None
+    max_turns: Optional[int] = None
+    optimization_goal: Optional[str] = None
 
 
 async def optimize_skill_session(prompt, skill_dir, context_dir, options, mode, plugin_instance):
@@ -94,18 +115,13 @@ async def optimize_skill_session(prompt, skill_dir, context_dir, options, mode, 
     return result
 
 
-class SkillberryPluginSkillOptimizer(PluginBase):
+class SkillberryPluginSkillOptimizer(PluginLifecycleBase):
     """Plugin for optimizing existing Skillberry skills using RunSpace."""
+
+    manifest_path = "manifest.yaml"
 
     def __init__(self):
         super().__init__()
-
-        self._metadata = PluginMetadata(
-            name="Skill Optimizer",
-            version="0.1.0",
-            description="Optimize existing skills using RunSpace-powered Claude Code",
-            plugin_type=PluginType.OPTIMIZER,
-        )
 
         self._status_message = "Initializing..."
         self._runspace_available = False
@@ -136,6 +152,24 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         else:
             self._status_message = "Missing dependency: runspace-agent not installed"
 
+    # ------------------------------------------------------------------ lifecycle
+
+    async def on_start(self) -> None:
+        """Re-evaluate credential/runspace readiness at process startup."""
+        # __init__ already captures the state; here we just refresh in case env
+        # was mutated between __init__ and startup.
+        self._credentials_configured = self._check_credentials()
+
+    async def is_ready(self) -> Dict[str, Any]:
+        missing: List[str] = []
+        if not self._runspace_available:
+            missing.append("runspace-agent")
+        if not self._credentials_configured:
+            missing.append("anthropic-credentials")
+        return {"ready": self.is_enabled(), "missing_config": missing}
+
+    # ------------------------------------------------------------------ helpers
+
     def _load_claude_settings(self):
         settings_path = Path.home() / ".claude" / "settings.json"
         if settings_path.exists():
@@ -162,42 +196,27 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         return settings_env if isinstance(settings_env, dict) else {}
 
     def _check_credentials(self) -> bool:
-        # Credentials may come from the process environment or from the
-        # ~/.claude/settings.json "env" block. Both use the standard
-        # ANTHROPIC_* variable names.
         return self._has_api_access(os.environ) or self._has_api_access(self._claude_settings_env())
 
     def _build_claude_env(self, override_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-        """Build the environment passed to the Claude Code agent.
-
-        Priority (lowest to highest):
-        1. Every key in the ~/.claude/settings.json ``env`` block.
-        2. ANTHROPIC_*/CLAUDE_* variables from the current process environment.
-        3. Request-specific ``override_env``.
-        """
         env: Dict[str, str] = {}
-        # 1. Forward the entire settings.json env block as-is.
         for key, value in self._claude_settings_env().items():
             if value is not None:
                 env[key] = str(value)
-        # 2. Real environment vars take precedence over the settings file.
         for key, value in os.environ.items():
             if value and (key.startswith("ANTHROPIC_") or key.startswith("CLAUDE_")):
                 env[key] = value
-        # 3. Request-specific overrides win.
         if override_env:
             env.update(override_env)
         return env
-
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
 
     def get_status_message(self) -> str:
         return self._status_message
 
     def is_enabled(self) -> bool:
         return self._runspace_available and self._credentials_configured
+
+    # ------------------------------------------------------------------ progress streaming
 
     def _stream_docker_logs(self, workspace_root: Path, stop: threading.Event) -> None:
         try:
@@ -304,14 +323,11 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         try:
             while not run_task.done():
                 await asyncio.sleep(5)
-                # Poll editable/ for new files the agent is writing
                 if editable.exists():
                     current = {str(p) for p in editable.rglob("*") if p.is_file()}
                     for f in sorted(current - seen):
                         logger.info(f"  [progress] created: {Path(f).relative_to(editable)}")
                     seen = current
-                # conversation.json is written to the shared workspace volume just before
-                # the container/process exits — replay it immediately when it appears
                 if not conv_replayed and conv_path.exists():
                     conv_replayed = True
                     self._replay_conversation(conv_path)
@@ -325,19 +341,20 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             summary_path = workspace / "summary.md"
             if summary_path.exists():
                 logger.info(f"Session summary:\n{summary_path.read_text(encoding='utf-8').strip()}")
-            # conversation.json is replayed live in _stream_progress when it first appears;
-            # replay again here only if the file wasn't caught during polling (e.g. very fast runs)
             conv_path = workspace / "conversation.json"
             if conv_path.exists():
                 self._replay_conversation(conv_path)
         except Exception as e:
             logger.debug(f"Could not read session details for {session_id}: {e}")
 
-    def _generate_output_skill_name(self, original_name: str, override: Optional[str] = None) -> str:
+    async def _generate_output_skill_name(
+        self, original_name: str, override: Optional[str] = None
+    ) -> str:
         """Generate the output skill name, appending numeric suffix if needed."""
         if override is not None:
             return override
-        existing_names = {s["name"] for s in self.store.list_skills()}
+        skills = await self.store.list_skills()
+        existing_names = {s["name"] for s in skills}
         base = f"{original_name}_optimized"
         if base not in existing_names:
             return base
@@ -345,6 +362,53 @@ class SkillberryPluginSkillOptimizer(PluginBase):
         while f"{base}({i})" in existing_names:
             i += 1
         return f"{base}({i})"
+
+    # ------------------------------------------------------------------ store helpers
+
+    async def _read_tool_module(self, tool_uuid: str) -> Optional[str]:
+        """Fetch a tool module's raw source via the REST plaintext endpoint."""
+        try:
+            return await self.store.get(f"/tools/{tool_uuid}/module")
+        except Exception as e:
+            logger.warning(f"Could not read module for tool {tool_uuid}: {e}")
+            return None
+
+    async def _create_tool(
+        self,
+        data: Dict[str, Any],
+        module_content: bytes,
+        module_filename: str,
+    ) -> Dict[str, Any]:
+        """Create a tool via the REST endpoint. Uses generic post with multipart-shaped payload."""
+        # The real endpoint is multipart (query + file). Tests mock this method,
+        # so in production we round-trip via a helper request.
+        import httpx
+
+        base = self.store.base_url
+        headers: Dict[str, str] = {}
+        if getattr(self.store, "token", None):
+            headers["Authorization"] = f"Bearer {self.store.token}"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(
+                f"{base}/tools/",
+                params=data,
+                files={"module": (module_filename, module_content, "text/x-python")},
+                headers=headers,
+            )
+            r.raise_for_status()
+            return r.json()
+
+    async def _create_snippet(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.store.post("/snippets/", json=data)
+
+    async def _create_skill(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.store.post("/skills/", json=data)
+
+    async def _update_skill_metadata(self, uuid: str, metadata: Dict[str, Any]) -> Any:
+        """Merge `metadata` into the skill's `extra` field via PATCH."""
+        return await self.store.patch_skill(uuid, {"extra": metadata})
+
+    # ------------------------------------------------------------------ core
 
     async def optimize_skill(
         self,
@@ -365,14 +429,12 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             raise RuntimeError("skillberry_store exporter not available")
         if import_from_anthropic_skill is None:
             raise RuntimeError("skillberry_store importer not available")
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
         if not self._credentials_configured and not agent_env:
             raise RuntimeError(
                 "Anthropic credentials not configured. Set ANTHROPIC_API_KEY or provide agent_env"
             )
 
-        skill = self.store.get_skill(skill_uuid)
+        skill = await self.store.get_skill(skill_uuid)
         if skill is None:
             raise ValueError(f"Skill {skill_uuid!r} not found")
 
@@ -406,13 +468,9 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             tool_modules: Dict[str, str] = {}
             for tool in tools:
                 if tool.get("module_name"):
-                    try:
-                        content = self.store.tools.read_file(
-                            tool["uuid"], tool["module_name"], raw_content=True
-                        )
+                    content = await self._read_tool_module(tool["uuid"])
+                    if content is not None:
                         tool_modules[tool["name"]] = content
-                    except Exception as e:
-                        logger.warning(f"Could not read module for tool '{tool['name']}': {e}")
 
             export_skill_to_directory(skill, tools, snippets, str(skill_dir), tool_modules)
             logger.info(f"Exported skill to {skill_dir}")
@@ -446,11 +504,12 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             if additional_context_dir:
                 shutil.copytree(additional_context_dir, str(context_dir / "additional_context"))
 
-            # Always stage the bundled knowledge base into context/knowledge/
             knowledge_src = Path(__file__).parent / "knowledge"
             if knowledge_src.exists():
                 shutil.copytree(str(knowledge_src), str(context_dir / "knowledge"))
-                logger.info(f"Staged knowledge base ({len(list(knowledge_src.iterdir()))} files) into context/knowledge/")
+                logger.info(
+                    f"Staged knowledge base ({len(list(knowledge_src.iterdir()))} files) into context/knowledge/"
+                )
 
             prompt = build_runspace_prompt(
                 has_metadata=include_metadata,
@@ -488,7 +547,9 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             else:
                 logger.warning(f"{REQUIRED_OUTPUTS_FILENAME} not found in session output")
 
-            final_name = self._generate_output_skill_name(original_name, override=output_skill_name)
+            final_name = await self._generate_output_skill_name(
+                original_name, override=output_skill_name
+            )
 
             try:
                 skill_name_result, skill_description, imported_tools, imported_snippets, ignored = (
@@ -518,7 +579,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                         }
                         module_bytes = tool.module_content.encode() if tool.module_content else b""
                         module_filename = tool.source_file_name or f"{tool.name}.py"
-                        created = self.store.create_tool(
+                        created = await self._create_tool(
                             tool_data, module_content=module_bytes, module_filename=module_filename
                         )
                         tool_uuids.append(created["uuid"])
@@ -536,14 +597,11 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                             "description": snippet.description or "",
                             "version": getattr(snippet, "version", "1.0.0"),
                         }
-                        created = self.store.create_snippet(snippet_data)
+                        created = await self._create_snippet(snippet_data)
                         snippet_uuids.append(created["uuid"])
                     except Exception as e:
                         logger.error(f"Failed to create snippet '{snippet.name}': {e}", exc_info=True)
 
-                # Compute the actual structural diff from the import results.
-                # Claude's self-reported tools_added/removed/snippets_added/removed in
-                # required_outputs.json is often incomplete — override with ground truth.
                 original_tool_names = {t["name"] for t in tools}
                 imported_tool_names = {t.name for t in imported_tools}
                 original_snippet_names = {s["name"] for s in snippets}
@@ -560,10 +618,6 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                 )
 
                 inherited_tags = [t for t in skill.get("tags", []) if t]
-                # opt_metadata["skill_description"] is the authoritative source — it's what
-                # the optimizer agent explicitly wrote in required_outputs.json. The importer's
-                # skill_description may be empty or a generic placeholder when YAML parsing of
-                # SKILL.md frontmatter fails (e.g. colon-containing plain scalars).
                 effective_description = opt_metadata.get("skill_description") or skill_description or ""
                 skill_data = {
                     "name": final_name,
@@ -572,10 +626,10 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                     "snippet_uuids": snippet_uuids,
                     "tags": list({"optimized"} | set(inherited_tags)),
                 }
-                created_skill = self.store.create_skill(skill_data)
+                created_skill = await self._create_skill(skill_data)
                 logger.info(f"Created optimized skill '{final_name}' ({created_skill['uuid']})")
 
-                self.store.update_skill_metadata(
+                await self._update_skill_metadata(
                     created_skill["uuid"],
                     {
                         "optimization": {
@@ -598,24 +652,13 @@ class SkillberryPluginSkillOptimizer(PluginBase):
                 logger.error(f"Failed to import optimized skill: {e}", exc_info=True)
                 raise RuntimeError(f"Skill import failed: {str(e)}")
 
+    # ------------------------------------------------------------------ router
+
     def get_router(self):
         """Register plugin API routes."""
         from fastapi import APIRouter, HTTPException
-        from pydantic import BaseModel
-        from typing import Optional
 
         router = APIRouter()
-
-        class OptimizeSkillRequest(BaseModel):
-            skill_uuid: str
-            output_skill_name: Optional[str] = None
-            include_metadata: bool = True
-            trajectories_dir: Optional[str] = None
-            additional_context_dir: Optional[str] = None
-            agent_env: Optional[Dict[str, str]] = None
-            execution_mode: Optional[str] = None
-            max_turns: Optional[int] = None
-            optimization_goal: Optional[str] = None
 
         @router.post("/optimize-skill")
         async def optimize_skill_endpoint(request: OptimizeSkillRequest):

@@ -8,11 +8,10 @@ version = "0.1.0"
 description = "Skillberry Store plugin that gathers provenance, authenticity and legality background for imported skills"
 readme = "README.md"
 requires-python = ">=3.10"
-# requests is already a store dependency; the plugin adds no heavy deps.
-dependencies = ["requests"]
-
-[project.entry-points."skillberry_store.plugins"]
-provenance = "skillberry_plugin_provenance.plugin:SkillberryPluginProvenance"
+dependencies = [
+    "skillberry-plugin-sdk",
+    "requests",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -28,3 +27,6 @@ packages = [
     "skillberry_plugin_provenance.sources",
 ]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_provenance = ["manifest.yaml"]

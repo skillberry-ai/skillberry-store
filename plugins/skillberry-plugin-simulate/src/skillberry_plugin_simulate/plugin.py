@@ -1,4 +1,6 @@
 """Simulate This plugin: parallel simulated vMCP + real/sim routing registry."""
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -7,62 +9,61 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-logger = logging.getLogger(__name__)
+from skillberry_plugin_sdk import PluginLifecycleBase
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
 from skillberry_plugin_simulate.config import SimulateConfig
 from skillberry_plugin_simulate.harness_client import HarnessClient
 from skillberry_plugin_simulate.harness_manager import HarnessManager
 from skillberry_plugin_simulate.openapi_synth import OpenApiSynthesizer
 from skillberry_plugin_simulate.orchestrator import SimulateOrchestrator
 from skillberry_plugin_simulate.registry import ActiveVmcpRegistry
+from skillberry_plugin_simulate.store_adapter import SimulateStoreAdapter
+
+logger = logging.getLogger(__name__)
 
 
-class SkillberryPluginSimulate(PluginBase):
+class SkillberryPluginSimulate(PluginLifecycleBase):
     """Build a simulated parallel vMCP for a skill and route real/sim."""
+
+    manifest_path = "manifest.yaml"
 
     def __init__(self):
         super().__init__()
-        self._config = SimulateConfig.from_env()
-        self._orchestrator = None
+        self._config: Optional[SimulateConfig] = None
+        self._orchestrator: Optional[SimulateOrchestrator] = None
         self._jobs: Dict[str, asyncio.Task] = {}
-        self._metadata = PluginMetadata(
-            name="Simulate This",
-            version="0.1.0",
-            description=(
-                "Stand up a simulated parallel vMCP backed by the simulation-harness "
-                "and toggle whether consumers reach the real or simulated vMCP."
-            ),
-            plugin_type=PluginType.CREATOR,
-        )
 
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
+    async def on_start(self) -> None:
+        """Initialise the plugin's config, harness manager and orchestrator."""
+        self._config = SimulateConfig.from_env()
+        # Orchestrator is built lazily on first use — Docker may become
+        # available after the plugin has started (self-hosted runners, etc.).
+        self._orchestrator = None
 
-    def _docker_available(self) -> bool:
+    async def on_stop(self) -> None:
+        # Cancel outstanding simulate jobs so the process can exit cleanly.
+        for task in list(self._jobs.values()):
+            if not task.done():
+                task.cancel()
+        self._jobs.clear()
+
+    async def is_ready(self) -> Dict[str, Any]:
+        """Report readiness. Docker must be reachable for the plugin to work."""
         try:
-            import docker
+            import docker  # type: ignore
+        except Exception:  # pragma: no cover - docker package always present
+            return {"ready": False, "missing_config": ["docker socket"]}
+        try:
             docker.from_env().ping()
-            return True
         except Exception:
-            return False
+            return {"ready": False, "missing_config": ["docker socket"]}
+        return {"ready": True, "missing_config": []}
 
-    def is_enabled(self) -> bool:
-        return self._config.is_configured() and self._docker_available()
-
-    def get_status_message(self) -> str:
-        if not self._config.is_configured():
-            return "Disabled: set SIMULATE_LLM_API_KEY"
-        if not self._docker_available():
-            return "Disabled: Docker runtime not reachable"
-        return "Ready"
-
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        return None
-
+    # Public accessor mostly used by tests to swap in a mock orchestrator.
     def _get_orchestrator(self) -> SimulateOrchestrator:
         if self._orchestrator is None:
+            if self._config is None:
+                self._config = SimulateConfig.from_env()
             registry = ActiveVmcpRegistry(os.path.join(self._config.data_dir, "registry.json"))
             harness_manager = HarnessManager(self._config)
 
@@ -70,7 +71,7 @@ class SkillberryPluginSimulate(PluginBase):
                 return HarnessClient(httpx.AsyncClient(base_url=rest_url, timeout=30.0))
 
             self._orchestrator = SimulateOrchestrator(
-                store=self.store,
+                store=SimulateStoreAdapter(self.store),
                 config=self._config,
                 registry=registry,
                 synthesizer=OpenApiSynthesizer(),
@@ -134,85 +135,15 @@ class SkillberryPluginSimulate(PluginBase):
         @router.post("/teardown")
         async def teardown(request: SkillRequest):
             try:
-                return self._get_orchestrator().teardown(request.skill_uuid)
+                return await self._get_orchestrator().teardown(request.skill_uuid)
             except KeyError:
                 raise HTTPException(status_code=404, detail=f"No simulation for skill {request.skill_uuid}")
 
         @router.get("/active/{skill_uuid}")
         async def active(skill_uuid: str):
             try:
-                return self._get_orchestrator().resolve(skill_uuid)
+                return await self._get_orchestrator().resolve(skill_uuid)
             except KeyError:
                 raise HTTPException(status_code=404, detail=f"No registry entry for skill {skill_uuid}")
 
         return router
-
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return {
-            "icon": "CubesIcon",
-            "color": "#0EA5E9",
-            "actions": [
-                {
-                    "label": "Simulate this",
-                    "endpoint": "/plugins/simulate/simulate",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "skill_uuid": {
-                                "type": "string",
-                                "title": "Skill",
-                                "x-options-from": "/api/skills/",
-                                "x-option-label": "name",
-                                "x-option-value": "uuid",
-                                "x-exclude-tags": ["simulation"],
-                            },
-                            "vmcp_uuid": {
-                                "type": "string",
-                                "title": "vMCP Server",
-                                "x-options-from": "/api/vmcp_servers/?skill_uuid={skill_uuid}",
-                                "x-depends-on": "skill_uuid",
-                                "x-option-label": "name",
-                                "x-option-value": "uuid",
-                                "x-exclude-tags": ["simulation"],
-                            },
-                        },
-                        "required": ["skill_uuid"],
-                    },
-                    "async_action": {
-                        "status_endpoint": "/api/plugins/simulate/status/{job_id}",
-                        "labels": {
-                            "pending": "Simulation is starting…",
-                            "ready": "Simulation is ready",
-                            "failed": "Simulation failed",
-                            "timeout": "Could not confirm simulation status — check the plugin logs",
-                            "done": "Done",
-                        },
-                    },
-                },
-                {
-                    "label": "Toggle real/sim",
-                    "endpoint": "/plugins/simulate/toggle",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "skill_uuid": {"type": "string", "description": "Skill whose active vMCP to flip"}
-                        },
-                        "required": ["skill_uuid"],
-                    },
-                },
-                {
-                    "label": "Tear down",
-                    "endpoint": "/plugins/simulate/teardown",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "skill_uuid": {"type": "string", "description": "Skill whose simulation to tear down"}
-                        },
-                        "required": ["skill_uuid"],
-                    },
-                },
-            ],
-        }

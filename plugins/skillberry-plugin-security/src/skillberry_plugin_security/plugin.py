@@ -1,34 +1,36 @@
 """
 Skillberry Plugin Security - LLM-based security evaluation plugin.
-Uses llm-switchboard for LLM integration.
+
+Out-of-process plugin using the skillberry-plugin-sdk. Uses llm-switchboard for
+LLM integration.
 """
+
+from __future__ import annotations
 
 import os
 import logging
 import json
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_plugin_sdk import PluginLifecycleBase, on_event
 
 logger = logging.getLogger(__name__)
 
 
-class SkillberryPluginSecurity(PluginBase):
+class SkillberryPluginSecurity(PluginLifecycleBase):
     """Plugin for evaluating skills, tools, and snippets for security posture using LLM."""
 
-    def __init__(self):
-        super().__init__()
+    manifest_path = "manifest.yaml"
 
-        self._metadata = PluginMetadata(
-            name="Security Evaluator",
-            version="0.1.0",
-            description="Evaluate content security posture using LLM",
-            plugin_type=PluginType.EVALUATOR,
-        )
-
+    def __init__(self, manifest=None):
+        super().__init__(manifest=manifest)
         self.llm_client = None
         self._status_message = "Initializing..."
 
+    # ── lifecycle ────────────────────────────────────────────────────────────
+
+    async def on_start(self) -> None:
+        """Initialize the LLM client from env config."""
         try:
             from llm_switchboard import get_llm
 
@@ -40,7 +42,6 @@ class SkillberryPluginSecurity(PluginBase):
             LLMClientClass = get_llm(provider_name)
             self.llm_client = LLMClientClass(model_name=model_name)
             self._status_message = f"Ready (using {provider_name})"
-
             logger.info("LLM client initialized successfully")
 
         except ImportError:
@@ -50,61 +51,64 @@ class SkillberryPluginSecurity(PluginBase):
             self._status_message = f"Configuration error: {str(e)}"
             logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
 
-        self._register_event_handlers()
-
-    def _register_event_handlers(self) -> None:
-        """Register on_content_added handlers for automatic security evaluation on object creation."""
-        from skillberry_store.plugins.events import _event_handlers
-
-        for content_type in ("tool", "skill", "snippet"):
-            async def _handle_added(uuid: str, ct=content_type):
-                if not self.is_enabled() or self._store_api is None:
-                    return
-                try:
-                    await self.evaluate_security(uuid, ct)
-                except Exception as e:
-                    logger.error(
-                        f"Auto-security-evaluation failed for {ct} {uuid}: {e}", exc_info=True
-                    )
-                # For skills, also evaluate referenced tools and snippets.
-                # Import flows write tools/snippets directly without emitting per-object events.
-                if ct == "skill":
-                    try:
-                        skill_obj = self.store.get_skill(uuid)
-                    except Exception:
-                        skill_obj = None
-                    if skill_obj:
-                        for tool_uuid in skill_obj.get("tool_uuids") or []:
-                            try:
-                                await self.evaluate_security(tool_uuid, "tool")
-                            except Exception as e:
-                                logger.error(
-                                    f"Auto-security-evaluation failed for tool {tool_uuid}: {e}",
-                                    exc_info=True,
-                                )
-                        for snippet_uuid in skill_obj.get("snippet_uuids") or []:
-                            try:
-                                await self.evaluate_security(snippet_uuid, "snippet")
-                            except Exception as e:
-                                logger.error(
-                                    f"Auto-security-evaluation failed for snippet {snippet_uuid}: {e}",
-                                    exc_info=True,
-                                )
-
-            event_name = f"content_added:{content_type}"
-            if event_name not in _event_handlers:
-                _event_handlers[event_name] = []
-            _event_handlers[event_name].append(_handle_added)
-
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
-
-    def get_status_message(self) -> str:
-        return self._status_message
+    async def is_ready(self) -> Dict[str, Any]:
+        ready = self.llm_client is not None
+        return {
+            "ready": ready,
+            "status": self._status_message,
+            "missing_config": [] if ready else ["llm_client"],
+        }
 
     def is_enabled(self) -> bool:
         return self.llm_client is not None
+
+    # ── event handlers ───────────────────────────────────────────────────────
+
+    @on_event("content.tool.added")
+    async def on_tool_added(self, event) -> None:
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid:
+            return
+        await self._safe_evaluate(uuid, "tool")
+
+    @on_event("content.skill.added")
+    async def on_skill_added(self, event) -> None:
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid:
+            return
+        await self._safe_evaluate(uuid, "skill")
+
+        # For skills, also evaluate referenced tools and snippets.
+        # Import flows write tools/snippets directly without emitting per-object events.
+        try:
+            skill_obj = await self.store.get_skill(uuid)
+        except Exception:
+            skill_obj = None
+        if skill_obj:
+            for tool_uuid in skill_obj.get("tool_uuids") or []:
+                await self._safe_evaluate(tool_uuid, "tool")
+            for snippet_uuid in skill_obj.get("snippet_uuids") or []:
+                await self._safe_evaluate(snippet_uuid, "snippet")
+
+    @on_event("content.snippet.added")
+    async def on_snippet_added(self, event) -> None:
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid:
+            return
+        await self._safe_evaluate(uuid, "snippet")
+
+    async def _safe_evaluate(self, uuid: str, content_type: str) -> None:
+        if not self.is_enabled() or self._store is None:
+            return
+        try:
+            await self.evaluate_security(uuid, content_type)
+        except Exception as e:
+            logger.error(
+                f"Auto-security-evaluation failed for {content_type} {uuid}: {e}",
+                exc_info=True,
+            )
+
+    # ── helpers ──────────────────────────────────────────────────────────────
 
     def _strip_score_tags(self, tags: List[str]) -> List[str]:
         return [t for t in tags if not t.startswith("security-score:")]
@@ -144,15 +148,9 @@ class SkillberryPluginSecurity(PluginBase):
             if obj.get("dependencies"):
                 lines.append(f"Dependencies: {', '.join(obj['dependencies'])}")
 
-            module_name = obj.get("module_name")
-            if module_name and self._store_api is not None:
-                try:
-                    code = self.store.tools.read_file(
-                        obj["uuid"], module_name, raw_content=True
-                    )
-                    lines.append(f"\nCode ({module_name}):\n```\n{code}\n```")
-                except Exception as e:
-                    logger.info(f"Could not read code for tool {obj.get('uuid')}: {e}")
+            # NOTE: The in-process version fetched raw tool source code via
+            # self.store.tools.read_file(...). The SDK's StoreClient does not
+            # expose a raw-file read path yet; if/when it does, re-add here.
 
         elif content_type == "skill":
             tool_uuids = obj.get("tool_uuids") or []
@@ -198,11 +196,11 @@ class SkillberryPluginSecurity(PluginBase):
         }
 
         if content_type == "tool":
-            self.store.tools.write_dict(uuid, obj)
+            await self.store.update_tool(uuid, obj)
         elif content_type == "skill":
-            self.store.skills.write_dict(uuid, obj)
+            await self.store.update_skill(uuid, obj)
         elif content_type == "snippet":
-            self.store.snippets.write_dict(uuid, obj)
+            await self.store.update_snippet(uuid, obj)
 
     async def evaluate_security(self, uuid: str, content_type: str) -> Dict[str, Any]:
         """
@@ -222,15 +220,15 @@ class SkillberryPluginSecurity(PluginBase):
         """
         if not self.llm_client:
             raise RuntimeError("LLM client not initialized")
-        if self._store_api is None:
+        if self._store is None:
             raise RuntimeError("Store API not available")
 
         if content_type == "tool":
-            obj = self.store.get_tool(uuid)
+            obj = await self.store.get_tool(uuid)
         elif content_type == "skill":
-            obj = self.store.get_skill(uuid)
+            obj = await self.store.get_skill(uuid)
         elif content_type == "snippet":
-            obj = self.store.get_snippet(uuid)
+            obj = await self.store.get_snippet(uuid)
         else:
             raise ValueError(f"Unknown content_type: {content_type}")
 
@@ -280,12 +278,14 @@ Return ONLY the JSON object, no other text."""
 
         return evaluation
 
+    # ── router ───────────────────────────────────────────────────────────────
+
     def get_router(self):
         """Register plugin routes."""
         from fastapi import APIRouter, HTTPException
         from pydantic import BaseModel
 
-        router = APIRouter()
+        router = APIRouter(prefix=f"/plugins/{self.manifest.slug}", tags=[self.manifest.slug])
 
         class EvaluateRequest(BaseModel):
             uuid: str
@@ -319,34 +319,3 @@ Return ONLY the JSON object, no other text."""
                 raise HTTPException(status_code=500, detail=str(e))
 
         return router
-
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        return None
-
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return {
-            "icon": "ShieldAltIcon",
-            "color": "#E74C3C",
-            "actions": [
-                {
-                    "label": "Evaluate Security",
-                    "endpoint": "/api/plugins/security/evaluate",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "uuid": {
-                                "type": "string",
-                                "description": "UUID of the object to evaluate",
-                            },
-                            "content_type": {
-                                "type": "string",
-                                "enum": ["tool", "skill", "snippet"],
-                                "description": "Type of object to evaluate",
-                            },
-                        },
-                        "required": ["uuid", "content_type"],
-                    },
-                }
-            ],
-        }

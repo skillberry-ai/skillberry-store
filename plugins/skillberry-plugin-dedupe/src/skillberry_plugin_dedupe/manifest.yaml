@@ -1,0 +1,15 @@
+name: Content Dedupe
+slug: dedupe
+version: 0.1.0
+description: Detect and merge duplicate skills, tools, and snippets
+plugin_type: evaluator
+sdk_version: ^0.1
+has_api: true
+required_env:
+  - name: LLM_PROVIDER
+    description: LLM provider (e.g. openai.async)
+    required: true
+  - name: LLM_MODEL
+    description: LLM model name
+    required: false
+    default: gpt-4

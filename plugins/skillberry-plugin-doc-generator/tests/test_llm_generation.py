@@ -1,12 +1,11 @@
 """Tests for the LLM generation path: prompt building, JSON parsing, mode.
 
-No real LLM is contacted: the switchboard module is faked at import time (so the
-plugin builds a mock client, exactly like the security plugin's tests) and
-``generate_async`` is stubbed with an ``AsyncMock``.
+No real LLM is contacted: a mock client is assigned directly to ``plugin.llm_client``
+so ``generate_async`` can be stubbed with an ``AsyncMock``.
 """
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -21,13 +20,11 @@ from skillberry_plugin_doc_generator.plugin import SkillberryPluginDocGenerator
 
 
 def _make_plugin_with_mock_llm():
-    """Create a plugin instance with a mocked (enabled) LLM client."""
-    mock_client = MagicMock()
-    mock_llm_class = MagicMock(return_value=mock_client)
-    mock_module = MagicMock()
-    mock_module.get_llm.return_value = mock_llm_class
-    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
-        plugin = SkillberryPluginDocGenerator()
+    """Create a plugin with a mocked (enabled) LLM client bypassing on_start."""
+    plugin = SkillberryPluginDocGenerator()
+    plugin.llm_client = MagicMock()
+    plugin._backend = "mock:mock"
+    plugin._status_message = "Ready (using mock; review-before-apply)"
     return plugin
 
 

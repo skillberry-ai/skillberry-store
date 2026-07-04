@@ -1,0 +1,8 @@
+name: MCP Importer
+slug: mcp-importer
+version: 0.1.0
+description: Import tools from Model Context Protocol (MCP) servers
+plugin_type: importer
+sdk_version: ^0.1
+has_api: true
+required_env: []

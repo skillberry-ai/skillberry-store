@@ -9,11 +9,9 @@ description = "Skillberry Store plugin for importing tools from a customer MCP s
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "skillberry-plugin-sdk",
     "mcp>=1.4.1",
 ]
-
-[project.entry-points."skillberry_store.plugins"]
-mcp-importer = "skillberry_plugin_mcp_importer.plugin:SkillberryPluginMcpImporter"
 
 [project.optional-dependencies]
 dev = [
@@ -25,3 +23,6 @@ dev = [
 [tool.setuptools]
 packages = ["skillberry_plugin_mcp_importer"]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_mcp_importer = ["manifest.yaml"]

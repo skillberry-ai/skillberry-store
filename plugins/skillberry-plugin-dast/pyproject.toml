@@ -13,11 +13,9 @@ requires-python = ">=3.10"
 # does not run. `requests` is only for vMCP-twin reachability and is already a
 # store dependency.
 dependencies = [
+    "skillberry-plugin-sdk",
     "requests",
 ]
-
-[project.entry-points."skillberry_store.plugins"]
-dast = "skillberry_plugin_dast.plugin:SkillberryPluginDast"
 
 [project.optional-dependencies]
 # Pluggable input-generator engines (each optional; install one to enable
@@ -41,3 +39,6 @@ packages = [
     "skillberry_plugin_dast.engine.generators",
 ]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_dast = ["manifest.yaml"]

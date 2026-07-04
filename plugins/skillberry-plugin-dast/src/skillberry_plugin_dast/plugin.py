@@ -17,13 +17,15 @@ Mirrors the dependency-tracker plugin: on-demand only (no import hook),
 non-destructive, tolerant ``/scan`` endpoint, single generic-UI action.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
 import platform
 from typing import Any, Dict, List, Optional, Tuple
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_plugin_sdk import PluginLifecycleBase
 
 from .engine import (
     SHIM_SOURCE,
@@ -69,6 +71,20 @@ class _ExecTimeout(Exception):
     """Raised when a single bounded execution exceeds its time budget."""
 
 
+# Defined at module scope so pydantic's TypeAdapter can resolve the forward
+# reference (a class in a closure is not fully defined). Kept tolerant: the
+# store's generic action form may submit an empty body first, so we default
+# both fields and validate explicitly to return 400 (not 422).
+try:
+    from pydantic import BaseModel as _BaseModel
+
+    class _ScanRequest(_BaseModel):
+        object_type: str = "skill"
+        uuid: Optional[str] = None
+except Exception:  # pragma: no cover - pydantic is a hard runtime dep of FastAPI
+    _ScanRequest = None  # type: ignore[assignment]
+
+
 def _summary_message(block: Dict[str, Any]) -> str:
     """Plain-language result: how many calls were EXERCISED (executed) vs how
     many actual FINDINGS were surfaced, split by MCP and direct surfaces.
@@ -93,23 +109,35 @@ def _summary_message(block: Dict[str, Any]) -> str:
     )
 
 
-class SkillberryPluginDast(PluginBase):
+class SkillberryPluginDast(PluginLifecycleBase):
     """Dynamic security testing of a skill's entry points (detect-and-report)."""
 
-    def __init__(self):
-        super().__init__()
-        self._metadata = PluginMetadata(
-            name="DAST Scanner",
-            version=_PLUGIN_VERSION,
-            description=(
-                "Dynamically tests a skill: discovers its entry points, exercises "
-                "them with adversarial inputs, and reports observed effects (MCP, "
-                "network, subprocess, filesystem). Detect-and-report; on-demand."
-            ),
-            plugin_type=PluginType.EVALUATOR,
-        )
+    manifest_path = "manifest.yaml"
+
+    def __init__(self, manifest=None) -> None:
+        super().__init__(manifest=manifest)
+        # Read env-configurable knobs eagerly so tests that inspect them without
+        # calling on_start still see the expected values. on_start re-reads them
+        # in case the runtime env changed between construction and startup.
+        self._reload_env_knobs()
+        # NOTE: intentionally NO event handler — on-demand only.
+
+    # ── lifecycle ────────────────────────────────────────────────────────────
+
+    async def on_start(self) -> None:
+        # Re-read env at start so runtime overrides take effect.
+        self._reload_env_knobs()
+
+    async def is_ready(self) -> Dict[str, Any]:
+        enabled = self.is_enabled()
+        return {
+            "ready": enabled,
+            "missing_config": [] if enabled else ["input-generator-engine"],
+            "message": self.get_status_message(),
+        }
+
+    def _reload_env_knobs(self) -> None:
         self._live = bool(os.getenv(_LIVE_ENV))
-        # Small defaults so interactive scans finish fast; all env-overridable.
         # Per-entry-point execution timeout (seconds): a blocking tool must not
         # hang the whole scan. Override with DAST_EXEC_TIMEOUT.
         try:
@@ -132,13 +160,8 @@ class SkillberryPluginDast(PluginBase):
             )
         except ValueError:
             self._max_entry_points = _DEFAULT_MAX_ENTRY_POINTS
-        # NOTE: intentionally NO event handler — on-demand only.
 
     # ── status / enablement ──────────────────────────────────────────────────
-
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
 
     def is_enabled(self) -> bool:
         # Enabled only when the optional input-generator engine is installed,
@@ -160,45 +183,59 @@ class SkillberryPluginDast(PluginBase):
 
     # ── store -> engine inputs ────────────────────────────────────────────────
 
-    def _get_object(self, object_type: str, uuid: str) -> Optional[Dict[str, Any]]:
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
-        getter = {
-            "skill": self.store.get_skill,
-            "tool": self.store.get_tool,
-            "snippet": self.store.get_snippet,
-        }.get(object_type)
-        if getter is None:
-            raise ValueError(f"Unsupported object_type: {object_type!r}")
-        return getter(uuid)
+    async def _get_object(self, object_type: str, uuid: str) -> Optional[Dict[str, Any]]:
+        if object_type == "skill":
+            return await self.store.get_skill(uuid)
+        if object_type == "tool":
+            return await self.store.get_tool(uuid)
+        if object_type == "snippet":
+            return await self.store.get_snippet(uuid)
+        raise ValueError(f"Unsupported object_type: {object_type!r}")
 
-    def _collect_tools_and_blobs(
+    async def _read_tool_module_source(
+        self, tool: Dict[str, Any]
+    ) -> Optional[str]:
+        """Fetch a tool's module source via the store's ``GET /tools/{uuid}/module``.
+
+        Returns None if the tool has no module_name/uuid or if the endpoint
+        errors. The raw handler-read path (``self.store.tools.read_file(...)``)
+        is not available out-of-process.
+        """
+        module = tool.get("module_name")
+        uuid = tool.get("uuid")
+        if not module or not uuid:
+            return None
+        try:
+            source = await self.store.get(f"/tools/{uuid}/module")
+        except Exception as e:
+            logger.debug("dast: could not read tool module: %s", e)
+            return None
+        if source is None:
+            return None
+        return source if isinstance(source, str) else str(source)
+
+    async def _collect_tools_and_blobs(
         self, object_type: str, obj: Dict[str, Any]
     ) -> Tuple[List[Dict[str, Any]], List[Tuple[str, str]]]:
         """Return (tool_dicts, [(module_name, source)]) for discovery."""
         tools: List[Dict[str, Any]] = []
         blobs: List[Tuple[str, str]] = []
 
-        def _add_tool(tool: Dict[str, Any]) -> None:
+        async def _add_tool(tool: Dict[str, Any]) -> None:
             tools.append(tool)
+            src = await self._read_tool_module_source(tool)
             module = tool.get("module_name")
-            if module and self._store_api is not None:
-                try:
-                    src = self.store.tools.read_file(
-                        tool.get("uuid"), module, raw_content=True
-                    )
-                    blobs.append((module, src))
-                except Exception as e:
-                    logger.debug("dast: could not read tool module: %s", e)
+            if module and src is not None:
+                blobs.append((module, src))
 
         if object_type == "tool":
-            _add_tool(obj)
+            await _add_tool(obj)
         elif object_type == "skill":
             for tool_uuid in obj.get("tool_uuids") or []:
                 try:
-                    t = self.store.get_tool(tool_uuid)
+                    t = await self.store.get_tool(tool_uuid)
                     if t:
-                        _add_tool(t)
+                        await _add_tool(t)
                 except Exception as e:
                     logger.debug("dast: could not read child tool: %s", e)
         return tools, blobs
@@ -238,10 +275,11 @@ class SkillberryPluginDast(PluginBase):
             if not live:
                 return ({"return value": ""}, "")
 
+            # FileExecutor is a store-internal module; only available when the
+            # plugin runs alongside the store. Out-of-process live-mode is a
+            # future concern — kept behind the DAST_LIVE gate and never on the
+            # default (dry-run) path exercised by tests.
             from skillberry_store.modules.file_executor import FileExecutor
-
-            if self._store_api is None:
-                return ({"error": "store unavailable"}, "")
 
             target = self._resolve_execution_target(
                 ep, tools_by_name, module_to_source, module_to_tool
@@ -306,16 +344,17 @@ class SkillberryPluginDast(PluginBase):
         to the source) so FileExecutor can target them by name. Returns None when
         no source is available.
         """
-        # Tier-1: a registered tool — execute its own function as-is.
+        # Tier-1: a registered tool — execute its own function as-is. The source
+        # was already fetched during collection, so we look it up from
+        # module_to_source rather than re-issuing a store request here (the
+        # resolve step is sync — an async fetch here would ripple through the
+        # bounded-thread executor path). Raw handler-read paths are not
+        # available out-of-process.
         tool = tools_by_name.get(ep.name)
         if tool is not None and ep.kind == KIND_TOOL:
             module = tool.get("module_name")
-            try:
-                source = self.store.tools.read_file(
-                    tool.get("uuid"), module, raw_content=True
-                )
-            except Exception as e:
-                logger.debug("dast: read failed for tool %s: %s", ep.name, e)
+            source = module_to_source.get(module) if module else None
+            if source is None:
                 return None
             return (tool.get("name"), source, tool)
 
@@ -493,7 +532,7 @@ class SkillberryPluginDast(PluginBase):
         max_cases_per_entry: Optional[int] = None,
         max_entry_points: Optional[int] = None,
     ) -> Dict[str, Any]:
-        obj = self._get_object(object_type, uuid)
+        obj = await self._get_object(object_type, uuid)
         if not obj:
             raise ValueError(f"{object_type} {uuid} not found in store")
 
@@ -507,7 +546,7 @@ class SkillberryPluginDast(PluginBase):
 
         active_scope = scope.current_scope()
 
-        tools, blobs = self._collect_tools_and_blobs(object_type, obj)
+        tools, blobs = await self._collect_tools_and_blobs(object_type, obj)
         all_entry_points = discover_entry_points(tools, blobs)
         tools_by_name = {t.get("name"): t for t in tools if t.get("name")}
         # module_name -> source, and module_name -> owning tool dict (for
@@ -614,7 +653,7 @@ class SkillberryPluginDast(PluginBase):
                 f"capped at {max_entry_points} entry points; "
                 f"{truncated} not exercised"
             )
-        self._persist(object_type, uuid, block, report.summary_tags())
+        await self._persist(object_type, uuid, block, report.summary_tags())
         return {
             "object_type": object_type,
             "uuid": uuid,
@@ -624,27 +663,29 @@ class SkillberryPluginDast(PluginBase):
 
     # ── persistence ──────────────────────────────────────────────────────────
 
-    def _persist(
+    async def _persist(
         self, object_type: str, uuid: str, block: Dict[str, Any], tags: List[str]
     ) -> None:
-        obj = self._get_object(object_type, uuid)
+        obj = await self._get_object(object_type, uuid)
         if not obj:
             return
         if not isinstance(obj.get("extra"), dict):
             obj["extra"] = {}
         obj["extra"][_EXTRA_KEY] = block
         obj["tags"] = self._strip_dast_tags(obj.get("tags") or []) + tags
-        self._write_object(object_type, uuid, obj)
+        await self._write_object(object_type, uuid, obj)
 
-    def _write_object(self, object_type: str, uuid: str, obj: Dict[str, Any]) -> None:
-        writer = {
-            "skill": self.store.update_skill,
-            "tool": self.store.update_tool,
-            "snippet": self.store.update_snippet,
-        }.get(object_type)
-        if writer is None:
+    async def _write_object(
+        self, object_type: str, uuid: str, obj: Dict[str, Any]
+    ) -> None:
+        if object_type == "skill":
+            await self.store.update_skill(uuid, obj)
+        elif object_type == "tool":
+            await self.store.update_tool(uuid, obj)
+        elif object_type == "snippet":
+            await self.store.update_snippet(uuid, obj)
+        else:
             raise ValueError(f"Unsupported object_type: {object_type!r}")
-        writer(uuid, obj)
 
     @staticmethod
     def _strip_dast_tags(tags: List[str]) -> List[str]:
@@ -653,14 +694,9 @@ class SkillberryPluginDast(PluginBase):
     # ── plugin interface ──────────────────────────────────────────────────────
 
     def get_router(self):
-        from fastapi import APIRouter, HTTPException
-        from pydantic import BaseModel
+        from fastapi import APIRouter, Body, HTTPException
 
         router = APIRouter()
-
-        class ScanRequest(BaseModel):
-            object_type: str = "skill"
-            uuid: Optional[str] = None
 
         def _validate(object_type: str, uuid: Optional[str]) -> None:
             if object_type not in OBJECT_TYPES:
@@ -675,7 +711,9 @@ class SkillberryPluginDast(PluginBase):
                 raise HTTPException(status_code=400, detail="uuid is required")
 
         @router.post("/scan")
-        async def scan_endpoint(request: ScanRequest):
+        async def scan_endpoint(
+            request: _ScanRequest = Body(default_factory=_ScanRequest),
+        ):
             """Run a DAST scan over a skill's entry points (detect-and-report)."""
             if not self.is_enabled():
                 raise HTTPException(status_code=503, detail=self.get_status_message())
@@ -721,40 +759,3 @@ class SkillberryPluginDast(PluginBase):
             }
 
         return router
-
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        return None
-
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return {
-            "icon": "BugIcon",
-            "color": "#8A2BE2",
-            "actions": [
-                {
-                    "label": "Run DAST scan",
-                    "endpoint": "/api/plugins/dast/scan",
-                    "method": "POST",
-                    # While the POST is in flight, the UI polls this GET endpoint
-                    # (passing the `uuid` form value as a query param) and shows
-                    # its `label` field as a live status under the form.
-                    "status_endpoint": "/api/plugins/dast/scan-status",
-                    "status_param": "uuid",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "object_type": {
-                                "type": "string",
-                                "enum": list(OBJECT_TYPES),
-                                "default": "skill",
-                                "description": "Object type to scan (skill recommended)",
-                            },
-                            "uuid": {
-                                "type": "string",
-                                "description": "UUID of the object to scan",
-                            },
-                        },
-                        "required": ["object_type", "uuid"],
-                    },
-                }
-            ],
-        }

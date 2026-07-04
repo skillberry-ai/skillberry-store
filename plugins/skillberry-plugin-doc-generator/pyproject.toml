@@ -11,11 +11,9 @@ requires-python = ">=3.10"
 # Wired exactly like the security evaluator plugin: documentation is generated
 # by a frontier model via llm-switchboard, so it is a hard dependency.
 dependencies = [
+    "skillberry-plugin-sdk",
     "llm-switchboard[litellm]>=0.1.0",
 ]
-
-[project.entry-points."skillberry_store.plugins"]
-doc_generator = "skillberry_plugin_doc_generator.plugin:SkillberryPluginDocGenerator"
 
 [project.optional-dependencies]
 dev = [
@@ -28,3 +26,6 @@ dev = [
 [tool.setuptools]
 packages = ["skillberry_plugin_doc_generator"]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_doc_generator = ["manifest.yaml"]

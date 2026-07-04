@@ -425,8 +425,52 @@ export const pluginsApi = {
     return handleResponse<Plugin[]>(response);
   },
 
+  listAvailable: async (): Promise<any[]> => {
+    const response = await fetch(`${API_BASE}/plugins/available`);
+    return handleResponse<any[]>(response);
+  },
+
   get: async (name: string): Promise<Plugin> => {
     const response = await fetch(`${API_BASE}/plugins/${name}`);
+    return handleResponse<Plugin>(response);
+  },
+
+  install: async (
+    slug: string,
+    autostart: boolean = true,
+    envOverrides?: Record<string, string>
+  ): Promise<any> => {
+    const params = new URLSearchParams({ autostart: String(autostart) });
+    const response = await fetch(`${API_BASE}/plugins/${slug}/install?${params}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ env_overrides: envOverrides ?? null }),
+    });
+    return handleResponse<any>(response);
+  },
+
+  uninstall: async (slug: string): Promise<any> => {
+    const response = await fetch(`${API_BASE}/plugins/${slug}`, { method: 'DELETE' });
+    return handleResponse<any>(response);
+  },
+
+  start: async (slug: string): Promise<any> => {
+    const response = await fetch(`${API_BASE}/plugins/${slug}/start`, { method: 'POST' });
+    return handleResponse<any>(response);
+  },
+
+  stop: async (slug: string): Promise<any> => {
+    const response = await fetch(`${API_BASE}/plugins/${slug}/stop`, { method: 'POST' });
+    return handleResponse<any>(response);
+  },
+
+  restart: async (slug: string): Promise<any> => {
+    const response = await fetch(`${API_BASE}/plugins/${slug}/restart`, { method: 'POST' });
+    return handleResponse<any>(response);
+  },
+
+  getStatus: async (slug: string): Promise<Plugin> => {
+    const response = await fetch(`${API_BASE}/plugins/${slug}`);
     return handleResponse<Plugin>(response);
   },
 

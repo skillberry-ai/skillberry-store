@@ -10,10 +10,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 # requests is already a store dependency (used by the provenance plugin); it
 # powers the best-effort PyPI enrichment. Local resolution needs no deps.
-dependencies = ["requests"]
-
-[project.entry-points."skillberry_store.plugins"]
-dependency_tracker = "skillberry_plugin_dependency_tracker.plugin:SkillberryPluginDependencyTracker"
+dependencies = [
+    "skillberry-plugin-sdk",
+    "requests",
+]
 
 [project.optional-dependencies]
 # Robust PEP 440 version comparison for the "update available" signal; the
@@ -34,3 +34,6 @@ packages = [
     "skillberry_plugin_dependency_tracker.resolver",
 ]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_dependency_tracker = ["manifest.yaml"]

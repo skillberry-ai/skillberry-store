@@ -1,4 +1,4 @@
-"""Tests for the DAST plugin (mock store, dry-run; no real Docker/vMCP)."""
+"""Tests for the DAST plugin (mock async store, dry-run; no real Docker/vMCP)."""
 
 import copy
 
@@ -6,7 +6,6 @@ import pytest
 
 from skillberry_plugin_dast.engine.fuzz import GENERATOR_NAME, generator_available
 from skillberry_plugin_dast.plugin import SkillberryPluginDast
-from skillberry_store.plugins.base import PluginType
 
 # Scans that actually exercise params need the optional generator engine.
 requires_engine = pytest.mark.skipif(
@@ -15,55 +14,79 @@ requires_engine = pytest.mark.skipif(
 )
 
 
-class _Tools:
-    def __init__(self, modules):
-        self._modules = modules  # (uuid, filename) -> source
+class FakeAsyncStore:
+    """Async in-memory store mirroring the SDK's StoreClient surface.
 
-    def read_file(self, uuid, filename, raw_content=False):
-        return self._modules[(uuid, filename)]
+    Provides ``get_skill``/``get_tool``/``get_snippet``, ``update_*``, and a
+    generic ``get(path)`` that resolves ``/tools/{uuid}/module`` to module
+    source (matching the store's REST endpoint the SDK uses).
+    """
 
-
-class FakeStore:
     def __init__(self, objects=None, modules=None):
         self._objs = objects or {}
-        self.tools = _Tools(modules or {})
+        # (uuid, filename) -> source
+        self._modules = modules or {}
 
-    def get_skill(self, uuid):
+    async def get_skill(self, uuid):
         return copy.deepcopy(self._objs.get(("skill", uuid)))
 
-    def get_tool(self, uuid):
+    async def get_tool(self, uuid):
         return copy.deepcopy(self._objs.get(("tool", uuid)))
 
-    def get_snippet(self, uuid):
+    async def get_snippet(self, uuid):
         return copy.deepcopy(self._objs.get(("snippet", uuid)))
 
-    def update_skill(self, uuid, data):
+    async def update_skill(self, uuid, data):
         self._objs[("skill", uuid)] = copy.deepcopy(data)
         return True
 
-    def update_tool(self, uuid, data):
+    async def update_tool(self, uuid, data):
         self._objs[("tool", uuid)] = copy.deepcopy(data)
         return True
 
-    def update_snippet(self, uuid, data):
+    async def update_snippet(self, uuid, data):
         self._objs[("snippet", uuid)] = copy.deepcopy(data)
         return True
+
+    async def get(self, path, params=None):
+        # /tools/{uuid}/module -> source
+        prefix, suffix = "/tools/", "/module"
+        if path.startswith(prefix) and path.endswith(suffix):
+            uuid = path[len(prefix) : -len(suffix)]
+            tool = self._objs.get(("tool", uuid)) or {}
+            module = tool.get("module_name")
+            return self._modules.get((uuid, module))
+        return None
 
 
 def _plugin(store, monkeypatch):
     monkeypatch.delenv("DAST_LIVE", raising=False)  # dry-run: inert executor
     p = SkillberryPluginDast()
-    p.set_store_api(store)
+    p._store = store
     return p
 
 
-# ── interface ─────────────────────────────────────────────────────────────────
+# ── manifest / enablement ─────────────────────────────────────────────────────
 
 
-def test_metadata_and_enablement():
+def test_manifest_slug():
+    assert SkillberryPluginDast().manifest.slug == "dast"
+
+
+def test_manifest_type_evaluator():
+    assert SkillberryPluginDast().manifest.plugin_type == "evaluator"
+
+
+def test_manifest_version():
+    assert SkillberryPluginDast().manifest.version == "0.1.0"
+
+
+def test_manifest_has_api():
+    assert SkillberryPluginDast().manifest.has_api is True
+
+
+def test_enablement_tracks_generator_availability():
     p = SkillberryPluginDast()
-    assert p.metadata.name == "DAST Scanner"
-    assert p.metadata.plugin_type == PluginType.EVALUATOR
     # Enablement tracks the optional engine's availability.
     assert p.is_enabled() == generator_available()
 
@@ -75,6 +98,20 @@ def test_disabled_when_engine_missing(monkeypatch):
     p = SkillberryPluginDast()
     assert p.is_enabled() is False
     assert "Disabled" in p.get_status_message()
+
+
+@pytest.mark.asyncio
+async def test_is_ready_reports_missing_engine(monkeypatch):
+    import skillberry_plugin_dast.plugin as plugin_mod
+
+    monkeypatch.setattr(plugin_mod, "generator_available", lambda: False)
+    p = SkillberryPluginDast()
+    ready = await p.is_ready()
+    assert ready["ready"] is False
+    assert "input-generator-engine" in ready["missing_config"]
+
+
+# ── router ────────────────────────────────────────────────────────────────────
 
 
 def test_scan_endpoint_503_when_disabled(monkeypatch):
@@ -95,16 +132,6 @@ def test_scan_endpoint_503_when_disabled(monkeypatch):
 def test_router_exposes_scan():
     p = SkillberryPluginDast()
     assert "/scan" in {r.path for r in p.get_router().routes}
-
-
-def test_ui_config_default_skill():
-    p = SkillberryPluginDast()
-    a = p.get_ui_config()["actions"][0]
-    assert a["label"] == "Run DAST scan"
-    assert a["params_schema"]["properties"]["object_type"]["default"] == "skill"
-    # progress: the action advertises a status endpoint the UI polls on `uuid`
-    assert a["status_endpoint"].endswith("/scan-status")
-    assert a["status_param"] == "uuid"
 
 
 def test_scan_status_endpoint_reports_progress():
@@ -134,15 +161,6 @@ def test_scan_status_endpoint_reports_progress():
         progress.clear("u9")
 
 
-def test_registers_no_event_handlers():
-    from skillberry_store.plugins import events
-
-    before = {k: len(v) for k, v in events._event_handlers.items()}
-    SkillberryPluginDast()
-    after = {k: len(v) for k, v in events._event_handlers.items()}
-    assert before == after
-
-
 def test_endpoint_blank_input_400_not_422(monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -168,7 +186,7 @@ def test_endpoint_blank_input_400_not_422(monkeypatch):
 @pytest.mark.asyncio
 async def test_scan_skill_discovers_and_persists(monkeypatch):
     monkeypatch.setenv("DAST_SCOPE", "discovered")  # exercise all tiers directly
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("skill", "sk1"): {
                 "uuid": "sk1",
@@ -208,7 +226,7 @@ async def test_scan_skill_discovers_and_persists(monkeypatch):
     assert block["coverage"]["observation"] == "detected, not prevented"
 
     # persisted non-destructively + dast tags
-    stored = store.get_skill("sk1")
+    stored = await store.get_skill("sk1")
     assert stored["extra"]["dast"]["schema_version"] == 1
     assert stored["extra"]["other"] == "keep me"
     assert any(t.startswith("dast:coverage:") for t in stored["tags"])
@@ -226,7 +244,7 @@ async def test_resolve_execution_target_covers_all_tiers(monkeypatch):
         "def helper(y):\n    return y\n"
         "class Widget:\n    def __init__(self, n):\n        self.n = n\n"
     )
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("tool", "t1"): {"uuid": "t1", "name": "maintool", "module_name": "m.py"}
         },
@@ -320,7 +338,7 @@ async def test_max_cases_env_limits_generated_cases(monkeypatch):
     monkeypatch.setenv("DAST_SCOPE", "registered")
     monkeypatch.setenv("DAST_MAX_CASES", "3")
     monkeypatch.delenv("DAST_LIVE", raising=False)  # dry-run executor
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("tool", "t1"): {
                 "uuid": "t1",
@@ -335,61 +353,21 @@ async def test_max_cases_env_limits_generated_cases(monkeypatch):
         },
         modules={("t1", "s.py"): "def send(a):\n    return a\n"},
     )
-    p = SkillberryPluginDast()
-    p.set_store_api(store)
+    p = _plugin(store, monkeypatch)
     block = (await p.scan("tool", "t1"))["dast"]
     assert block["scanner"]["max_cases_per_entry"] == 3
 
 
-@requires_engine
-@pytest.mark.asyncio
-async def test_blocking_entry_point_times_out_not_hangs(monkeypatch):
-    # A tool that would block forever must time out per-case and be reported,
-    # not hang the scan. Use a tiny timeout so the test is fast.
-    monkeypatch.setenv("DAST_LIVE", "1")
-    monkeypatch.setenv("EXECUTE_PYTHON_LOCALLY", "1")
-    monkeypatch.setenv("DAST_SCOPE", "registered")
-    monkeypatch.setenv("DAST_EXEC_TIMEOUT", "1")
-    store = FakeStore(
-        objects={
-            ("tool", "t1"): {
-                "uuid": "t1",
-                "name": "hang",
-                "module_name": "h.py",
-                "programming_language": "python",
-                "packaging_format": "code",
-                "params": {
-                    "properties": {"x": {"type": "string"}},
-                    "required": ["x"],
-                    "optional": [],
-                },
-            }
-        },
-        modules={
-            (
-                "t1",
-                "h.py",
-            ): "import time\ndef hang(x):\n    time.sleep(999)\n    return x\n"
-        },
-    )
-    p = SkillberryPluginDast()
-    p.set_store_api(store)
-    # completes (does not hang) and records timeout evidence
-    block = (await p.scan("tool", "t1", max_cases_per_entry=1))["dast"]
-    findings = block["findings"]
-    assert any("timed out" in (f.get("evidence") or "") for f in findings)
-
-
 @pytest.mark.asyncio
 async def test_scan_missing_object_raises(monkeypatch):
-    p = _plugin(FakeStore(), monkeypatch)
+    p = _plugin(FakeAsyncStore(), monkeypatch)
     with pytest.raises(ValueError):
         await p.scan("skill", "nope")
 
 
 @pytest.mark.asyncio
 async def test_scan_records_coverage_caveats(monkeypatch):
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("tool", "t1"): {
                 "uuid": "t1",

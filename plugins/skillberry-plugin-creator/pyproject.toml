@@ -9,11 +9,9 @@ description = "Skillberry Store plugin for creating snippets using LLM"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "skillberry-plugin-sdk",
     "llm-switchboard[litellm]>=0.1.0",
 ]
-
-[project.entry-points."skillberry_store.plugins"]
-creator = "skillberry_plugin_creator.plugin:SkillberryPluginCreator"
 
 [project.optional-dependencies]
 dev = [
@@ -24,3 +22,6 @@ dev = [
 [tool.setuptools]
 packages = ["skillberry_plugin_creator"]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_creator = ["manifest.yaml"]

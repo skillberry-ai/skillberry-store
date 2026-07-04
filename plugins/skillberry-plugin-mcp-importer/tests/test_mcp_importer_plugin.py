@@ -1,42 +1,62 @@
 """Unit tests for SkillberryPluginMcpImporter — structural checks (no live MCP server)."""
 
+import uuid
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
 from skillberry_plugin_mcp_importer.plugin import SkillberryPluginMcpImporter
-from skillberry_store.plugins.base import PluginType
 
 
-# --- _hostname_from_url ---
+# ── URL helpers ──────────────────────────────────────────────────────────────
 
 def test_hostname_from_url_standard():
     assert SkillberryPluginMcpImporter._hostname_from_url("http://localhost:3001/sse") == "localhost"
 
+
 def test_hostname_from_url_no_port():
     assert SkillberryPluginMcpImporter._hostname_from_url("http://localhost/sse") == "localhost"
 
+
 def test_hostname_from_url_domain():
     assert SkillberryPluginMcpImporter._hostname_from_url("https://api.acme.com/mcp/sse") == "api.acme.com"
+
 
 def test_hostname_from_url_malformed():
     assert SkillberryPluginMcpImporter._hostname_from_url("not-a-url") == "mcp"
 
 
-def test_plugin_metadata():
+def test_skill_name_derived_from_url():
+    """_skill_name_from_url produces a clean name from various URL formats."""
+    P = SkillberryPluginMcpImporter
+    assert P._skill_name_from_url("http://localhost:3001/sse") == "localhost_3001_sse"
+    assert P._skill_name_from_url("http://my-server.example.com/sse") == "my_server_example_com_sse"
+    assert P._skill_name_from_url("http://127.0.0.1:9500/") == "127_0_0_1_9500"
+
+
+# ── Manifest ─────────────────────────────────────────────────────────────────
+
+def test_plugin_manifest_slug():
     plugin = SkillberryPluginMcpImporter()
-    meta = plugin.metadata
-    assert meta.name == "MCP Importer"
-    assert meta.plugin_type == PluginType.IMPORTER
-    assert meta.version == "0.1.0"
-    assert "mcp" in meta.description.lower() or "import" in meta.description.lower()
+    assert plugin.manifest.slug == "mcp-importer"
 
 
-def test_plugin_always_enabled():
+def test_plugin_manifest_type_importer():
     plugin = SkillberryPluginMcpImporter()
-    assert plugin.is_enabled() is True
+    assert plugin.manifest.plugin_type == "importer"
 
 
-def test_plugin_status_message():
+def test_plugin_manifest_version():
     plugin = SkillberryPluginMcpImporter()
-    assert plugin.get_status_message() == "Ready"
+    assert plugin.manifest.version == "0.1.0"
+
+
+def test_plugin_manifest_has_api():
+    plugin = SkillberryPluginMcpImporter()
+    assert plugin.manifest.has_api is True
 
 
 def test_plugin_provides_router():
@@ -47,61 +67,41 @@ def test_plugin_provides_router():
     assert any("import-tools" in path for path in route_paths)
 
 
-def test_plugin_no_cli_commands():
-    plugin = SkillberryPluginMcpImporter()
-    assert plugin.get_cli_commands() is None
-
-
-def test_plugin_provides_ui_config():
-    plugin = SkillberryPluginMcpImporter()
-    ui = plugin.get_ui_config()
-    assert ui is not None
-    assert "icon" in ui
-    assert "color" in ui
-    assert "actions" in ui
-    assert len(ui["actions"]) > 0
-    action = ui["actions"][0]
-    assert "mcp_url" in action["params_schema"]["properties"]
-    assert "mcp_url" in action["params_schema"]["required"]
-
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-import uuid
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock, patch
-
+# ── Test helpers ──────────────────────────────────────────────────────────────
 
 class _MockTool:
     """Minimal stand-in for mcp.types.Tool so vars() returns the right keys."""
+
     def __init__(self, name, description="", properties=None, required=None):
         self.name = name
         self.description = description
         self.inputSchema = {
             "type": "object",
-            "properties": properties or {
-                "message": {"type": "string", "description": "A message"}
-            },
+            "properties": properties
+            or {"message": {"type": "string", "description": "A message"}},
             "required": required or ["message"],
         }
 
 
-def _make_client(tools=None, create_tool_side_effect=None):
-    """Build a TestClient with the plugin mounted and its store API mocked."""
+def _make_client(tools=None, create_tool_side_effect=None, create_skill_return=None):
+    """Build a TestClient with the plugin mounted and its store writes mocked."""
     plugin = SkillberryPluginMcpImporter()
-    mock_store = MagicMock()
-    if create_tool_side_effect:
-        mock_store.create_tool.side_effect = create_tool_side_effect
+
+    async def _default_create_tool(data, module_content, module_filename):
+        return {"uuid": str(uuid.uuid4()), "name": data["name"]}
+
+    if create_tool_side_effect is not None:
+        plugin._create_tool = AsyncMock(side_effect=create_tool_side_effect)
     else:
-        def _create(data, module_content, module_filename):
-            return {"uuid": str(uuid.uuid4()), "name": data["name"]}
-        mock_store.create_tool.side_effect = _create
-    plugin.set_store_api(mock_store)
+        plugin._create_tool = AsyncMock(side_effect=_default_create_tool)
+
+    plugin._create_skill = AsyncMock(
+        return_value=create_skill_return or {"uuid": "s-uuid", "name": "auto-skill"}
+    )
 
     app = FastAPI()
     app.include_router(plugin.get_router(), prefix="/plugins/mcp-importer")
-    return TestClient(app), plugin, mock_store
+    return TestClient(app), plugin
 
 
 def _patch_mcp(tools):
@@ -123,7 +123,6 @@ def _patch_mcp(tools):
     mock_sse_cm.__aexit__ = AsyncMock(return_value=False)
     mock_sse_client = MagicMock(return_value=mock_sse_cm)
 
-    from contextlib import ExitStack
     stack = ExitStack()
     stack.enter_context(
         patch("skillberry_plugin_mcp_importer.plugin.sse_client", mock_sse_client)
@@ -134,72 +133,76 @@ def _patch_mcp(tools):
     return stack
 
 
-# --- tool tag generation ---
+# ── Tool tag generation ──────────────────────────────────────────────────────
 
 def test_tool_tags_include_mcp_and_hostname():
     tools = [_MockTool("tool_a")]
-    client, _, mock_store = _make_client(tools=tools)
+    client, plugin = _make_client(tools=tools)
     with _patch_mcp(tools):
         resp = client.post(
             "/plugins/mcp-importer/import-tools",
             json={"mcp_url": "http://mock-mcp:9500/sse", "create_skill": False},
         )
     assert resp.status_code == 200
-    data_arg = mock_store.create_tool.call_args.args[0]
+    data_arg = plugin._create_tool.call_args.args[0]
     assert "mcp" in data_arg["tags"]
     assert "mock-mcp" in data_arg["tags"]
 
 
 def test_tool_tags_include_skill_reference_when_skill_created():
     tools = [_MockTool("tool_b")]
-    client, _, mock_store = _make_client(tools=tools)
-    mock_store.create_skill.return_value = {"uuid": "s-uuid", "name": "mock-mcp_9500_sse"}
+    client, plugin = _make_client(
+        tools=tools,
+        create_skill_return={"uuid": "s-uuid", "name": "mock-mcp_9500_sse"},
+    )
     with _patch_mcp(tools):
         resp = client.post(
             "/plugins/mcp-importer/import-tools",
             json={"mcp_url": "http://mock-mcp:9500/sse", "create_skill": True},
         )
     assert resp.status_code == 200
-    data_arg = mock_store.create_tool.call_args.args[0]
+    data_arg = plugin._create_tool.call_args.args[0]
     assert "skill:mock_mcp_9500_sse" in data_arg["tags"]
 
 
 def test_tool_tags_no_skill_reference_when_skill_not_created():
     tools = [_MockTool("tool_c")]
-    client, _, mock_store = _make_client(tools=tools)
+    client, plugin = _make_client(tools=tools)
     with _patch_mcp(tools):
         resp = client.post(
             "/plugins/mcp-importer/import-tools",
             json={"mcp_url": "http://mock-mcp:9500/sse", "create_skill": False},
         )
     assert resp.status_code == 200
-    data_arg = mock_store.create_tool.call_args.args[0]
+    data_arg = plugin._create_tool.call_args.args[0]
     assert not any(t.startswith("skill:") for t in data_arg["tags"])
 
 
-# --- skill tag generation ---
+# ── Skill tag generation ─────────────────────────────────────────────────────
 
 def test_skill_tags_include_mcp_imported_and_hostname():
     tools = [_MockTool("tool_d")]
-    client, _, mock_store = _make_client(tools=tools)
-    mock_store.create_skill.return_value = {"uuid": "s-uuid", "name": "mock_mcp_9500_sse"}
+    client, plugin = _make_client(
+        tools=tools,
+        create_skill_return={"uuid": "s-uuid", "name": "mock_mcp_9500_sse"},
+    )
     with _patch_mcp(tools):
         resp = client.post(
             "/plugins/mcp-importer/import-tools",
             json={"mcp_url": "http://mock-mcp:9500/sse", "create_skill": True},
         )
     assert resp.status_code == 200
-    skill_data = mock_store.create_skill.call_args.args[0]
+    skill_data = plugin._create_skill.call_args.args[0]
     assert "mcp" in skill_data["tags"]
     assert "imported" in skill_data["tags"]
     assert "mock-mcp" in skill_data["tags"]
 
 
-# --- user-supplied tags merging ---
+# ── User-supplied tag merging ────────────────────────────────────────────────
 
 def test_user_tags_merged_into_tool_tags():
     tools = [_MockTool("tool_e")]
-    client, _, mock_store = _make_client(tools=tools)
+    client, plugin = _make_client(tools=tools)
     with _patch_mcp(tools):
         resp = client.post(
             "/plugins/mcp-importer/import-tools",
@@ -210,15 +213,17 @@ def test_user_tags_merged_into_tool_tags():
             },
         )
     assert resp.status_code == 200
-    data_arg = mock_store.create_tool.call_args.args[0]
+    data_arg = plugin._create_tool.call_args.args[0]
     assert "my-project" in data_arg["tags"]
     assert "prod" in data_arg["tags"]
 
 
 def test_user_tags_merged_into_skill_tags():
     tools = [_MockTool("tool_f")]
-    client, _, mock_store = _make_client(tools=tools)
-    mock_store.create_skill.return_value = {"uuid": "s-uuid", "name": "mock_mcp_9500_sse"}
+    client, plugin = _make_client(
+        tools=tools,
+        create_skill_return={"uuid": "s-uuid", "name": "mock_mcp_9500_sse"},
+    )
     with _patch_mcp(tools):
         resp = client.post(
             "/plugins/mcp-importer/import-tools",
@@ -229,13 +234,13 @@ def test_user_tags_merged_into_skill_tags():
             },
         )
     assert resp.status_code == 200
-    skill_data = mock_store.create_skill.call_args.args[0]
+    skill_data = plugin._create_skill.call_args.args[0]
     assert "team-alpha" in skill_data["tags"]
 
 
 def test_user_tags_deduped():
     tools = [_MockTool("tool_g")]
-    client, _, mock_store = _make_client(tools=tools)
+    client, plugin = _make_client(tools=tools)
     with _patch_mcp(tools):
         resp = client.post(
             "/plugins/mcp-importer/import-tools",
@@ -246,22 +251,22 @@ def test_user_tags_deduped():
             },
         )
     assert resp.status_code == 200
-    data_arg = mock_store.create_tool.call_args.args[0]
+    data_arg = plugin._create_tool.call_args.args[0]
     assert data_arg["tags"].count("mcp") == 1
     assert "unique-tag" in data_arg["tags"]
 
 
-# ── Validation tests ──────────────────────────────────────────────────────────
+# ── Validation tests ─────────────────────────────────────────────────────────
 
 def test_import_missing_url_returns_400():
-    client, _, _ = _make_client()
+    client, _ = _make_client()
     response = client.post("/plugins/mcp-importer/import-tools", json={"mcp_url": ""})
     assert response.status_code == 400
     assert "mcp_url" in response.json()["detail"].lower()
 
 
 def test_import_invalid_url_scheme_returns_400():
-    client, _, _ = _make_client()
+    client, _ = _make_client()
     response = client.post(
         "/plugins/mcp-importer/import-tools",
         json={"mcp_url": "ftp://some-server/sse"},
@@ -270,16 +275,16 @@ def test_import_invalid_url_scheme_returns_400():
     assert "http" in response.json()["detail"].lower()
 
 
-# ── Successful import tests ───────────────────────────────────────────────────
+# ── Successful import tests ──────────────────────────────────────────────────
 
 def test_import_creates_tools_for_each_mcp_tool():
     tools = [_MockTool("echo"), _MockTool("add_numbers")]
-    client, _, mock_store = _make_client(tools=tools)
+    client, plugin = _make_client(tools=tools)
 
     with _patch_mcp(tools):
         response = client.post(
             "/plugins/mcp-importer/import-tools",
-            json={"mcp_url": "http://mock-mcp/sse"},
+            json={"mcp_url": "http://mock-mcp/sse", "create_skill": False},
         )
 
     assert response.status_code == 200
@@ -290,8 +295,8 @@ def test_import_creates_tools_for_each_mcp_tool():
     names = {t["name"] for t in data["tools"]}
     assert names == {"echo", "add_numbers"}
 
-    assert mock_store.create_tool.call_count == 2
-    call_args_list = [c.args for c in mock_store.create_tool.call_args_list]
+    assert plugin._create_tool.await_count == 2
+    call_args_list = [c.args for c in plugin._create_tool.call_args_list]
     for args in call_args_list:
         data_arg = args[0]
         assert data_arg["packaging_format"] == "mcp"
@@ -302,17 +307,17 @@ def test_import_creates_tools_for_each_mcp_tool():
 def test_import_allows_duplicate_names():
     """Two calls with the same MCP server both succeed — store uses UUIDs, not names."""
     tools = [_MockTool("echo")]
-    client, _, mock_store = _make_client(tools=tools)
+    client, _ = _make_client(tools=tools)
 
     with _patch_mcp(tools):
         r1 = client.post(
             "/plugins/mcp-importer/import-tools",
-            json={"mcp_url": "http://mock-mcp/sse"},
+            json={"mcp_url": "http://mock-mcp/sse", "create_skill": False},
         )
     with _patch_mcp(tools):
         r2 = client.post(
             "/plugins/mcp-importer/import-tools",
-            json={"mcp_url": "http://mock-mcp/sse"},
+            json={"mcp_url": "http://mock-mcp/sse", "create_skill": False},
         )
 
     assert r1.status_code == 200
@@ -322,30 +327,21 @@ def test_import_allows_duplicate_names():
     assert uuid1 != uuid2   # each import produces a fresh UUID
 
 
-# ── Failure tests ─────────────────────────────────────────────────────────────
-
 def test_import_creates_skill_by_default():
     """When create_skill=True (default), a skill is created from the imported tools."""
     tools = [_MockTool("echo"), _MockTool("add_numbers")]
-    plugin = SkillberryPluginMcpImporter()
-    mock_store = MagicMock()
     imported_uuids = []
 
-    def _create_tool(data, module_content, module_filename):
+    async def _create_tool(data, module_content, module_filename):
         uid = str(uuid.uuid4())
         imported_uuids.append(uid)
         return {"uuid": uid, "name": data["name"]}
 
-    mock_store.create_tool.side_effect = _create_tool
-    mock_store.create_skill.return_value = {
-        "uuid": "skill-uuid-123",
-        "name": "localhost_9500_sse",
-    }
-    plugin.set_store_api(mock_store)
-
-    app = FastAPI()
-    app.include_router(plugin.get_router(), prefix="/plugins/mcp-importer")
-    client = TestClient(app)
+    client, plugin = _make_client(
+        tools=tools,
+        create_tool_side_effect=_create_tool,
+        create_skill_return={"uuid": "skill-uuid-123", "name": "localhost_9500_sse"},
+    )
 
     with _patch_mcp(tools):
         response = client.post(
@@ -359,15 +355,15 @@ def test_import_creates_skill_by_default():
     assert data["skill"] is not None
     assert data["skill"]["uuid"] == "skill-uuid-123"
     assert data["skill"]["name"] == "localhost_9500_sse"
-    mock_store.create_skill.assert_called_once()
-    call_data = mock_store.create_skill.call_args[0][0]
+    plugin._create_skill.assert_awaited_once()
+    call_data = plugin._create_skill.call_args[0][0]
     assert set(call_data["tool_uuids"]) == set(imported_uuids)
 
 
 def test_import_no_skill_when_create_skill_false():
     """When create_skill=False, no skill is created and skill is None in response."""
     tools = [_MockTool("echo")]
-    client, _, mock_store = _make_client(tools=tools)
+    client, plugin = _make_client(tools=tools)
 
     with _patch_mcp(tools):
         response = client.post(
@@ -377,21 +373,16 @@ def test_import_no_skill_when_create_skill_false():
 
     assert response.status_code == 200
     assert response.json()["skill"] is None
-    mock_store.create_skill.assert_not_called()
+    plugin._create_skill.assert_not_awaited()
 
 
 def test_import_custom_skill_name():
     """skill_name parameter overrides the auto-derived name."""
     tools = [_MockTool("echo")]
-    plugin = SkillberryPluginMcpImporter()
-    mock_store = MagicMock()
-    mock_store.create_tool.side_effect = lambda data, **kw: {"uuid": str(uuid.uuid4()), "name": data["name"]}
-    mock_store.create_skill.return_value = {"uuid": "s1", "name": "my_custom_skill"}
-    plugin.set_store_api(mock_store)
-
-    app = FastAPI()
-    app.include_router(plugin.get_router(), prefix="/plugins/mcp-importer")
-    client = TestClient(app)
+    client, plugin = _make_client(
+        tools=tools,
+        create_skill_return={"uuid": "s1", "name": "my_custom_skill"},
+    )
 
     with _patch_mcp(tools):
         response = client.post(
@@ -400,22 +391,16 @@ def test_import_custom_skill_name():
         )
 
     assert response.status_code == 200
-    call_data = mock_store.create_skill.call_args[0][0]
+    call_data = plugin._create_skill.call_args[0][0]
     assert call_data["name"] == "my_custom_skill"
 
 
-def test_skill_name_derived_from_url():
-    """_skill_name_from_url produces a clean name from various URL formats."""
-    from skillberry_plugin_mcp_importer.plugin import SkillberryPluginMcpImporter as P
-    assert P._skill_name_from_url("http://localhost:3001/sse") == "localhost_3001_sse"
-    assert P._skill_name_from_url("http://my-server.example.com/sse") == "my_server_example_com_sse"
-    assert P._skill_name_from_url("http://127.0.0.1:9500/") == "127_0_0_1_9500"
-
+# ── Failure tests ────────────────────────────────────────────────────────────
 
 def test_import_404_returns_502_with_sse_hint():
     """When the server returns 404, error message should mention the SSE endpoint path."""
     import httpx
-    client, _, _ = _make_client()
+    client, _ = _make_client()
     mock_sse_cm = MagicMock()
     # Simulate ExceptionGroup wrapping a 404 HTTPStatusError (Python 3.11+ anyio behaviour)
     status_error = httpx.HTTPStatusError(
@@ -444,7 +429,7 @@ def test_import_404_returns_502_with_sse_hint():
 
 
 def test_import_sse_connection_failure_returns_502():
-    client, _, _ = _make_client()
+    client, _ = _make_client()
     mock_sse_cm = MagicMock()
     mock_sse_cm.__aenter__ = AsyncMock(
         side_effect=ConnectionError("Connection refused")

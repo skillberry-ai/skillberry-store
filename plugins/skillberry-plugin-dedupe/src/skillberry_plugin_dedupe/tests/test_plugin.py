@@ -1,59 +1,90 @@
-"""Tests for SkillberryPluginDedupe."""
+"""Tests for SkillberryPluginDedupe (SDK-based)."""
 
-import json
+import asyncio
+import os
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from skillberry_store.plugins.base import PluginType
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from skillberry_plugin_dedupe.plugin import SkillberryPluginDedupe
+from skillberry_plugin_sdk.testing import dummy_event
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-def _make_plugin_with_mock_llm():
-    """Return a plugin instance with a mocked LLM client."""
-    mock_client = MagicMock()
-    mock_llm_class = MagicMock(return_value=mock_client)
-    mock_module = MagicMock()
-    mock_module.get_llm.return_value = mock_llm_class
-    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
-        from skillberry_plugin_dedupe.plugin import SkillberryPluginDedupe
-        plugin = SkillberryPluginDedupe()
-    return plugin
+def _install_llm(plugin: SkillberryPluginDedupe, *, working: bool = True) -> None:
+    """Simulate a completed on_start with a mocked LLM client on the plugin."""
+    if working:
+        plugin.llm_client = MagicMock()
+        plugin._status_message = "Ready (using mock)"
+    else:
+        plugin.llm_client = None
+        plugin._status_message = "LLM unavailable: test"
 
 
-def _make_plugin_disabled():
-    """Return a plugin instance where LLM is unavailable."""
-    mock_module = MagicMock()
-    mock_module.get_llm.side_effect = RuntimeError("LLM unavailable")
-    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
-        from skillberry_plugin_dedupe.plugin import SkillberryPluginDedupe
-        plugin = SkillberryPluginDedupe()
-    return plugin
-
-
-def _make_mock_store(skills=None):
-    mock_store = MagicMock()
-    mock_store.list_skills.return_value = skills or []
-    mock_store.get_skill.return_value = None
-    mock_store.update_skill_tags.return_value = True
-    mock_store.update_skill_metadata.return_value = True
-    return mock_store
-
-
-# ── metadata ─────────────────────────────────────────────────────────────────
-
-def test_plugin_metadata_name_and_type():
-    from skillberry_plugin_dedupe.plugin import SkillberryPluginDedupe
+def _make_plugin_with_mock_llm() -> SkillberryPluginDedupe:
     plugin = SkillberryPluginDedupe()
-    assert plugin.metadata.name == "Skill Deduplicator"
-    assert plugin.metadata.plugin_type == PluginType.EVALUATOR
-    assert plugin.metadata.version == "0.1.0"
+    _install_llm(plugin, working=True)
+    return plugin
+
+
+def _make_plugin_disabled() -> SkillberryPluginDedupe:
+    plugin = SkillberryPluginDedupe()
+    _install_llm(plugin, working=False)
+    return plugin
+
+
+def _make_async_store(skills=None):
+    """Return an AsyncMock StoreClient prepopulated with helpers used by tests."""
+    store = AsyncMock()
+    store.list_skills = AsyncMock(return_value=list(skills or []))
+    store.get_skill = AsyncMock(return_value=None)
+    store.update_skill_tags = AsyncMock(return_value=None)
+    store.update_skill = AsyncMock(return_value=None)
+    store._request = AsyncMock(return_value=None)
+    return store
+
+
+def _wire(plugin: SkillberryPluginDedupe, store) -> None:
+    plugin._store = store
+
+
+def _make_plugin_in_mode(mode: str) -> SkillberryPluginDedupe:
+    with patch.dict(os.environ, {"DEDUPE_MODE": mode}):
+        plugin = SkillberryPluginDedupe()
+    _install_llm(plugin, working=True)
+    return plugin
+
+
+# ── manifest / config ─────────────────────────────────────────────────────────
+
+def test_plugin_manifest_slug():
+    plugin = SkillberryPluginDedupe()
+    assert plugin.manifest.slug == "dedupe"
+
+
+def test_plugin_manifest_type_evaluator():
+    plugin = SkillberryPluginDedupe()
+    assert plugin.manifest.plugin_type == "evaluator"
+
+
+def test_plugin_manifest_version():
+    plugin = SkillberryPluginDedupe()
+    assert plugin.manifest.version == "0.1.0"
+
+
+def test_plugin_manifest_has_api():
+    plugin = SkillberryPluginDedupe()
+    assert plugin.manifest.has_api is True
 
 
 def test_plugin_disabled_when_llm_unavailable():
     plugin = _make_plugin_disabled()
     assert not plugin.is_enabled()
-    assert "llm" in plugin.get_status_message().lower() or "unavailable" in plugin.get_status_message().lower()
+    msg = plugin.get_status_message().lower()
+    assert "llm" in msg or "unavailable" in msg
 
 
 def test_plugin_enabled_when_llm_available():
@@ -66,119 +97,167 @@ def test_plugin_router_is_not_none():
     assert plugin.get_router() is not None
 
 
-def test_plugin_no_cli_commands():
-    plugin = _make_plugin_with_mock_llm()
-    assert plugin.get_cli_commands() is None
+# ── on_start LLM initialization ──────────────────────────────────────────────
 
-
-def test_plugin_ui_config_has_notifications():
-    plugin = _make_plugin_with_mock_llm()
-    assert plugin.get_ui_config() is not None
-    assert "notifications" in plugin.get_ui_config()
-
-
-# ── event handler registration ────────────────────────────────────────────────
-
-def test_event_handlers_registered_for_skill_added_and_updated():
-    from skillberry_store.plugins import events as events_module
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
-    try:
-        plugin = _make_plugin_with_mock_llm()
-        assert len(events_module._event_handlers.get("content_added:skill", [])) > 0
-        assert len(events_module._event_handlers.get("content_updated:skill", [])) > 0
-    finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
-
-
-def test_event_handlers_not_registered_for_tools_or_snippets():
-    from skillberry_store.plugins import events as events_module
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
-    try:
-        _make_plugin_with_mock_llm()
-        assert "content_added:tool" not in events_module._event_handlers
-        assert "content_added:snippet" not in events_module._event_handlers
-    finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
+@pytest.mark.asyncio
+async def test_on_start_initializes_llm_when_available():
+    mock_client = MagicMock()
+    mock_llm_class = MagicMock(return_value=mock_client)
+    mock_module = MagicMock()
+    mock_module.get_llm.return_value = mock_llm_class
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        plugin = SkillberryPluginDedupe()
+        await plugin.on_start()
+    assert plugin.is_enabled()
 
 
 @pytest.mark.asyncio
-async def test_event_handler_skipped_when_plugin_disabled():
-    from skillberry_store.plugins import events as events_module
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
-    try:
-        plugin = _make_plugin_disabled()
-        plugin.set_store_api(_make_mock_store())
-        handler = events_module._event_handlers.get("content_added:skill", [None])[0]
-        if handler:
-            await handler(uuid="any-uuid")  # must not raise
-    finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
+async def test_on_start_handles_missing_llm_switchboard():
+    # Force ImportError by removing llm_switchboard from sys.modules and blocking import
+    import builtins
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "llm_switchboard":
+            raise ImportError("simulated")
+        return real_import(name, *args, **kwargs)
+
+    with patch("builtins.__import__", side_effect=fake_import):
+        plugin = SkillberryPluginDedupe()
+        await plugin.on_start()
+    assert not plugin.is_enabled()
 
 
 @pytest.mark.asyncio
-async def test_event_handler_skipped_when_store_not_set():
-    from skillberry_store.plugins import events as events_module
-    saved = dict(events_module._event_handlers)
-    events_module._event_handlers.clear()
-    try:
-        _make_plugin_with_mock_llm()
-        handler = events_module._event_handlers["content_added:skill"][0]
-        await handler(uuid="any-uuid")  # must not raise — store not injected
-    finally:
-        events_module._event_handlers.clear()
-        events_module._event_handlers.update(saved)
+async def test_on_start_handles_llm_init_failure():
+    mock_module = MagicMock()
+    mock_module.get_llm.side_effect = RuntimeError("boom")
+    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
+        plugin = SkillberryPluginDedupe()
+        await plugin.on_start()
+    assert not plugin.is_enabled()
 
 
-# ── _get_candidate_skills ─────────────────────────────────────────────────────
+# ── is_ready ─────────────────────────────────────────────────────────────────
 
-def test_get_candidate_skills_excludes_trigger_skill():
+@pytest.mark.asyncio
+async def test_is_ready_true_when_llm_available():
     plugin = _make_plugin_with_mock_llm()
-    plugin.set_store_api(_make_mock_store(skills=[
+    result = await plugin.is_ready()
+    assert result["ready"] is True
+
+
+@pytest.mark.asyncio
+async def test_is_ready_false_when_llm_missing():
+    plugin = _make_plugin_disabled()
+    result = await plugin.is_ready()
+    assert result["ready"] is False
+    assert "LLM_PROVIDER" in result["missing_config"]
+
+
+# ── event handler wiring ─────────────────────────────────────────────────────
+
+def test_event_handler_registered_for_skill_added_and_updated():
+    from skillberry_plugin_sdk.decorators import get_event_handlers
+
+    plugin = _make_plugin_with_mock_llm()
+    handlers = get_event_handlers(plugin)
+    assert "content.skill.added" in handlers
+    assert "content.skill.updated" in handlers
+
+
+def test_no_event_handlers_for_tools_or_snippets():
+    from skillberry_plugin_sdk.decorators import get_event_handlers
+
+    plugin = _make_plugin_with_mock_llm()
+    handlers = get_event_handlers(plugin)
+    for topic in handlers:
+        assert "tool" not in topic
+        assert "snippet" not in topic
+
+
+@pytest.mark.asyncio
+async def test_on_skill_change_dispatches_check_for_duplicates():
+    plugin = _make_plugin_with_mock_llm()
+    store = _make_async_store()
+    _wire(plugin, store)
+    with patch.object(plugin, "_check_for_duplicates", new=AsyncMock()) as mock_check:
+        await plugin.on_skill_change(dummy_event("content.skill.added", {"uuid": "s-1"}))
+        mock_check.assert_awaited_once_with("s-1")
+
+
+@pytest.mark.asyncio
+async def test_on_skill_change_ignores_missing_uuid():
+    plugin = _make_plugin_with_mock_llm()
+    store = _make_async_store()
+    _wire(plugin, store)
+    with patch.object(plugin, "_check_for_duplicates", new=AsyncMock()) as mock_check:
+        await plugin.on_skill_change(dummy_event("content.skill.added", {}))
+        mock_check.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_on_skill_change_skipped_when_plugin_disabled():
+    plugin = _make_plugin_disabled()
+    store = _make_async_store()
+    _wire(plugin, store)
+    with patch.object(plugin, "_check_for_duplicates", new=AsyncMock()) as mock_check:
+        await plugin.on_skill_change(dummy_event("content.skill.added", {"uuid": "s-1"}))
+        mock_check.assert_not_awaited()
+
+
+# ── _get_candidate_skills ────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_candidate_skills_excludes_trigger_skill():
+    plugin = _make_plugin_with_mock_llm()
+    store = _make_async_store(skills=[
         {"uuid": "s-trigger", "name": "trigger", "description": "d", "tags": []},
         {"uuid": "s-other", "name": "other", "description": "d", "tags": []},
-    ]))
-    candidates = plugin._get_candidate_skills("s-trigger")
+    ])
+    _wire(plugin, store)
+    candidates = await plugin._get_candidate_skills("s-trigger")
     uuids = [c["uuid"] for c in candidates]
     assert "s-trigger" not in uuids
     assert "s-other" in uuids
 
 
-def test_get_candidate_skills_excludes_skills_tagged_as_duplicates():
+@pytest.mark.asyncio
+async def test_get_candidate_skills_excludes_skills_tagged_as_duplicates():
     plugin = _make_plugin_with_mock_llm()
-    plugin.set_store_api(_make_mock_store(skills=[
+    store = _make_async_store(skills=[
         {"uuid": "s-orig", "name": "original", "description": "d", "tags": []},
         {"uuid": "s-dup", "name": "dup", "description": "d", "tags": ["duplicate:original"]},
-    ]))
-    candidates = plugin._get_candidate_skills("s-new")
+    ])
+    _wire(plugin, store)
+    candidates = await plugin._get_candidate_skills("s-new")
     uuids = [c["uuid"] for c in candidates]
     assert "s-orig" in uuids
     assert "s-dup" not in uuids
 
 
-def test_get_candidate_skills_returns_empty_when_only_trigger_exists():
+@pytest.mark.asyncio
+async def test_get_candidate_skills_returns_empty_when_only_trigger_exists():
     plugin = _make_plugin_with_mock_llm()
-    plugin.set_store_api(_make_mock_store(skills=[
+    store = _make_async_store(skills=[
         {"uuid": "s-1", "name": "only", "description": "d", "tags": []},
-    ]))
-    assert plugin._get_candidate_skills("s-1") == []
+    ])
+    _wire(plugin, store)
+    assert await plugin._get_candidate_skills("s-1") == []
 
 
-def test_get_candidate_skills_returns_empty_when_all_are_duplicates():
+@pytest.mark.asyncio
+async def test_get_candidate_skills_returns_empty_when_all_are_duplicates():
     plugin = _make_plugin_with_mock_llm()
-    plugin.set_store_api(_make_mock_store(skills=[
+    store = _make_async_store(skills=[
         {"uuid": "s-dup1", "tags": ["duplicate:x"]},
         {"uuid": "s-dup2", "tags": ["duplicate:y", "python"]},
-    ]))
-    assert plugin._get_candidate_skills("s-new") == []
+    ])
+    _wire(plugin, store)
+    assert await plugin._get_candidate_skills("s-new") == []
 
 
-# ── _build_prompt ─────────────────────────────────────────────────────────────
+# ── _build_prompt ────────────────────────────────────────────────────────────
 
 def test_build_prompt_contains_trigger_skill_name_and_description():
     plugin = _make_plugin_with_mock_llm()
@@ -213,7 +292,7 @@ def test_build_prompt_requests_json_array_output():
     assert "[]" in prompt or "empty" in prompt.lower()
 
 
-# ── _parse_llm_response ───────────────────────────────────────────────────────
+# ── _parse_llm_response ──────────────────────────────────────────────────────
 
 def test_parse_llm_response_valid_json_with_duplicates():
     plugin = _make_plugin_with_mock_llm()
@@ -261,49 +340,49 @@ def test_parse_llm_response_skips_entries_missing_name_or_reason():
     assert findings[0]["name"] == "ok"
 
 
-# ── _apply_duplicate_findings ─────────────────────────────────────────────────
+# ── _apply_duplicate_findings ────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_apply_duplicate_findings_writes_tags():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    mock_store.get_skill.return_value = {"uuid": "s-1", "extra": {}, "tags": []}
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    store.get_skill = AsyncMock(return_value={"uuid": "s-1", "extra": {}, "tags": []})
+    _wire(plugin, store)
 
     await plugin._apply_duplicate_findings("s-1", [{"name": "skill-x", "reason": "same"}])
 
-    mock_store.update_skill_tags.assert_called_once_with("s-1", ["duplicate:skill-x"])
+    store.update_skill_tags.assert_awaited_once_with("s-1", ["duplicate:skill-x"])
 
 
 @pytest.mark.asyncio
 async def test_apply_duplicate_findings_writes_duplicate_analysis_to_extra():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    mock_store.get_skill.return_value = {"uuid": "s-1", "extra": {}, "tags": []}
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    store.get_skill = AsyncMock(return_value={"uuid": "s-1", "extra": {}, "tags": []})
+    _wire(plugin, store)
 
     await plugin._apply_duplicate_findings("s-1", [{"name": "skill-x", "reason": "same thing"}])
 
-    mock_store.update_skill_metadata.assert_called_once_with(
-        "s-1", {"duplicate_analysis": {"skill-x": "same thing"}}
-    )
+    store.update_skill.assert_awaited_once()
+    written = store.update_skill.call_args[0][1]
+    assert written["extra"]["duplicate_analysis"] == {"skill-x": "same thing"}
 
 
 @pytest.mark.asyncio
 async def test_apply_duplicate_findings_preserves_existing_analysis():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    mock_store.get_skill.return_value = {
+    store = _make_async_store()
+    store.get_skill = AsyncMock(return_value={
         "uuid": "s-1",
         "extra": {"duplicate_analysis": {"skill-old": "old reason"}},
         "tags": [],
-    }
-    plugin.set_store_api(mock_store)
+    })
+    _wire(plugin, store)
 
     await plugin._apply_duplicate_findings("s-1", [{"name": "skill-new", "reason": "new reason"}])
 
-    call_args = mock_store.update_skill_metadata.call_args[0]
-    analysis = call_args[1]["duplicate_analysis"]
+    written = store.update_skill.call_args[0][1]
+    analysis = written["extra"]["duplicate_analysis"]
     assert analysis["skill-old"] == "old reason"
     assert analysis["skill-new"] == "new reason"
 
@@ -311,9 +390,9 @@ async def test_apply_duplicate_findings_preserves_existing_analysis():
 @pytest.mark.asyncio
 async def test_apply_duplicate_findings_multiple_findings():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    mock_store.get_skill.return_value = {"uuid": "s-1", "extra": {}, "tags": []}
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    store.get_skill = AsyncMock(return_value={"uuid": "s-1", "extra": {}, "tags": []})
+    _wire(plugin, store)
 
     findings = [
         {"name": "skill-a", "reason": "reason a"},
@@ -321,11 +400,11 @@ async def test_apply_duplicate_findings_multiple_findings():
     ]
     await plugin._apply_duplicate_findings("s-1", findings)
 
-    mock_store.update_skill_tags.assert_called_once_with(
+    store.update_skill_tags.assert_awaited_once_with(
         "s-1", ["duplicate:skill-a", "duplicate:skill-b"]
     )
-    call_args = mock_store.update_skill_metadata.call_args[0]
-    analysis = call_args[1]["duplicate_analysis"]
+    written = store.update_skill.call_args[0][1]
+    analysis = written["extra"]["duplicate_analysis"]
     assert analysis["skill-a"] == "reason a"
     assert analysis["skill-b"] == "reason b"
 
@@ -333,16 +412,16 @@ async def test_apply_duplicate_findings_multiple_findings():
 @pytest.mark.asyncio
 async def test_apply_duplicate_findings_no_op_when_empty():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    _wire(plugin, store)
 
     await plugin._apply_duplicate_findings("s-1", [])
 
-    mock_store.update_skill_tags.assert_not_called()
-    mock_store.update_skill_metadata.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
+    store.update_skill.assert_not_awaited()
 
 
-# ── _check_for_duplicates ─────────────────────────────────────────────────────
+# ── _check_for_duplicates ────────────────────────────────────────────────────
 
 def _skill(uuid, name, description, tags=None):
     return {"uuid": uuid, "name": name, "description": description, "tags": tags or [], "extra": {}}
@@ -351,9 +430,9 @@ def _skill(uuid, name, description, tags=None):
 @pytest.mark.asyncio
 async def test_check_for_duplicates_skips_when_skill_not_found():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    mock_store.get_skill.return_value = None
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    store.get_skill = AsyncMock(return_value=None)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock()
 
     await plugin._check_for_duplicates("missing-uuid")
@@ -364,9 +443,9 @@ async def test_check_for_duplicates_skips_when_skill_not_found():
 @pytest.mark.asyncio
 async def test_check_for_duplicates_skips_when_description_too_short():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    mock_store.get_skill.return_value = _skill("s-1", "x", "short")
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    store.get_skill = AsyncMock(return_value=_skill("s-1", "x", "short"))
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock()
 
     await plugin._check_for_duplicates("s-1")
@@ -377,11 +456,10 @@ async def test_check_for_duplicates_skips_when_description_too_short():
 @pytest.mark.asyncio
 async def test_check_for_duplicates_skips_when_no_candidates():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store(skills=[
-        _skill("s-1", "only skill", "this is a sufficiently long description here"),
-    ])
-    mock_store.get_skill.return_value = _skill("s-1", "only skill", "this is a sufficiently long description here")
-    plugin.set_store_api(mock_store)
+    trigger = _skill("s-1", "only skill", "this is a sufficiently long description here")
+    store = _make_async_store(skills=[trigger])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock()
 
     await plugin._check_for_duplicates("s-1")
@@ -394,15 +472,15 @@ async def test_check_for_duplicates_no_op_when_llm_returns_empty_array():
     plugin = _make_plugin_with_mock_llm()
     trigger = _skill("s-new", "skill", "a sufficiently long description for testing")
     candidate = _skill("s-old", "other", "completely different capability for testing")
-    mock_store = _make_mock_store(skills=[trigger, candidate])
-    mock_store.get_skill.return_value = trigger
-    plugin.set_store_api(mock_store)
+    store = _make_async_store(skills=[trigger, candidate])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock(return_value="[]")
 
     await plugin._check_for_duplicates("s-new")
 
-    mock_store.update_skill_tags.assert_not_called()
-    mock_store.update_skill_metadata.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
+    store.update_skill.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -410,16 +488,16 @@ async def test_check_for_duplicates_tags_skill_when_duplicate_found():
     plugin = _make_plugin_with_mock_llm()
     trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
     candidate = _skill("s-old", "search tool", "performs web searches and returns ranked results")
-    mock_store = _make_mock_store(skills=[trigger, candidate])
-    mock_store.get_skill.return_value = trigger
-    plugin.set_store_api(mock_store)
+    store = _make_async_store(skills=[trigger, candidate])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock(
         return_value='[{"name": "search tool", "reason": "Both describe web search with ranked results"}]'
     )
 
     await plugin._check_for_duplicates("s-new")
 
-    mock_store.update_skill_tags.assert_called_once_with("s-new", ["duplicate:search tool"])
+    store.update_skill_tags.assert_awaited_once_with("s-new", ["duplicate:search tool"])
 
 
 @pytest.mark.asyncio
@@ -428,16 +506,16 @@ async def test_check_for_duplicates_multiple_duplicates_all_tagged():
     trigger = _skill("s-new", "searcher", "searches the web and returns ranked results for any query")
     cand_a = _skill("s-a", "web search", "queries web and returns ranked results for a given input")
     cand_b = _skill("s-b", "search api", "performs web queries returning relevance-ranked results")
-    mock_store = _make_mock_store(skills=[trigger, cand_a, cand_b])
-    mock_store.get_skill.return_value = trigger
-    plugin.set_store_api(mock_store)
+    store = _make_async_store(skills=[trigger, cand_a, cand_b])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock(
         return_value='[{"name": "web search", "reason": "same"}, {"name": "search api", "reason": "same"}]'
     )
 
     await plugin._check_for_duplicates("s-new")
 
-    call_tags = mock_store.update_skill_tags.call_args[0][1]
+    call_tags = store.update_skill_tags.call_args[0][1]
     assert "duplicate:web search" in call_tags
     assert "duplicate:search api" in call_tags
 
@@ -447,14 +525,14 @@ async def test_check_for_duplicates_logs_error_on_llm_failure():
     plugin = _make_plugin_with_mock_llm()
     trigger = _skill("s-new", "skill", "a sufficiently long description for testing purposes")
     candidate = _skill("s-old", "other", "another sufficiently long description for comparison")
-    mock_store = _make_mock_store(skills=[trigger, candidate])
-    mock_store.get_skill.return_value = trigger
-    plugin.set_store_api(mock_store)
+    store = _make_async_store(skills=[trigger, candidate])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock(side_effect=RuntimeError("API error"))
 
     await plugin._check_for_duplicates("s-new")  # must not raise
 
-    mock_store.update_skill_tags.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -462,36 +540,20 @@ async def test_check_for_duplicates_logs_error_on_parse_failure():
     plugin = _make_plugin_with_mock_llm()
     trigger = _skill("s-new", "skill", "a sufficiently long description for testing purposes")
     candidate = _skill("s-old", "other", "another sufficiently long description for comparison")
-    mock_store = _make_mock_store(skills=[trigger, candidate])
-    mock_store.get_skill.return_value = trigger
-    plugin.set_store_api(mock_store)
+    store = _make_async_store(skills=[trigger, candidate])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock(return_value="not valid json at all")
 
     await plugin._check_for_duplicates("s-new")  # must not raise
 
-    mock_store.update_skill_tags.assert_not_called()
+    store.update_skill_tags.assert_not_awaited()
 
 
-import os
-
-
-def _make_plugin_in_mode(mode: str):
-    """Return a plugin with a mocked LLM client and the given DEDUPE_MODE."""
-    mock_client = MagicMock()
-    mock_llm_class = MagicMock(return_value=mock_client)
-    mock_module = MagicMock()
-    mock_module.get_llm.return_value = mock_llm_class
-    with patch.dict("sys.modules", {"llm_switchboard": mock_module}):
-        with patch.dict(os.environ, {"DEDUPE_MODE": mode}):
-            from skillberry_plugin_dedupe.plugin import SkillberryPluginDedupe
-            plugin = SkillberryPluginDedupe()
-    return plugin
-
-
-# ── mode ─────────────────────────────────────────────────────────────────────
+# ── DEDUPE_MODE ──────────────────────────────────────────────────────────────
 
 def test_plugin_defaults_to_interactive_mode():
-    with patch.dict(os.environ, {}, clear=True):
+    with patch.dict(os.environ, {}, clear=False):
         os.environ.pop("DEDUPE_MODE", None)
         plugin = _make_plugin_with_mock_llm()
     assert plugin._mode == "interactive"
@@ -508,43 +570,16 @@ def test_plugin_has_pending_decisions_dict():
     assert len(plugin._pending_decisions) == 0
 
 
-# ── get_ui_config ─────────────────────────────────────────────────────────────
-
-def test_get_ui_config_returns_notifications_config():
-    plugin = _make_plugin_with_mock_llm()
-    config = plugin.get_ui_config()
-    assert config is not None
-    assert "notifications" in config
-    notifications = config["notifications"]
-    assert "poll_endpoint" in notifications
-    assert "/decisions" in notifications["poll_endpoint"]
-
-
-def test_get_ui_config_notifications_has_keep_and_delete_actions():
-    plugin = _make_plugin_with_mock_llm()
-    actions = plugin.get_ui_config()["notifications"]["item_schema"]["actions"]
-    labels = [a["label"] for a in actions]
-    assert "Keep" in labels
-    assert "Delete" in labels
-
-
-def test_get_ui_config_notifications_item_schema_has_required_fields():
-    plugin = _make_plugin_with_mock_llm()
-    schema = plugin.get_ui_config()["notifications"]["item_schema"]
-    assert schema["title_field"] == "skill_name"
-    assert "duplicates" in schema["body_fields"]
-
-
-# ── _check_for_duplicates — interactive mode ──────────────────────────────────
+# ── _check_for_duplicates — interactive vs non_blocking ──────────────────────
 
 @pytest.mark.asyncio
 async def test_check_for_duplicates_creates_pending_decision_in_interactive_mode():
     plugin = _make_plugin_in_mode("interactive")
     trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
     candidate = _skill("s-old", "search tool", "performs web searches and returns ranked results")
-    mock_store = _make_mock_store(skills=[trigger, candidate])
-    mock_store.get_skill.return_value = trigger
-    plugin.set_store_api(mock_store)
+    store = _make_async_store(skills=[trigger, candidate])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock(
         return_value='[{"name": "search tool", "reason": "Both describe web search"}]'
     )
@@ -565,9 +600,9 @@ async def test_check_for_duplicates_does_not_create_pending_decision_in_non_bloc
     plugin = _make_plugin_in_mode("non_blocking")
     trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
     candidate = _skill("s-old", "search tool", "performs web searches and returns ranked results")
-    mock_store = _make_mock_store(skills=[trigger, candidate])
-    mock_store.get_skill.return_value = trigger
-    plugin.set_store_api(mock_store)
+    store = _make_async_store(skills=[trigger, candidate])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock(
         return_value='[{"name": "search tool", "reason": "Both describe web search"}]'
     )
@@ -583,16 +618,16 @@ async def test_check_for_duplicates_tags_skill_in_both_modes():
         plugin = _make_plugin_in_mode(mode)
         trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
         candidate = _skill("s-old", "search tool", "performs web searches and returns ranked results")
-        mock_store = _make_mock_store(skills=[trigger, candidate])
-        mock_store.get_skill.return_value = trigger
-        plugin.set_store_api(mock_store)
+        store = _make_async_store(skills=[trigger, candidate])
+        store.get_skill = AsyncMock(return_value=trigger)
+        _wire(plugin, store)
         plugin.llm_client.generate_async = AsyncMock(
             return_value='[{"name": "search tool", "reason": "Both describe web search"}]'
         )
 
         await plugin._check_for_duplicates("s-new")
 
-        mock_store.update_skill_tags.assert_called_with("s-new", ["duplicate:search tool"])
+        store.update_skill_tags.assert_awaited_with("s-new", ["duplicate:search tool"])
 
 
 @pytest.mark.asyncio
@@ -600,9 +635,9 @@ async def test_check_for_duplicates_no_pending_decision_when_no_duplicates_found
     plugin = _make_plugin_in_mode("interactive")
     trigger = _skill("s-new", "web searcher", "searches the web and returns ranked results for any query")
     candidate = _skill("s-old", "other skill", "completely unrelated capability for managing files")
-    mock_store = _make_mock_store(skills=[trigger, candidate])
-    mock_store.get_skill.return_value = trigger
-    plugin.set_store_api(mock_store)
+    store = _make_async_store(skills=[trigger, candidate])
+    store.get_skill = AsyncMock(return_value=trigger)
+    _wire(plugin, store)
     plugin.llm_client.generate_async = AsyncMock(return_value="[]")
 
     await plugin._check_for_duplicates("s-new")
@@ -610,19 +645,14 @@ async def test_check_for_duplicates_no_pending_decision_when_no_duplicates_found
     assert "s-new" not in plugin._pending_decisions
 
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
+# ── HTTP router ──────────────────────────────────────────────────────────────
 
 def _make_router_client(plugin) -> TestClient:
-    """Mount the plugin's router on a bare FastAPI app for endpoint testing."""
     app = FastAPI()
     router = plugin.get_router()
     app.include_router(router)
     return TestClient(app)
 
-
-# ── GET /decisions ────────────────────────────────────────────────────────────
 
 def test_get_decisions_returns_empty_list_when_none_pending():
     plugin = _make_plugin_with_mock_llm()
@@ -649,8 +679,6 @@ def test_get_decisions_returns_pending_decisions():
     assert data[0]["skill_name"] == "My Skill"
 
 
-# ── POST /decisions/{uuid}/keep ───────────────────────────────────────────────
-
 def test_keep_decision_removes_it_from_pending():
     plugin = _make_plugin_with_mock_llm()
     plugin._pending_decisions["s-1"] = {
@@ -673,13 +701,10 @@ def test_keep_decision_returns_404_for_unknown_uuid():
     assert response.status_code == 404
 
 
-# ── POST /decisions/{uuid}/delete ─────────────────────────────────────────────
-
 def test_delete_decision_calls_store_delete_and_removes_pending():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    mock_store.delete_skill = MagicMock(return_value=True)
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    _wire(plugin, store)
     plugin._pending_decisions["s-2"] = {
         "uuid": "s-2",
         "skill_name": "Duplicate Skill",
@@ -689,15 +714,15 @@ def test_delete_decision_calls_store_delete_and_removes_pending():
     client = _make_router_client(plugin)
     response = client.post("/decisions/s-2/delete")
     assert response.status_code == 200
-    mock_store.delete_skill.assert_called_once_with("s-2")
+    store._request.assert_awaited_once_with("DELETE", "/skills/s-2")
     assert "s-2" not in plugin._pending_decisions
     assert "deleted" in response.json()["message"].lower()
 
 
 def test_delete_decision_returns_404_for_unknown_uuid():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    _wire(plugin, store)
     client = _make_router_client(plugin)
     response = client.post("/decisions/nonexistent/delete")
     assert response.status_code == 404
@@ -705,9 +730,9 @@ def test_delete_decision_returns_404_for_unknown_uuid():
 
 def test_delete_decision_removes_pending_even_when_store_delete_fails():
     plugin = _make_plugin_with_mock_llm()
-    mock_store = _make_mock_store()
-    mock_store.delete_skill = MagicMock(return_value=False)
-    plugin.set_store_api(mock_store)
+    store = _make_async_store()
+    store._request = AsyncMock(side_effect=RuntimeError("boom"))
+    _wire(plugin, store)
     plugin._pending_decisions["s-3"] = {
         "uuid": "s-3",
         "skill_name": "Some Skill",
@@ -718,3 +743,12 @@ def test_delete_decision_removes_pending_even_when_store_delete_fails():
     response = client.post("/decisions/s-3/delete")
     assert response.status_code == 200
     assert "s-3" not in plugin._pending_decisions
+
+
+# ── UI config (via manifest) ─────────────────────────────────────────────────
+
+def test_manifest_can_carry_ui_config():
+    """UI config now lives in the manifest (optional); dedupe doesn't set it."""
+    plugin = SkillberryPluginDedupe()
+    # ui_config is optional in the manifest schema — just verify it's readable.
+    assert plugin.manifest.ui_config in (None, {}) or isinstance(plugin.manifest.ui_config, dict)
