@@ -138,9 +138,6 @@ dependencies = [
   "wsgidav>=4.3",
   "cheroot>=10.0",
   "shenanigaNFS @ git+https://github.com/JordanMilne/ShenanigaNFS.git",
-  "skillberry-plugin-dedupe>=0.1.0",
-  "skillberry-plugin-kagenti-approver>=0.1.0",
-  "skillberry-plugin-simulate>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -151,84 +148,15 @@ dev = [
   "skillberry-store-sdk"
 ]
 
-# Plugin dependencies
-plugin-creator = [
-  "skillberry-plugin-creator>=0.2.0",
-]
-
-plugin-evaluator = [
-  "skillberry-plugin-evaluator>=0.2.0",
-]
-
-plugin-security = [
-  "skillberry-plugin-security>=0.1.0",
-]
-
-plugin-dedupe = [
-  "skillberry-plugin-dedupe>=0.1.0",
-]
-
-plugin-mcp-importer = [
-  "skillberry-plugin-mcp-importer>=0.1.0",
-]
-
-plugin-anthropic-skill-generator = [
-  "skillberry-plugin-anthropic-skill-generator>=0.1.0",
-]
-
-plugin-kagenti-approver = [
-  "skillberry-plugin-kagenti-approver>=0.1.0",
-]
-
-plugin-sast = [
-  "skillberry-plugin-sast>=0.1.0",
-  "llm-switchboard"
-]
-
-plugin-skill-optimizer = [
-  "skillberry-plugin-skill-optimizer>=0.1.0",
-]
-
-plugin-simulate = [
+# Bundled example plugin so pip install skillberry-store[example] still gives
+# users a working demo. Real plugin installation is UI/API-driven via the
+# PluginManager (see docs/plugins-installation.md).
+example = [
   "skillberry-plugin-simulate>=0.1.0",
-]
-
-plugin-provenance = [
-  "skillberry-plugin-provenance>=0.1.0",
-]
-
-plugin-doc-generator = [
-  "skillberry-plugin-doc-generator>=0.1.0",
-]
-
-plugin-dependency-tracker = [
-  "skillberry-plugin-dependency-tracker>=0.1.0",
-]
-
-plugin-dast = [
-  "skillberry-plugin-dast>=0.1.0",
-]
-
-# Install all plugins
-plugins-all = [
-  "skillberry-plugin-creator>=0.2.0",
-  "skillberry-plugin-evaluator>=0.2.0",
-  "skillberry-plugin-security>=0.1.0",
-  "skillberry-plugin-dedupe>=0.1.0",
-  "skillberry-plugin-mcp-importer>=0.1.0",
-  "skillberry-plugin-anthropic-skill-generator>=0.1.0",
-  "skillberry-plugin-kagenti-approver>=0.1.0",
-  "skillberry-plugin-sast>=0.1.0",
-  "skillberry-plugin-skill-optimizer>=0.1.0",
-  "skillberry-plugin-simulate>=0.1.0",
-  "skillberry-plugin-provenance>=0.1.0",
-  "skillberry-plugin-doc-generator>=0.1.0",
-  "skillberry-plugin-dependency-tracker>=0.1.0",
-  "skillberry-plugin-dast>=0.1.0",
 ]
 
 test = [
-  "skillberry-store[dev,plugins-all]"
+  "skillberry-store[dev,example]"
 ]
 
 [tool.uv.sources]

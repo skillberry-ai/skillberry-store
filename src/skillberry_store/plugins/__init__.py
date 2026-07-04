@@ -1,11 +1,5 @@
-"""Plugin system for Skillberry Store.
+"""Plugin runtime — subprocess PluginManager and SSE-based events.
 
-This module provides the infrastructure for discovering and loading plugins
-that extend the store's functionality.
+The old in-process PluginBase model is gone (Stage 7). This package now
+holds only the SSE hub, event helpers, state store, and manager.
 """
-
-from .base import PluginBase, PluginMetadata, PluginType
-
-__all__ = ["PluginBase", "PluginMetadata", "PluginType"]
-
-# Made with Bob
