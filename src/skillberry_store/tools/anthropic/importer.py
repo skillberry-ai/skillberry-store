@@ -168,9 +168,7 @@ _CACHE_ROOT = Path(
         str(Path(tempfile.gettempdir()) / "skillberry-import-cache"),
     )
 )
-_CACHE_MAX_BYTES = int(
-    os.environ.get("SBS_IMPORT_CACHE_MAX_BYTES", str(2 * 1024**3))
-)
+_CACHE_MAX_BYTES = int(os.environ.get("SBS_IMPORT_CACHE_MAX_BYTES", str(2 * 1024**3)))
 _CACHE_LOCK = threading.Lock()
 
 
@@ -213,9 +211,7 @@ def _git(cmd: List[str], auth_header: Optional[str] = None) -> None:
     subprocess.run(args, check=True, capture_output=True, text=True)
 
 
-def _ensure_cached_subpath(
-    origin: Dict[str, str], auth_header: Optional[str]
-) -> Path:
+def _ensure_cached_subpath(origin: Dict[str, str], auth_header: Optional[str]) -> Path:
     """Ensure ``<cache>/<owner>--<repo>--<ref>/<path>/`` exists locally.
 
     Uses a shallow, blobless, sparse clone so only the requested subtree's
@@ -235,7 +231,8 @@ def _ensure_cached_subpath(
                     "--filter=blob:none",
                     "--sparse",
                     "--single-branch",
-                    "--branch", origin["ref"],
+                    "--branch",
+                    origin["ref"],
                     clone_url,
                     str(entry),
                 ],
@@ -288,9 +285,7 @@ def prewarm_github(
         except Exception as e:  # noqa: BLE001 -- best-effort background task
             logger.info("prewarm clone best-effort failed for %s: %s", url, e)
 
-    threading.Thread(
-        target=_run, daemon=True, name=f"prewarm-{origin['repo']}"
-    ).start()
+    threading.Thread(target=_run, daemon=True, name=f"prewarm-{origin['repo']}").start()
 
 
 def fetch_from_github(
@@ -328,12 +323,14 @@ def fetch_from_github(
         except subprocess.CalledProcessError as e:
             logger.warning(
                 "git-based fetch failed for %s: %s -- falling back to REST",
-                url, (e.stderr or "").strip() or str(e),
+                url,
+                (e.stderr or "").strip() or str(e),
             )
         except Exception as e:  # noqa: BLE001 -- last-ditch fallback
             logger.warning(
                 "sparse-clone cache path failed for %s: %s -- falling back to REST",
-                url, e,
+                url,
+                e,
             )
 
     # Fallback: original per-file /contents/ walk.
