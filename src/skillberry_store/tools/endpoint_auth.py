@@ -27,6 +27,7 @@ GitHub CLI credentials, then to anonymous access.
 
 import logging
 import os
+import subprocess
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
@@ -192,41 +193,58 @@ _GH_HOST = "github.com"
 def gh_cli_token(host: str = _GH_HOST) -> Optional[str]:
     """Return the GitHub CLI's stored token for ``host``, or None.
 
-    Reads ``~/.config/gh/hosts.yml`` and returns the ``oauth_token`` for the
-    given host if present. Note: when `gh` stores tokens in the OS keyring
-    (the default on many systems), hosts.yml has no ``oauth_token`` field and
-    this returns None — there is no token to read from the file in that case.
-    Missing/unreadable file => None (so resolution falls through to anonymous).
+    First tries to read ``~/.config/gh/hosts.yml`` for a plaintext
+    ``oauth_token``. When the token is stored in the OS keyring (the default
+    on many systems), that file has no ``oauth_token`` field — in that case
+    falls back to running ``gh auth token --hostname <host>`` to retrieve it
+    from the keyring via the CLI. Returns None if ``gh`` is not installed or
+    the user is not logged in.
     """
-    if not os.path.isfile(_GH_HOSTS_PATH):
-        return None
+    # --- fast path: plaintext token in hosts.yml ---
+    if os.path.isfile(_GH_HOSTS_PATH):
+        try:
+            with open(_GH_HOSTS_PATH, "r", encoding="utf-8") as fh:
+                data = yaml.safe_load(fh) or {}
+            host_cfg = data.get(host)
+            if isinstance(host_cfg, dict):
+                token = host_cfg.get("oauth_token")
+                if token:
+                    logger.info(
+                        "Using GitHub CLI credentials from %s for %s",
+                        _GH_HOSTS_PATH,
+                        host,
+                    )
+                    return token
+        except Exception as e:  # noqa: BLE001 - best-effort, never break imports
+            logger.debug("Could not read %s: %s", _GH_HOSTS_PATH, e)
+
+    # --- fallback: ask the gh CLI (covers OS-keyring storage) ---
     try:
-        with open(_GH_HOSTS_PATH, "r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh) or {}
-    except Exception as e:  # noqa: BLE001 - best-effort, never break imports
-        logger.debug("Could not read %s: %s", _GH_HOSTS_PATH, e)
-        return None
-    host_cfg = data.get(host)
-    if not isinstance(host_cfg, dict):
-        logger.info(
-            "No GitHub CLI credentials for %s in %s; falling back to anonymous.",
-            host,
-            _GH_HOSTS_PATH,
+        result = subprocess.run(
+            ["gh", "auth", "token", "--hostname", host],
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
-        return None
-    token = host_cfg.get("oauth_token")
-    if not token:
-        # `gh` keeps the token in the OS keyring (its default), so hosts.yml has
-        # no plaintext oauth_token to read. Surface it and fall back to anonymous.
-        logger.warning(
-            "GitHub CLI token for %s is not in %s (likely stored in the OS "
-            "keyring); cannot read it from the file — falling back to anonymous.",
-            host,
-            _GH_HOSTS_PATH,
-        )
-        return None
-    logger.info("Using GitHub CLI credentials from %s for %s", _GH_HOSTS_PATH, host)
-    return token
+        token = result.stdout.strip()
+        if token:
+            logger.info(
+                "Using GitHub CLI keyring token for %s (via gh auth token)", host
+            )
+            return token
+        if result.returncode != 0:
+            logger.debug(
+                "gh auth token for %s exited %d: %s",
+                host,
+                result.returncode,
+                result.stderr.strip(),
+            )
+    except FileNotFoundError:
+        logger.debug("gh CLI not found; cannot retrieve token for %s", host)
+    except Exception as e:  # noqa: BLE001 - best-effort
+        logger.debug("gh auth token failed for %s: %s", host, e)
+
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -254,11 +272,11 @@ def resolve_auth_headers(
       1. ``oauth_token``            -> Bearer oauth_token
       2. caller ``override_token``  -> Bearer override_token (the retry path)
       3. ``login_url``              -> raise ReauthRequired(login_url)
-      4. GitHub CLI credentials     -> Bearer token from ~/.config/gh/hosts.yml
+      4. GitHub CLI credentials     -> Bearer token from ``gh auth token``
       5. otherwise                  -> anonymous ({})
 
-    No matching endpoint -> ``API_KEY`` env, then GitHub CLI credentials, then
-    anonymous ({}).
+    No matching endpoint -> ``override_token``, then ``API_KEY`` env, then
+    GitHub CLI credentials (``gh auth token``), then anonymous ({}).
 
     Raises:
         ReauthRequired
@@ -270,9 +288,11 @@ def resolve_auth_headers(
     entry = cfg.resolve(url) if url else None
 
     if entry is None:
-        # No endpoint configured: a global API_KEY, then gh credentials, then
-        # anonymous.
-        return _bearer(os.environ.get("API_KEY") or gh_cli_token())
+        # No endpoint configured: override_token, then a global API_KEY, then
+        # gh credentials, then anonymous.
+        return _bearer(
+            override_token or os.environ.get("API_KEY") or gh_cli_token()
+        )
 
     # 1. Configured oauth_token wins.
     if entry.oauth_token:
