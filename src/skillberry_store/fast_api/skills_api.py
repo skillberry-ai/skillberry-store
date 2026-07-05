@@ -278,6 +278,7 @@ def register_skills_api(
         github_url: Optional[str] = Form(None),
         folder_path: Optional[str] = Form(None),
         anonymous: bool = Form(True),
+        prewarm: bool = Form(False),
         x_endpoint_token: Optional[str] = Header(None),
     ):
         """Detect child skill directories in a parent directory.
@@ -289,6 +290,12 @@ def register_skills_api(
             source_type: 'url' or 'folder'
             github_url: GitHub repository URL (required if source_type='url')
             folder_path: Local folder path (required if source_type='folder')
+            prewarm: When true and ``source_type='url'``, spawn a best-effort
+                background clone of the source repo into the local import
+                cache while this handler is doing its GitHub API work. Any
+                subsequent ``/skills/import-anthropic`` calls for skills
+                under the same repo then hit a warm cache. Non-blocking:
+                does not affect this response's latency or error behavior.
 
         Returns:
             dict: List of skill paths relative to the parent directory
@@ -297,6 +304,19 @@ def register_skills_api(
             HTTPException: If detection fails
         """
         from skillberry_store.services.skills_service import GithubApiError
+
+        # Kick off the background clone before starting detect's own work so
+        # the two overlap on the wire. ``prewarm_github`` spawns a daemon
+        # thread and returns immediately; auth / URL errors are swallowed
+        # since detect below is the call that surfaces them to the client.
+        if prewarm and source_type == "url" and github_url:
+            from skillberry_store.tools.anthropic.importer import prewarm_github
+
+            prewarm_github(
+                github_url,
+                override_token=x_endpoint_token,
+                anonymous=anonymous,
+            )
 
         try:
             skill_paths = service.detect_anthropic_skills(

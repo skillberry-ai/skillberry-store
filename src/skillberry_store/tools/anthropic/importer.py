@@ -7,9 +7,15 @@ import logging
 import re
 import io
 import os
+import shutil
+import subprocess
+import tempfile
+import threading
 import zipfile
-import requests
+from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
+
+import requests
 
 from skillberry_store.tools.endpoint_auth import resolve_auth_headers
 
@@ -147,6 +153,146 @@ def parse_github_origin(url: str) -> Optional[Dict[str, str]]:
     }
 
 
+# --- Local git sparse-checkout cache for source_type=url imports -------------
+#
+# The /contents/ REST walk pays one HTTPS round-trip per file, which dominates
+# URL-mode import latency. Instead we do a single blobless, sparse ``git
+# clone`` per (owner, repo, ref) and reuse it across every skill imported from
+# the same repo; per-skill fetch then becomes a local ``read_from_folder``.
+# Entries are LRU-evicted by atime when the on-disk footprint exceeds
+# ``SBS_IMPORT_CACHE_MAX_BYTES``.
+
+_CACHE_ROOT = Path(
+    os.environ.get(
+        "SBS_IMPORT_CACHE_DIR",
+        str(Path(tempfile.gettempdir()) / "skillberry-import-cache"),
+    )
+)
+_CACHE_MAX_BYTES = int(
+    os.environ.get("SBS_IMPORT_CACHE_MAX_BYTES", str(2 * 1024**3))
+)
+_CACHE_LOCK = threading.Lock()
+
+
+def _cache_entry_dir(origin: Dict[str, str]) -> Path:
+    return _CACHE_ROOT / f"{origin['owner']}--{origin['repo']}--{origin['ref']}"
+
+
+def _dir_size_bytes(path: Path) -> int:
+    total = 0
+    for entry in path.rglob("*"):
+        try:
+            total += entry.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def _evict_lru_locked() -> None:
+    """Delete oldest cache entries (by atime) until under the size cap.
+
+    Caller must hold ``_CACHE_LOCK``.
+    """
+    if not _CACHE_ROOT.exists():
+        return
+    entries = [d for d in _CACHE_ROOT.iterdir() if d.is_dir()]
+    entries.sort(key=lambda d: d.stat().st_atime)
+    total = sum(_dir_size_bytes(d) for d in entries)
+    while entries and total > _CACHE_MAX_BYTES:
+        victim = entries.pop(0)
+        size = _dir_size_bytes(victim)
+        shutil.rmtree(victim, ignore_errors=True)
+        total -= size
+
+
+def _git(cmd: List[str], auth_header: Optional[str] = None) -> None:
+    args = ["git"]
+    if auth_header:
+        args += ["-c", f"http.extraHeader=Authorization: {auth_header}"]
+    args += cmd
+    subprocess.run(args, check=True, capture_output=True, text=True)
+
+
+def _ensure_cached_subpath(
+    origin: Dict[str, str], auth_header: Optional[str]
+) -> Path:
+    """Ensure ``<cache>/<owner>--<repo>--<ref>/<path>/`` exists locally.
+
+    Uses a shallow, blobless, sparse clone so only the requested subtree's
+    blobs are transferred. A cache hit reuses the existing clone and adds the
+    new subpath to sparse-checkout when necessary.
+    """
+    _CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    entry = _cache_entry_dir(origin)
+    with _CACHE_LOCK:
+        if not (entry / ".git").exists():
+            _evict_lru_locked()
+            clone_url = f"https://github.com/{origin['owner']}/{origin['repo']}.git"
+            _git(
+                [
+                    "clone",
+                    "--depth=1",
+                    "--filter=blob:none",
+                    "--sparse",
+                    "--single-branch",
+                    "--branch", origin["ref"],
+                    clone_url,
+                    str(entry),
+                ],
+                auth_header=auth_header,
+            )
+        if origin["path"]:
+            _git(
+                ["-C", str(entry), "sparse-checkout", "add", origin["path"]],
+                auth_header=auth_header,
+            )
+        else:
+            _git(
+                ["-C", str(entry), "sparse-checkout", "disable"],
+                auth_header=auth_header,
+            )
+        os.utime(entry, None)  # LRU touch
+    resolved = entry / origin["path"] if origin["path"] else entry
+    if not resolved.exists():
+        raise Exception(
+            f"Sparse checkout did not produce {origin['path']!r} in "
+            f"{origin['owner']}/{origin['repo']}@{origin['ref']}"
+        )
+    return resolved
+
+
+def prewarm_github(
+    url: str, override_token: Optional[str] = None, anonymous: bool = False
+) -> None:
+    """Best-effort background clone into the local cache.
+
+    Meant to run in parallel with a client's ``detect-anthropic-skills`` call
+    so that by the time the first ``import-anthropic`` request arrives, the
+    ``(owner, repo, ref)`` clone is already on disk. Non-blocking: returns as
+    soon as the worker thread is spawned. Silently no-ops if the URL isn't a
+    ``github.com`` tree URL or if auth resolution fails; the parallel detect
+    or import call is the one that surfaces user-visible errors.
+    """
+    origin = parse_github_origin(url)
+    if not origin:
+        return
+    try:
+        headers = _auth_headers(url, override_token=override_token, anonymous=anonymous)
+    except Exception:  # ReauthRequired etc.; detect/import will surface it
+        return
+    auth = headers.get("Authorization")
+
+    def _run() -> None:
+        try:
+            _ensure_cached_subpath(origin, auth)
+        except Exception as e:  # noqa: BLE001 -- best-effort background task
+            logger.info("prewarm clone best-effort failed for %s: %s", url, e)
+
+    threading.Thread(
+        target=_run, daemon=True, name=f"prewarm-{origin['repo']}"
+    ).start()
+
+
 def fetch_from_github(
     url: str, override_token: Optional[str] = None, anonymous: bool = False
 ) -> List[Dict[str, str]]:
@@ -170,9 +316,27 @@ def fetch_from_github(
     # ReauthRequired/OAuthRequired raised here propagates to the API layer.
     headers = _auth_headers(url, override_token=override_token, anonymous=anonymous)
 
-    # Convert GitHub URL to API URL
-    # From: https://github.com/anthropics/skills/tree/main/skills/pptx
-    # To: https://api.github.com/repos/anthropics/skills/contents/skills/pptx
+    # Fast path: reuse a local sparse clone across every skill imported from
+    # the same (owner, repo, ref). Falls through to the /contents/ walk below
+    # on any git failure or for URLs the origin parser doesn't recognize.
+    origin = parse_github_origin(url)
+    if origin:
+        try:
+            local = _ensure_cached_subpath(origin, headers.get("Authorization"))
+            print(f"Fetching from local sparse-clone cache: {local}")
+            return read_from_folder(str(local))
+        except subprocess.CalledProcessError as e:
+            logger.warning(
+                "git-based fetch failed for %s: %s -- falling back to REST",
+                url, (e.stderr or "").strip() or str(e),
+            )
+        except Exception as e:  # noqa: BLE001 -- last-ditch fallback
+            logger.warning(
+                "sparse-clone cache path failed for %s: %s -- falling back to REST",
+                url, e,
+            )
+
+    # Fallback: original per-file /contents/ walk.
     api_url = url.replace("github.com", "api.github.com/repos")
     api_url = re.sub(r"/tree/(main|master)/", r"/contents/", api_url)
 
