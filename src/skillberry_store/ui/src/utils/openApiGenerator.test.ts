@@ -395,6 +395,216 @@ describe('openApiGenerator', () => {
       expect(spec1.servers[0].url).toBe('http://localhost:3000');
       expect(spec2.servers[0].url).toBe('http://localhost:9999');
     });
+
+    it('should convert default: null to nullable: true for OpenAPI 3.0.3 compatibility', () => {
+      const tools = [
+        {
+          name: 'format_success_response',
+          description: 'Format a success response',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              data: {
+                type: 'string',
+                default: null,
+                description: 'Optional data to include',
+              },
+              message: {
+                type: 'string',
+                description: 'Success message',
+              },
+            },
+            required: ['message'],
+          },
+        },
+      ];
+
+      const spec = generateOpenAPISpec('TestServer', '', 8080, tools, []);
+      const schema = spec.components.schemas.format_success_responseRequest;
+
+      // The data field should have nullable: true added
+      expect(schema.properties.data.nullable).toBe(true);
+      expect(schema.properties.data.default).toBe(null);
+      expect(schema.properties.data.type).toBe('string');
+      
+      // The message field should not have nullable
+      expect(schema.properties.message.nullable).toBeUndefined();
+    });
+
+    it('should handle nested objects with default: null', () => {
+      const tools = [
+        {
+          name: 'nested_tool',
+          description: 'Tool with nested schema',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              config: {
+                type: 'object',
+                properties: {
+                  timeout: {
+                    type: 'number',
+                    default: null,
+                  },
+                  retries: {
+                    type: 'integer',
+                    default: 3,
+                  },
+                },
+              },
+              metadata: {
+                type: 'object',
+                default: null,
+                properties: {
+                  tags: {
+                    type: 'array',
+                    items: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ];
+
+      const spec = generateOpenAPISpec('TestServer', '', 8080, tools, []);
+      const schema = spec.components.schemas.nested_toolRequest;
+
+      // Nested timeout field should have nullable: true
+      expect(schema.properties.config.properties.timeout.nullable).toBe(true);
+      expect(schema.properties.config.properties.timeout.default).toBe(null);
+      
+      // Nested retries field should not have nullable (default is not null)
+      expect(schema.properties.config.properties.retries.nullable).toBeUndefined();
+      expect(schema.properties.config.properties.retries.default).toBe(3);
+      
+      // metadata object itself should have nullable: true
+      expect(schema.properties.metadata.nullable).toBe(true);
+      expect(schema.properties.metadata.default).toBe(null);
+    });
+
+    it('should convert array-form type to single type with nullable', () => {
+      const tools = [
+        {
+          name: 'union_type_tool',
+          description: 'Tool with union types',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              value: {
+                type: ['string', 'null'],
+                description: 'Optional string value',
+              },
+              count: {
+                type: ['integer', 'null'],
+                default: null,
+              },
+              flag: {
+                type: ['boolean'],
+                description: 'Non-nullable boolean',
+              },
+            },
+          },
+        },
+      ];
+
+      const spec = generateOpenAPISpec('TestServer', '', 8080, tools, []);
+      const schema = spec.components.schemas.union_type_toolRequest;
+
+      // value field: type should be 'string' with nullable: true
+      expect(schema.properties.value.type).toBe('string');
+      expect(schema.properties.value.nullable).toBe(true);
+      
+      // count field: type should be 'integer' with nullable: true (from both array and default)
+      expect(schema.properties.count.type).toBe('integer');
+      expect(schema.properties.count.nullable).toBe(true);
+      expect(schema.properties.count.default).toBe(null);
+      
+      // flag field: type should be 'boolean' without nullable
+      expect(schema.properties.flag.type).toBe('boolean');
+      expect(schema.properties.flag.nullable).toBeUndefined();
+    });
+
+    it('should handle arrays with default: null', () => {
+      const tools = [
+        {
+          name: 'array_tool',
+          description: 'Tool with array fields',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              items: {
+                type: 'array',
+                items: { type: 'string' },
+                default: null,
+              },
+              nested: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    value: {
+                      type: 'string',
+                      default: null,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ];
+
+      const spec = generateOpenAPISpec('TestServer', '', 8080, tools, []);
+      const schema = spec.components.schemas.array_toolRequest;
+
+      // items array should have nullable: true
+      expect(schema.properties.items.nullable).toBe(true);
+      expect(schema.properties.items.default).toBe(null);
+      
+      // nested array items should have nullable on the value property
+      expect(schema.properties.nested.items.properties.value.nullable).toBe(true);
+      expect(schema.properties.nested.items.properties.value.default).toBe(null);
+    });
+
+    it('should preserve other schema properties during sanitization', () => {
+      const tools = [
+        {
+          name: 'rich_schema_tool',
+          description: 'Tool with rich schema',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              email: {
+                type: 'string',
+                format: 'email',
+                pattern: '^[a-z]+@[a-z]+\\.[a-z]+$',
+                minLength: 5,
+                maxLength: 100,
+                default: null,
+                title: 'Email Address',
+                description: 'User email',
+              },
+            },
+          },
+        },
+      ];
+
+      const spec = generateOpenAPISpec('TestServer', '', 8080, tools, []);
+      const schema = spec.components.schemas.rich_schema_toolRequest;
+      const emailProp = schema.properties.email;
+
+      // Should add nullable while preserving all other properties
+      expect(emailProp.nullable).toBe(true);
+      expect(emailProp.default).toBe(null);
+      expect(emailProp.type).toBe('string');
+      expect(emailProp.format).toBe('email');
+      expect(emailProp.pattern).toBe('^[a-z]+@[a-z]+\\.[a-z]+$');
+      expect(emailProp.minLength).toBe(5);
+      expect(emailProp.maxLength).toBe(100);
+      expect(emailProp.title).toBe('Email Address');
+      expect(emailProp.description).toBe('User email');
+    });
   });
 
   describe('downloadOpenAPISpec', () => {
