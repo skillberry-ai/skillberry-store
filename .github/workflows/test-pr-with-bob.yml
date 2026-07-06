@@ -1,7 +1,7 @@
 # ============================================================================
 # Test PR with Bob — delegates to shared reusable workflow
 # Triggered by test-pr-with-bob-trigger.yml via workflow_run.
-# Shared source: skillberry-ai/.github/.github/workflows/test-pr-with-bob.yml
+# Shared source: skillberry-ai/skillberry-common/.github/workflows/test-pr-with-bob.yml
 # ============================================================================
 
 name: Test PR with Bob
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   call-test-pr:
-    uses: skillberry-ai/.github/.github/workflows/test-pr-with-bob.yml@main
+    uses: skillberry-ai/skillberry-common/.github/workflows/test-pr-with-bob.yml@main
     secrets: inherit
 
 # Made with Bob
