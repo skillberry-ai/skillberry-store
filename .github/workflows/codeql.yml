@@ -1,42 +1,23 @@
-name: "CodeQL"
+# ============================================================================
+# CodeQL — delegates to shared reusable workflow
+# Shared source: skillberry-ai/.github/.github/workflows/codeql.yml
+# ============================================================================
+
+name: CodeQL
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sunday
 
 jobs:
-  analyze:
-    name: Analyze
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ 'python', 'javascript' ]
-
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v6
-
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: ${{ matrix.language }}
-
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:${{matrix.language}}"
+  call-codeql:
+    uses: skillberry-ai/.github/.github/workflows/codeql.yml@main
+    secrets: inherit
+    with:
+      languages: python,javascript
 
 # Made with Bob
