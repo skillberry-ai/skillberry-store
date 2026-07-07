@@ -17,6 +17,10 @@ jobs:
   call-codeql:
     uses: skillberry-ai/skillberry-common/.github/workflows/codeql.yml@main
     secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
     with:
       languages: '["python","javascript"]'
 
