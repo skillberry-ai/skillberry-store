@@ -63,7 +63,8 @@ def register_plugins_api(
             raise HTTPException(status_code=404, detail=str(e))
         if isinstance(e, InstallFailedError):
             raise HTTPException(
-                status_code=500, detail={"error": "install_failed", "stderr": e.stderr[-800:]}
+                status_code=500,
+                detail={"error": "install_failed", "stderr": e.stderr[-800:]},
             )
         if isinstance(e, StartupFailedError):
             raise HTTPException(status_code=500, detail=str(e))
@@ -204,9 +205,13 @@ def register_plugins_api(
         )
         async def update_plugin(slug: str, body: PluginEnabledUpdate):
             if plugin_loader.get_plugin_info(slug) is None:
-                raise HTTPException(status_code=404, detail=f"Plugin '{slug}' not found")
+                raise HTTPException(
+                    status_code=404, detail=f"Plugin '{slug}' not found"
+                )
             try:
                 plugin_loader.set_enabled(slug, body.enabled)
             except KeyError:
-                raise HTTPException(status_code=404, detail=f"Plugin '{slug}' not found")
+                raise HTTPException(
+                    status_code=404, detail=f"Plugin '{slug}' not found"
+                )
             return plugin_loader.get_plugin_info(slug)

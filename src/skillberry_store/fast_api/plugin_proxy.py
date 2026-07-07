@@ -55,7 +55,9 @@ _FALLBACK_HANDLER = None
 def add_plugin_proxy(app: FastAPI, registry: PluginRegistry) -> None:
     """Mount the catch-all /plugins/{slug}/{path:path} route."""
 
-    @app.api_route("/plugins/{slug}/{path:path}", methods=_METHODS, include_in_schema=False)
+    @app.api_route(
+        "/plugins/{slug}/{path:path}", methods=_METHODS, include_in_schema=False
+    )
     async def _proxy(slug: str, path: str, request: Request):  # noqa: D401
         # SBS lifecycle endpoints (install/start/stop/...) are defined on the same
         # /plugins/{slug}/... URL space; FastAPI matches those *before* this
@@ -63,7 +65,9 @@ def add_plugin_proxy(app: FastAPI, registry: PluginRegistry) -> None:
         # paths not consumed by the lifecycle router.
         target = registry.get(slug)
         if target is None:
-            raise HTTPException(status_code=404, detail=f"Plugin '{slug}' is not running")
+            raise HTTPException(
+                status_code=404, detail=f"Plugin '{slug}' is not running"
+            )
 
         url = f"http://127.0.0.1:{target.port}/{path}"
         headers = dict(request.headers)
@@ -85,12 +89,15 @@ def add_plugin_proxy(app: FastAPI, registry: PluginRegistry) -> None:
                 )
             except httpx.HTTPError as e:
                 logger.warning("Proxy to plugin %s failed: %s", slug, e)
-                raise HTTPException(status_code=503, detail=f"Plugin '{slug}' unreachable")
+                raise HTTPException(
+                    status_code=503, detail=f"Plugin '{slug}' unreachable"
+                )
 
         response_headers = {
             k: v
             for k, v in r.headers.items()
-            if k.lower() not in ("content-length", "transfer-encoding", "content-encoding")
+            if k.lower()
+            not in ("content-length", "transfer-encoding", "content-encoding")
         }
         return Response(
             content=r.content,

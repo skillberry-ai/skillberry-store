@@ -19,10 +19,14 @@ def register_events_api(app: FastAPI, tags: str = "events") -> None:
     @app.get("/events/stream", tags=[tags], summary="SSE event stream for plugins")
     async def events_stream(
         request: Request,
-        topics: Optional[str] = Query(None, description="Comma-separated topic patterns"),
+        topics: Optional[str] = Query(
+            None, description="Comma-separated topic patterns"
+        ),
         last_event_id_header: Optional[str] = Header(None, alias="Last-Event-ID"),
     ):
-        topic_tuple = tuple(t.strip() for t in topics.split(",") if t.strip()) if topics else ()
+        topic_tuple = (
+            tuple(t.strip() for t in topics.split(",") if t.strip()) if topics else ()
+        )
 
         last_id_int: Optional[int] = None
         if last_event_id_header:
