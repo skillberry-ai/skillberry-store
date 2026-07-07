@@ -1,7 +1,7 @@
 """Pydantic schema for virtual NFS server objects."""
 
 from typing import Any, Dict, Optional
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .manifest_schema import ManifestSchema
 
@@ -27,6 +27,25 @@ class VnfsSchema(ManifestSchema):
         default="webdav",
         description="Network filesystem protocol: 'webdav' or 'nfs'",
     )
+    npx_compat: bool = Field(
+        default=False,
+        description=(
+            "When True and protocol is 'webdav', the vNFS also publishes a "
+            "well-known agent-skills layout so 'npx skills add http://host:port' "
+            "can install the skill. Only valid with protocol='webdav'."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _check_npx_compat_requires_webdav(self) -> "VnfsSchema":
+        if self.npx_compat and self.protocol != "webdav":
+            raise ValueError(
+                "npx_compat=True requires protocol='webdav' "
+                f"(got protocol='{self.protocol}'). "
+                "The well-known agent-skills endpoint is HTTP-only; "
+                "mount an NFS export locally and use 'npx skills add <path>' instead."
+            )
+        return self
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the vnfs schema to a dictionary."""
