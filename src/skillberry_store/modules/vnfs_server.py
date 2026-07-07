@@ -239,7 +239,12 @@ class VirtualNfsServer:
         from skillberry_store.tools.anthropic.exporter import export_skill_to_directory
 
         export_skill_to_directory(
-            skill, tools, snippets, str(self.export_path), tool_modules
+            skill,
+            tools,
+            snippets,
+            str(self.export_path),
+            tool_modules,
+            allow_invalid_name=True,
         )
         self.backend.start(str(self.export_path), self.port)
         self.running = True
@@ -269,7 +274,12 @@ class VirtualNfsServer:
         from skillberry_store.tools.anthropic.exporter import export_skill_to_directory
 
         export_skill_to_directory(
-            skill, tools, snippets, str(self.export_path), tool_modules
+            skill,
+            tools,
+            snippets,
+            str(self.export_path),
+            tool_modules,
+            allow_invalid_name=True,
         )
         logger.info(f"VirtualNfsServer '{self.name}' files refreshed")
 

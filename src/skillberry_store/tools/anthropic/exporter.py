@@ -7,6 +7,42 @@ import io
 import zipfile
 from typing import Dict, List, Optional, Any
 
+from .naming import validate_skill_slug
+
+
+class InvalidSkillNameError(ValueError):
+    """Raised when a skill's name is not a valid slug and strict mode is on.
+
+    Carries a suggested slug so callers (API, UI) can offer a rename shortcut.
+    """
+
+    def __init__(self, name: str, reason: str, suggested: str):
+        super().__init__(
+            f"Skill name '{name}' is not a valid slug: {reason} "
+            f"Suggested: '{suggested}'."
+        )
+        self.name = name
+        self.reason = reason
+        self.suggested = suggested
+
+
+def _enforce_skill_name(skill: Dict[str, Any], allow_invalid_name: bool) -> None:
+    """Validate ``skill['name']`` unless the caller opted out.
+
+    Raises:
+        InvalidSkillNameError: When the name is not slug-safe and
+            ``allow_invalid_name`` is False.
+    """
+    if allow_invalid_name:
+        return
+    result = validate_skill_slug(skill.get("name"))
+    if not result.ok:
+        raise InvalidSkillNameError(
+            name=skill.get("name") or "",
+            reason=result.reason,
+            suggested=result.suggested,
+        )
+
 
 def extract_file_path_from_tags(tags: Optional[List[str]]) -> Optional[str]:
     """Extract file path from tags.
@@ -309,6 +345,7 @@ def export_skill_to_anthropic_format(
     tools: List[Dict[str, Any]],
     snippets: List[Dict[str, Any]],
     tool_modules: Optional[Dict[str, str]] = None,
+    allow_invalid_name: bool = False,
 ) -> bytes:
     """Export skill to Anthropic format as a ZIP file.
 
@@ -317,10 +354,20 @@ def export_skill_to_anthropic_format(
         tools: List of tool dictionaries
         snippets: List of snippet dictionaries
         tool_modules: Dictionary mapping tool names to module content
+        allow_invalid_name: When True, skip the slug validation performed by
+            default. Anthropic conventions and downstream tooling expect the
+            skill name to be a slug (see
+            :mod:`skillberry_store.tools.anthropic.naming`); leave the default
+            unless you deliberately want a permissive export.
 
     Returns:
         ZIP file content as bytes
+
+    Raises:
+        InvalidSkillNameError: If ``allow_invalid_name`` is False and the
+            skill's ``name`` is not a valid slug.
     """
+    _enforce_skill_name(skill, allow_invalid_name)
     files = _build_file_structure(skill, tools, snippets, tool_modules)
 
     zip_buffer = io.BytesIO()
@@ -338,6 +385,7 @@ def export_skill_to_directory(
     snippets: List[Dict[str, Any]],
     output_dir: str,
     tool_modules: Optional[Dict[str, str]] = None,
+    allow_invalid_name: bool = False,
 ) -> None:
     """Export skill to a directory on disk.
 
@@ -350,9 +398,15 @@ def export_skill_to_directory(
         snippets: List of snippet dictionaries
         output_dir: Destination directory path (created if absent)
         tool_modules: Dictionary mapping tool names to module content
+        allow_invalid_name: See :func:`export_skill_to_anthropic_format`.
+
+    Raises:
+        InvalidSkillNameError: If ``allow_invalid_name`` is False and the
+            skill's ``name`` is not a valid slug.
     """
     from pathlib import Path
 
+    _enforce_skill_name(skill, allow_invalid_name)
     files = _build_file_structure(skill, tools, snippets, tool_modules)
     for rel_path, content in files.items():
         dest = Path(output_dir) / rel_path

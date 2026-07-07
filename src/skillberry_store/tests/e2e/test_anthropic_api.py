@@ -188,11 +188,14 @@ async def test_export_anthropic_skill(run_sbs):
         import_result = import_response.json()
         skill_name = import_result['skill_name']
         
-        # Now export the skill
+        # Now export the skill (the test fixture uses an underscore in the
+        # name, which is not a valid npx / Anthropic slug — opt out of the
+        # strict slug validation for this legacy fixture).
         export_response = await client.get(
             f"{BASE_URL}/skills/{skill_name}/export-anthropic"
+            f"?allow_invalid_name=true"
         )
-        
+
         assert export_response.status_code == 200
         assert export_response.headers['content-type'] == 'application/zip'
         assert 'attachment' in export_response.headers.get('content-disposition', '')
@@ -240,13 +243,14 @@ async def test_import_export_roundtrip(run_sbs):
         tools_count_1 = import1_result['tools_created']
         snippets_count_1 = import1_result['snippets_created']
         
-        # Step 2: Export the skill
+        # Step 2: Export the skill (legacy fixture, non-slug name).
         export_response = await client.get(
             f"{BASE_URL}/skills/{skill_name_1}/export-anthropic"
+            f"?allow_invalid_name=true"
         )
         assert export_response.status_code == 200
         exported_zip = export_response.content
-        
+
         # Step 3: Delete the original skill
         delete_response = await client.delete(f"{BASE_URL}/skills/{skill_name_1}")
         assert delete_response.status_code == 200
@@ -474,13 +478,14 @@ async def test_import_export_roundtrip_with_treat_all_as_documents(run_sbs):
         # Verify no tools were created
         assert tools_count_1 == 0, "Expected 0 tools in first import"
         
-        # Step 2: Export the skill
+        # Step 2: Export the skill (legacy fixture, non-slug name).
         export_response = await client.get(
             f"{BASE_URL}/skills/{skill_name_1}/export-anthropic"
+            f"?allow_invalid_name=true"
         )
         assert export_response.status_code == 200
         exported_zip = export_response.content
-        
+
         # Step 3: Delete the original skill
         delete_response = await client.delete(f"{BASE_URL}/skills/{skill_name_1}")
         assert delete_response.status_code == 200
