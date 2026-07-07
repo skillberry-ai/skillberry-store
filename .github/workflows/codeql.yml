@@ -1,6 +1,6 @@
 # ============================================================================
 # CodeQL — delegates to shared reusable workflow
-# Shared source: skillberry-ai/.github/.github/workflows/codeql.yml
+# Shared source: skillberry-ai/skillberry-common/.github/workflows/codeql.yml
 # ============================================================================
 
 name: CodeQL
@@ -15,9 +15,13 @@ on:
 
 jobs:
   call-codeql:
-    uses: skillberry-ai/.github/.github/workflows/codeql.yml@main
+    uses: skillberry-ai/skillberry-common/.github/workflows/codeql.yml@main
     secrets: inherit
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
     with:
-      languages: python,javascript
+      languages: '["python","javascript"]'
 
 # Made with Bob

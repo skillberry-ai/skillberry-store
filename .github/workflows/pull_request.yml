@@ -10,13 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Set up Python 3.11
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v6.3.0
       with:
         python-version: "3.11"
     - name: install make
       run: sudo apt-get install make
     - name: checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7.0.0
     - name: create-venv
       run: |
           python -m venv .venv
