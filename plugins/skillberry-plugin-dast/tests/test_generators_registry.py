@@ -68,13 +68,6 @@ async def test_scan_driven_by_fake_engine(fake_engine, monkeypatch):
     """End-to-end: a scan runs powered by the fake engine (no Hypothesis)."""
     from skillberry_plugin_dast.plugin import SkillberryPluginDast
 
-    class _Tools:
-        def __init__(self, m):
-            self.m = m
-
-        def read_file(self, uuid, fn, raw_content=False):
-            return self.m[(uuid, fn)]
-
     class Store:
         def __init__(self):
             self._o = {
@@ -89,30 +82,38 @@ async def test_scan_driven_by_fake_engine(fake_engine, monkeypatch):
                     },
                 }
             }
-            self.tools = _Tools({("t1", "s.py"): "def send(p):\n    return p\n"})
+            self._modules = {("t1", "s.py"): "def send(p):\n    return p\n"}
 
-        def get_tool(self, u):
+        async def get_tool(self, u):
             return copy.deepcopy(self._o.get(("tool", u)))
 
-        def get_skill(self, u):
+        async def get_skill(self, u):
             return None
 
-        def get_snippet(self, u):
+        async def get_snippet(self, u):
             return None
 
-        def update_tool(self, u, d):
+        async def update_tool(self, u, d):
             self._o[("tool", u)] = copy.deepcopy(d)
             return True
 
-        def update_skill(self, u, d):
+        async def update_skill(self, u, d):
             return True
 
-        def update_snippet(self, u, d):
+        async def update_snippet(self, u, d):
             return True
+
+        async def get(self, path, params=None):
+            if path.startswith("/tools/") and path.endswith("/module"):
+                uuid = path[len("/tools/") : -len("/module")]
+                tool = self._o.get(("tool", uuid)) or {}
+                module = tool.get("module_name")
+                return self._modules.get((uuid, module))
+            return None
 
     monkeypatch.setenv("DAST_SCOPE", "registered")  # exercise the Tier-1 tool
     p = SkillberryPluginDast()
-    p.set_store_api(Store())
+    p._store = Store()
     assert p.is_enabled() is True  # enabled via the fake engine
     block = (await p.scan("tool", "t1"))["dast"]
     assert (

@@ -11,11 +11,16 @@ Flag-only: findings are written back as tags + extra["evaluation"]["sast"]. The
 plugin never blocks or rejects content (the store has no such mechanism).
 """
 
+# NOTE: no ``from __future__ import annotations`` here — FastAPI needs concrete
+# annotation classes at route-registration time to detect Pydantic body models
+# (the request/response schemas below are defined inside ``get_router`` and are
+# not visible to ``get_type_hints`` if the annotations are stringified).
+
 import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_plugin_sdk import PluginLifecycleBase, on_event
 
 from .engines import available_engine_names, get_engines
 from .engines.base import SEVERITIES
@@ -41,22 +46,28 @@ def _parse_engine_env(value: Optional[str]) -> List[str]:
     return [name.strip() for name in value.split(",") if name.strip()]
 
 
-class SkillberryPluginSast(PluginBase):
+class SkillberryPluginSast(PluginLifecycleBase):
     """Plugin that statically scans tool/skill/snippet code for security issues."""
 
-    def __init__(self):
-        super().__init__()
+    manifest_path = "manifest.yaml"
 
-        self._metadata = PluginMetadata(
-            name="SAST Scanner",
-            version="0.1.0",
-            description=(
-                "Static analysis of skill/tool/snippet code for vulnerabilities "
-                "and malicious intent using open-source SAST engines (Bandit)."
-            ),
-            plugin_type=PluginType.EVALUATOR,
+    def __init__(self, manifest=None):
+        super().__init__(manifest=manifest)
+        # Engine selection is env-driven and cheap; compute it eagerly so tests
+        # that inspect ``_available_engines`` / ``_default_engines`` right after
+        # construction (before ``on_start``) still see the resolved sets.
+        self._configure_engines()
+
+        # LLM client is initialised lazily in on_start (heavy import).
+        self._llm = None
+        self._llm_model = os.getenv("LLM_MODEL", "gpt-4")
+        self._llm_status = (
+            "Set OPENAI_API_KEY (and LLM_PROVIDER/LLM_MODEL) to enable Fix"
         )
 
+    # ── engine / status configuration ────────────────────────────────────────
+
+    def _configure_engines(self) -> None:
         # AVAILABLE set: engines offered in the UI dropdown. Take the env list
         # (if set) intersected with what's actually implemented in the registry,
         # preserving env order; unknown names are dropped with a warning. Unset
@@ -87,32 +98,6 @@ class SkillberryPluginSast(PluginBase):
 
         self._status_message = self._compute_status_message()
         logger.info("SAST plugin status: %s", self._status_message)
-
-        # Optional LLM client for the "Fix" capability. Scanning works without
-        # it; only Fix is gated on a usable model/key. Mirrors the init pattern
-        # of skillberry-plugin-security.
-        self._llm = None
-        self._llm_model = os.getenv("LLM_MODEL", "gpt-4")
-        self._llm_status = (
-            "Set OPENAI_API_KEY (and LLM_PROVIDER/LLM_MODEL) to enable Fix"
-        )
-        try:
-            from llm_switchboard import get_llm
-
-            provider = os.getenv("LLM_PROVIDER", "openai.async")
-            self._llm = get_llm(provider)(model_name=self._llm_model)
-            self._llm_status = f"Ready (fix via {provider} / {self._llm_model})"
-            logger.info("SAST Fix LLM initialized: %s / %s", provider, self._llm_model)
-        except ImportError:
-            self._llm_status = "Fix unavailable: llm-switchboard not installed"
-            logger.info("SAST Fix disabled: llm-switchboard not installed")
-        except Exception as e:  # noqa: BLE001 - missing key/config disables Fix only
-            self._llm_status = f"Fix unavailable: {e}"
-            logger.info("SAST Fix disabled: %s", e)
-
-        self._register_event_handlers()
-
-    # ── status / enablement ──────────────────────────────────────────────────
 
     def _fix_available(self) -> bool:
         """True if the LLM client is initialized (key/config present)."""
@@ -146,88 +131,107 @@ class SkillberryPluginSast(PluginBase):
             msg += f"; unknown: {', '.join(unknown)}"
         return msg
 
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
-
-    def get_status_message(self) -> str:
-        return self._status_message
-
     def is_enabled(self) -> bool:
         """Enabled when at least one configured engine is installed."""
         return bool(self._installed_default_engines())
 
+    # ── SDK lifecycle hooks ──────────────────────────────────────────────────
+
+    async def on_start(self) -> None:
+        """Heavy startup: initialise the optional LLM client for the Fix API."""
+        try:
+            from llm_switchboard import get_llm
+
+            provider = os.getenv("LLM_PROVIDER", "openai.async")
+            self._llm = get_llm(provider)(model_name=self._llm_model)
+            self._llm_status = f"Ready (fix via {provider} / {self._llm_model})"
+            logger.info("SAST Fix LLM initialized: %s / %s", provider, self._llm_model)
+        except ImportError:
+            self._llm_status = "Fix unavailable: llm-switchboard not installed"
+            logger.info("SAST Fix disabled: llm-switchboard not installed")
+        except Exception as e:  # noqa: BLE001 - missing key/config disables Fix only
+            self._llm_status = f"Fix unavailable: {e}"
+            logger.info("SAST Fix disabled: %s", e)
+
+    async def is_ready(self) -> Dict[str, Any]:
+        return {
+            "ready": self.is_enabled(),
+            "status": self._status_message,
+            "fix_available": self._fix_available(),
+            "fix_status": self._llm_status,
+            "missing_config": [],
+        }
+
     # ── event handlers (auto-scan on ingest) ─────────────────────────────────
 
-    def _register_event_handlers(self) -> None:
-        """Auto-scan tools/skills/snippets when they are added to the store.
+    @on_event("content.tool.added")
+    async def _on_tool_added(self, event) -> None:
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid or not self.is_enabled():
+            return
+        try:
+            await self.scan_object(uuid, "tool")
+        except Exception as e:  # noqa: BLE001
+            logger.error("Auto-SAST-scan failed for tool %s: %s", uuid, e, exc_info=True)
 
-        Mirrors skillberry-plugin-security: for a skill, also scan its
-        referenced tools/snippets, since import flows write those directly
-        without emitting per-object events.
-        """
-        from skillberry_store.plugins.events import _event_handlers
+    @on_event("content.snippet.added")
+    async def _on_snippet_added(self, event) -> None:
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid or not self.is_enabled():
+            return
+        try:
+            await self.scan_object(uuid, "snippet")
+        except Exception as e:  # noqa: BLE001
+            logger.error(
+                "Auto-SAST-scan failed for snippet %s: %s", uuid, e, exc_info=True
+            )
 
-        for content_type in _CONTENT_TYPES:
+    @on_event("content.skill.added")
+    async def _on_skill_added(self, event) -> None:
+        """Skills have no code of their own — fan out to referenced children."""
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid or not self.is_enabled():
+            return
+        try:
+            await self.scan_object(uuid, "skill")
+        except Exception as e:  # noqa: BLE001
+            logger.error("Auto-SAST-scan failed for skill %s: %s", uuid, e, exc_info=True)
 
-            async def _handle_added(uuid: str, ct=content_type):
-                if not self.is_enabled() or self._store_api is None:
-                    return
-                try:
-                    await self.scan_object(uuid, ct)
-                except Exception as e:
-                    logger.error(
-                        "Auto-SAST-scan failed for %s %s: %s",
-                        ct,
-                        uuid,
-                        e,
-                        exc_info=True,
-                    )
-                if ct == "skill":
-                    try:
-                        skill_obj = self.store.get_skill(uuid)
-                    except Exception:
-                        skill_obj = None
-                    if skill_obj:
-                        child_results: List[Dict[str, Any]] = []
-                        for tool_uuid in skill_obj.get("tool_uuids") or []:
-                            try:
-                                child_results.append(
-                                    await self.scan_object(tool_uuid, "tool")
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    "Auto-SAST-scan failed for tool %s: %s",
-                                    tool_uuid,
-                                    e,
-                                    exc_info=True,
-                                )
-                        for snippet_uuid in skill_obj.get("snippet_uuids") or []:
-                            try:
-                                child_results.append(
-                                    await self.scan_object(snippet_uuid, "snippet")
-                                )
-                            except Exception as e:
-                                logger.error(
-                                    "Auto-SAST-scan failed for snippet %s: %s",
-                                    snippet_uuid,
-                                    e,
-                                    exc_info=True,
-                                )
-                        try:
-                            self._write_skill_aggregate(uuid, skill_obj, child_results)
-                        except Exception as e:
-                            logger.error(
-                                "Auto-SAST-scan: failed to write skill aggregate for %s: %s",
-                                uuid,
-                                e,
-                                exc_info=True,
-                            )
+        skill_obj = None
+        try:
+            skill_obj = await self.store.get_skill(uuid)
+        except Exception:  # noqa: BLE001
+            skill_obj = None
+        if not skill_obj:
+            return
 
-            event_name = f"content_added:{content_type}"
-            if event_name not in _event_handlers:
-                _event_handlers[event_name] = []
-            _event_handlers[event_name].append(_handle_added)
+        child_results: List[Dict[str, Any]] = []
+        for tool_uuid in skill_obj.get("tool_uuids") or []:
+            try:
+                child_results.append(await self.scan_object(tool_uuid, "tool"))
+            except Exception as e:  # noqa: BLE001
+                logger.error(
+                    "Auto-SAST-scan failed for tool %s: %s", tool_uuid, e, exc_info=True
+                )
+        for snippet_uuid in skill_obj.get("snippet_uuids") or []:
+            try:
+                child_results.append(await self.scan_object(snippet_uuid, "snippet"))
+            except Exception as e:  # noqa: BLE001
+                logger.error(
+                    "Auto-SAST-scan failed for snippet %s: %s",
+                    snippet_uuid,
+                    e,
+                    exc_info=True,
+                )
+        try:
+            await self._write_skill_aggregate(uuid, skill_obj, child_results)
+        except Exception as e:  # noqa: BLE001
+            logger.error(
+                "Auto-SAST-scan: failed to write skill aggregate for %s: %s",
+                uuid,
+                e,
+                exc_info=True,
+            )
 
     # ── tag helpers ──────────────────────────────────────────────────────────
 
@@ -242,30 +246,32 @@ class SkillberryPluginSast(PluginBase):
 
     # ── code extraction ──────────────────────────────────────────────────────
 
-    def _extract_code(
+    async def _extract_code(
         self, obj: Dict[str, Any], content_type: str
     ) -> List[Dict[str, Any]]:
         """Return a list of {code, filename, language} blobs to scan for an object.
 
         Tools have a module file; snippets carry inline content; skills have no
         own code (handled via fan-out in the event handler / scan_object).
+
+        Tool code used to be read via ``store.tools.read_file`` — that raw file
+        path is not exposed by the SDK's REST-based StoreClient. Callers that
+        need the module source should embed it in the tool payload (e.g. as
+        ``source`` or ``code``); we fall back to ``obj.get("code")`` /
+        ``obj.get("source")`` if present.
         """
         blobs: List[Dict[str, Any]] = []
         if content_type == "tool":
             module_name = obj.get("module_name")
             language = (obj.get("programming_language") or "").lower()
-            if module_name and self._store_api is not None:
-                try:
-                    code = self.store.tools.read_file(
-                        obj["uuid"], module_name, raw_content=True
-                    )
-                    blobs.append(
-                        {"code": code, "filename": module_name, "language": language}
-                    )
-                except Exception as e:
-                    logger.info(
-                        "Could not read code for tool %s: %s", obj.get("uuid"), e
-                    )
+            # NOTE: the legacy in-process plugin read the tool's module file via
+            # ``self.store.tools.read_file``. The SDK StoreClient is REST-only,
+            # so we pull the source out of the tool payload instead.
+            code = obj.get("code") or obj.get("source")
+            if module_name and code is not None:
+                blobs.append(
+                    {"code": code, "filename": module_name, "language": language}
+                )
         elif content_type == "snippet":
             content = obj.get("content")
             if content:
@@ -280,20 +286,18 @@ class SkillberryPluginSast(PluginBase):
 
     # ── core scan ────────────────────────────────────────────────────────────
 
-    def _infer_type(self, uuid: str) -> Optional[str]:
+    async def _infer_type(self, uuid: str) -> Optional[str]:
         """Infer an object's content type from its UUID by probing the store.
 
         The store's ``get_*`` accessors return ``None`` for a wrong-type UUID
         (they don't raise), so probing in order is safe. Returns the content
         type ("tool"/"skill"/"snippet") or ``None`` if the UUID matches nothing.
         """
-        if self._store_api is None:
-            return None
-        if self.store.get_tool(uuid):
+        if await self.store.get_tool(uuid):
             return "tool"
-        if self.store.get_skill(uuid):
+        if await self.store.get_skill(uuid):
             return "skill"
-        if self.store.get_snippet(uuid):
+        if await self.store.get_snippet(uuid):
             return "snippet"
         return None
 
@@ -316,11 +320,8 @@ class SkillberryPluginSast(PluginBase):
         Returns:
             {uuid, content_type, engines: {name: {findings|status}}, summary, findings}
         """
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
-
         if content_type is None:
-            content_type = self._infer_type(uuid)
+            content_type = await self._infer_type(uuid)
             if content_type is None:
                 raise ValueError(f"Object {uuid} not found in store")
         elif content_type not in _CONTENT_TYPES:
@@ -330,11 +331,11 @@ class SkillberryPluginSast(PluginBase):
         resolved, unknown = get_engines(requested)
 
         if content_type == "tool":
-            obj = self.store.get_tool(uuid)
+            obj = await self.store.get_tool(uuid)
         elif content_type == "skill":
-            obj = self.store.get_skill(uuid)
+            obj = await self.store.get_skill(uuid)
         else:
-            obj = self.store.get_snippet(uuid)
+            obj = await self.store.get_snippet(uuid)
         if not obj:
             raise ValueError(f"{content_type.capitalize()} {uuid} not found in store")
 
@@ -342,7 +343,7 @@ class SkillberryPluginSast(PluginBase):
             "SAST scanning %s %s: %s", content_type, uuid, obj.get("name", "unnamed")
         )
 
-        blobs = self._extract_code(obj, content_type)
+        blobs = await self._extract_code(obj, content_type)
 
         # Per-engine results: either a findings list or a status note.
         engine_results: Dict[str, Any] = {}
@@ -403,11 +404,11 @@ class SkillberryPluginSast(PluginBase):
         # Skills have no own code; only persist for tool/snippet (skills are
         # covered via fan-out to their children).
         if content_type in ("tool", "snippet") and blobs:
-            self._write_findings_to_store(uuid, content_type, obj, result)
+            await self._write_findings_to_store(uuid, content_type, obj, result)
 
         return result
 
-    def _write_findings_to_store(
+    async def _write_findings_to_store(
         self,
         uuid: str,
         content_type: str,
@@ -436,13 +437,13 @@ class SkillberryPluginSast(PluginBase):
         }
 
         if content_type == "tool":
-            self.store.tools.write_dict(uuid, obj)
+            await self.store.update_tool(uuid, obj)
         elif content_type == "snippet":
-            self.store.snippets.write_dict(uuid, obj)
+            await self.store.update_snippet(uuid, obj)
         elif content_type == "skill":
-            self.store.skills.write_dict(uuid, obj)
+            await self.store.update_skill(uuid, obj)
 
-    def _write_skill_aggregate(
+    async def _write_skill_aggregate(
         self,
         skill_uuid: str,
         skill_obj: Dict[str, Any],
@@ -472,7 +473,7 @@ class SkillberryPluginSast(PluginBase):
             "summary": agg_summary,
             "findings": agg_findings,
         }
-        self._write_findings_to_store(skill_uuid, "skill", skill_obj, aggregate)
+        await self._write_findings_to_store(skill_uuid, "skill", skill_obj, aggregate)
 
     # ── batch scan (type inferred per object) ─────────────────────────────────
 
@@ -492,9 +493,6 @@ class SkillberryPluginSast(PluginBase):
             {results: [<scan_object result>, ...], not_found: [uuid, ...],
              summary: {<combined severity counts>}}
         """
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
-
         results: List[Dict[str, Any]] = []
         not_found: List[str] = []
         scanned: set = set()
@@ -509,14 +507,14 @@ class SkillberryPluginSast(PluginBase):
                 not_found.append(uuid)
 
         for uuid in uuids:
-            ctype = self._infer_type(uuid)
+            ctype = await self._infer_type(uuid)
             if ctype is None:
                 not_found.append(uuid)
                 continue
             if ctype == "skill":
                 # Skills carry no code; fan out to referenced tools/snippets.
                 await _scan(uuid, "skill")  # records a skill-level (empty) result
-                skill_obj = self.store.get_skill(uuid) or {}
+                skill_obj = await self.store.get_skill(uuid) or {}
                 child_uuids = set(
                     (skill_obj.get("tool_uuids") or [])
                     + (skill_obj.get("snippet_uuids") or [])
@@ -528,10 +526,12 @@ class SkillberryPluginSast(PluginBase):
                 # Aggregate children's findings and write back to the skill.
                 child_results = [r for r in results if r.get("uuid") in child_uuids]
                 try:
-                    self._write_skill_aggregate(uuid, skill_obj, child_results)
-                except Exception as e:
+                    await self._write_skill_aggregate(uuid, skill_obj, child_results)
+                except Exception as e:  # noqa: BLE001
                     logger.error(
-                        "Failed to write skill aggregate for %s: %s", uuid, e,
+                        "Failed to write skill aggregate for %s: %s",
+                        uuid,
+                        e,
                         exc_info=True,
                     )
             else:
@@ -592,20 +592,18 @@ class SkillberryPluginSast(PluginBase):
         Returns a per-object result dict with ``status`` one of: fixed,
         no_code, no_matching_findings, error.
         """
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
         if self._llm is None:
             raise RuntimeError(self._llm_status)
 
         if content_type is None:
-            content_type = self._infer_type(uuid)
+            content_type = await self._infer_type(uuid)
             if content_type is None:
                 raise ValueError(f"Object {uuid} not found in store")
 
         if content_type == "tool":
-            obj = self.store.get_tool(uuid)
+            obj = await self.store.get_tool(uuid)
         elif content_type == "snippet":
-            obj = self.store.get_snippet(uuid)
+            obj = await self.store.get_snippet(uuid)
         else:
             obj = None  # skills have no code of their own
         if content_type == "skill" or not obj:
@@ -615,7 +613,7 @@ class SkillberryPluginSast(PluginBase):
                 "status": "no_code",
             }
 
-        blobs = self._extract_code(obj, content_type)
+        blobs = await self._extract_code(obj, content_type)
         if not blobs:
             return {
                 "uuid": uuid,
@@ -652,19 +650,14 @@ class SkillberryPluginSast(PluginBase):
             }
         new_code = self._strip_code_fences(raw)
 
-        # Persist the fixed code in place.
+        # Persist the fixed code in place. The SDK StoreClient is REST-only, so
+        # we write the new source back onto the object body (``code``) and PUT
+        # the whole object rather than touching a raw module file.
         if content_type == "tool":
-            self.store.tools.write_file(uuid, obj["module_name"], new_code)
+            obj["code"] = new_code
         else:  # snippet
             obj["content"] = new_code
-            self.store.snippets.write_dict(uuid, obj)
 
-        # Record the fix without clobbering the existing sast block.
-        obj = (
-            self.store.get_tool(uuid)
-            if content_type == "tool"
-            else self.store.get_snippet(uuid)
-        ) or obj
         if not isinstance(obj.get("extra"), dict):
             obj["extra"] = {}
         if not isinstance(obj["extra"].get("evaluation"), dict):
@@ -677,9 +670,9 @@ class SkillberryPluginSast(PluginBase):
             ),
         }
         if content_type == "tool":
-            self.store.tools.write_dict(uuid, obj)
+            await self.store.update_tool(uuid, obj)
         else:
-            self.store.snippets.write_dict(uuid, obj)
+            await self.store.update_snippet(uuid, obj)
 
         return {
             "uuid": uuid,
@@ -698,8 +691,6 @@ class SkillberryPluginSast(PluginBase):
     ) -> Dict[str, Any]:
         """Fix several objects; type inferred per UUID. Skills are skipped
         (no code of their own); unresolved UUIDs go to ``not_found``."""
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
         if self._llm is None:
             raise RuntimeError(self._llm_status)
 
@@ -718,7 +709,7 @@ class SkillberryPluginSast(PluginBase):
         from fastapi import APIRouter, HTTPException
         from pydantic import BaseModel
 
-        router = APIRouter()
+        router = APIRouter(prefix=f"/plugins/{self.manifest.slug}", tags=["sast"])
 
         class ScanRequest(BaseModel):
             uuid: str
@@ -774,34 +765,3 @@ class SkillberryPluginSast(PluginBase):
             return {"success": True, **result}
 
         return router
-
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        return None
-
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return {
-            "icon": "BugIcon",
-            "color": "#8E44AD",
-            "actions": [
-                {
-                    "label": "Scan code (SAST)",
-                    "endpoint": "/api/plugins/sast/scan",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "uuid": {
-                                "type": "string",
-                                "description": "UUID of the object to scan",
-                            },
-                            "content_type": {
-                                "type": "string",
-                                "enum": ["tool", "skill", "snippet"],
-                                "description": "Type of object to scan",
-                            },
-                        },
-                        "required": ["uuid"],
-                    },
-                }
-            ],
-        }

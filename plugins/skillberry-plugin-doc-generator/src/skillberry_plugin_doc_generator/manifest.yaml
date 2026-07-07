@@ -1,0 +1,15 @@
+name: Documentation Generator
+slug: doc-generator
+version: 0.1.0
+description: Generate documentation for tools, skills, and snippets using LLM
+plugin_type: creator
+sdk_version: ^0.1
+has_api: true
+required_env:
+  - name: LLM_PROVIDER
+    description: LLM provider (e.g. openai.async)
+    required: true
+  - name: LLM_MODEL
+    description: LLM model name
+    required: false
+    default: gpt-4

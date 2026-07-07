@@ -1,8 +1,7 @@
-"""Tests for the Skill Optimizer plugin."""
+"""Tests for the Skill Optimizer plugin (SDK-based)."""
 
 import json
 import os
-import shutil
 import tempfile
 import pytest
 from pathlib import Path
@@ -41,7 +40,6 @@ def test_build_prompt_no_context():
     assert "REQUIRED OUTPUT CONTRACT" in prompt
     assert "required_outputs.json" in prompt
     assert "SKILLBERRY STORE ANTHROPIC SKILL FORMAT" in prompt
-    # No context sections should appear
     assert "skill_metadata.json" not in prompt
     assert "trajectories/" not in prompt
     assert "additional_context/" not in prompt
@@ -59,7 +57,7 @@ def test_build_prompt_with_trajectories():
         has_metadata=False, has_trajectories=True, has_additional_context=False
     )
     assert "trajectories/" in prompt
-    assert "reward" in prompt  # trajectory analysis instructions
+    assert "reward" in prompt
     assert "overfit" in prompt
 
 
@@ -83,12 +81,10 @@ def test_build_prompt_contains_required_outputs_template():
     prompt = build_runspace_prompt(
         has_metadata=False, has_trajectories=False, has_additional_context=False
     )
-    # The template JSON must appear verbatim in the prompt
     for key in REQUIRED_OUTPUTS_TEMPLATE:
         assert key in prompt
 
 
-from skillberry_store.plugins.base import PluginType
 from skillberry_plugin_skill_optimizer.plugin import SkillberryPluginSkillOptimizer
 
 
@@ -96,18 +92,10 @@ from skillberry_plugin_skill_optimizer.plugin import SkillberryPluginSkillOptimi
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def plugin():
-    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
-        with patch("skillberry_plugin_skill_optimizer.plugin.runspace_agent", new=Mock()):
-            p = SkillberryPluginSkillOptimizer()
-    return p
-
-
-@pytest.fixture
-def mock_store():
-    store = Mock()
-    store.get_skill = Mock(return_value={
+def _make_store():
+    """Build an AsyncMock StoreClient with the surface the plugin uses."""
+    store = AsyncMock()
+    store.get_skill = AsyncMock(return_value={
         "uuid": "skill-uuid-123",
         "name": "my-skill",
         "description": "A test skill",
@@ -127,28 +115,59 @@ def mock_store():
         ],
         "snippets": [],
     })
-    store.list_skills = Mock(return_value=[{"name": "other-skill"}])
-    store.tools = Mock()
-    store.tools.read_file = Mock(return_value="def my_tool():\n    pass\n")
-    store.create_tool = Mock(return_value={"uuid": "new-tool-uuid", "name": "my_tool"})
-    store.create_snippet = Mock(return_value={"uuid": "new-snip-uuid", "name": "my_snip"})
-    store.create_skill = Mock(return_value={
+    store.list_skills = AsyncMock(return_value=[{"name": "other-skill"}])
+    store.get = AsyncMock(return_value="def my_tool():\n    pass\n")
+    store.post = AsyncMock(return_value={"uuid": "new-uuid", "name": "created"})
+    store.patch_skill = AsyncMock(return_value={"uuid": "new-uuid"})
+    return store
+
+
+@pytest.fixture
+def plugin():
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+        with patch("skillberry_plugin_skill_optimizer.plugin.runspace_agent", new=Mock()):
+            p = SkillberryPluginSkillOptimizer()
+    return p
+
+
+@pytest.fixture
+def mock_store():
+    return _make_store()
+
+
+def _wire_store(plugin, store):
+    """Attach a mock store and stub the create/update helpers used by optimize_skill."""
+    plugin._store = store
+    # Route _create_tool through the mock so tests don't need a live http server.
+    plugin._create_tool = AsyncMock(return_value={"uuid": "new-tool-uuid", "name": "my_tool"})
+    plugin._create_snippet = AsyncMock(return_value={"uuid": "new-snip-uuid", "name": "my_snip"})
+    plugin._create_skill = AsyncMock(return_value={
         "uuid": "new-skill-uuid",
         "name": "my-skill_optimized",
         "description": "Optimized skill",
     })
-    store.update_skill_metadata = Mock(return_value=True)
-    return store
+    plugin._update_skill_metadata = AsyncMock(return_value=True)
+    return plugin
 
 
 # ---------------------------------------------------------------------------
-# Plugin init / metadata tests
+# Manifest / init tests
 # ---------------------------------------------------------------------------
 
-def test_plugin_metadata(plugin):
-    assert plugin.metadata.name == "Skill Optimizer"
-    assert plugin.metadata.plugin_type == PluginType.OPTIMIZER
-    assert plugin.metadata.version == "0.1.0"
+def test_plugin_manifest_slug(plugin):
+    assert plugin.manifest.slug == "skill-optimizer"
+
+
+def test_plugin_manifest_type(plugin):
+    assert plugin.manifest.plugin_type == "optimizer"
+
+
+def test_plugin_manifest_version(plugin):
+    assert plugin.manifest.version == "0.1.0"
+
+
+def test_plugin_manifest_has_api(plugin):
+    assert plugin.manifest.has_api is True
 
 
 def test_is_enabled_with_runspace_and_credentials(plugin):
@@ -166,7 +185,6 @@ def test_is_enabled_without_credentials():
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")}
     with patch.dict(os.environ, env, clear=True):
         with patch("skillberry_plugin_skill_optimizer.plugin.runspace_agent", new=Mock()):
-            # Also isolate from any real ~/.claude/settings.json on the dev machine.
             with patch.object(SkillberryPluginSkillOptimizer, "_load_claude_settings", lambda self: None):
                 p = SkillberryPluginSkillOptimizer()
     assert p.is_enabled() is False
@@ -188,48 +206,70 @@ def test_status_message_missing_credentials():
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN")}
     with patch.dict(os.environ, env, clear=True):
         with patch("skillberry_plugin_skill_optimizer.plugin.runspace_agent", new=Mock()):
-            # Also isolate from any real ~/.claude/settings.json on the dev machine.
             with patch.object(SkillberryPluginSkillOptimizer, "_load_claude_settings", lambda self: None):
                 p = SkillberryPluginSkillOptimizer()
     assert "credentials" in p.get_status_message().lower()
 
 
 # ---------------------------------------------------------------------------
+# is_ready (SDK lifecycle)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_is_ready_reports_ready_when_enabled(plugin):
+    ready = await plugin.is_ready()
+    assert ready["ready"] is True
+    assert ready["missing_config"] == []
+
+
+@pytest.mark.asyncio
+async def test_is_ready_reports_missing_runspace():
+    with patch("skillberry_plugin_skill_optimizer.plugin.runspace_agent", new=None):
+        p = SkillberryPluginSkillOptimizer()
+    ready = await p.is_ready()
+    assert ready["ready"] is False
+    assert "runspace-agent" in ready["missing_config"]
+
+
+# ---------------------------------------------------------------------------
 # Naming tests
 # ---------------------------------------------------------------------------
 
-def test_naming_no_conflict(plugin, mock_store):
-    plugin.set_store_api(mock_store)
-    # existing names: ["other-skill"] — "my-skill_optimized" is free
-    name = plugin._generate_output_skill_name("my-skill")
+@pytest.mark.asyncio
+async def test_naming_no_conflict(plugin, mock_store):
+    plugin._store = mock_store
+    name = await plugin._generate_output_skill_name("my-skill")
     assert name == "my-skill_optimized"
 
 
-def test_naming_conflict_appends_1(plugin, mock_store):
-    mock_store.list_skills.return_value = [
+@pytest.mark.asyncio
+async def test_naming_conflict_appends_1(plugin, mock_store):
+    mock_store.list_skills = AsyncMock(return_value=[
         {"name": "other-skill"},
         {"name": "my-skill_optimized"},
-    ]
-    plugin.set_store_api(mock_store)
-    name = plugin._generate_output_skill_name("my-skill")
+    ])
+    plugin._store = mock_store
+    name = await plugin._generate_output_skill_name("my-skill")
     assert name == "my-skill_optimized(1)"
 
 
-def test_naming_conflict_appends_2(plugin, mock_store):
-    mock_store.list_skills.return_value = [
+@pytest.mark.asyncio
+async def test_naming_conflict_appends_2(plugin, mock_store):
+    mock_store.list_skills = AsyncMock(return_value=[
         {"name": "my-skill_optimized"},
         {"name": "my-skill_optimized(1)"},
-    ]
-    plugin.set_store_api(mock_store)
-    name = plugin._generate_output_skill_name("my-skill")
+    ])
+    plugin._store = mock_store
+    name = await plugin._generate_output_skill_name("my-skill")
     assert name == "my-skill_optimized(2)"
 
 
-def test_naming_user_override(plugin, mock_store):
-    plugin.set_store_api(mock_store)
-    name = plugin._generate_output_skill_name("my-skill", override="custom-name")
+@pytest.mark.asyncio
+async def test_naming_user_override(plugin, mock_store):
+    plugin._store = mock_store
+    name = await plugin._generate_output_skill_name("my-skill", override="custom-name")
     assert name == "custom-name"
-    mock_store.list_skills.assert_not_called()
+    mock_store.list_skills.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +299,7 @@ def _make_mock_tool():
 
 @pytest.mark.asyncio
 async def test_optimize_skill_happy_path(plugin, mock_store):
-    plugin.set_store_api(mock_store)
+    _wire_store(plugin, mock_store)
 
     fake_req_outputs = {
         **REQUIRED_OUTPUTS_TEMPLATE,
@@ -296,8 +336,8 @@ async def test_optimize_skill_happy_path(plugin, mock_store):
     assert result["skill"]["name"] == "my-skill_optimized"
     assert result["tools_count"] == 1
     assert result["snippets_count"] == 0
-    mock_store.update_skill_metadata.assert_called_once()
-    call_args = mock_store.update_skill_metadata.call_args
+    plugin._update_skill_metadata.assert_awaited_once()
+    call_args = plugin._update_skill_metadata.call_args
     opt_meta = call_args[0][1]["optimization"]
     assert opt_meta["optimization_rationale"] == "Improved tool descriptions"
     assert opt_meta["source_skill_uuid"] == "skill-uuid-123"
@@ -306,15 +346,15 @@ async def test_optimize_skill_happy_path(plugin, mock_store):
 
 @pytest.mark.asyncio
 async def test_skill_not_found_raises(plugin, mock_store):
-    mock_store.get_skill.return_value = None
-    plugin.set_store_api(mock_store)
+    mock_store.get_skill = AsyncMock(return_value=None)
+    _wire_store(plugin, mock_store)
     with pytest.raises(ValueError, match="not found"):
         await plugin.optimize_skill(skill_uuid="nonexistent-uuid")
 
 
 @pytest.mark.asyncio
 async def test_bad_trajectories_dir_raises(plugin, mock_store):
-    plugin.set_store_api(mock_store)
+    _wire_store(plugin, mock_store)
     with pytest.raises(ValueError, match="trajectories_dir"):
         await plugin.optimize_skill(
             skill_uuid="skill-uuid-123",
@@ -324,7 +364,7 @@ async def test_bad_trajectories_dir_raises(plugin, mock_store):
 
 @pytest.mark.asyncio
 async def test_bad_additional_context_dir_raises(plugin, mock_store):
-    plugin.set_store_api(mock_store)
+    _wire_store(plugin, mock_store)
     with pytest.raises(ValueError, match="additional_context_dir"):
         await plugin.optimize_skill(
             skill_uuid="skill-uuid-123",
@@ -334,10 +374,9 @@ async def test_bad_additional_context_dir_raises(plugin, mock_store):
 
 @pytest.mark.asyncio
 async def test_missing_required_outputs_still_imports(plugin, mock_store):
-    plugin.set_store_api(mock_store)
+    _wire_store(plugin, mock_store)
 
     async def fake_session_no_outputs(prompt, skill_dir, context_dir, options, mode, plugin_inst):
-        # Agent does NOT write required_outputs.json
         return _make_mock_result()
 
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -359,12 +398,12 @@ async def test_missing_required_outputs_still_imports(plugin, mock_store):
             )
 
     assert result["success"] is True
-    mock_store.update_skill_metadata.assert_called_once()
+    plugin._update_skill_metadata.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_metadata_context_written_when_enabled(plugin, mock_store):
-    plugin.set_store_api(mock_store)
+    _wire_store(plugin, mock_store)
     written_context_files = []
 
     async def fake_session_capture(prompt, skill_dir, context_dir, options, mode, plugin_inst):
@@ -426,7 +465,7 @@ def test_router_returns_503_when_disabled():
 
 @pytest.mark.asyncio
 async def test_router_optimize_skill_endpoint(plugin, mock_store):
-    plugin.set_store_api(mock_store)
+    plugin._store = mock_store
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -511,7 +550,6 @@ def _make_plugin_with_settings(settings):
 
 
 def test_check_credentials_reads_settings_env_block():
-    # Standard Claude Code schema: credentials live under the "env" block.
     settings = {"env": {"ANTHROPIC_BASE_URL": "https://gw", "ANTHROPIC_AUTH_TOKEN": "tok"}}
     clean = {k: v for k, v in os.environ.items()
              if not (k.startswith("ANTHROPIC_") or k.startswith("CLAUDE_"))}
@@ -535,7 +573,6 @@ def test_build_claude_env_forwards_entire_settings_env_block():
     with patch.dict(os.environ, clean, clear=True):
         p = _make_plugin_with_settings(settings)
         env = p._build_claude_env()
-    # Every key from the settings env block is forwarded, not just a hardcoded subset.
     for key, value in settings["env"].items():
         assert env[key] == value
 

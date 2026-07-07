@@ -174,21 +174,39 @@ export interface PluginUIConfig {
   notifications?: PluginNotificationsConfig;
 }
 
+export type PluginState =
+  | 'not_installed'
+  | 'installed'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'error';
+
 export interface Plugin {
   slug: string;  // Entry point name used in URLs
-  name: string;
-  description: string;
-  version: string;
-  plugin_type: PluginType;
+  name?: string;
+  description?: string;
+  version?: string;
+  plugin_type?: PluginType;
   author?: string;
   homepage?: string;
-  enabled: boolean;
-  admin_enabled: boolean;
-  status: string;
-  has_router: boolean;
-  has_cli: boolean;
-  has_ui: boolean;
+  // Legacy in-process view
+  enabled?: boolean;
+  admin_enabled?: boolean;
+  status?: string;
+  has_router?: boolean;
+  has_cli?: boolean;
+  has_ui?: boolean;
   ui_config?: PluginUIConfig;
+  // Out-of-process manager view
+  state?: PluginState;
+  installed_at?: string;
+  autostart?: boolean;
+  env_overrides?: Record<string, string>;
+  manifest?: Record<string, any>;
+  missing_env?: string[];
+  port?: number | null;
+  error?: string | null;
 }
 
 export interface PluginActionResult {

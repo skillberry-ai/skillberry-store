@@ -1,112 +1,144 @@
 """
 Skillberry Plugin Evaluator - LLM-based quality/performance evaluation plugin.
-Uses llm-switchboard for LLM integration.
+
+Out-of-process SDK version. Uses llm-switchboard for LLM integration.
 """
 
-import os
-import logging
-import json
-from typing import Dict, Any, Optional, List
+from __future__ import annotations
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+import json
+import logging
+import os
+from typing import Any, Dict, List, Optional
+
+from skillberry_plugin_sdk import PluginLifecycleBase, on_event
 
 logger = logging.getLogger(__name__)
 
 
-class SkillberryPluginEvaluator(PluginBase):
+class SkillberryPluginEvaluator(PluginLifecycleBase):
     """Plugin for evaluating skills, tools, and snippets using LLM."""
 
-    def __init__(self):
-        super().__init__()
+    manifest_path = "manifest.yaml"
 
-        self._metadata = PluginMetadata(
-            name="Content Evaluator",
-            version="0.1.0",
-            description="Evaluate content quality and performance using LLM",
-            plugin_type=PluginType.EVALUATOR,
-        )
-
+    def __init__(self, manifest=None):
+        super().__init__(manifest=manifest)
         self.llm_client = None
         self._status_message = "Initializing..."
 
+    # Lifecycle ---------------------------------------------------------------
+
+    async def on_start(self) -> None:
+        """Initialize the LLM client from env-driven configuration."""
         try:
             from llm_switchboard import get_llm
 
             provider_name = os.getenv("LLM_PROVIDER", "openai.async")
             model_name = os.getenv("LLM_MODEL", "gpt-4")
 
-            logger.info(f"Initializing LLM: provider={provider_name}, model={model_name}")
+            logger.info(
+                "Initializing LLM: provider=%s, model=%s", provider_name, model_name
+            )
 
             LLMClientClass = get_llm(provider_name)
             self.llm_client = LLMClientClass(model_name=model_name)
             self._status_message = f"Ready (using {provider_name})"
 
             logger.info("LLM client initialized successfully")
-
         except ImportError:
             self._status_message = "Missing dependency: llm-switchboard not installed"
             logger.warning("llm-switchboard not installed, plugin will be disabled")
         except Exception as e:
             self._status_message = f"Configuration error: {str(e)}"
-            logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
+            logger.error("Failed to initialize LLM client: %s", e, exc_info=True)
 
-        self._register_event_handlers()
+    async def is_ready(self) -> Dict[str, Any]:
+        ready = self.llm_client is not None
+        return {
+            "ready": ready,
+            "missing_config": [] if ready else ["llm_client"],
+        }
 
-    def _register_event_handlers(self) -> None:
-        """Register on_content_added handlers for automatic evaluation on object creation."""
-        from skillberry_store.plugins.events import _event_handlers
-
-        for content_type in ("tool", "skill", "snippet"):
-            async def _handle_added(uuid: str, ct=content_type):
-                if not self.is_enabled() or self._store_api is None:
-                    return
-                try:
-                    await self.evaluate_object(uuid, ct)
-                except Exception as e:
-                    logger.error(
-                        f"Auto-evaluation failed for {ct} {uuid}: {e}", exc_info=True
-                    )
-                # For skills, also evaluate referenced tools and snippets.
-                # Import flows (e.g. import-anthropic-skill) write tools/snippets
-                # directly to the handler without emitting per-object events, so
-                # those objects would otherwise never be evaluated.
-                if ct == "skill":
-                    try:
-                        skill_obj = self.store.get_skill(uuid)
-                    except Exception:
-                        skill_obj = None
-                    if skill_obj:
-                        for tool_uuid in skill_obj.get("tool_uuids") or []:
-                            try:
-                                await self.evaluate_object(tool_uuid, "tool")
-                            except Exception as e:
-                                logger.error(
-                                    f"Auto-evaluation failed for tool {tool_uuid}: {e}",
-                                    exc_info=True,
-                                )
-                        for snippet_uuid in skill_obj.get("snippet_uuids") or []:
-                            try:
-                                await self.evaluate_object(snippet_uuid, "snippet")
-                            except Exception as e:
-                                logger.error(
-                                    f"Auto-evaluation failed for snippet {snippet_uuid}: {e}",
-                                    exc_info=True,
-                                )
-
-            event_name = f"content_added:{content_type}"
-            if event_name not in _event_handlers:
-                _event_handlers[event_name] = []
-            _event_handlers[event_name].append(_handle_added)
-
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
+    def is_enabled(self) -> bool:
+        return self.llm_client is not None
 
     def get_status_message(self) -> str:
         return self._status_message
 
-    def is_enabled(self) -> bool:
-        return self.llm_client is not None
+    # Event handlers ---------------------------------------------------------
+
+    @on_event("content.tool.added")
+    async def on_tool_added(self, event) -> None:
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid:
+            return
+        if not self.is_enabled():
+            return
+        try:
+            await self.evaluate_object(uuid, "tool")
+        except Exception as e:
+            logger.error("Auto-evaluation failed for tool %s: %s", uuid, e, exc_info=True)
+
+    @on_event("content.snippet.added")
+    async def on_snippet_added(self, event) -> None:
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid:
+            return
+        if not self.is_enabled():
+            return
+        try:
+            await self.evaluate_object(uuid, "snippet")
+        except Exception as e:
+            logger.error(
+                "Auto-evaluation failed for snippet %s: %s", uuid, e, exc_info=True
+            )
+
+    @on_event("content.skill.added")
+    async def on_skill_added(self, event) -> None:
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid:
+            return
+        if not self.is_enabled():
+            return
+        try:
+            await self.evaluate_object(uuid, "skill")
+        except Exception as e:
+            logger.error(
+                "Auto-evaluation failed for skill %s: %s", uuid, e, exc_info=True
+            )
+
+        # For skills, also evaluate referenced tools and snippets. Import flows
+        # (e.g. import-anthropic-skill) write tools/snippets directly to the
+        # handler without emitting per-object events, so those objects would
+        # otherwise never be evaluated.
+        try:
+            skill_obj = await self.store.get_skill(uuid)
+        except Exception:
+            skill_obj = None
+        if not skill_obj:
+            return
+        for tool_uuid in skill_obj.get("tool_uuids") or []:
+            try:
+                await self.evaluate_object(tool_uuid, "tool")
+            except Exception as e:
+                logger.error(
+                    "Auto-evaluation failed for tool %s: %s",
+                    tool_uuid,
+                    e,
+                    exc_info=True,
+                )
+        for snippet_uuid in skill_obj.get("snippet_uuids") or []:
+            try:
+                await self.evaluate_object(snippet_uuid, "snippet")
+            except Exception as e:
+                logger.error(
+                    "Auto-evaluation failed for snippet %s: %s",
+                    snippet_uuid,
+                    e,
+                    exc_info=True,
+                )
+
+    # Helpers ----------------------------------------------------------------
 
     def _build_context(self, obj: Dict[str, Any], content_type: str) -> str:
         """Build rich context string for the LLM evaluation prompt."""
@@ -135,7 +167,9 @@ class SkillberryPluginEvaluator(PluginBase):
             if obj.get("packaging_format"):
                 lines.append(f"Packaging format: {obj['packaging_format']}")
             if obj.get("packaging_params"):
-                lines.append(f"Packaging params: {json.dumps(obj['packaging_params'])}")
+                lines.append(
+                    f"Packaging params: {json.dumps(obj['packaging_params'])}"
+                )
             if obj.get("params"):
                 lines.append(f"Parameters: {json.dumps(obj['params'])}")
             if obj.get("returns"):
@@ -143,15 +177,10 @@ class SkillberryPluginEvaluator(PluginBase):
             if obj.get("dependencies"):
                 lines.append(f"Dependencies: {', '.join(obj['dependencies'])}")
 
-            module_name = obj.get("module_name")
-            if module_name and self._store_api is not None:
-                try:
-                    code = self.store.tools.read_file(
-                        obj["uuid"], module_name, raw_content=True
-                    )
-                    lines.append(f"\nCode ({module_name}):\n```\n{code}\n```")
-                except Exception as e:
-                    logger.info(f"Could not read code for tool {obj.get('uuid')}: {e}")
+            # NOTE: In the in-process plugin, we used to read the raw tool
+            # source (self.store.tools.read_file(...)) and inline it in the
+            # context. The out-of-process HTTP StoreClient does not expose
+            # that handler access, so this code path is intentionally skipped.
 
         elif content_type == "skill":
             tool_uuids = obj.get("tool_uuids") or []
@@ -208,11 +237,11 @@ class SkillberryPluginEvaluator(PluginBase):
         }
 
         if content_type == "tool":
-            self.store.tools.write_dict(uuid, obj)
+            await self.store.update_tool(uuid, obj)
         elif content_type == "skill":
-            self.store.skills.write_dict(uuid, obj)
+            await self.store.update_skill(uuid, obj)
         elif content_type == "snippet":
-            self.store.snippets.write_dict(uuid, obj)
+            await self.store.update_snippet(uuid, obj)
 
     async def evaluate_object(self, uuid: str, content_type: str) -> Dict[str, Any]:
         """
@@ -221,33 +250,23 @@ class SkillberryPluginEvaluator(PluginBase):
         Fetches the full object from the store, sends it to the LLM, then
         stores scores as tags (quality-score:N etc.) and textual evaluations
         in extra["evaluation"].
-
-        Args:
-            uuid: UUID of the object to evaluate
-            content_type: "tool", "skill", or "snippet"
-
-        Returns:
-            Dict with quality_score, performance_score (int 1-10)
-            and quality_evaluation, performance_evaluation (str)
         """
         if not self.llm_client:
             raise RuntimeError("LLM client not initialized")
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
 
         if content_type == "tool":
-            obj = self.store.get_tool(uuid)
+            obj = await self.store.get_tool(uuid)
         elif content_type == "skill":
-            obj = self.store.get_skill(uuid)
+            obj = await self.store.get_skill(uuid)
         elif content_type == "snippet":
-            obj = self.store.get_snippet(uuid)
+            obj = await self.store.get_snippet(uuid)
         else:
             raise ValueError(f"Unknown content_type: {content_type}")
 
         if not obj:
             raise ValueError(f"{content_type.capitalize()} {uuid} not found in store")
 
-        logger.info(f"Evaluating {content_type} {uuid}: {obj.get('name', 'unnamed')}")
+        logger.info("Evaluating %s %s: %s", content_type, uuid, obj.get("name", "unnamed"))
 
         context = self._build_context(obj, content_type)
 
@@ -263,9 +282,9 @@ Evaluate this {content_type} on two dimensions and return a JSON object with exa
 
 Return ONLY the JSON object, no other text."""
 
-        logger.debug(f"Calling LLM for {content_type} {uuid}")
+        logger.debug("Calling LLM for %s %s", content_type, uuid)
         response = await self.llm_client.generate_async(prompt=prompt)
-        logger.info(f"Received LLM response ({len(response)} chars)")
+        logger.info("Received LLM response (%d chars)", len(response))
 
         try:
             start = response.find("{")
@@ -275,8 +294,10 @@ Return ONLY the JSON object, no other text."""
             evaluation = json.loads(response[start:end])
 
             required_fields = [
-                "quality_score", "quality_evaluation",
-                "performance_score", "performance_evaluation",
+                "quality_score",
+                "quality_evaluation",
+                "performance_score",
+                "performance_evaluation",
             ]
             for field in required_fields:
                 if field not in evaluation:
@@ -284,26 +305,29 @@ Return ONLY the JSON object, no other text."""
 
             for score_field in ("quality_score", "performance_score"):
                 evaluation[score_field] = int(evaluation[score_field])
-
         except Exception as e:
-            logger.warning(f"Failed to parse LLM evaluation response: {e}")
+            logger.warning("Failed to parse LLM evaluation response: %s", e)
             raise RuntimeError(f"Failed to parse LLM response: {str(e)}")
 
         await self._write_evaluation_to_store(uuid, content_type, obj, evaluation)
         logger.info(
-            f"Evaluation stored for {content_type} {uuid}: "
-            f"quality={evaluation['quality_score']}, "
-            f"performance={evaluation['performance_score']}"
+            "Evaluation stored for %s %s: quality=%s, performance=%s",
+            content_type,
+            uuid,
+            evaluation["quality_score"],
+            evaluation["performance_score"],
         )
 
         return evaluation
+
+    # HTTP router ------------------------------------------------------------
 
     def get_router(self):
         """Register plugin routes."""
         from fastapi import APIRouter, HTTPException
         from pydantic import BaseModel
 
-        router = APIRouter()
+        router = APIRouter(prefix=f"/plugins/{self.manifest.slug}", tags=["evaluator"])
 
         class EvaluateRequest(BaseModel):
             uuid: str
@@ -331,42 +355,15 @@ Return ONLY the JSON object, no other text."""
                 raise HTTPException(status_code=404, detail=str(e))
             except Exception as e:
                 logger.error(
-                    f"Failed to evaluate {request.content_type} {request.uuid}: {e}",
+                    "Failed to evaluate %s %s: %s",
+                    request.content_type,
+                    request.uuid,
+                    e,
                     exc_info=True,
                 )
                 raise HTTPException(status_code=500, detail=str(e))
 
         return router
 
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        return None
-
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return {
-            "icon": "CheckCircleIcon",
-            "color": "#28A745",
-            "actions": [
-                {
-                    "label": "Evaluate",
-                    "endpoint": "/api/plugins/evaluator/evaluate",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "uuid": {
-                                "type": "string",
-                                "description": "UUID of the object to evaluate",
-                            },
-                            "content_type": {
-                                "type": "string",
-                                "enum": ["tool", "skill", "snippet"],
-                                "description": "Type of object to evaluate",
-                            },
-                        },
-                        "required": ["uuid", "content_type"],
-                    },
-                }
-            ],
-        }
 
 # Made with Bob

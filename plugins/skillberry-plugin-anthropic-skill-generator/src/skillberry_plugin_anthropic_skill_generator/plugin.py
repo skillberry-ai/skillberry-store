@@ -1,7 +1,11 @@
 """
 Skillberry Plugin Anthropic Skill Generator - generates Anthropic skills from descriptions.
 Uses runspace-agent to create skills and imports them into the store.
+
+Ported to the out-of-process SDK (skillberry-plugin-sdk).
 """
+
+from __future__ import annotations
 
 import asyncio
 import json
@@ -11,10 +15,10 @@ import tempfile
 import threading
 import time
 import uuid
-from typing import Dict, Any, Literal, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_plugin_sdk import PluginLifecycleBase
 
 logger = logging.getLogger(__name__)
 
@@ -88,35 +92,30 @@ async def create_skill(prompt, skill_dir, context_dir, options, mode, plugin_ins
     return result
 
 
-class SkillberryPluginAnthropicSkillGenerator(PluginBase):
+class SkillberryPluginAnthropicSkillGenerator(PluginLifecycleBase):
     """Plugin for generating Anthropic skills from descriptions using runspace-agent."""
 
-    def __init__(self):
-        super().__init__()
-        
-        self._metadata = PluginMetadata(
-            name="Anthropic Skill Generator",
-            version="0.1.0",
-            description="Generate Anthropic skills from descriptions using runspace-agent",
-            plugin_type=PluginType.CREATOR,
-        )
-        
-        self._status_message = "Initializing..."
-        self._runspace_available = False
-        self._credentials_configured = False
-        self._execution_mode = os.getenv("RUNSPACE_MODE", "container")  # Default to container for safety
-        self._claude_settings = None
-        
-        # Try to load Claude settings from ~/.claude/settings.json
+    manifest_path = "manifest.yaml"
+
+    def __init__(self, manifest=None) -> None:
+        super().__init__(manifest=manifest)
+        self._status_message: str = "Initializing..."
+        self._runspace_available: bool = False
+        self._credentials_configured: bool = False
+        self._execution_mode: str = os.getenv("RUNSPACE_MODE", "container")
+        self._claude_settings: Optional[Dict[str, Any]] = None
+
+    # Lifecycle -----------------------------------------------------------------
+
+    async def on_start(self) -> None:
+        """Initialize the LLM/runspace client and check credentials."""
         self._load_claude_settings()
-        
-        # Check if runspace-agent is available (module-level import)
+
         if runspace_agent is not None:
             try:
                 self._runspace_available = True
                 logger.info("runspace-agent library available")
 
-                # Check for Anthropic credentials (env vars or settings file)
                 self._credentials_configured = self._check_credentials()
 
                 if self._credentials_configured:
@@ -125,7 +124,11 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
                     self._status_message = f"Ready{mode_label}{source}"
                     logger.info(f"Plugin ready with {self._execution_mode} execution mode")
                 else:
-                    self._status_message = "Missing credentials: Set ANTHROPIC_API_KEY, configure ~/.claude/settings.json, or provide ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN"
+                    self._status_message = (
+                        "Missing credentials: Set ANTHROPIC_API_KEY, configure "
+                        "~/.claude/settings.json, or provide ANTHROPIC_BASE_URL + "
+                        "ANTHROPIC_AUTH_TOKEN"
+                    )
                     logger.warning("Anthropic credentials not configured")
 
             except Exception as e:
@@ -134,14 +137,31 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
         else:
             self._status_message = "Missing dependency: runspace-agent not installed"
             logger.warning("runspace-agent not installed, plugin will be disabled")
-    
-    def _load_claude_settings(self):
+
+    async def on_stop(self) -> None:
+        return None
+
+    async def is_ready(self) -> Dict[str, Any]:
+        missing: List[str] = []
+        if not self._runspace_available:
+            missing.append("runspace-agent")
+        if not self._credentials_configured:
+            missing.append("anthropic-credentials")
+        return {
+            "ready": self._runspace_available and self._credentials_configured,
+            "missing_config": missing,
+            "status_message": self._status_message,
+        }
+
+    # Credential / settings helpers --------------------------------------------
+
+    def _load_claude_settings(self) -> None:
         """Load Claude settings from ~/.claude/settings.json if it exists."""
         settings_path = Path.home() / ".claude" / "settings.json"
-        
+
         if settings_path.exists():
             try:
-                with open(settings_path, 'r') as f:
+                with open(settings_path, "r") as f:
                     self._claude_settings = json.load(f)
                 logger.info(f"Loaded Claude settings from {settings_path}")
             except Exception as e:
@@ -149,7 +169,7 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
                 self._claude_settings = None
         else:
             logger.debug(f"Claude settings file not found at {settings_path}")
-    
+
     @staticmethod
     def _has_api_access(source: Any) -> bool:
         """True if `source` (a mapping) carries Anthropic API credentials."""
@@ -167,58 +187,35 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
         return settings_env if isinstance(settings_env, dict) else {}
 
     def _check_credentials(self) -> bool:
-        """Check if Anthropic credentials are configured.
-
-        Credentials may come from the process environment or from the
-        ~/.claude/settings.json ``env`` block. Both use the standard
-        ANTHROPIC_* variable names.
-        """
+        """Check if Anthropic credentials are configured (env or ~/.claude/settings.json)."""
         return self._has_api_access(os.environ) or self._has_api_access(self._claude_settings_env())
 
     def _build_claude_env(self, override_env: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-        """Build environment variables for the Claude Code agent.
-
-        Priority order (lowest to highest):
-        1. Every key in the ~/.claude/settings.json ``env`` block.
-        2. ANTHROPIC_*/CLAUDE_* variables from the current process environment.
-        3. Request-specific ``override_env``.
-
-        Args:
-            override_env: Optional environment variables to override defaults
-
-        Returns:
-            Dictionary of environment variables for Claude Code
-        """
+        """Build environment variables for the Claude Code agent."""
         env: Dict[str, str] = {}
 
-        # 1. Forward the entire settings.json env block as-is (lowest priority).
         for key, value in self._claude_settings_env().items():
             if value is not None:
                 env[key] = str(value)
 
-        # 2. Real environment vars take precedence over the settings file.
         for key, value in os.environ.items():
             if value and (key.startswith("ANTHROPIC_") or key.startswith("CLAUDE_")):
                 env[key] = value
 
-        # 3. Request-specific overrides win.
         if override_env:
             env.update(override_env)
 
         return env
 
-    @property
-    def metadata(self) -> PluginMetadata:
-        """Return plugin metadata."""
-        return self._metadata
-    
+    # Status helpers (kept for backward-compatible callers) --------------------
+
     def get_status_message(self) -> str:
-        """Return current plugin status."""
         return self._status_message
 
     def is_enabled(self) -> bool:
-        """Plugin is enabled if runspace-agent is available and credentials are configured."""
         return self._runspace_available and self._credentials_configured
+
+    # Progress / logging helpers ------------------------------------------------
 
     def _stream_docker_logs(self, workspace_root: Path, stop: threading.Event) -> None:
         """Background thread: find the container mounting workspace_root and tail its logs."""
@@ -226,7 +223,6 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
             import docker  # type: ignore[import-untyped]
             client = docker.from_env()
             container = None
-            # Wait up to 30 s for the container to appear
             for _ in range(60):
                 if stop.is_set():
                     return
@@ -297,13 +293,11 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
             from runspace_agent.workspaces import session_workspace
             workspace = session_workspace(session_id)
 
-            # Log human-readable summary if available
             summary_path = workspace / "summary.md"
             if summary_path.exists():
                 summary = summary_path.read_text(encoding="utf-8").strip()
                 logger.info(f"Session summary:\n{summary}")
 
-            # Parse conversation.json for key milestones
             conv_path = workspace / "conversation.json"
             if not conv_path.exists():
                 return
@@ -350,6 +344,38 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
         except Exception as e:
             logger.debug(f"Could not read session details for {session_id}: {e}")
 
+    # Store write helpers -------------------------------------------------------
+
+    async def _create_tool(
+        self,
+        tool_data: Dict[str, Any],
+        module_content: bytes,
+        module_filename: str,
+    ) -> Dict[str, Any]:
+        """Create a tool with a binary module file upload.
+
+        TODO: the SDK StoreClient does not yet expose a multipart-file upload
+        helper. The SBS ``POST /tools/`` endpoint requires a multipart body
+        with the tool metadata as a query param and the module as a file
+        field. Until the SDK grows that surface, this stub falls back to
+        the generic JSON POST — writes may 4xx on servers that require the
+        multipart form. Tests patch this method.
+        """
+        # Best-effort: try the JSON post; the real upload path needs multipart.
+        return await self.store.post("/tools/", json=tool_data) or {
+            "uuid": "",
+            "name": tool_data.get("name"),
+            "_todo": "multipart-upload-not-yet-supported-in-sdk",
+        }
+
+    async def _create_snippet(self, snippet_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.store.post("/snippets/", json=snippet_data) or {}
+
+    async def _create_skill(self, skill_data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.store.post("/skills/", json=skill_data) or {}
+
+    # Main workflow -------------------------------------------------------------
+
     async def generate_skill(
         self,
         description: str,
@@ -357,26 +383,13 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
         tags: Optional[list] = None,
         agent_env: Optional[Dict[str, str]] = None,
         execution_mode: Optional[str] = None,
-        max_turns: Optional[int] = None
+        max_turns: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """
-        Generate an Anthropic skill from a description using runspace-agent.
-        
-        Args:
-            description: Natural language description of the skill to create
-            skill_name: Optional name for the skill
-            tags: Optional list of tags to apply to the imported skill
-            agent_env: Optional environment variables for Claude Code (API keys, etc.)
-            execution_mode: Optional execution mode ("local" or "container")
-            max_turns: Optional maximum conversation turns for Claude Code
-            
-        Returns:
-            Dict with skill details (uuid, name, tools, etc.)
-        """
+        """Generate an Anthropic skill from a description using runspace-agent."""
         if not self._runspace_available:
             raise RuntimeError("runspace-agent not available")
 
-        if self._store_api is None:
+        if self._store is None:
             raise RuntimeError("Store API not available")
 
         if not self._credentials_configured and not agent_env:
@@ -388,33 +401,25 @@ class SkillberryPluginAnthropicSkillGenerator(PluginBase):
 
         from claude_code_sdk import ClaudeCodeOptions
 
-        # Build environment for Claude Code
         claude_env = self._build_claude_env(agent_env)
 
-        # Configure Claude Code options.
-        # Use agent_options (not a pre-built agent) so both local and container
-        # modes can read the env vars from the session — container mode reads
-        # session.agent_options.env to inject credentials into the Docker container.
         options = ClaudeCodeOptions(
             env=claude_env,
             max_turns=max_turns or int(os.getenv("RUNSPACE_MAX_TURNS", "300")),
         )
-        
-        # Determine execution mode
+
         raw_mode = execution_mode or self._execution_mode
         mode: Literal["local", "container"] = "container" if raw_mode == "container" else "local"
-        
-        # Create a temporary directory for the generated skill
+
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             skill_dir = temp_path / "generated_skill"
             skill_dir.mkdir(exist_ok=True)
             context_dir = temp_path / "context"
             context_dir.mkdir(exist_ok=True)
-            
+
             logger.info(f"Creating skill in temporary directory: {skill_dir}")
-            
-            # Create a prompt for skill generation
+
             prompt = f"""Create a new Anthropic skill based on this description:
 
 {description}
@@ -429,21 +434,15 @@ The skill should be production-ready and well-documented."""
 
             if skill_name:
                 prompt += f"\n\nUse '{skill_name}' as the skill name."
-            
-            # Generate the skill using runspace-agent
+
             try:
                 result = await create_skill(prompt, skill_dir, context_dir, options, mode, self)
                 self._log_session_details(result.session_id)
-
             except Exception as e:
                 logger.error(f"Failed to generate skill with runspace-agent: {e}", exc_info=True)
                 raise RuntimeError(f"Skill generation failed: {str(e)}")
-            
-            # Import the generated skill into the store using the Anthropic importer
+
             try:
-                # Container mode does not sync files back to session.editable_dir —
-                # generated files live in the runspace session workspace instead.
-                # Local mode does sync back, so skill_dir is correct there.
                 if mode == "container":
                     import_dir = session_workspace(result.session_id) / "agent_workspace" / "editable"
                 else:
@@ -451,24 +450,22 @@ The skill should be production-ready and well-documented."""
 
                 logger.info(f"Importing generated skill from {import_dir}...")
 
-                # Import from the folder
                 skill_name_result, skill_description, tools, snippets, ignored_files = (
                     import_from_anthropic_skill(
                         source_type="folder",
                         source_data=str(import_dir),
                         snippet_mode="file",
-                        treat_all_as_documents=False
+                        treat_all_as_documents=False,
                     )
                 )
-                
+
                 logger.info(
                     f"Imported skill '{skill_name_result}': "
                     f"{len(tools)} tools, {len(snippets)} snippets, "
                     f"{len(ignored_files)} ignored files"
                 )
-                
-                # Create tools in the store
-                tool_uuids = []
+
+                tool_uuids: List[str] = []
                 for tool in tools:
                     try:
                         tool_tags = list(getattr(tool, "tags", None) or [])
@@ -485,19 +482,17 @@ The skill should be production-ready and well-documented."""
 
                         module_bytes = tool.module_content.encode() if tool.module_content else b""
                         module_filename = tool.source_file_name or f"{tool.name}.py"
-                        created_tool = self.store.create_tool(
+                        created_tool = await self._create_tool(
                             tool_data,
                             module_content=module_bytes,
                             module_filename=module_filename,
                         )
                         tool_uuids.append(created_tool["uuid"])
                         logger.info(f"Created tool: {tool.name} ({created_tool['uuid']})")
-                        
                     except Exception as e:
                         logger.error(f"Failed to create tool {tool.name}: {e}", exc_info=True)
-                
-                # Create snippets in the store
-                snippet_uuids = []
+
+                snippet_uuids: List[str] = []
                 for snippet in snippets:
                     try:
                         snippet_tags = list(getattr(snippet, "tags", None) or [])
@@ -510,30 +505,28 @@ The skill should be production-ready and well-documented."""
                             "description": snippet.description or "",
                             "version": getattr(snippet, "version", "1.0.0"),
                         }
-                        
-                        created_snippet = self.store.create_snippet(snippet_data)
+
+                        created_snippet = await self._create_snippet(snippet_data)
                         snippet_uuids.append(created_snippet["uuid"])
                         logger.info(f"Created snippet: {snippet.name} ({created_snippet['uuid']})")
-                        
                     except Exception as e:
                         logger.error(f"Failed to create snippet {snippet.name}: {e}", exc_info=True)
-                
-                # Create the skill in the store
+
                 final_skill_name = skill_name or skill_name_result
                 skill_tags = ["anthropic", "generated"]
                 if tags:
                     skill_tags.extend(tags)
-                
+
                 skill_data = {
                     "name": final_skill_name,
                     "description": skill_description,
                     "tool_uuids": tool_uuids,
                     "tags": skill_tags,
                 }
-                
-                created_skill = self.store.create_skill(skill_data)
+
+                created_skill = await self._create_skill(skill_data)
                 logger.info(f"Skill created with UUID: {created_skill.get('uuid')}")
-                
+
                 return {
                     "success": True,
                     "skill": created_skill,
@@ -541,33 +534,35 @@ The skill should be production-ready and well-documented."""
                     "snippets_count": len(snippet_uuids),
                     "ignored_files": ignored_files,
                 }
-                
+
             except Exception as e:
                 logger.error(f"Failed to import generated skill: {e}", exc_info=True)
                 raise RuntimeError(f"Skill import failed: {str(e)}")
+
+    # HTTP router ---------------------------------------------------------------
 
     def get_router(self):
         """Register plugin routes."""
         from fastapi import APIRouter, HTTPException
         from pydantic import BaseModel
-        from typing import List, Optional
-        
+        from typing import List as ListT, Optional as OptT
+
         router = APIRouter()
-        
+
         class GenerateSkillRequest(BaseModel):
             description: str
-            skill_name: Optional[str] = None
-            tags: Optional[List[str]] = None
-            agent_env: Optional[Dict[str, str]] = None
-            execution_mode: Optional[str] = None
-            max_turns: Optional[int] = None
-        
+            skill_name: OptT[str] = None
+            tags: OptT[ListT[str]] = None
+            agent_env: OptT[Dict[str, str]] = None
+            execution_mode: OptT[str] = None
+            max_turns: OptT[int] = None
+
         @router.post("/generate-skill")
         async def generate_skill_endpoint(request: GenerateSkillRequest):
             """Generate an Anthropic skill from a description."""
             if not self.is_enabled():
                 raise HTTPException(status_code=503, detail=self._status_message)
-            
+
             try:
                 result = await self.generate_skill(
                     description=request.description,
@@ -575,7 +570,7 @@ The skill should be production-ready and well-documented."""
                     tags=request.tags,
                     agent_env=request.agent_env,
                     execution_mode=request.execution_mode,
-                    max_turns=request.max_turns
+                    max_turns=request.max_turns,
                 )
                 return {
                     "success": True,
@@ -588,64 +583,5 @@ The skill should be production-ready and well-documented."""
             except Exception as e:
                 logger.error(f"Failed to generate skill: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail=str(e))
-        
-        return router
-    
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        """No CLI commands for this plugin."""
-        return None
-    
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        """Return UI configuration for the plugin."""
-        return {
-            "icon": "WandIcon",
-            "color": "#8B5CF6",
-            "actions": [
-                {
-                    "label": "Generate Anthropic Skill",
-                    "endpoint": "/api/plugins/anthropic-skill-generator/generate-skill",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "description": {
-                                "type": "string",
-                                "description": "Description of the Anthropic skill to generate"
-                            },
-                            "skill_name": {
-                                "type": "string",
-                                "description": "Optional name for the skill"
-                            },
-                            "tags": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "Optional tags to apply to the skill"
-                            },
-                            "agent_env": {
-                                "type": "object",
-                                "title": "Environment overrides (optional)",
-                                "description": (
-                                    "Per-run overrides for the Claude Code agent environment. "
-                                    "Your ~/.claude/settings.json env block and the server's "
-                                    "ANTHROPIC_*/CLAUDE_* variables are already loaded automatically; "
-                                    "only set this to override them."
-                                )
-                            },
-                            "execution_mode": {
-                                "type": "string",
-                                "enum": ["container", "local"],
-                                "default": "container",
-                                "description": "Execution mode: 'local' (faster) or 'container' (safer, requires Docker)"
-                            },
-                            "max_turns": {
-                                "type": "integer",
-                                "description": "Maximum conversation turns for Claude Code (default: 300)"
-                            }
-                        },
-                        "required": ["description"]
-                    }
-                }
-            ]
-        }
 
-# Made with Bob
+        return router

@@ -8,10 +8,9 @@ version = "0.1.0"
 description = "Skillberry Store plugin that labels skills as kagenti-approved based on score tags"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
-
-[project.entry-points."skillberry_store.plugins"]
-kagenti-approver = "skillberry_plugin_kagenti_approver.plugin:SkillberryPluginKagentiApprover"
+dependencies = [
+    "skillberry-plugin-sdk",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -22,3 +21,6 @@ dev = [
 [tool.setuptools]
 packages = ["skillberry_plugin_kagenti_approver"]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_kagenti_approver = ["manifest.yaml"]

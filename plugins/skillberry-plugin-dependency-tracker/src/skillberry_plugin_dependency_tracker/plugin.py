@@ -1,5 +1,5 @@
 """
-Skillberry Plugin: Dependency Tracker.
+Skillberry Plugin: Dependency Tracker (out-of-process, SDK-based).
 
 Discovers the EXTERNAL Python package dependencies of skills, tools, and
 snippets — exact version + artifact hashes, transitively at maximum depth — and
@@ -19,17 +19,35 @@ are surfaced through the generic plugin UI. Unlike those, it runs **on demand
 only** — there is no import event hook.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import platform
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from pydantic import BaseModel
+
+from skillberry_plugin_sdk import PluginLifecycleBase
 
 from .resolver import build_resolver
 from .resolver.base import OBJECT_TYPES
 from .resolver.pypi import pypi_enabled_from_env
+
+
+class ScanRequest(BaseModel):
+    """Request body for the /resolve-dependencies endpoint.
+
+    Tolerant of missing fields: the store's generic action form may submit an
+    empty body before the user selects an object_type, so both fields default
+    and are validated explicitly by the endpoint (yielding a friendly 400
+    rather than pydantic's 422).
+    """
+
+    object_type: str = "tool"
+    uuid: Optional[str] = None
+    pypi: Optional[bool] = None  # per-call override of the env default
 
 logger = logging.getLogger(__name__)
 
@@ -57,54 +75,69 @@ def _summary_message(block: Dict[str, Any]) -> str:
     return msg
 
 
-class SkillberryPluginDependencyTracker(PluginBase):
+class SkillberryPluginDependencyTracker(PluginLifecycleBase):
     """Discovers external Python dependencies (version + hash, transitive)."""
 
-    def __init__(self):
-        super().__init__()
-        self._metadata = PluginMetadata(
-            name="Dependency Tracker",
-            version=_PLUGIN_VERSION,
-            description=(
-                "Discovers external Python package dependencies — exact version "
-                "and artifact hashes, transitively at maximum depth — for skills, "
-                "tools and snippets, and records them under extra['dependencies']."
-            ),
-            plugin_type=PluginType.EVALUATOR,
-        )
+    manifest_path = "manifest.yaml"
+
+    def __init__(self, manifest=None) -> None:
+        super().__init__(manifest=manifest)
         # Default PyPI enrichment from env; overridable per request.
         self._pypi_enabled = pypi_enabled_from_env()
-        # NOTE: intentionally NO _register_event_handlers — on-demand only.
+        # NOTE: intentionally NO @on_event handlers — on-demand only.
 
-    # ── status / enablement ──────────────────────────────────────────────────
+    # ── lifecycle ────────────────────────────────────────────────────────────
 
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
+    async def on_start(self) -> None:
+        # Re-read env at start so runtime overrides take effect.
+        self._pypi_enabled = pypi_enabled_from_env()
 
-    def is_enabled(self) -> bool:
-        # Local resolution needs no credentials or network; always available.
-        return True
-
-    def get_status_message(self) -> str:
+    async def is_ready(self) -> Dict[str, Any]:
+        # Local resolution needs no credentials or network; always ready.
         mode = "on" if self._pypi_enabled else "off"
-        return f"Ready (local resolution; PyPI enrichment best-effort, default {mode})"
+        return {
+            "ready": True,
+            "missing_config": [],
+            "message": (
+                f"Ready (local resolution; PyPI enrichment best-effort, default {mode})"
+            ),
+        }
 
     # ── object access + code collection ───────────────────────────────────────
 
-    def _get_object(self, object_type: str, uuid: str) -> Optional[Dict[str, Any]]:
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
-        getter = {
-            "skill": self.store.get_skill,
-            "tool": self.store.get_tool,
-            "snippet": self.store.get_snippet,
-        }.get(object_type)
-        if getter is None:
-            raise ValueError(f"Unsupported object_type: {object_type!r}")
-        return getter(uuid)
+    async def _get_object(self, object_type: str, uuid: str) -> Optional[Dict[str, Any]]:
+        if object_type == "skill":
+            return await self.store.get_skill(uuid)
+        if object_type == "tool":
+            return await self.store.get_tool(uuid)
+        if object_type == "snippet":
+            return await self.store.get_snippet(uuid)
+        raise ValueError(f"Unsupported object_type: {object_type!r}")
 
-    def _collect_code(self, object_type: str, obj: Dict[str, Any]) -> List[tuple]:
+    async def _read_tool_module(self, tool: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+        """Return ``(module_name, source)`` for a tool, or None if unreadable.
+
+        Uses the store's ``GET /tools/{uuid}/module`` endpoint (returns text).
+        """
+        module = tool.get("module_name")
+        uuid = tool.get("uuid")
+        if not module or not uuid:
+            return None
+        try:
+            source = await self.store.get(f"/tools/{uuid}/module")
+        except Exception as e:
+            logger.debug("dep-tracker: could not read tool module: %s", e)
+            return None
+        if source is None:
+            return None
+        if not isinstance(source, str):
+            # Endpoint returns text/plain; coerce defensively.
+            source = str(source)
+        return (module, source)
+
+    async def _collect_code(
+        self, object_type: str, obj: Dict[str, Any]
+    ) -> List[Tuple[str, str]]:
         """Gather ``(filename, source)`` blobs to scan.
 
         The filename drives language detection (Python vs. shell) and the
@@ -113,50 +146,36 @@ class SkillberryPluginDependencyTracker(PluginBase):
         A tool contributes its module file; a snippet its inline content; a skill
         aggregates the modules and content of its referenced tools/snippets.
         """
-        blobs: List[tuple] = []
+        blobs: List[Tuple[str, str]] = []
         if object_type == "snippet":
             content = obj.get("content")
             if content:
                 blobs.append((self._snippet_filename(obj), content))
             return blobs
         if object_type == "tool":
-            blob = self._read_tool_module(obj)
+            blob = await self._read_tool_module(obj)
             if blob is not None:
                 blobs.append(blob)
             return blobs
-        if object_type == "skill" and self._store_api is not None:
+        if object_type == "skill":
             for tool_uuid in obj.get("tool_uuids") or []:
                 try:
-                    tool = self.store.get_tool(tool_uuid)
+                    tool = await self.store.get_tool(tool_uuid)
                     if tool:
-                        blob = self._read_tool_module(tool)
+                        blob = await self._read_tool_module(tool)
                         if blob is not None:
                             blobs.append(blob)
                 except Exception as e:
                     logger.debug("dep-tracker: could not read child tool: %s", e)
             for snippet_uuid in obj.get("snippet_uuids") or []:
                 try:
-                    snippet = self.store.get_snippet(snippet_uuid)
+                    snippet = await self.store.get_snippet(snippet_uuid)
                     content = (snippet or {}).get("content")
                     if content:
                         blobs.append((self._snippet_filename(snippet), content))
                 except Exception as e:
                     logger.debug("dep-tracker: could not read child snippet: %s", e)
         return blobs
-
-    def _read_tool_module(self, tool: Dict[str, Any]) -> Optional[tuple]:
-        """Return ``(module_name, source)`` for a tool, or None if unreadable."""
-        module = tool.get("module_name")
-        if not module or self._store_api is None:
-            return None
-        try:
-            source = self.store.tools.read_file(
-                tool.get("uuid"), module, raw_content=True
-            )
-        except Exception as e:
-            logger.debug("dep-tracker: could not read tool module: %s", e)
-            return None
-        return (module, source)
 
     @staticmethod
     def _snippet_filename(snippet: Dict[str, Any]) -> str:
@@ -169,8 +188,11 @@ class SkillberryPluginDependencyTracker(PluginBase):
         name = snippet.get("name") or snippet.get("uuid") or "snippet"
         return str(name)
 
-    def _local_module_names(
-        self, object_type: str, obj: Dict[str, Any], blobs: List[tuple]
+    async def _local_module_names(
+        self,
+        object_type: str,
+        obj: Dict[str, Any],
+        blobs: List[Tuple[str, str]],
     ) -> set:
         """Top-level module names that are first-party to this object.
 
@@ -194,7 +216,7 @@ class SkillberryPluginDependencyTracker(PluginBase):
         bundled_stems: set = set()
         for tu in tool_uuids:
             try:
-                tool = obj if (object_type == "tool") else self.store.get_tool(tu)
+                tool = obj if (object_type == "tool") else await self.store.get_tool(tu)
             except Exception:
                 tool = None
             if not tool:
@@ -210,7 +232,7 @@ class SkillberryPluginDependencyTracker(PluginBase):
         if object_type == "skill":
             for su in obj.get("snippet_uuids") or []:
                 try:
-                    sn = self.store.get_snippet(su)
+                    sn = await self.store.get_snippet(su)
                 except Exception:
                     sn = None
                 if sn and sn.get("name"):
@@ -260,12 +282,12 @@ class SkillberryPluginDependencyTracker(PluginBase):
         Returns ``{object_type, uuid, dependencies, summary}``. Raises ValueError
         when the object is not found (the router maps that to 404).
         """
-        obj = self._get_object(object_type, uuid)
+        obj = await self._get_object(object_type, uuid)
         if not obj:
             raise ValueError(f"{object_type} {uuid} not found in store")
 
-        blobs = self._collect_code(object_type, obj)
-        local_modules = self._local_module_names(object_type, obj, blobs)
+        blobs = await self._collect_code(object_type, obj)
+        local_modules = await self._local_module_names(object_type, obj, blobs)
 
         if generated_at is None:
             # Computed here (not in the engine) so the engine stays deterministic.
@@ -285,7 +307,7 @@ class SkillberryPluginDependencyTracker(PluginBase):
             plugin_version=_PLUGIN_VERSION,
             python_version=platform.python_version(),
         )
-        self._persist(object_type, uuid, block, report.summary_tags())
+        await self._persist(object_type, uuid, block, report.summary_tags())
         return {
             "object_type": object_type,
             "uuid": uuid,
@@ -295,7 +317,7 @@ class SkillberryPluginDependencyTracker(PluginBase):
 
     # ── persistence ──────────────────────────────────────────────────────────
 
-    def _persist(
+    async def _persist(
         self,
         object_type: str,
         uuid: str,
@@ -306,7 +328,7 @@ class SkillberryPluginDependencyTracker(PluginBase):
 
         Non-destructive: other ``extra`` keys and non-``dep:`` tags are preserved.
         """
-        obj = self._get_object(object_type, uuid)
+        obj = await self._get_object(object_type, uuid)
         if not obj:
             return
         if not isinstance(obj.get("extra"), dict):
@@ -314,17 +336,19 @@ class SkillberryPluginDependencyTracker(PluginBase):
         obj["extra"][_EXTRA_KEY] = block
 
         obj["tags"] = self._strip_dep_tags(obj.get("tags") or []) + tags
-        self._write_object(object_type, uuid, obj)
+        await self._write_object(object_type, uuid, obj)
 
-    def _write_object(self, object_type: str, uuid: str, obj: Dict[str, Any]) -> None:
-        writer = {
-            "skill": self.store.update_skill,
-            "tool": self.store.update_tool,
-            "snippet": self.store.update_snippet,
-        }.get(object_type)
-        if writer is None:
+    async def _write_object(
+        self, object_type: str, uuid: str, obj: Dict[str, Any]
+    ) -> None:
+        if object_type == "skill":
+            await self.store.update_skill(uuid, obj)
+        elif object_type == "tool":
+            await self.store.update_tool(uuid, obj)
+        elif object_type == "snippet":
+            await self.store.update_snippet(uuid, obj)
+        else:
             raise ValueError(f"Unsupported object_type: {object_type!r}")
-        writer(uuid, obj)
 
     @staticmethod
     def _strip_dep_tags(tags: List[str]) -> List[str]:
@@ -333,18 +357,9 @@ class SkillberryPluginDependencyTracker(PluginBase):
     # ── plugin interface ──────────────────────────────────────────────────────
 
     def get_router(self):
-        from fastapi import APIRouter, HTTPException
-        from pydantic import BaseModel
+        from fastapi import APIRouter, Body, HTTPException
 
         router = APIRouter()
-
-        # Tolerant model: the store's generic action form only submits an enum
-        # field once changed, so a freshly-opened form may omit object_type. We
-        # default it and validate explicitly -> a friendly 400 (not a 422).
-        class ScanRequest(BaseModel):
-            object_type: str = "tool"
-            uuid: Optional[str] = None
-            pypi: Optional[bool] = None  # per-call override of the env default
 
         def _validate(object_type: str, uuid: Optional[str]) -> None:
             if object_type not in OBJECT_TYPES:
@@ -359,7 +374,9 @@ class SkillberryPluginDependencyTracker(PluginBase):
                 raise HTTPException(status_code=400, detail="uuid is required")
 
         @router.post("/resolve-dependencies")
-        async def scan_endpoint(request: ScanRequest):
+        async def scan_endpoint(
+            request: ScanRequest = Body(default_factory=ScanRequest),
+        ):
             """Resolve & record external Python dependencies for an object."""
             _validate(request.object_type, request.uuid)
             try:
@@ -380,35 +397,3 @@ class SkillberryPluginDependencyTracker(PluginBase):
             }
 
         return router
-
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        return None
-
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return {
-            "icon": "CubesIcon",
-            "color": "#C9190B",
-            "actions": [
-                {
-                    "label": "Scan dependencies",
-                    "endpoint": "/api/plugins/dependency_tracker/resolve-dependencies",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "object_type": {
-                                "type": "string",
-                                "enum": list(OBJECT_TYPES),
-                                "default": "tool",
-                                "description": "Which object type to scan",
-                            },
-                            "uuid": {
-                                "type": "string",
-                                "description": "UUID of the object to scan",
-                            },
-                        },
-                        "required": ["object_type", "uuid"],
-                    },
-                }
-            ],
-        }

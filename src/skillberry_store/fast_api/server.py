@@ -20,6 +20,8 @@ from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.fast_api.vnfs_api import register_vnfs_api
 from skillberry_store.fast_api.plugins_api import register_plugins_api
+from skillberry_store.fast_api.events_api import register_events_api
+from skillberry_store.fast_api.plugin_proxy import PluginRegistry, add_plugin_proxy
 from skillberry_store.tools.configure import (
     configure_logging,
 )
@@ -108,26 +110,6 @@ class SBS(FastAPI):
             vnfs_server_manager=vnfs_service.server_manager,
         )
 
-        # Initialize plugin system
-        from skillberry_store.plugins.loader import PluginLoader
-        from skillberry_store.plugins.store_api import StoreAPI
-
-        store_api = StoreAPI(
-            {
-                "tools": tools_service,
-                "skills": skills_service,
-                "snippets": snippets_service,
-                "vnfs": vnfs_service,
-                "vmcp": vmcp_service,
-            }
-        )
-
-        plugin_loader = PluginLoader(store_api=store_api)
-        discovered = plugin_loader.discover_plugins()
-        logger.info(f"Discovered {len(discovered)} plugins: {discovered}")
-
-        self.state.plugin_loader = plugin_loader
-
         register_vmcp_api(
             self,
             tags="vmcp_servers",
@@ -155,11 +137,46 @@ class SBS(FastAPI):
         )
         register_admin_api(self, tags="admin", service=admin_service)
 
-        register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
+        # Register SSE events endpoint and out-of-process plugin proxy.
+        plugin_registry = PluginRegistry()
+        self.state.plugin_registry = plugin_registry
+        register_events_api(self, tags="events")
 
-        # Mount plugin routers
-        plugin_loader.mount_routers(self)
-        logger.info("Plugin routers mounted")
+        # Build the plugin state store + manager. Test suites set
+        # SKILLBERRY_PLUGIN_STATE_FILE="" so SBS boots with no plugins persisted.
+        from skillberry_store.plugins.manager import PluginManager
+        from skillberry_store.plugins.state_store import PluginStateStore
+
+        state_store = PluginStateStore()
+        plugin_manager = PluginManager(
+            registry=plugin_registry,
+            state_store=state_store,
+            sbs_base_url=sts_url,
+        )
+        self.state.plugin_manager = plugin_manager
+
+        register_plugins_api(
+            self,
+            plugin_manager=plugin_manager,
+            tags="plugins",
+        )
+
+        add_plugin_proxy(self, plugin_registry)
+
+        # Autostart plugins whose state entries request it, without blocking boot.
+        @self.on_event("startup")
+        async def _bootstrap_plugins() -> None:
+            try:
+                await plugin_manager.bootstrap()
+            except Exception:
+                logger.exception("plugin bootstrap failed")
+
+        @self.on_event("shutdown")
+        async def _shutdown_plugins() -> None:
+            try:
+                await plugin_manager.stop_all()
+            except Exception:
+                logger.exception("plugin stop_all failed")
 
         # Mount the Control MCP with a CURATED surface. The store auto-generates an
         # MCP tool per REST endpoint, but agents only need the content operations,

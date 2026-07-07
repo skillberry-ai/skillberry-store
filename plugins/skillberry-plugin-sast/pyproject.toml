@@ -10,10 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 # Core install is light; SAST engines are optional extras (see below) so the
 # store does not pull a scanner unless one is wanted.
-dependencies = []
-
-[project.entry-points."skillberry_store.plugins"]
-sast = "skillberry_plugin_sast.plugin:SkillberryPluginSast"
+dependencies = [
+    "skillberry-plugin-sdk",
+]
 
 [project.optional-dependencies]
 bandit = [
@@ -34,3 +33,6 @@ dev = [
 [tool.setuptools]
 packages = ["skillberry_plugin_sast", "skillberry_plugin_sast.engines"]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_sast = ["manifest.yaml"]

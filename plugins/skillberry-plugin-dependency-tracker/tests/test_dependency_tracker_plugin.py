@@ -1,4 +1,4 @@
-"""Tests for the dependency-tracker plugin (mocked store, offline PyPI)."""
+"""Tests for the dependency-tracker plugin (mocked async store, offline PyPI)."""
 
 import copy
 
@@ -7,65 +7,91 @@ import pytest
 from skillberry_plugin_dependency_tracker.plugin import (
     SkillberryPluginDependencyTracker,
 )
-from skillberry_store.plugins.base import PluginType
 
 
-class _Tools:
-    """Stand-in for store.tools, backed by an in-memory module map."""
+class FakeAsyncStore:
+    """In-memory async stand-in for skillberry_plugin_sdk.store.StoreClient.
 
-    def __init__(self, modules):
-        # (uuid, filename) -> source
-        self._modules = modules
-
-    def read_file(self, uuid, filename, raw_content=False):
-        return self._modules[(uuid, filename)]
-
-
-class FakeStore:
-    """In-memory store with get_/update_ round-trip and tools.read_file."""
+    Backs get_/update_ + a GET /tools/{uuid}/module endpoint via ``.get()``.
+    """
 
     def __init__(self, objects=None, modules=None):
+        # (kind, uuid) -> object dict
         self._objs = objects or {}
-        self.tools = _Tools(modules or {})
+        # (tool_uuid, filename) -> source text
+        self._modules = modules or {}
 
-    def get_skill(self, uuid):
+    # ── Skill/Tool/Snippet CRUD ──────────────────────────────────────────
+
+    async def get_skill(self, uuid):
         return copy.deepcopy(self._objs.get(("skill", uuid)))
 
-    def get_tool(self, uuid):
+    async def get_tool(self, uuid):
         return copy.deepcopy(self._objs.get(("tool", uuid)))
 
-    def get_snippet(self, uuid):
+    async def get_snippet(self, uuid):
         return copy.deepcopy(self._objs.get(("snippet", uuid)))
 
-    def update_skill(self, uuid, data):
+    async def update_skill(self, uuid, data):
         self._objs[("skill", uuid)] = copy.deepcopy(data)
         return True
 
-    def update_tool(self, uuid, data):
+    async def update_tool(self, uuid, data):
         self._objs[("tool", uuid)] = copy.deepcopy(data)
         return True
 
-    def update_snippet(self, uuid, data):
+    async def update_snippet(self, uuid, data):
         self._objs[("snippet", uuid)] = copy.deepcopy(data)
         return True
+
+    # ── Generic HTTP surface ─────────────────────────────────────────────
+
+    async def get(self, path, params=None):
+        # Match the /tools/{uuid}/module endpoint used to read tool source.
+        if path.startswith("/tools/") and path.endswith("/module"):
+            uuid = path[len("/tools/") : -len("/module")]
+            tool = self._objs.get(("tool", uuid))
+            if not tool:
+                return None
+            module_name = tool.get("module_name")
+            if not module_name:
+                return None
+            return self._modules.get((uuid, module_name))
+        return None
 
 
 def _plugin(store, monkeypatch):
     # Default PyPI off in tests so nothing hits the network.
     monkeypatch.setenv("DEPENDENCY_TRACKER_PYPI", "off")
     p = SkillberryPluginDependencyTracker()
-    p.set_store_api(store)
+    p._store = store
+    # Refresh from env; on_start won't run in unit tests.
+    from skillberry_plugin_dependency_tracker.resolver.pypi import (
+        pypi_enabled_from_env,
+    )
+
+    p._pypi_enabled = pypi_enabled_from_env()
     return p
 
 
-# ── metadata / interface ──────────────────────────────────────────────────────
+# ── manifest / interface ─────────────────────────────────────────────────────
 
 
-def test_metadata_and_enablement():
+def test_manifest_name_and_type():
     p = SkillberryPluginDependencyTracker()
-    assert p.metadata.name == "Dependency Tracker"
-    assert p.metadata.plugin_type == PluginType.EVALUATOR
-    assert p.is_enabled() is True
+    assert p.manifest.name == "Dependency Tracker"
+    assert p.manifest.plugin_type == "evaluator"
+
+
+def test_manifest_slug_and_version():
+    p = SkillberryPluginDependencyTracker()
+    assert p.manifest.slug == "dependency-tracker"
+    assert p.manifest.version == "0.1.0"
+
+
+def test_manifest_has_api_true():
+    p = SkillberryPluginDependencyTracker()
+    assert p.manifest.has_api is True
 
 
 def test_router_exposes_scan():
@@ -74,25 +100,14 @@ def test_router_exposes_scan():
     assert "/resolve-dependencies" in paths
 
 
-def test_ui_config_action_has_object_type_default():
+@pytest.mark.asyncio
+async def test_is_ready_returns_ready():
     p = SkillberryPluginDependencyTracker()
-    cfg = p.get_ui_config()
-    action = cfg["actions"][0]
-    assert action["label"] == "Scan dependencies"
-    assert action["params_schema"]["properties"]["object_type"]["default"] == "tool"
+    result = await p.is_ready()
+    assert result["ready"] is True
 
 
-def test_registers_no_event_handlers():
-    """On-demand only: instantiation must not add content_added handlers."""
-    from skillberry_store.plugins import events
-
-    before = {k: len(v) for k, v in events._event_handlers.items()}
-    SkillberryPluginDependencyTracker()
-    after = {k: len(v) for k, v in events._event_handlers.items()}
-    assert before == after
-
-
-# ── validation ────────────────────────────────────────────────────────────────
+# ── validation ───────────────────────────────────────────────────────────────
 
 
 def test_endpoint_blank_input_is_400_not_422():
@@ -107,17 +122,19 @@ def test_endpoint_blank_input_is_400_not_422():
     assert r.status_code == 400
     assert "uuid is required" in r.json()["detail"]
 
-    r = client.post("/resolve-dependencies", json={"object_type": "widget", "uuid": "x"})
+    r = client.post(
+        "/resolve-dependencies", json={"object_type": "widget", "uuid": "x"}
+    )
     assert r.status_code == 400
     assert "object_type must be one of" in r.json()["detail"]
 
 
-# ── scan end-to-end (offline) ───────────────────────────────────────────────────
+# ── scan end-to-end (offline) ───────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_scan_tool_populates_dependencies(monkeypatch):
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("tool", "t1"): {
                 "uuid": "t1",
@@ -144,7 +161,7 @@ async def test_scan_tool_populates_dependencies(monkeypatch):
     assert block["summary"]["pypi_status"] == "skipped"  # PyPI off
 
     # persisted non-destructively + dep tags added
-    stored = store.get_tool("t1")
+    stored = await store.get_tool("t1")
     assert stored["extra"]["dependencies"]["languages_inspected"] == ["python"]
     assert stored["extra"]["other"] == "keep me"
     assert any(t.startswith("dep:count:") for t in stored["tags"])
@@ -154,9 +171,13 @@ async def test_scan_tool_populates_dependencies(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_scan_snippet(monkeypatch):
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
-            ("snippet", "s1"): {"uuid": "s1", "name": "n", "content": "import requests"}
+            ("snippet", "s1"): {
+                "uuid": "s1",
+                "name": "n",
+                "content": "import requests",
+            }
         }
     )
     p = _plugin(store, monkeypatch)
@@ -166,7 +187,7 @@ async def test_scan_snippet(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_scan_skill_aggregates_children(monkeypatch):
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("skill", "sk1"): {
                 "uuid": "sk1",
@@ -193,7 +214,7 @@ async def test_scan_skill_aggregates_children(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_scan_shell_tool_finds_commands(monkeypatch):
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("tool", "sh1"): {
                 "uuid": "sh1",
@@ -229,7 +250,7 @@ async def test_scan_shell_tool_finds_commands(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mixed_skill_python_and_shell(monkeypatch):
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("skill", "sk2"): {
                 "uuid": "sk2",
@@ -256,7 +277,7 @@ async def test_mixed_skill_python_and_shell(monkeypatch):
 async def test_local_modules_not_counted_as_missing(monkeypatch):
     # A skill that imports its own bundled `helpers` package (leaf merge_runs is
     # a bundled tool module) plus a real-but-absent external (`lxml`).
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("skill", "sk3"): {
                 "uuid": "sk3",
@@ -288,7 +309,7 @@ async def test_local_modules_not_counted_as_missing(monkeypatch):
     assert block["summary"]["local_module_count"] == 1
     assert block["summary"]["missing_count"] == 1
     # tag reflects only the real missing external
-    stored = store.get_skill("sk3")
+    stored = await store.get_skill("sk3")
     assert "dep:missing:1" in stored["tags"]
 
 
@@ -297,7 +318,7 @@ async def test_local_package_detected_via_imported_symbol(monkeypatch):
     # `from office.soffice import get_soffice_env` — the imported symbol matches
     # a bundled tool (`get_soffice_env`), so `office` is first-party even though
     # `soffice` itself isn't a tool stem.
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("skill", "sk4"): {
                 "uuid": "sk4",
@@ -310,7 +331,11 @@ async def test_local_package_detected_via_imported_symbol(monkeypatch):
                 "name": "get_soffice_env",
                 "module_name": "get_soffice_env.py",
             },
-            ("tool", "caller"): {"uuid": "caller", "name": "c", "module_name": "c.py"},
+            ("tool", "caller"): {
+                "uuid": "caller",
+                "name": "c",
+                "module_name": "c.py",
+            },
         },
         modules={
             ("env", "get_soffice_env.py"): "def get_soffice_env():\n    return {}\n",
@@ -327,7 +352,7 @@ async def test_local_package_detected_via_imported_symbol(monkeypatch):
 @pytest.mark.asyncio
 async def test_unsupported_file_recorded_in_skipped(monkeypatch):
     # A tool whose module is, say, JavaScript -> can't inspect -> skipped.
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={
             ("tool", "js1"): {
                 "uuid": "js1",
@@ -345,13 +370,13 @@ async def test_unsupported_file_recorded_in_skipped(monkeypatch):
     assert skipped and skipped[0]["file"] == "widget.js"
     assert skipped[0]["reason"] == "unsupported_language"
     # tag surfaced
-    stored = store.get_tool("js1")
+    stored = await store.get_tool("js1")
     assert any(t == "dep:skipped:1" for t in stored["tags"])
 
 
 @pytest.mark.asyncio
 async def test_missing_object_raises_valueerror(monkeypatch):
-    p = _plugin(FakeStore(), monkeypatch)
+    p = _plugin(FakeAsyncStore(), monkeypatch)
     with pytest.raises(ValueError):
         await p.scan("tool", "nope")
 
@@ -361,7 +386,7 @@ async def test_pypi_failure_degrades_gracefully(monkeypatch):
     # Force PyPI on, but make every call raise -> scan still succeeds.
     import skillberry_plugin_dependency_tracker.resolver.pypi as pypi_mod
 
-    store = FakeStore(
+    store = FakeAsyncStore(
         objects={("tool", "t1"): {"uuid": "t1", "name": "t", "module_name": "m.py"}},
         modules={("t1", "m.py"): "import requests"},
     )
@@ -373,7 +398,8 @@ async def test_pypi_failure_degrades_gracefully(monkeypatch):
     monkeypatch.setattr(pypi_mod, "enrich_from_pypi", _boom)
 
     p = SkillberryPluginDependencyTracker()
-    p.set_store_api(store)
+    p._store = store
+    p._pypi_enabled = pypi_mod.pypi_enabled_from_env()
     result = await p.scan("tool", "t1")  # must not raise
     assert "requests" in result["dependencies"]["packages"]
     assert result["dependencies"]["summary"]["pypi_status"] in ("partial", "skipped")

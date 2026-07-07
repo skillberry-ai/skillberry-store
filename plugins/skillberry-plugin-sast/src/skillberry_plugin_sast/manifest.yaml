@@ -1,0 +1,8 @@
+name: SAST
+slug: sast
+version: 0.1.0
+description: Static Application Security Testing for tools
+plugin_type: evaluator
+sdk_version: ^0.1
+has_api: true
+required_env: []

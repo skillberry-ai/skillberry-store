@@ -1,0 +1,14 @@
+name: Anthropic Skill Generator
+slug: anthropic-skill-generator
+version: 0.1.0
+description: Generate Anthropic-style skills using an LLM
+plugin_type: creator
+sdk_version: ^0.1
+has_api: true
+required_env:
+  - name: LLM_PROVIDER
+    description: LLM provider (e.g. openai.async, anthropic.async)
+    required: true
+  - name: LLM_MODEL
+    description: LLM model name
+    required: false

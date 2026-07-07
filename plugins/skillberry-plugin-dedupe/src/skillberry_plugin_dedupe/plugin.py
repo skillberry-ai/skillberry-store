@@ -1,36 +1,32 @@
 """Skill deduplication plugin — detects semantically duplicate skills via LLM."""
 
-import os
-import re
+from __future__ import annotations
+
 import json
 import logging
+import os
+import re
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_plugin_sdk import PluginLifecycleBase, on_event
 
 logger = logging.getLogger(__name__)
 
 
-class SkillberryPluginDedupe(PluginBase):
-    """Plugin that detects duplicate skills using a single LLM call."""
+class SkillberryPluginDedupe(PluginLifecycleBase):
+    """Out-of-process plugin that detects duplicate skills using a single LLM call."""
+
+    manifest_path = "manifest.yaml"
 
     def __init__(self):
         super().__init__()
-
         self._mode = os.getenv("DEDUPE_MODE", "interactive")
         self._pending_decisions: Dict[str, dict] = {}
-
-        self._metadata = PluginMetadata(
-            name="Skill Deduplicator",
-            version="0.1.0",
-            description="Detect semantically duplicate skills using LLM and tag them",
-            plugin_type=PluginType.EVALUATOR,
-        )
-
         self.llm_client = None
         self._status_message = "Initializing..."
 
+    async def on_start(self) -> None:
         try:
             from llm_switchboard import get_llm
 
@@ -40,7 +36,6 @@ class SkillberryPluginDedupe(PluginBase):
             LLMClientClass = get_llm(provider_name)
             self.llm_client = LLMClientClass(model_name=model_name)
             self._status_message = f"Ready (using {provider_name})"
-
         except ImportError:
             self._status_message = "Missing dependency: llm-switchboard not installed"
             logger.warning("llm-switchboard not installed, plugin will be disabled")
@@ -48,17 +43,19 @@ class SkillberryPluginDedupe(PluginBase):
             self._status_message = f"LLM unavailable: {str(e)}"
             logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
 
-        self._register_event_handlers()
-
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
-
-    def get_status_message(self) -> str:
-        return self._status_message
+    async def is_ready(self) -> Dict[str, Any]:
+        ready = self.llm_client is not None
+        return {
+            "ready": ready,
+            "missing_config": [] if ready else ["LLM_PROVIDER"],
+            "status": self._status_message,
+        }
 
     def is_enabled(self) -> bool:
         return self.llm_client is not None
+
+    def get_status_message(self) -> str:
+        return self._status_message
 
     def get_router(self):
         from fastapi import APIRouter, HTTPException
@@ -89,57 +86,31 @@ class SkillberryPluginDedupe(PluginBase):
                     status_code=404,
                     detail=f"No pending decision for skill {uuid}",
                 )
-            if not self.store.delete_skill(uuid):
-                logger.error(f"Failed to delete skill {uuid} during dedupe decision")
+            try:
+                await self.store._request("DELETE", f"/skills/{uuid}")
+            except Exception:
+                logger.error(f"Failed to delete skill {uuid} during dedupe decision", exc_info=True)
             return {"message": f"Skill '{decision['skill_name']}' deleted."}
 
         return router
 
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        return None
+    # ── event handlers ────────────────────────────────────────────────────────
 
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        return {
-            "color": "#C9190B",
-            "notifications": {
-                "poll_endpoint": "/api/plugins/dedupe/decisions",
-                "item_schema": {
-                    "title_field": "skill_name",
-                    "body_fields": ["duplicates"],
-                    "actions": [
-                        {
-                            "label": "Keep",
-                            "endpoint": "/api/plugins/dedupe/decisions/{uuid}/keep",
-                            "method": "POST",
-                            "variant": "primary",
-                        },
-                        {
-                            "label": "Delete",
-                            "endpoint": "/api/plugins/dedupe/decisions/{uuid}/delete",
-                            "method": "POST",
-                            "variant": "danger",
-                        },
-                    ],
-                },
-            },
-        }
+    @on_event("content.skill.added")
+    @on_event("content.skill.updated")
+    async def on_skill_change(self, event) -> None:
+        if not self.is_enabled():
+            return
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid:
+            return
+        await self._check_for_duplicates(uuid)
 
-    def _register_event_handlers(self) -> None:
-        from skillberry_store.plugins.events import _event_handlers
+    # ── internals ─────────────────────────────────────────────────────────────
 
-        for event_name in ("content_added:skill", "content_updated:skill"):
-            async def _handle(uuid: str, _event=event_name):
-                if not self.is_enabled() or self._store_api is None:
-                    return
-                await self._check_for_duplicates(uuid)
-
-            if event_name not in _event_handlers:
-                _event_handlers[event_name] = []
-            _event_handlers[event_name].append(_handle)
-
-    def _get_candidate_skills(self, trigger_uuid: str) -> List[Dict]:
+    async def _get_candidate_skills(self, trigger_uuid: str) -> List[Dict]:
         """Return original (non-duplicate-tagged) skills other than the trigger skill."""
-        all_skills = self.store.list_skills()
+        all_skills = await self.store.list_skills()
         return [
             s for s in all_skills
             if s.get("uuid") != trigger_uuid
@@ -191,27 +162,34 @@ class SkillberryPluginDedupe(PluginBase):
             return
 
         tags = [f"duplicate:{f['name']}" for f in findings]
-        success = self.store.update_skill_tags(uuid, tags)
-        if not success:
-            logger.error(f"Failed to update tags for skill {uuid}")
+        try:
+            await self.store.update_skill_tags(uuid, tags)
+        except Exception:
+            logger.error(f"Failed to update tags for skill {uuid}", exc_info=True)
 
-        skill = self.store.get_skill(uuid)
+        skill = await self.store.get_skill(uuid)
         if skill is None:
             logger.error(f"Skill {uuid} not found when writing duplicate_analysis")
             return
 
-        existing_extra = skill.get("extra") or {}
-        existing_analysis = existing_extra.get("duplicate_analysis") or {}
+        existing_extra = dict(skill.get("extra") or {})
+        existing_analysis = dict(existing_extra.get("duplicate_analysis") or {})
         for finding in findings:
             existing_analysis[finding["name"]] = finding["reason"]
+        existing_extra["duplicate_analysis"] = existing_analysis
+        skill["extra"] = existing_extra
 
-        success = self.store.update_skill_metadata(uuid, {"duplicate_analysis": existing_analysis})
-        if not success:
-            logger.error(f"Failed to update metadata for skill {uuid}")
+        try:
+            await self.store.update_skill(uuid, skill)
+        except Exception:
+            logger.error(f"Failed to update metadata for skill {uuid}", exc_info=True)
 
     async def _check_for_duplicates(self, uuid: str) -> None:
         """Main handler: fetch skill, compare against candidates, tag if duplicates found."""
-        skill = self.store.get_skill(uuid)
+        if not self.is_enabled():
+            return
+
+        skill = await self.store.get_skill(uuid)
         if skill is None:
             logger.warning(f"Skill {uuid} not found, skipping dedupe check")
             return
@@ -221,7 +199,7 @@ class SkillberryPluginDedupe(PluginBase):
             logger.debug(f"Skill {uuid} has no/short description, skipping dedupe check")
             return
 
-        candidates = self._get_candidate_skills(uuid)
+        candidates = await self._get_candidate_skills(uuid)
         if not candidates:
             logger.debug(f"No original skills to compare against for {uuid}")
             return

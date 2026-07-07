@@ -1,0 +1,15 @@
+name: Skill Optimizer
+slug: skill-optimizer
+version: 0.1.0
+description: Optimize skills for better performance using LLM
+plugin_type: optimizer
+sdk_version: ^0.1
+has_api: true
+required_env:
+  - name: LLM_PROVIDER
+    description: LLM provider (e.g. openai.async)
+    required: true
+  - name: LLM_MODEL
+    description: LLM model name
+    required: false
+    default: gpt-4

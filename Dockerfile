@@ -13,9 +13,10 @@ ARG SERVICE_NAME
 ARG SERVICE_PORTS
 ARG SERVICE_ENTRY_MODULE
 # Optional dependency group to install (see pyproject [project.optional-dependencies]).
-# Defaults to "plugins-all" so the image ships every bundled plugin; pass an empty
-# value (--build-arg PLUGIN_EXTRAS=) to build a slim, core-only image.
-ARG PLUGIN_EXTRAS=plugins-all
+# Since Stage 7 SBS ships with zero plugins by default; plugins are installed at
+# runtime via the PluginManager (see docs/plugins-installation.md).  Set
+# PLUGIN_EXTRAS=example to bake in one demo plugin.
+ARG PLUGIN_EXTRAS=
 
 # Python, NodeJS and venv are already set in the base image
 # WORKDIR is already set in the base image to /app

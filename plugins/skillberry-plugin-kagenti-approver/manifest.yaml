@@ -1,0 +1,9 @@
+name: Kagenti Approver
+slug: kagenti-approver
+version: 0.1.0
+description: Automatically label skills as kagenti-approved based on score-tag criteria
+plugin_type: evaluator
+author: IBM
+sdk_version: ^0.1
+has_api: false
+required_env: []

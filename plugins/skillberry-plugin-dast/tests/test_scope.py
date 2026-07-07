@@ -46,16 +46,10 @@ requires_engine = pytest.mark.skipif(
 )
 
 
-class _Tools:
-    def __init__(self, m):
-        self.m = m
-
-    def read_file(self, uuid, fn, raw_content=False):
-        return self.m[(uuid, fn)]
-
-
 def _skill_store():
-    # one tool (Tier-1 "send") whose module also has a Tier-2 "helper"
+    """Async in-memory store: a skill referencing one tool ("send") whose module
+    also has a Tier-2 discovered function ("helper").
+    """
     src = "def send(p):\n    return p\ndef helper(q):\n    return q\n"
     objs = {
         ("skill", "sk1"): {
@@ -79,28 +73,42 @@ def _skill_store():
     class Store:
         def __init__(self):
             self._o = objs
-            self.tools = _Tools({("t1", "s.py"): src})
+            self._modules = {("t1", "s.py"): src}
 
-        def get_skill(self, u):
+        async def get_skill(self, u):
             return copy.deepcopy(self._o.get(("skill", u)))
 
-        def get_tool(self, u):
+        async def get_tool(self, u):
             return copy.deepcopy(self._o.get(("tool", u)))
 
-        def get_snippet(self, u):
+        async def get_snippet(self, u):
             return None
 
-        def update_skill(self, u, d):
+        async def update_skill(self, u, d):
             self._o[("skill", u)] = copy.deepcopy(d)
             return True
 
-        def update_tool(self, u, d):
+        async def update_tool(self, u, d):
             return True
 
-        def update_snippet(self, u, d):
+        async def update_snippet(self, u, d):
             return True
+
+        async def get(self, path, params=None):
+            if path.startswith("/tools/") and path.endswith("/module"):
+                uuid = path[len("/tools/") : -len("/module")]
+                tool = self._o.get(("tool", uuid)) or {}
+                module = tool.get("module_name")
+                return self._modules.get((uuid, module))
+            return None
 
     return Store()
+
+
+def _plugin_with(store):
+    p = SkillberryPluginDast()
+    p._store = store
+    return p
 
 
 def _exercised_names(block):
@@ -112,8 +120,7 @@ def _exercised_names(block):
 async def test_scope_mcp_exercises_no_direct_entry_points(monkeypatch):
     monkeypatch.delenv("DAST_LIVE", raising=False)  # no twin in dry-run
     monkeypatch.setenv("DAST_SCOPE", "mcp")
-    p = SkillberryPluginDast()
-    p.set_store_api(_skill_store())
+    p = _plugin_with(_skill_store())
     block = (await p.scan("skill", "sk1"))["dast"]
     # mcp scope: nothing exercised via direct invocation
     assert block["coverage"]["exercised"] == 0
@@ -127,8 +134,7 @@ async def test_scope_mcp_exercises_no_direct_entry_points(monkeypatch):
 async def test_scope_registered_exercises_only_tier1(monkeypatch):
     monkeypatch.delenv("DAST_LIVE", raising=False)
     monkeypatch.setenv("DAST_SCOPE", "registered")
-    p = SkillberryPluginDast()
-    p.set_store_api(_skill_store())
+    p = _plugin_with(_skill_store())
     block = (await p.scan("skill", "sk1"))["dast"]
     names = _exercised_names(block)
     assert "send" in names  # Tier-1 tool
@@ -140,8 +146,7 @@ async def test_scope_registered_exercises_only_tier1(monkeypatch):
 async def test_scope_discovered_exercises_tier1_and_tier2(monkeypatch):
     monkeypatch.delenv("DAST_LIVE", raising=False)
     monkeypatch.setenv("DAST_SCOPE", "discovered")
-    p = SkillberryPluginDast()
-    p.set_store_api(_skill_store())
+    p = _plugin_with(_skill_store())
     block = (await p.scan("skill", "sk1"))["dast"]
     names = _exercised_names(block)
     assert "send" in names and "helper" in names

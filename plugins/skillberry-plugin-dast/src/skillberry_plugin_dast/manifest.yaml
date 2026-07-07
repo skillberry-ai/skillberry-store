@@ -1,0 +1,8 @@
+name: DAST
+slug: dast
+version: 0.1.0
+description: Dynamic Application Security Testing for tools
+plugin_type: evaluator
+sdk_version: ^0.1
+has_api: true
+required_env: []

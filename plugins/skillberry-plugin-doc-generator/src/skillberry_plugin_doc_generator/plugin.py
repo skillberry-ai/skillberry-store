@@ -18,8 +18,7 @@ produced by a frontier model through ``llm-switchboard``
 (``get_llm(LLM_PROVIDER)`` → ``Client(model_name=LLM_MODEL)`` →
 ``await client.generate_async(prompt=...)``). No specific model is hardcoded;
 the provider/model are read from ``LLM_PROVIDER`` / ``LLM_MODEL``. If the LLM is
-unavailable the plugin is disabled (``is_enabled() is False``), like the other
-LLM plugins.
+unavailable the plugin is not ready.
 
 Persistence is non-destructive and review-before-apply: results are written to a
 structured ``extra["documentation"]`` block and to tags; the raw object
@@ -27,12 +26,14 @@ structured ``extra["documentation"]`` block and to tags; the raw object
 explicit.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_plugin_sdk import PluginLifecycleBase, on_event
 
 from .models import (
     MODE_ENRICHED,
@@ -71,28 +72,21 @@ def _summary_message(doc: Dict[str, Any], drift: Optional[List[str]] = None) -> 
     return f"Docs {mode} — {n_params} param(s), {n_examples} example(s)"
 
 
-class SkillberryPluginDocGenerator(PluginBase):
+class SkillberryPluginDocGenerator(PluginLifecycleBase):
     """Generates, enriches and drift-checks documentation for store objects."""
 
-    def __init__(self):
-        super().__init__()
-        self._metadata = PluginMetadata(
-            name="Documentation Generator",
-            version="0.1.0",
-            description=(
-                "Generates documentation where it is missing, enriches thin "
-                "docs without discarding author content, and detects drift when "
-                "an object's code or interface changes — for skills, tools and "
-                "snippets, in one consistent shape."
-            ),
-            plugin_type=PluginType.EVALUATOR,
-        )
+    manifest_path = "manifest.yaml"
 
-        # LLM integration, wired exactly like the security evaluator plugin.
+    def __init__(self, manifest=None) -> None:
+        super().__init__(manifest=manifest)
         self.llm_client = None
         self._backend = ""
         self._status_message = "Initializing..."
 
+    # ── lifecycle ────────────────────────────────────────────────────────────
+
+    async def on_start(self) -> None:
+        """Initialize the LLM client (expensive; wired exactly like the security plugin)."""
         try:
             from llm_switchboard import get_llm
 
@@ -117,77 +111,80 @@ class SkillberryPluginDocGenerator(PluginBase):
             self._status_message = f"Configuration error: {str(e)}"
             logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
 
-        self._register_event_handlers()
-
-    # ── status / enablement ──────────────────────────────────────────────────
-
-    @property
-    def metadata(self) -> PluginMetadata:
-        return self._metadata
+    async def is_ready(self) -> Dict[str, Any]:
+        """Ready when the LLM client initialized successfully."""
+        ready = self.llm_client is not None
+        missing = self.validate_env()
+        return {
+            "ready": ready and not missing,
+            "missing_config": missing,
+            "status_message": self._status_message,
+        }
 
     def is_enabled(self) -> bool:
+        """Legacy accessor used by the router / auto-hook."""
         return self.llm_client is not None
 
-    def get_status_message(self) -> str:
-        return self._status_message
+    # ── event handler (auto-propose docs on import) ──────────────────────────
 
-    # ── event handler (auto-propose docs on import) ───────────────────────────
+    @on_event("content.tool.added")
+    async def _on_tool_added(self, event) -> None:
+        await self._auto_propose("tool", event)
 
-    def _register_event_handlers(self) -> None:
+    @on_event("content.skill.added")
+    async def _on_skill_added(self, event) -> None:
+        await self._auto_propose("skill", event)
+
+    @on_event("content.snippet.added")
+    async def _on_snippet_added(self, event) -> None:
+        await self._auto_propose("snippet", event)
+
+    async def _auto_propose(self, object_type: str, event) -> None:
         """On object add, propose documentation if it is missing/thin.
 
         Best-effort and non-blocking, mirroring the provenance/SAST auto-hooks.
         It only *proposes* (never auto-applies), so author intent is never
         silently overwritten on import.
         """
-        from skillberry_store.plugins.events import _event_handlers
-
-        def _make_handler(object_type: str):
-            async def _handle_added(uuid: str):
-                if not self.is_enabled() or self._store_api is None:
-                    return
-                try:
-                    await self.generate_docs(
-                        object_type, uuid, apply=False, only_if_missing=True
-                    )
-                except Exception as e:
-                    logger.error(
-                        "Auto-doc proposal failed for %s %s: %s",
-                        object_type,
-                        uuid,
-                        e,
-                        exc_info=True,
-                    )
-
-            return _handle_added
-
-        for object_type in ("skill", "tool", "snippet"):
-            _event_handlers.setdefault(f"content_added:{object_type}", []).append(
-                _make_handler(object_type)
+        if not self.is_enabled() or self._store is None:
+            return
+        uuid = event.data.get("uuid") if isinstance(event.data, dict) else None
+        if not uuid:
+            return
+        try:
+            await self.generate_docs(
+                object_type, uuid, apply=False, only_if_missing=True
+            )
+        except Exception as e:
+            logger.error(
+                "Auto-doc proposal failed for %s %s: %s",
+                object_type,
+                uuid,
+                e,
+                exc_info=True,
             )
 
-    # ── store object -> normalized ObjectDoc ──────────────────────────────────
+    # ── store object -> normalized ObjectDoc ─────────────────────────────────
 
-    def _get_object(self, object_type: str, uuid: str) -> Optional[Dict[str, Any]]:
-        if self._store_api is None:
-            raise RuntimeError("Store API not available")
-        getter = {
-            "skill": self.store.get_skill,
-            "tool": self.store.get_tool,
-            "snippet": self.store.get_snippet,
-        }.get(object_type)
-        if getter is None:
-            raise ValueError(f"Unsupported object_type: {object_type!r}")
-        return getter(uuid)
+    async def _get_object(
+        self, object_type: str, uuid: str
+    ) -> Optional[Dict[str, Any]]:
+        if object_type == "skill":
+            return await self.store.get_skill(uuid)
+        if object_type == "tool":
+            return await self.store.get_tool(uuid)
+        if object_type == "snippet":
+            return await self.store.get_snippet(uuid)
+        raise ValueError(f"Unsupported object_type: {object_type!r}")
 
-    def _to_object_doc(
+    async def _to_object_doc(
         self, object_type: str, uuid: str, obj: Dict[str, Any]
     ) -> ObjectDoc:
         """Normalize a raw store object into the generation input shape."""
         name = obj.get("name") or uuid
         params = self._extract_parameters(obj)
-        code_blobs = self._collect_code(object_type, obj)
-        references = self._collect_references(object_type, obj)
+        code_blobs = await self._collect_code(object_type, obj)
+        references = await self._collect_references(object_type, obj)
         return ObjectDoc(
             object_type=object_type,
             uuid=uuid,
@@ -234,8 +231,19 @@ class SkillberryPluginDocGenerator(PluginBase):
                 )
         return out
 
-    def _collect_code(self, object_type: str, obj: Dict[str, Any]) -> List[str]:
-        """Best-effort code/content blobs to infer behavior from."""
+    async def _collect_code(
+        self, object_type: str, obj: Dict[str, Any]
+    ) -> List[str]:
+        """Best-effort code/content blobs to infer behavior from.
+
+        Note: the previous in-process implementation reached into raw store
+        files via ``self.store.tools.read_file(...)``. That surface is not
+        exposed over the plugin SDK's HTTP StoreClient, so out-of-process
+        plugins rely on any code/content that is already present on the object
+        record itself (e.g. snippet ``content``, or a ``code`` field on the
+        tool if provided by the store). Skills recurse into their child
+        objects via async ``get_tool`` / ``get_snippet``.
+        """
         blobs: List[str] = []
         if object_type == "snippet":
             content = obj.get("content")
@@ -243,34 +251,31 @@ class SkillberryPluginDocGenerator(PluginBase):
                 blobs.append(content)
             return blobs
         if object_type == "tool":
-            module = obj.get("module_name")
-            if module and self._store_api is not None:
-                try:
-                    blobs.append(
-                        self.store.tools.read_file(
-                            obj.get("uuid"), module, raw_content=True
-                        )
-                    )
-                except Exception as e:
-                    logger.debug("doc-gen: could not read tool module: %s", e)
+            # Prefer any inline code/content available on the tool record.
+            for key in ("code", "content", "source"):
+                v = obj.get(key)
+                if isinstance(v, str) and v:
+                    blobs.append(v)
+                    break
             return blobs
-        # skill: gather child tool modules + snippet content
-        if object_type == "skill" and self._store_api is not None:
+        # skill: gather child tool code + snippet content
+        if object_type == "skill":
             for tool_uuid in obj.get("tool_uuids") or []:
                 try:
-                    tool = self.store.get_tool(tool_uuid)
-                    module = (tool or {}).get("module_name")
-                    if tool and module:
-                        blobs.append(
-                            self.store.tools.read_file(
-                                tool_uuid, module, raw_content=True
-                            )
-                        )
+                    tool = await self.store.get_tool(tool_uuid)
                 except Exception as e:
                     logger.debug("doc-gen: could not read child tool: %s", e)
+                    continue
+                if not tool:
+                    continue
+                for key in ("code", "content", "source"):
+                    v = tool.get(key)
+                    if isinstance(v, str) and v:
+                        blobs.append(v)
+                        break
             for snippet_uuid in obj.get("snippet_uuids") or []:
                 try:
-                    snippet = self.store.get_snippet(snippet_uuid)
+                    snippet = await self.store.get_snippet(snippet_uuid)
                     content = (snippet or {}).get("content")
                     if content:
                         blobs.append(content)
@@ -278,28 +283,30 @@ class SkillberryPluginDocGenerator(PluginBase):
                     logger.debug("doc-gen: could not read child snippet: %s", e)
         return blobs
 
-    def _collect_references(self, object_type: str, obj: Dict[str, Any]) -> List[str]:
+    async def _collect_references(
+        self, object_type: str, obj: Dict[str, Any]
+    ) -> List[str]:
         """For skills: short names of referenced tools/snippets."""
-        if object_type != "skill" or self._store_api is None:
+        if object_type != "skill":
             return []
         refs: List[str] = []
         for tool_uuid in obj.get("tool_uuids") or []:
             try:
-                tool = self.store.get_tool(tool_uuid)
+                tool = await self.store.get_tool(tool_uuid)
                 if tool:
                     refs.append(f"tool:{tool.get('name') or tool_uuid}")
             except Exception:
                 continue
         for snippet_uuid in obj.get("snippet_uuids") or []:
             try:
-                snippet = self.store.get_snippet(snippet_uuid)
+                snippet = await self.store.get_snippet(snippet_uuid)
                 if snippet:
                     refs.append(f"snippet:{snippet.get('name') or snippet_uuid}")
             except Exception:
                 continue
         return refs
 
-    # ── LLM generation ─────────────────────────────────────────────────────────
+    # ── LLM generation ────────────────────────────────────────────────────────
 
     async def _generate_documentation(
         self, object_doc: ObjectDoc, existing: Optional[Documentation]
@@ -420,7 +427,7 @@ class SkillberryPluginDocGenerator(PluginBase):
             examples=examples,
         )
 
-    # ── core operations ────────────────────────────────────────────────────────
+    # ── core operations ───────────────────────────────────────────────────────
 
     async def generate_docs(
         self,
@@ -439,7 +446,7 @@ class SkillberryPluginDocGenerator(PluginBase):
         if not self.llm_client:
             raise RuntimeError("LLM client not initialized")
 
-        obj = self._get_object(object_type, uuid)
+        obj = await self._get_object(object_type, uuid)
         if not obj:
             raise ValueError(f"{object_type} {uuid} not found in store")
 
@@ -453,14 +460,14 @@ class SkillberryPluginDocGenerator(PluginBase):
                 "documentation": (existing_block or {}).get("current"),
             }
 
-        object_doc = self._to_object_doc(object_type, uuid, obj)
+        object_doc = await self._to_object_doc(object_type, uuid, obj)
         prior = self._existing_documentation(existing_block)
         doc = await self._generate_documentation(object_doc, prior)
         doc_dict = doc.to_dict()
         doc_dict["source_fingerprint"] = object_doc.source_fingerprint()
         doc_dict["backend"] = self._backend
 
-        self._persist(object_type, uuid, doc_dict, apply=apply)
+        await self._persist(object_type, uuid, doc_dict, apply=apply)
         return {
             "object_type": object_type,
             "uuid": uuid,
@@ -480,7 +487,7 @@ class SkillberryPluginDocGenerator(PluginBase):
         if not self.llm_client:
             raise RuntimeError("LLM client not initialized")
 
-        obj = self._get_object(object_type, uuid)
+        obj = await self._get_object(object_type, uuid)
         if not obj:
             raise ValueError(f"{object_type} {uuid} not found in store")
 
@@ -488,7 +495,7 @@ class SkillberryPluginDocGenerator(PluginBase):
         applied = (existing_block or {}).get("current") or {}
         old_fp = applied.get("source_fingerprint")
 
-        object_doc = self._to_object_doc(object_type, uuid, obj)
+        object_doc = await self._to_object_doc(object_type, uuid, obj)
         new_fp = object_doc.source_fingerprint()
         drift = self._compute_drift(old_fp, new_fp, applied)
 
@@ -506,7 +513,7 @@ class SkillberryPluginDocGenerator(PluginBase):
             doc_dict = doc.to_dict()
             doc_dict["source_fingerprint"] = new_fp
             doc_dict["backend"] = self._backend
-            self._persist(object_type, uuid, doc_dict, apply=False)
+            await self._persist(object_type, uuid, doc_dict, apply=False)
             result["documentation"] = doc_dict
         return result
 
@@ -523,7 +530,7 @@ class SkillberryPluginDocGenerator(PluginBase):
             return ["source changed since documentation was written"]
         return []
 
-    # ── existing-doc helpers ──────────────────────────────────────────────────
+    # ── existing-doc helpers ─────────────────────────────────────────────────
 
     @staticmethod
     def _existing_block(obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -565,7 +572,7 @@ class SkillberryPluginDocGenerator(PluginBase):
 
     # ── persistence ──────────────────────────────────────────────────────────
 
-    def _persist(
+    async def _persist(
         self,
         object_type: str,
         uuid: str,
@@ -580,7 +587,7 @@ class SkillberryPluginDocGenerator(PluginBase):
         applied description lives in the documentation block, leaving the raw
         object field intact for explicit user action.
         """
-        obj = self._get_object(object_type, uuid)
+        obj = await self._get_object(object_type, uuid)
         if not obj:
             return
         if not isinstance(obj.get("extra"), dict):
@@ -598,17 +605,19 @@ class SkillberryPluginDocGenerator(PluginBase):
         obj["tags"] = self._doc_tags(
             self._strip_doc_tags(obj.get("tags") or []), doc_dict, applied=apply
         )
-        self._write_object(object_type, uuid, obj)
+        await self._write_object(object_type, uuid, obj)
 
-    def _write_object(self, object_type: str, uuid: str, obj: Dict[str, Any]) -> None:
-        writer = {
-            "skill": self.store.update_skill,
-            "tool": self.store.update_tool,
-            "snippet": self.store.update_snippet,
-        }.get(object_type)
-        if writer is None:
+    async def _write_object(
+        self, object_type: str, uuid: str, obj: Dict[str, Any]
+    ) -> None:
+        if object_type == "skill":
+            await self.store.update_skill(uuid, obj)
+        elif object_type == "tool":
+            await self.store.update_tool(uuid, obj)
+        elif object_type == "snippet":
+            await self.store.update_snippet(uuid, obj)
+        else:
             raise ValueError(f"Unsupported object_type: {object_type!r}")
-        writer(uuid, obj)
 
     @staticmethod
     def _strip_doc_tags(tags: List[str]) -> List[str]:
@@ -623,7 +632,7 @@ class SkillberryPluginDocGenerator(PluginBase):
         out.append(f"{_TAG_PREFIX}status:{'applied' if applied else 'proposed'}")
         return out
 
-    # ── plugin interface ──────────────────────────────────────────────────────
+    # ── HTTP API ─────────────────────────────────────────────────────────────
 
     def get_router(self):
         from fastapi import APIRouter, HTTPException
@@ -708,59 +717,3 @@ class SkillberryPluginDocGenerator(PluginBase):
             return {"success": True, "message": msg, "data": data}
 
         return router
-
-    def get_cli_commands(self) -> Optional[Dict[str, Any]]:
-        return None
-
-    def get_ui_config(self) -> Optional[Dict[str, Any]]:
-        object_type_schema = {
-            "type": "string",
-            "enum": list(OBJECT_TYPES),
-            "default": "tool",
-            "description": "Which object type to document",
-        }
-        return {
-            "icon": "FileAltIcon",
-            "color": "#6753AC",
-            "actions": [
-                {
-                    "label": "Generate / enrich documentation",
-                    "endpoint": "/api/plugins/doc_generator/generate",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "object_type": object_type_schema,
-                            "uuid": {
-                                "type": "string",
-                                "description": "UUID of the object to document",
-                            },
-                            "apply": {
-                                "type": "boolean",
-                                "description": (
-                                    "Apply immediately instead of proposing for "
-                                    "review (default: propose)"
-                                ),
-                            },
-                        },
-                        "required": ["object_type", "uuid"],
-                    },
-                },
-                {
-                    "label": "Refresh / check doc drift",
-                    "endpoint": "/api/plugins/doc_generator/refresh",
-                    "method": "POST",
-                    "params_schema": {
-                        "type": "object",
-                        "properties": {
-                            "object_type": object_type_schema,
-                            "uuid": {
-                                "type": "string",
-                                "description": "UUID of the object to re-check",
-                            },
-                        },
-                        "required": ["object_type", "uuid"],
-                    },
-                },
-            ],
-        }

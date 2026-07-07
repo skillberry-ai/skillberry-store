@@ -9,11 +9,9 @@ description = "Skillberry Store plugin for generating Anthropic skills from desc
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "skillberry-plugin-sdk",
     "runspace-agent[claude]==0.1.0",
 ]
-
-[project.entry-points."skillberry_store.plugins"]
-anthropic-skill-generator = "skillberry_plugin_anthropic_skill_generator.plugin:SkillberryPluginAnthropicSkillGenerator"
 
 [project.optional-dependencies]
 dev = [
@@ -24,3 +22,6 @@ dev = [
 [tool.setuptools]
 packages = ["skillberry_plugin_anthropic_skill_generator"]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+skillberry_plugin_anthropic_skill_generator = ["manifest.yaml"]
