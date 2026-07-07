@@ -125,6 +125,23 @@ export interface PluginAsyncActionConfig {
   status_endpoint: string;
   poll_interval_ms?: number; // default 2000
   timeout_ms?: number; // default 180000
+  // When set, the named field from the status payload is rendered as Markdown
+  // beneath the ready alert once the job completes.
+  result_markdown_field?: string;
+  // Optional external link rendered on success when `field` is present in the
+  // status payload (e.g. a link to the run's session on a remote server).
+  result_link?: {
+    field: string;
+    label: string;
+  };
+  // Optional post-result action. When the job is ready and `when_field` is
+  // present in the status payload, a button (labelled `label`) POSTs to
+  // `endpoint` (`{job_id}` interpolated) — e.g. to delete a kept workspace.
+  cleanup_action?: {
+    endpoint: string;
+    label: string;
+    when_field: string;
+  };
   // All user-facing strings come from the plugin — the form has none baked in.
   labels: {
     pending: string; // alert title shown while polling

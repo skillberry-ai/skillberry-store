@@ -1,0 +1,27 @@
+[project]
+name = "skillberry-plugin-ask-runspace"
+version = "0.1.0"
+description = "Run the Runspace agent on a free-text task and show its summary"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.12",
+    "httpx>=0.28.1",
+    "pydantic>=2.11.1",
+    "runspace-agent[claude]==0.4.1",
+]
+
+[project.entry-points."skillberry_store.plugins"]
+ask-runspace = "skillberry_plugin_ask_runspace.plugin:SkillberryPluginAskRunspace"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.0",
+    "pytest-asyncio>=1.4.0",
+]
