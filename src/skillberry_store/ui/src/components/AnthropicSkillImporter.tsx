@@ -789,6 +789,20 @@ export function AnthropicSkillImporter({
                 Anonymous login (no token; uncheck to use configured authentication)
               </label>
             </div>
+            {anonymousLogin && (
+              <div
+                style={{
+                  marginTop: '0.25rem',
+                  marginLeft: '1.5rem',
+                  fontSize: '0.8125rem',
+                  color: '#b98412',
+                }}
+              >
+                Warning: anonymous clones can be slower and may fail with rate-limit errors —
+                GitHub caps unauthenticated requests at 60/hour per IP. Uncheck to use your
+                configured token for higher quotas.
+              </div>
+            )}
           </FormGroup>
         ) : importSource === 'zip' ? (
           <FormGroup label="ZIP File" isRequired fieldId="zip-file-upload">

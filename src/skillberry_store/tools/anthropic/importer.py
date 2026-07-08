@@ -252,12 +252,20 @@ def _git(cmd: List[str], auth_header: Optional[str] = None) -> None:
     subprocess.run(args, check=True, capture_output=True, text=True)
 
 
-def _ensure_cached_subpath(origin: Dict[str, str], auth_header: Optional[str]) -> Path:
+def _ensure_cached_subpath(
+    origin: Dict[str, str],
+    auth_header: Optional[str],
+    anonymous: bool = False,
+) -> Path:
     """Ensure ``<cache>/<owner>--<repo>--<ref>/<path>/`` exists locally.
 
     Uses a shallow, blobless, sparse clone so only the requested subtree's
     blobs are transferred. A cache hit reuses the existing clone and adds the
     new subpath to sparse-checkout when necessary.
+
+    When ``anonymous`` is True, forces HTTPS with no Authorization header and
+    skips the SSH branch — SSH always authenticates as the local key owner and
+    is therefore incompatible with anonymous fetches.
     """
     _CACHE_ROOT.mkdir(parents=True, exist_ok=True)
     entry = _cache_entry_dir(origin)
@@ -267,13 +275,17 @@ def _ensure_cached_subpath(origin: Dict[str, str], auth_header: Optional[str]) -
     # (gh doesn't request it if git ops go over SSH), and HTTPS clones fail
     # with ``remote: invalid credentials``. In that case, use SSH so the
     # user's SSH key does the auth. Otherwise, keep the HTTPS+token path.
-    use_ssh = gh_cli_git_protocol("github.com") == "ssh"
+    #
+    # Anonymous fetches must never take the SSH branch: git@github.com clones
+    # always authenticate against the local SSH key and would silently violate
+    # the "no auth" contract the caller asked for.
+    use_ssh = not anonymous and gh_cli_git_protocol("github.com") == "ssh"
     if use_ssh:
         clone_url = f"git@github.com:{origin['owner']}/{origin['repo']}.git"
         effective_auth: Optional[str] = None
     else:
         clone_url = f"https://github.com/{origin['owner']}/{origin['repo']}.git"
-        effective_auth = auth_header
+        effective_auth = None if anonymous else auth_header
     with _CACHE_LOCK:
         if not (entry / ".git").exists():
             _evict_lru_locked()
@@ -334,7 +346,7 @@ def prewarm_github(
 
     def _run() -> None:
         try:
-            _ensure_cached_subpath(origin, auth)
+            _ensure_cached_subpath(origin, auth, anonymous=anonymous)
         except Exception as e:  # noqa: BLE001 -- best-effort background task
             logger.info("prewarm clone best-effort failed for %s: %s", url, e)
 
@@ -370,7 +382,9 @@ def fetch_from_github(
     origin = parse_github_origin(url)
     if origin:
         try:
-            local = _ensure_cached_subpath(origin, headers.get("Authorization"))
+            local = _ensure_cached_subpath(
+                origin, headers.get("Authorization"), anonymous=anonymous
+            )
             print(f"Fetching from local sparse-clone cache: {local}")
             return read_from_folder(str(local))
         except subprocess.CalledProcessError as e:
