@@ -31,12 +31,13 @@ search_vnfs_counter = Counter(f"{prom_prefix}search_counter", "vNFS search opera
 
 def _to_ns(data: Dict[str, Any]) -> SimpleNamespace:
     """Build a SimpleNamespace with attributes needed by VirtualNfsServerManager.add_server.
-    
+
     Args:
         data: Dictionary containing vNFS server configuration.
-        
+
     Returns:
-        SimpleNamespace: Object with name, uuid, port, skill_uuid, description, and protocol attributes.
+        SimpleNamespace: Object with name, uuid, port, skill_uuid, description,
+        protocol, and npx_compat attributes.
     """
     return SimpleNamespace(
         name=data.get("name"),
@@ -45,7 +46,41 @@ def _to_ns(data: Dict[str, Any]) -> SimpleNamespace:
         skill_uuid=data.get("skill_uuid"),
         description=data.get("description") or "",
         protocol=data.get("protocol", "webdav"),
+        npx_compat=bool(data.get("npx_compat", False)),
     )
+
+
+def _compute_install_url(data: Dict[str, Any], request_host: Optional[str] = None) -> Optional[str]:
+    """Return the ``npx skills add`` URL for a vNFS, or None when not applicable.
+
+    Only vNFS servers with ``protocol == "webdav"`` and ``npx_compat == True``
+    have an install URL. The host is resolved with the following precedence:
+
+    1. ``SBS_VNFS_PUBLIC_HOST`` env var (deployment override).
+    2. The ``Host`` header from the current request (when provided).
+    3. ``localhost`` as a safe local default.
+
+    Args:
+        data: vNFS server dict with at least ``port`` and ``protocol``.
+        request_host: Optional value of the request ``Host`` header
+            (already stripped of any port suffix).
+
+    Returns:
+        The install URL string, or None when the vNFS is not eligible.
+    """
+    import os
+
+    if data.get("protocol") != "webdav" or not data.get("npx_compat"):
+        return None
+    port = data.get("port")
+    if not port:
+        return None
+    host = (
+        os.environ.get("SBS_VNFS_PUBLIC_HOST")
+        or request_host
+        or "localhost"
+    )
+    return f"http://{host}:{port}"
 
 
 class VnfsService:
@@ -74,6 +109,32 @@ class VnfsService:
         self.handler = handler
         self.server_manager = server_manager
 
+
+    def _enforce_slug_for_referenced_skill(self, skill_uuid: str) -> None:
+        """Reject if the referenced skill's name is not a valid npx slug.
+
+        Called on create/update when ``npx_compat`` is set. Raises
+        :class:`ValueError` with an actionable message including the suggested
+        slug so the FastAPI layer can render a 400.
+        """
+        from skillberry_store.tools.anthropic.naming import validate_skill_slug
+        from skillberry_store.modules.object_handler import get_object_handler
+
+        try:
+            skill_dict = get_object_handler("skill").read_dict(skill_uuid)
+        except Exception as exc:  # pragma: no cover - defensive
+            raise ValueError(
+                f"Cannot enable npx_compat: referenced skill "
+                f"'{skill_uuid}' could not be read ({exc})."
+            )
+        name = skill_dict.get("name")
+        result = validate_skill_slug(name)
+        if not result.ok:
+            raise ValueError(
+                f"npx_compat requires a slug-safe skill name. "
+                f"Skill '{name}' is invalid: {result.reason} "
+                f"Rename to '{result.suggested}' and try again."
+            )
 
     def _resolve_uuid(self, uuid_or_name: str) -> str:
         """Resolve a vNFS server identifier to its UUID.
@@ -131,6 +192,12 @@ class VnfsService:
                 data["parent"] = self.handler.get_cache_parent_for_head(
                     data["uuid"], data["name"]
                 )
+            if data.get("npx_compat") and data.get("skill_uuid"):
+                # Pre-flight: refuse to boot an npx-compat vNFS whose skill
+                # name is not slug-safe. Raising here surfaces a clean 400
+                # with a suggested slug instead of a generic 500 from the
+                # exporter later in add_server().
+                self._enforce_slug_for_referenced_skill(data["skill_uuid"])
             try:
                 server = self.server_manager.add_server(_to_ns(data))
             except ValueError as e:
@@ -204,9 +271,13 @@ class VnfsService:
                     )
                     d["running"] = runtime is not None and runtime.running
                     d["export_path"] = str(runtime.export_path) if runtime else None
+                    if runtime is not None:
+                        d["npx_compat"] = getattr(runtime, "npx_compat", d.get("npx_compat", False))
                 except Exception:
                     d["running"] = False
                     d["export_path"] = None
+                d.setdefault("npx_compat", False)
+                d["install_url"] = _compute_install_url(d)
                 return d
         except KeyError:
             raise
@@ -250,10 +321,12 @@ class VnfsService:
                         "port": item.get("port"),
                         "skill_uuid": item.get("skill_uuid"),
                         "protocol": item.get("protocol", "webdav"),
+                        "npx_compat": bool(item.get("npx_compat", False)),
                         "modified_at": item.get("modified_at", ""),
                         "running": runtime is not None and runtime.running,
                         "export_path": str(runtime.export_path) if runtime else None,
                     }
+                    info["install_url"] = _compute_install_url(info)
                     servers.append(info)
                 except Exception as e:
                     logger.warning(
@@ -379,6 +452,8 @@ class VnfsService:
                     data["parent"] = self.handler.get_cache_parent_for_head(
                         data["uuid"] or "", new_name
                     )
+                if data.get("npx_compat") and data.get("skill_uuid"):
+                    self._enforce_slug_for_referenced_skill(data["skill_uuid"])
                 try:
                     self.server_manager.remove_server(old_name or "", server_uuid or "")
                 except Exception as e:
