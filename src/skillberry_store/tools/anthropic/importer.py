@@ -125,13 +125,36 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
     return None
 
 
+# Allowlist patterns for GitHub origin components. These parsed values become
+# ``git`` command-line arguments and filesystem path segments under the local
+# clone cache, so we constrain each to a safe character set and reject anything
+# that could smuggle a CLI flag (leading ``-``), traverse the cache root
+# (``..``), or escape into an absolute path (leading ``/``). See CodeQL rules
+# py/command-line-injection and py/path-injection.
+_GITHUB_OWNER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}$")
+_GITHUB_REPO_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+_GITHUB_REF_RE = re.compile(r"^[A-Za-z0-9._/-]{1,255}$")
+_GITHUB_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,500}$")
+
+
+def _safe_component(value: str, pattern: "re.Pattern[str]") -> bool:
+    if not pattern.fullmatch(value):
+        return False
+    if value.startswith("-") or value.startswith("/"):
+        return False
+    if any(seg == ".." for seg in value.split("/")):
+        return False
+    return True
+
+
 def parse_github_origin(url: str) -> Optional[Dict[str, str]]:
     """Parse a github.com URL into ``{owner, repo, ref, path}``.
 
     Records where an imported skill came from so it can be looked up later (the
     provenance plugin reads this from the skill's ``extra["origin"]``). ``ref``
     defaults to "main" and ``path`` to "" for a bare repo URL; a trailing
-    ".git" on the repo is stripped. Returns ``None`` for non-github URLs.
+    ".git" on the repo is stripped. Returns ``None`` for non-github URLs or
+    when any component fails allowlist validation (owner, repo, ref, path).
     """
     if not url:
         return None
@@ -143,17 +166,23 @@ def parse_github_origin(url: str) -> Optional[Dict[str, str]]:
     )
     if not m:
         return None
+    owner = m.group("owner") or ""
     repo = m.group("repo") or ""
     if repo.endswith(".git"):
         repo = repo[: -len(".git")]
-    if not repo:
+    ref = m.group("ref") or "main"
+    path = (m.group("path") or "").strip("/")
+
+    if not _safe_component(owner, _GITHUB_OWNER_RE):
         return None
-    return {
-        "owner": m.group("owner"),
-        "repo": repo,
-        "ref": m.group("ref") or "main",
-        "path": (m.group("path") or "").strip("/"),
-    }
+    if not _safe_component(repo, _GITHUB_REPO_RE):
+        return None
+    if not _safe_component(ref, _GITHUB_REF_RE):
+        return None
+    if path and not _safe_component(path, _GITHUB_PATH_RE):
+        return None
+
+    return {"owner": owner, "repo": repo, "ref": ref, "path": path}
 
 
 # --- Local git sparse-checkout cache for source_type=url imports -------------
