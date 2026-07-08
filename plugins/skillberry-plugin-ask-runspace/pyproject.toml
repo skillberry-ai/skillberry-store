@@ -7,7 +7,7 @@ dependencies = [
     "fastapi>=0.115.12",
     "httpx>=0.28.1",
     "pydantic>=2.11.1",
-    "runspace-agent[claude]==0.4.1",
+    "runspace-agent[claude]==0.4.2",
 ]
 
 [project.entry-points."skillberry_store.plugins"]

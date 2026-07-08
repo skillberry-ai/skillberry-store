@@ -583,7 +583,7 @@ class FileExecutor:
 
             # Create and run a container to execute the Python file
             container = self.client.containers.run(
-                "public.ecr.aws/docker/library/python:3.11",  # Python 3.11 image from AWS (no rate limits)
+                "ghcr.io/skillberry-ai/python:3.11",  # org GHCR mirror of python:3.11 (avoids ECR Public anonymous rate limits — see issue #249)
                 command=f"/bin/bash -c '{command}'",
                 volumes={temp_file_path: {"bind": f"/tmp/function.py", "mode": "ro"}},
                 remove=True,

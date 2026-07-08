@@ -23,7 +23,11 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
     - name: pull-docker-image
-      run: docker pull public.ecr.aws/docker/library/python:3.11
+      # Mirror of python:3.11 hosted on the org GHCR. AWS ECR Public throttles
+      # anonymous pulls per source IP; GitHub's shared runner IPs blow through
+      # that limit and fail this step with "toomanyrequests". GHCR public pulls
+      # are not subject to that anonymous limit. See issue #249.
+      run: docker pull ghcr.io/skillberry-ai/python:3.11
     - name: run-make
       run: |
           source .venv/bin/activate

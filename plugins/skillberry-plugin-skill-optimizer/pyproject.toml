@@ -9,7 +9,7 @@ description = "Optimize existing Skillberry skills using RunSpace-powered Claude
 requires-python = ">=3.10"
 dependencies = [
     "skillberry-store",
-    "runspace-agent[claude]==0.4.1",
+    "runspace-agent[claude]==0.4.2",
 ]
 
 [project.optional-dependencies]
