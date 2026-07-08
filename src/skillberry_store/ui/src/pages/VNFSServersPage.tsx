@@ -38,11 +38,13 @@ import {
   MenuToggle,
   MenuToggleElement,
   Radio,
+  Checkbox,
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
 import { PlusIcon, ServerIcon, SearchIcon, TrashIcon, ExportIcon, ImportIcon } from '@patternfly/react-icons';
 import { vnfsApi, skillsApi } from '@/services/api';
 import type { VNFSServer } from '@/types';
+import { validateSkillSlug } from '@/utils/skillSlug';
 
 export function VNFSServersPage() {
   const navigate = useNavigate();
@@ -62,6 +64,7 @@ export function VNFSServersPage() {
     port: undefined as number | undefined,
     skill_uuid: '',
     protocol: 'webdav',
+    npx_compat: false,
   });
   const [tagInput, setTagInput] = useState('');
   const [createError, setCreateError] = useState('');
@@ -99,7 +102,7 @@ export function VNFSServersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vnfs-servers'] });
       setIsCreateModalOpen(false);
-      setNewServer({ name: '', version: '', description: '', state: 'approved', tags: [], port: undefined, skill_uuid: '', protocol: 'webdav' });
+      setNewServer({ name: '', version: '', description: '', state: 'approved', tags: [], port: undefined, skill_uuid: '', protocol: 'webdav', npx_compat: false });
       setTagInput('');
       setCreateError('');
     },
@@ -127,6 +130,21 @@ export function VNFSServersPage() {
     if (!newServer.name || !newServer.description) {
       setCreateError('Please fill in all required fields');
       return;
+    }
+    if (newServer.npx_compat) {
+      if (newServer.protocol !== 'webdav') {
+        setCreateError('npx install requires the WebDAV protocol.');
+        return;
+      }
+      const selected = allSkills?.find(s => s.uuid === newServer.skill_uuid);
+      const validation = validateSkillSlug(selected?.name);
+      if (!validation.ok) {
+        setCreateError(
+          `Cannot enable npx install: ${validation.reason}` +
+            (validation.suggested ? ` Rename the skill to "${validation.suggested}" first.` : '')
+        );
+        return;
+      }
     }
     createMutation.mutate(newServer);
   };
@@ -272,7 +290,7 @@ export function VNFSServersPage() {
 
   const resetCreateModal = () => {
     setIsCreateModalOpen(false);
-    setNewServer({ name: '', version: '', description: '', state: 'approved', tags: [], port: undefined, skill_uuid: '', protocol: 'webdav' });
+    setNewServer({ name: '', version: '', description: '', state: 'approved', tags: [], port: undefined, skill_uuid: '', protocol: 'webdav', npx_compat: false });
     setTagInput('');
     setSkillSearchTerm('');
     setCreateError('');
@@ -382,7 +400,12 @@ export function VNFSServersPage() {
                   </Td>
                   <Td dataLabel="Port" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>{server.port || '-'}</Td>
                   <Td dataLabel="Protocol" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>
-                    <Label color={server.protocol === 'nfs' ? 'blue' : 'cyan'} isCompact>{server.protocol || 'webdav'}</Label>
+                    <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                      <Label color={server.protocol === 'nfs' ? 'blue' : 'cyan'} isCompact>{server.protocol || 'webdav'}</Label>
+                      {server.npx_compat && (
+                        <Label color="purple" isCompact title="Publishes /.well-known/agent-skills for npx skills install">npx</Label>
+                      )}
+                    </div>
                   </Td>
                   <Td dataLabel="Status" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>
                     {server.running ? <Label color="green" isCompact>Running</Label> : <Label color="red" isCompact>Stopped</Label>}
@@ -479,10 +502,42 @@ export function VNFSServersPage() {
                 label="NFS"
                 value="nfs"
                 isChecked={newServer.protocol === 'nfs'}
-                onChange={() => setNewServer({ ...newServer, protocol: 'nfs' })}
+                onChange={() =>
+                  setNewServer({ ...newServer, protocol: 'nfs', npx_compat: false })
+                }
               />
             </div>
           </FormGroup>
+          {newServer.protocol === 'webdav' && (
+            <FormGroup fieldId="server-npx-compat">
+              <Checkbox
+                id="server-npx-compat"
+                label={
+                  <span>
+                    Install with <code>npx skills</code> (publish well-known agent-skills endpoint)
+                  </span>
+                }
+                isChecked={newServer.npx_compat}
+                onChange={(_, checked) => setNewServer({ ...newServer, npx_compat: checked })}
+              />
+              {newServer.npx_compat && newServer.skill_uuid && (() => {
+                const selected = allSkills?.find(s => s.uuid === newServer.skill_uuid);
+                const validation = validateSkillSlug(selected?.name);
+                if (validation.ok) return null;
+                return (
+                  <Alert
+                    variant="warning"
+                    isInline
+                    title="Skill name is not a valid npx slug"
+                    style={{ marginTop: '0.5rem' }}
+                  >
+                    {validation.reason} Rename the skill to <code>{validation.suggested || '<slug>'}</code>{' '}
+                    before creating this vNFS.
+                  </Alert>
+                );
+              })()}
+            </FormGroup>
+          )}
           <FormGroup label="Name" isRequired fieldId="server-name">
             <TextInput isRequired type="text" id="server-name" value={newServer.name} onChange={(_, v) => setNewServer({ ...newServer, name: v })} />
           </FormGroup>

@@ -365,6 +365,7 @@ export const vnfsApi = {
     if (server.port) params.append('port', server.port.toString());
     if (server.skill_uuid) params.append('skill_uuid', server.skill_uuid);
     if (server.protocol) params.append('protocol', server.protocol);
+    if (server.npx_compat) params.append('npx_compat', 'true');
     if (server.tags) {
       server.tags.forEach(tag => params.append('tags', tag));
     }
@@ -386,6 +387,7 @@ export const vnfsApi = {
     if (server.port) params.append('port', server.port.toString());
     if (server.skill_uuid) params.append('skill_uuid', server.skill_uuid);
     if (server.protocol) params.append('protocol', server.protocol);
+    if (server.npx_compat !== undefined) params.append('npx_compat', server.npx_compat ? 'true' : 'false');
     if (server.tags) {
       server.tags.forEach(tag => params.append('tags', tag));
     }
