@@ -17,7 +17,10 @@ from typing import Dict, List, Any, Optional, Tuple
 
 import requests
 
-from skillberry_store.tools.endpoint_auth import resolve_auth_headers
+from skillberry_store.tools.endpoint_auth import (
+    gh_cli_git_protocol,
+    resolve_auth_headers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +209,16 @@ def _evict_lru_locked() -> None:
 def _git(cmd: List[str], auth_header: Optional[str] = None) -> None:
     args = ["git"]
     if auth_header:
-        args += ["-c", f"http.extraHeader=Authorization: {auth_header}"]
+        # GitHub's git HTTPS smart protocol accepts the `token` scheme for every
+        # token type it issues (classic PAT, fine-grained PAT, and `gh` user
+        # OAuth `gho_*`), whereas `Bearer` is not accepted for gh user OAuth
+        # tokens and gets rejected as "invalid credentials". The header we
+        # receive from resolve_auth_headers() is always `Bearer <TOKEN>`;
+        # normalise it here so git-clone works for the gh-CLI token case.
+        normalised = re.sub(
+            r"^Bearer\s+", "token ", auth_header, count=1, flags=re.IGNORECASE
+        )
+        args += ["-c", f"http.extraHeader=Authorization: {normalised}"]
     args += cmd
     subprocess.run(args, check=True, capture_output=True, text=True)
 
@@ -220,10 +232,22 @@ def _ensure_cached_subpath(origin: Dict[str, str], auth_header: Optional[str]) -
     """
     _CACHE_ROOT.mkdir(parents=True, exist_ok=True)
     entry = _cache_entry_dir(origin)
+    # When the user has configured `gh` for SSH (``git_protocol: ssh`` in
+    # ``~/.config/gh/hosts.yml``), the token gh mints via ``gh auth token`` may
+    # lack the ``repo`` scope needed for git HTTPS smart-protocol operations
+    # (gh doesn't request it if git ops go over SSH), and HTTPS clones fail
+    # with ``remote: invalid credentials``. In that case, use SSH so the
+    # user's SSH key does the auth. Otherwise, keep the HTTPS+token path.
+    use_ssh = gh_cli_git_protocol("github.com") == "ssh"
+    if use_ssh:
+        clone_url = f"git@github.com:{origin['owner']}/{origin['repo']}.git"
+        effective_auth: Optional[str] = None
+    else:
+        clone_url = f"https://github.com/{origin['owner']}/{origin['repo']}.git"
+        effective_auth = auth_header
     with _CACHE_LOCK:
         if not (entry / ".git").exists():
             _evict_lru_locked()
-            clone_url = f"https://github.com/{origin['owner']}/{origin['repo']}.git"
             _git(
                 [
                     "clone",
@@ -236,17 +260,17 @@ def _ensure_cached_subpath(origin: Dict[str, str], auth_header: Optional[str]) -
                     clone_url,
                     str(entry),
                 ],
-                auth_header=auth_header,
+                auth_header=effective_auth,
             )
         if origin["path"]:
             _git(
                 ["-C", str(entry), "sparse-checkout", "add", origin["path"]],
-                auth_header=auth_header,
+                auth_header=effective_auth,
             )
         else:
             _git(
                 ["-C", str(entry), "sparse-checkout", "disable"],
-                auth_header=auth_header,
+                auth_header=effective_auth,
             )
         os.utime(entry, None)  # LRU touch
     resolved = entry / origin["path"] if origin["path"] else entry

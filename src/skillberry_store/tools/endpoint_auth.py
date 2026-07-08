@@ -247,6 +247,31 @@ def gh_cli_token(host: str = _GH_HOST) -> Optional[str]:
     return None
 
 
+def gh_cli_git_protocol(host: str = _GH_HOST) -> Optional[str]:
+    """Return the gh CLI's configured ``git_protocol`` for ``host``, or None.
+
+    Reads ``~/.config/gh/hosts.yml``; the value is lower-cased and stripped.
+    Returns ``"ssh"`` when the user chose SSH during ``gh auth login`` (their
+    SSH key does the git auth, and the OAuth token gh mints may lack the
+    ``repo`` scope needed for git HTTPS smart-protocol operations),
+    ``"https"`` when they chose HTTPS, and None when the file is missing or
+    the field is not set.
+    """
+    if not os.path.isfile(_GH_HOSTS_PATH):
+        return None
+    try:
+        with open(_GH_HOSTS_PATH, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        host_cfg = data.get(host)
+        if isinstance(host_cfg, dict):
+            proto = host_cfg.get("git_protocol")
+            if isinstance(proto, str):
+                return proto.lower().strip() or None
+    except Exception as e:  # noqa: BLE001 - best-effort
+        logger.debug("Could not read git_protocol from %s: %s", _GH_HOSTS_PATH, e)
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Header resolution - the single entry point used by the importer / API
 # --------------------------------------------------------------------------- #
