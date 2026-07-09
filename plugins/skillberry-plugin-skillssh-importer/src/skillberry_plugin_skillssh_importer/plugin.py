@@ -176,7 +176,16 @@ def _acquire_via_vercel_oidc() -> Optional[str]:
 
 
 def _token_from_env() -> Optional[str]:
-    return os.getenv("SKILLS_SH_TOKEN") or None
+    """Read SKILLS_SH_TOKEN, stripping accidental surrounding quotes.
+
+    Shell env files written as  SKILLS_SH_TOKEN="eyJ..."  (with quotes)
+    cause the literal quote characters to become part of the value when
+    sourced with ``set -a; source file; set +a``.  Strip them so the
+    JWT is passed to the API as-is.
+    """
+    raw = os.getenv("SKILLS_SH_TOKEN") or ""
+    tok = raw.strip().strip('"').strip("'").strip()
+    return tok or None
 
 
 def _resolve_token(override: Optional[str]) -> Optional[str]:
