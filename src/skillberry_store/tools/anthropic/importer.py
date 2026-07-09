@@ -7,11 +7,20 @@ import logging
 import re
 import io
 import os
+import shutil
+import subprocess
+import tempfile
+import threading
 import zipfile
-import requests
+from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
-from skillberry_store.tools.endpoint_auth import resolve_auth_headers
+import requests
+
+from skillberry_store.tools.endpoint_auth import (
+    gh_cli_git_protocol,
+    resolve_auth_headers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,13 +125,36 @@ def parse_skill_metadata(files: List[Dict[str, str]]) -> Optional[Dict[str, str]
     return None
 
 
+# Allowlist patterns for GitHub origin components. These parsed values become
+# ``git`` command-line arguments and filesystem path segments under the local
+# clone cache, so we constrain each to a safe character set and reject anything
+# that could smuggle a CLI flag (leading ``-``), traverse the cache root
+# (``..``), or escape into an absolute path (leading ``/``). See CodeQL rules
+# py/command-line-injection and py/path-injection.
+_GITHUB_OWNER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}$")
+_GITHUB_REPO_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+_GITHUB_REF_RE = re.compile(r"^[A-Za-z0-9._/-]{1,255}$")
+_GITHUB_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]{1,500}$")
+
+
+def _safe_component(value: str, pattern: "re.Pattern[str]") -> bool:
+    if not pattern.fullmatch(value):
+        return False
+    if value.startswith("-") or value.startswith("/"):
+        return False
+    if any(seg == ".." for seg in value.split("/")):
+        return False
+    return True
+
+
 def parse_github_origin(url: str) -> Optional[Dict[str, str]]:
     """Parse a github.com URL into ``{owner, repo, ref, path}``.
 
     Records where an imported skill came from so it can be looked up later (the
     provenance plugin reads this from the skill's ``extra["origin"]``). ``ref``
     defaults to "main" and ``path`` to "" for a bare repo URL; a trailing
-    ".git" on the repo is stripped. Returns ``None`` for non-github URLs.
+    ".git" on the repo is stripped. Returns ``None`` for non-github URLs or
+    when any component fails allowlist validation (owner, repo, ref, path).
     """
     if not url:
         return None
@@ -134,17 +166,191 @@ def parse_github_origin(url: str) -> Optional[Dict[str, str]]:
     )
     if not m:
         return None
+    owner = m.group("owner") or ""
     repo = m.group("repo") or ""
     if repo.endswith(".git"):
         repo = repo[: -len(".git")]
-    if not repo:
+    ref = m.group("ref") or "main"
+    path = (m.group("path") or "").strip("/")
+
+    if not _safe_component(owner, _GITHUB_OWNER_RE):
         return None
-    return {
-        "owner": m.group("owner"),
-        "repo": repo,
-        "ref": m.group("ref") or "main",
-        "path": (m.group("path") or "").strip("/"),
-    }
+    if not _safe_component(repo, _GITHUB_REPO_RE):
+        return None
+    if not _safe_component(ref, _GITHUB_REF_RE):
+        return None
+    if path and not _safe_component(path, _GITHUB_PATH_RE):
+        return None
+
+    return {"owner": owner, "repo": repo, "ref": ref, "path": path}
+
+
+# --- Local git sparse-checkout cache for source_type=url imports -------------
+#
+# The /contents/ REST walk pays one HTTPS round-trip per file, which dominates
+# URL-mode import latency. Instead we do a single blobless, sparse ``git
+# clone`` per (owner, repo, ref) and reuse it across every skill imported from
+# the same repo; per-skill fetch then becomes a local ``read_from_folder``.
+# Entries are LRU-evicted by atime when the on-disk footprint exceeds
+# ``SBS_IMPORT_CACHE_MAX_BYTES``.
+
+_CACHE_ROOT = Path(
+    os.environ.get(
+        "SBS_IMPORT_CACHE_DIR",
+        str(Path(tempfile.gettempdir()) / "skillberry-import-cache"),
+    )
+)
+_CACHE_MAX_BYTES = int(os.environ.get("SBS_IMPORT_CACHE_MAX_BYTES", str(2 * 1024**3)))
+_CACHE_LOCK = threading.Lock()
+
+
+def _cache_entry_dir(origin: Dict[str, str]) -> Path:
+    return _CACHE_ROOT / f"{origin['owner']}--{origin['repo']}--{origin['ref']}"
+
+
+def _dir_size_bytes(path: Path) -> int:
+    total = 0
+    for entry in path.rglob("*"):
+        try:
+            total += entry.stat().st_size
+        except OSError:
+            pass
+    return total
+
+
+def _evict_lru_locked() -> None:
+    """Delete oldest cache entries (by atime) until under the size cap.
+
+    Caller must hold ``_CACHE_LOCK``.
+    """
+    if not _CACHE_ROOT.exists():
+        return
+    entries = [d for d in _CACHE_ROOT.iterdir() if d.is_dir()]
+    entries.sort(key=lambda d: d.stat().st_atime)
+    total = sum(_dir_size_bytes(d) for d in entries)
+    while entries and total > _CACHE_MAX_BYTES:
+        victim = entries.pop(0)
+        size = _dir_size_bytes(victim)
+        shutil.rmtree(victim, ignore_errors=True)
+        total -= size
+
+
+def _git(cmd: List[str], auth_header: Optional[str] = None) -> None:
+    args = ["git"]
+    if auth_header:
+        # GitHub's git HTTPS smart protocol accepts the `token` scheme for every
+        # token type it issues (classic PAT, fine-grained PAT, and `gh` user
+        # OAuth `gho_*`), whereas `Bearer` is not accepted for gh user OAuth
+        # tokens and gets rejected as "invalid credentials". The header we
+        # receive from resolve_auth_headers() is always `Bearer <TOKEN>`;
+        # normalise it here so git-clone works for the gh-CLI token case.
+        normalised = re.sub(
+            r"^Bearer\s+", "token ", auth_header, count=1, flags=re.IGNORECASE
+        )
+        args += ["-c", f"http.extraHeader=Authorization: {normalised}"]
+    args += cmd
+    subprocess.run(args, check=True, capture_output=True, text=True)
+
+
+def _ensure_cached_subpath(
+    origin: Dict[str, str],
+    auth_header: Optional[str],
+    anonymous: bool = False,
+) -> Path:
+    """Ensure ``<cache>/<owner>--<repo>--<ref>/<path>/`` exists locally.
+
+    Uses a shallow, blobless, sparse clone so only the requested subtree's
+    blobs are transferred. A cache hit reuses the existing clone and adds the
+    new subpath to sparse-checkout when necessary.
+
+    When ``anonymous`` is True, forces HTTPS with no Authorization header and
+    skips the SSH branch — SSH always authenticates as the local key owner and
+    is therefore incompatible with anonymous fetches.
+    """
+    _CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    entry = _cache_entry_dir(origin)
+    # When the user has configured `gh` for SSH (``git_protocol: ssh`` in
+    # ``~/.config/gh/hosts.yml``), the token gh mints via ``gh auth token`` may
+    # lack the ``repo`` scope needed for git HTTPS smart-protocol operations
+    # (gh doesn't request it if git ops go over SSH), and HTTPS clones fail
+    # with ``remote: invalid credentials``. In that case, use SSH so the
+    # user's SSH key does the auth. Otherwise, keep the HTTPS+token path.
+    #
+    # Anonymous fetches must never take the SSH branch: git@github.com clones
+    # always authenticate against the local SSH key and would silently violate
+    # the "no auth" contract the caller asked for.
+    use_ssh = not anonymous and gh_cli_git_protocol("github.com") == "ssh"
+    if use_ssh:
+        clone_url = f"git@github.com:{origin['owner']}/{origin['repo']}.git"
+        effective_auth: Optional[str] = None
+    else:
+        clone_url = f"https://github.com/{origin['owner']}/{origin['repo']}.git"
+        effective_auth = None if anonymous else auth_header
+    with _CACHE_LOCK:
+        if not (entry / ".git").exists():
+            _evict_lru_locked()
+            _git(
+                [
+                    "clone",
+                    "--depth=1",
+                    "--filter=blob:none",
+                    "--sparse",
+                    "--single-branch",
+                    "--branch",
+                    origin["ref"],
+                    clone_url,
+                    str(entry),
+                ],
+                auth_header=effective_auth,
+            )
+        if origin["path"]:
+            _git(
+                ["-C", str(entry), "sparse-checkout", "add", origin["path"]],
+                auth_header=effective_auth,
+            )
+        else:
+            _git(
+                ["-C", str(entry), "sparse-checkout", "disable"],
+                auth_header=effective_auth,
+            )
+        os.utime(entry, None)  # LRU touch
+    resolved = entry / origin["path"] if origin["path"] else entry
+    if not resolved.exists():
+        raise Exception(
+            f"Sparse checkout did not produce {origin['path']!r} in "
+            f"{origin['owner']}/{origin['repo']}@{origin['ref']}"
+        )
+    return resolved
+
+
+def prewarm_github(
+    url: str, override_token: Optional[str] = None, anonymous: bool = False
+) -> None:
+    """Best-effort background clone into the local cache.
+
+    Meant to run in parallel with a client's ``detect-anthropic-skills`` call
+    so that by the time the first ``import-anthropic`` request arrives, the
+    ``(owner, repo, ref)`` clone is already on disk. Non-blocking: returns as
+    soon as the worker thread is spawned. Silently no-ops if the URL isn't a
+    ``github.com`` tree URL or if auth resolution fails; the parallel detect
+    or import call is the one that surfaces user-visible errors.
+    """
+    origin = parse_github_origin(url)
+    if not origin:
+        return
+    try:
+        headers = _auth_headers(url, override_token=override_token, anonymous=anonymous)
+    except Exception:  # ReauthRequired etc.; detect/import will surface it
+        return
+    auth = headers.get("Authorization")
+
+    def _run() -> None:
+        try:
+            _ensure_cached_subpath(origin, auth, anonymous=anonymous)
+        except Exception as e:  # noqa: BLE001 -- best-effort background task
+            logger.info("prewarm clone best-effort failed for %s: %s", url, e)
+
+    threading.Thread(target=_run, daemon=True, name=f"prewarm-{origin['repo']}").start()
 
 
 def fetch_from_github(
@@ -170,9 +376,31 @@ def fetch_from_github(
     # ReauthRequired/OAuthRequired raised here propagates to the API layer.
     headers = _auth_headers(url, override_token=override_token, anonymous=anonymous)
 
-    # Convert GitHub URL to API URL
-    # From: https://github.com/anthropics/skills/tree/main/skills/pptx
-    # To: https://api.github.com/repos/anthropics/skills/contents/skills/pptx
+    # Fast path: reuse a local sparse clone across every skill imported from
+    # the same (owner, repo, ref). Falls through to the /contents/ walk below
+    # on any git failure or for URLs the origin parser doesn't recognize.
+    origin = parse_github_origin(url)
+    if origin:
+        try:
+            local = _ensure_cached_subpath(
+                origin, headers.get("Authorization"), anonymous=anonymous
+            )
+            print(f"Fetching from local sparse-clone cache: {local}")
+            return read_from_folder(str(local))
+        except subprocess.CalledProcessError as e:
+            logger.warning(
+                "git-based fetch failed for %s: %s -- falling back to REST",
+                url,
+                (e.stderr or "").strip() or str(e),
+            )
+        except Exception as e:  # noqa: BLE001 -- last-ditch fallback
+            logger.warning(
+                "sparse-clone cache path failed for %s: %s -- falling back to REST",
+                url,
+                e,
+            )
+
+    # Fallback: original per-file /contents/ walk.
     api_url = url.replace("github.com", "api.github.com/repos")
     api_url = re.sub(r"/tree/(main|master)/", r"/contents/", api_url)
 

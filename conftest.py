@@ -65,7 +65,7 @@ _session_log_handler = None
 
 
 @pytest.fixture(scope="session")
-def run_sbs():
+def run_sbs(tmp_path_factory):
     """Start the SBS server once per session in a daemon thread."""
     from skillberry_store.fast_api.server import SBS
     from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready
@@ -77,6 +77,9 @@ def run_sbs():
 
     os.environ["ENABLE_UI"] = "false"
     os.environ["PROMETHEUS_METRICS_PORT"] = "0"
+    os.environ["SKILLBERRY_PLUGIN_CONFIG"] = str(
+        tmp_path_factory.mktemp("plugin-config") / "plugins.json"
+    )
 
     _session_log_handler = ThreadSafeLogCapture()
     root_logger = logging.getLogger()

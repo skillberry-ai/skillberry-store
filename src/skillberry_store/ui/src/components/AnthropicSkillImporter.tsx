@@ -228,7 +228,8 @@ export function AnthropicSkillImporter({
   const detectChildSkills = async (
     sourceType: 'url' | 'zip' | 'folder',
     sourcePath: string,
-    overrideToken?: string
+    overrideToken?: string,
+    prewarm: boolean = false
   ): Promise<string[]> => {
     try {
       const formData = new FormData();
@@ -238,6 +239,7 @@ export function AnthropicSkillImporter({
 
       if (sourceType === 'url') {
         formData.append('github_url', sourcePath);
+        if (prewarm) formData.append('prewarm', 'true');
       } else {
         formData.append('folder_path', sourcePath);
       }
@@ -373,9 +375,17 @@ export function AnthropicSkillImporter({
 
       const sourcePath = importSource === 'url' ? githubUrl : folderPath;
 
-      // Step 1: Detect child skills (may raise LoginRequiredError)
+      // Step 1: Detect child skills (may raise LoginRequiredError). Passing
+      // ``prewarm`` tells the server to begin a best-effort background clone
+      // of the source repo in parallel with its own GitHub API work, so the
+      // first subsequent import call finds a warm local cache.
       setProgress(10);
-      const skillPaths = await detectChildSkills(importSource, sourcePath, overrideToken);
+      const skillPaths = await detectChildSkills(
+        importSource,
+        sourcePath,
+        overrideToken,
+        /*prewarm=*/ importSource === 'url',
+      );
 
       if (skillPaths.length === 0) {
         throw new Error('No skills detected in the parent directory. Make sure subdirectories contain SKILL.md files.');
@@ -779,6 +789,20 @@ export function AnthropicSkillImporter({
                 Anonymous login (no token; uncheck to use configured authentication)
               </label>
             </div>
+            {anonymousLogin && (
+              <div
+                style={{
+                  marginTop: '0.25rem',
+                  marginLeft: '1.5rem',
+                  fontSize: '0.8125rem',
+                  color: '#b98412',
+                }}
+              >
+                Warning: anonymous clones can be slower and may fail with rate-limit errors —
+                GitHub caps unauthenticated requests at 60/hour per IP. Uncheck to use your
+                configured token for higher quotas.
+              </div>
+            )}
           </FormGroup>
         ) : importSource === 'zip' ? (
           <FormGroup label="ZIP File" isRequired fieldId="zip-file-upload">
