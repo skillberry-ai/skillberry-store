@@ -18,6 +18,7 @@ import { CubeIcon } from '@patternfly/react-icons';
 import { pluginsApi } from '@/services/api';
 import { PluginCard } from '@/components/PluginCard';
 import { PluginActionForm } from '@/components/PluginActionForm';
+import { SkillsShImporter } from '@/components/SkillsShImporter';
 import type { Plugin, PluginAction } from '@/types';
 
 export function PluginsPage() {
@@ -25,6 +26,8 @@ export function PluginsPage() {
     action: PluginAction;
     pluginName: string;
   } | null>(null);
+  // Custom component modals — keyed by plugin slug
+  const [customModal, setCustomModal] = useState<{ slug: string; component: string } | null>(null);
 
   // Fetch plugins
   const { data: plugins, isLoading, error } = useQuery({
@@ -60,6 +63,12 @@ export function PluginsPage() {
   });
 
   const handleActionClick = (plugin: Plugin, action: PluginAction) => {
+    // If the plugin declared a custom_component, open it instead of the generic form
+    const custom = plugin.ui_config?.custom_component as string | undefined;
+    if (custom) {
+      setCustomModal({ slug: plugin.slug, component: custom });
+      return;
+    }
     setSelectedAction({
       action,
       pluginName: plugin.slug,
@@ -142,6 +151,17 @@ export function PluginsPage() {
           onSubmit={handleActionSubmit}
         />
       )}
+
+      {customModal?.component === 'SkillsShImporter' && (() => {
+        const plugin = plugins?.find((p) => p.slug === customModal.slug);
+        return plugin ? (
+          <SkillsShImporter
+            plugin={plugin}
+            isOpen={true}
+            onClose={() => setCustomModal(null)}
+          />
+        ) : null;
+      })()}
     </PageSection>
   );
 }

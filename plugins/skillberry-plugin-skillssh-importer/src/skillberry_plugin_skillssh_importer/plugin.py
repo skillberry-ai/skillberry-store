@@ -560,6 +560,28 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                 logger.error(f"skills.sh search failed: {exc}", exc_info=True)
                 raise HTTPException(status_code=502, detail=f"Search failed: {exc}")
 
+        # ── Skill description (lazy) ─────────────────────────────────────────
+
+        @router.get("/skill-description/{skill_id:path}")
+        async def skill_description(skill_id: str):
+            """Return the description extracted from a skill's SKILL.md.
+
+            Called lazily by the UI table as rows scroll into view — one
+            request per skill so the search response stays fast.
+            """
+            try:
+                tok = _resolve_token(None)
+                if not tok:
+                    return {"description": ""}
+                detail = fetch_skill_detail(skill_id, token=tok)
+                files = _files_from_detail(detail)
+                from skillberry_store.tools.anthropic.importer import parse_skill_metadata
+                meta = parse_skill_metadata(files)
+                description = (meta or {}).get("description", "") or ""
+                return {"description": description, "installs": detail.get("installs", 0)}
+            except Exception:
+                return {"description": ""}
+
         # ── Import endpoint ──────────────────────────────────────────────────
 
         class ImportRequest(BaseModel):
@@ -704,6 +726,7 @@ class SkillberryPluginSkillsShImporter(PluginBase):
         base: Dict[str, Any] = {
             "icon": "SearchIcon",
             "color": "#0F766E" if enabled else "#6B7280",
+            "custom_component": "SkillsShImporter",
         }
         if not enabled:
             base["disabled_message"] = self.get_status_message()

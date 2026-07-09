@@ -189,6 +189,10 @@ export interface PluginUIConfig {
   actions: PluginAction[];
   settings_schema?: Record<string, any>;
   notifications?: PluginNotificationsConfig;
+  /** When set, PluginsPage renders this named component instead of the generic action form. */
+  custom_component?: string;
+  disabled_message?: string;
+  setup_instructions?: Record<string, any>;
 }
 
 export interface Plugin {
