@@ -110,32 +110,6 @@ class VnfsService:
         self.server_manager = server_manager
 
 
-    def _enforce_slug_for_referenced_skill(self, skill_uuid: str) -> None:
-        """Reject if the referenced skill's name is not a valid npx slug.
-
-        Called on create/update when ``npx_compat`` is set. Raises
-        :class:`ValueError` with an actionable message including the suggested
-        slug so the FastAPI layer can render a 400.
-        """
-        from skillberry_store.tools.anthropic.naming import validate_skill_slug
-        from skillberry_store.modules.object_handler import get_object_handler
-
-        try:
-            skill_dict = get_object_handler("skill").read_dict(skill_uuid)
-        except Exception as exc:  # pragma: no cover - defensive
-            raise ValueError(
-                f"Cannot enable npx_compat: referenced skill "
-                f"'{skill_uuid}' could not be read ({exc})."
-            )
-        name = skill_dict.get("name")
-        result = validate_skill_slug(name)
-        if not result.ok:
-            raise ValueError(
-                f"npx_compat requires a slug-safe skill name. "
-                f"Skill '{name}' is invalid: {result.reason} "
-                f"Rename to '{result.suggested}' and try again."
-            )
-
     def _resolve_uuid(self, uuid_or_name: str) -> str:
         """Resolve a vNFS server identifier to its UUID.
         
@@ -192,12 +166,6 @@ class VnfsService:
                 data["parent"] = self.handler.get_cache_parent_for_head(
                     data["uuid"], data["name"]
                 )
-            if data.get("npx_compat") and data.get("skill_uuid"):
-                # Pre-flight: refuse to boot an npx-compat vNFS whose skill
-                # name is not slug-safe. Raising here surfaces a clean 400
-                # with a suggested slug instead of a generic 500 from the
-                # exporter later in add_server().
-                self._enforce_slug_for_referenced_skill(data["skill_uuid"])
             try:
                 server = self.server_manager.add_server(_to_ns(data))
             except ValueError as e:
@@ -452,8 +420,6 @@ class VnfsService:
                     data["parent"] = self.handler.get_cache_parent_for_head(
                         data["uuid"] or "", new_name
                     )
-                if data.get("npx_compat") and data.get("skill_uuid"):
-                    self._enforce_slug_for_referenced_skill(data["skill_uuid"])
                 try:
                     self.server_manager.remove_server(old_name or "", server_uuid or "")
                 except Exception as e:

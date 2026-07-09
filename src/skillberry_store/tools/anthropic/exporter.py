@@ -30,15 +30,12 @@ class InvalidSkillNameError(ValueError):
         self.suggested = suggested
 
 
-def _enforce_skill_name(skill: Dict[str, Any], allow_invalid_name: bool) -> None:
-    """Validate ``skill['name']`` unless the caller opted out.
+def _enforce_skill_name(skill: Dict[str, Any]) -> None:
+    """Validate ``skill['name']`` against the npx / Anthropic slug rule.
 
     Raises:
-        InvalidSkillNameError: When the name is not slug-safe and
-            ``allow_invalid_name`` is False.
+        InvalidSkillNameError: When the name is not slug-safe.
     """
-    if allow_invalid_name:
-        return
     result = validate_skill_slug(skill.get("name"))
     if not result.ok:
         raise InvalidSkillNameError(
@@ -447,7 +444,6 @@ def export_skill_to_anthropic_format(
     tools: List[Dict[str, Any]],
     snippets: List[Dict[str, Any]],
     tool_modules: Optional[Dict[str, str]] = None,
-    allow_invalid_name: bool = False,
 ) -> bytes:
     """Export skill to Anthropic format as a ZIP file.
 
@@ -456,20 +452,10 @@ def export_skill_to_anthropic_format(
         tools: List of tool dictionaries
         snippets: List of snippet dictionaries
         tool_modules: Dictionary mapping tool names to module content
-        allow_invalid_name: When True, skip the slug validation performed by
-            default. Anthropic conventions and downstream tooling expect the
-            skill name to be a slug (see
-            :mod:`skillberry_store.tools.anthropic.naming`); leave the default
-            unless you deliberately want a permissive export.
 
     Returns:
         ZIP file content as bytes
-
-    Raises:
-        InvalidSkillNameError: If ``allow_invalid_name`` is False and the
-            skill's ``name`` is not a valid slug.
     """
-    _enforce_skill_name(skill, allow_invalid_name)
     files = _build_file_structure(skill, tools, snippets, tool_modules)
 
     zip_buffer = io.BytesIO()
@@ -487,7 +473,6 @@ def export_skill_to_directory(
     snippets: List[Dict[str, Any]],
     output_dir: str,
     tool_modules: Optional[Dict[str, str]] = None,
-    allow_invalid_name: bool = False,
     npx_compat: bool = False,
 ) -> None:
     """Export skill to a directory on disk.
@@ -501,27 +486,20 @@ def export_skill_to_directory(
         snippets: List of snippet dictionaries
         output_dir: Destination directory path (created if absent)
         tool_modules: Dictionary mapping tool names to module content
-        allow_invalid_name: See :func:`export_skill_to_anthropic_format`.
-        npx_compat: When True, additionally materialize a well-known
-            agent-skills layout at ``.well-known/agent-skills/`` (plus the
-            legacy ``.well-known/skills/`` alias) so ``npx skills add
-            http://host:port`` can discover and install the skill. The skill's
-            name is validated as a slug regardless of ``allow_invalid_name``
-            when this flag is set, because ``npx skills`` and the well-known
-            provider require slug-safe folder names.
+        npx_compat: When True, validate the skill's ``name`` as a slug and
+            additionally materialize a well-known agent-skills layout at
+            ``.well-known/agent-skills/`` (plus the legacy
+            ``.well-known/skills/`` alias) so ``npx skills add
+            http://host:port`` can discover and install the skill.
 
     Raises:
-        InvalidSkillNameError: If ``allow_invalid_name`` is False and the
-            skill's ``name`` is not a valid slug. Also raised, regardless of
-            ``allow_invalid_name``, when ``npx_compat`` is True and the name
-            is not a valid slug.
+        InvalidSkillNameError: If ``npx_compat`` is True and the skill's
+            ``name`` is not a valid slug.
     """
     from pathlib import Path
 
     if npx_compat:
-        _enforce_skill_name(skill, allow_invalid_name=False)
-    else:
-        _enforce_skill_name(skill, allow_invalid_name)
+        _enforce_skill_name(skill)
     files = _build_file_structure(skill, tools, snippets, tool_modules)
     if npx_compat:
         files = _augment_with_wellknown_layout(files)

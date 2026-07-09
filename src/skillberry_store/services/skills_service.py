@@ -605,9 +605,7 @@ class SkillsService:
             logger.error(f"Error detecting Anthropic skills: {e}")
             raise
 
-    def export_anthropic(
-        self, uuid_or_name: str, allow_invalid_name: bool = False
-    ) -> bytes:
+    def export_anthropic(self, uuid_or_name: str) -> bytes:
         """Export a skill to the Anthropic format as a ZIP byte payload.
 
         Resolves the skill, gathers its tools (with their module contents) and
@@ -618,9 +616,6 @@ class SkillsService:
 
         Args:
             uuid_or_name: Skill UUID or name to export.
-            allow_invalid_name: When True, skip the default slug validation on
-                the skill's ``name``. Anthropic conventions expect the folder
-                name (== ``name`` in ``SKILL.md`` frontmatter) to be a slug.
 
         Returns:
             bytes: The ZIP archive contents. Caller is responsible for setting
@@ -628,8 +623,6 @@ class SkillsService:
 
         Raises:
             KeyError: If the skill is not found.
-            InvalidSkillNameError: If the name is not slug-safe and
-                ``allow_invalid_name`` is False.
         """
         from skillberry_store.services.registry import get_service
         from skillberry_store.tools.anthropic.exporter import (
@@ -670,7 +663,6 @@ class SkillsService:
                     tools=tools,
                     snippets=snippets,
                     tool_modules=tool_modules,
-                    allow_invalid_name=allow_invalid_name,
                 )
             logger.info(
                 f"Successfully exported skill '{uuid_or_name}' to Anthropic format"

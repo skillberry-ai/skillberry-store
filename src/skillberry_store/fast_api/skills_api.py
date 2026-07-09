@@ -405,43 +405,22 @@ def register_skills_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "export-anthropic-skill"},
     )
-    async def export_anthropic_skill(
-        uuid_or_name: str, allow_invalid_name: bool = False
-    ):
+    async def export_anthropic_skill(uuid_or_name: str):
         """Export a skill to Anthropic format as a ZIP file.
 
         Args:
             uuid_or_name: The UUID or name of the skill to export
-            allow_invalid_name: When True, skip the slug validation on the
-                skill's ``name``. Off by default so downstream consumers
-                (npx skills, Anthropic conventions) get valid folders.
 
         Returns:
             ZIP file with the skill in Anthropic format
 
         Raises:
-            HTTPException: 404 if skill not found, 400 if the name is not
-                slug-safe and ``allow_invalid_name`` is False, 500 for other
-                export failures.
+            HTTPException: If skill not found or export fails
         """
-        from skillberry_store.tools.anthropic.exporter import InvalidSkillNameError
-
         try:
-            zip_content = service.export_anthropic(
-                uuid_or_name, allow_invalid_name=allow_invalid_name
-            )
+            zip_content = service.export_anthropic(uuid_or_name)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
-        except InvalidSkillNameError as e:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": str(e),
-                    "name": e.name,
-                    "reason": e.reason,
-                    "suggested": e.suggested,
-                },
-            )
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error exporting skill: {str(e)}"

@@ -117,8 +117,8 @@ def test_export_directory_without_npx_compat_omits_wellknown(tmp_path: Path) -> 
     assert not (tmp_path / ".well-known").exists()
 
 
-def test_npx_compat_rejects_invalid_name_even_with_allow_invalid_name(tmp_path: Path) -> None:
-    """npx_compat=True forces slug validation regardless of allow_invalid_name."""
+def test_npx_compat_rejects_invalid_name(tmp_path: Path) -> None:
+    """npx_compat=True validates the skill name as a slug."""
     with pytest.raises(InvalidSkillNameError):
         export_skill_to_directory(
             skill={"name": "My Skill", "description": "x"},
@@ -126,5 +126,4 @@ def test_npx_compat_rejects_invalid_name_even_with_allow_invalid_name(tmp_path: 
             snippets=[],
             output_dir=str(tmp_path),
             npx_compat=True,
-            allow_invalid_name=True,
         )

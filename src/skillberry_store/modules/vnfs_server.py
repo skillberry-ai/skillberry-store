@@ -191,14 +191,6 @@ class VirtualNfsServer:
         self.description = description
         self.protocol = protocol
         self.uuid = uuid or name
-        if npx_compat and protocol != "webdav":
-            # Belt-and-braces: schema layer already rejects this combination,
-            # but the server object may be built from other code paths (e.g.
-            # admin backup/restore).
-            raise ValueError(
-                "npx_compat=True requires protocol='webdav'; "
-                f"got protocol='{protocol}'."
-            )
         self.npx_compat = npx_compat
 
         if port is None:
@@ -248,17 +240,12 @@ class VirtualNfsServer:
         """Generate files then start the backend server."""
         from skillberry_store.tools.anthropic.exporter import export_skill_to_directory
 
-        # When npx_compat is enabled we require a slug-safe skill name so the
-        # well-known layout resolves cleanly. Otherwise the vNFS is only used
-        # as a raw filesystem mount and we preserve today's permissive
-        # behavior (skills imported from the wild often use underscores).
         export_skill_to_directory(
             skill,
             tools,
             snippets,
             str(self.export_path),
             tool_modules,
-            allow_invalid_name=not self.npx_compat,
             npx_compat=self.npx_compat,
         )
         self.backend.start(str(self.export_path), self.port)
@@ -295,7 +282,6 @@ class VirtualNfsServer:
             snippets,
             str(self.export_path),
             tool_modules,
-            allow_invalid_name=not self.npx_compat,
             npx_compat=self.npx_compat,
         )
         logger.info(f"VirtualNfsServer '{self.name}' files refreshed")
