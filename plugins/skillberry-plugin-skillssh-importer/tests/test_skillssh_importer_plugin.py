@@ -520,7 +520,10 @@ class TestSearchEndpoint:
                 json={"query": "find skills", "skills_sh_token": "tok"},
             )
         assert resp.status_code == 200
-        data = resp.json()
+        body = resp.json()
+        assert body["success"] is True
+        assert "Found" in body["message"]
+        data = body["data"]
         assert data["count"] == 1
         assert data["results"][0]["id"] == "vercel-labs/skills/find-skills"
 
@@ -606,10 +609,10 @@ class TestImportEndpoint:
                 json={"skill_ids": ["vercel-labs/skills/find-skills"], "skills_sh_token": "tok"},
             )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["success"] is True
-        assert data["imported"] == 1
-        assert data["skills"][0]["skill_name"] == "find-skills"
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["imported"] == 1
+        assert body["data"]["skills"][0]["skill_name"] == "find-skills"
 
     def test_successful_import_with_tool(self):
         tools = [_FakeTool("echo", "Echo a message", "def echo(msg): return msg")]
@@ -620,8 +623,7 @@ class TestImportEndpoint:
                 json={"skill_ids": ["vercel-labs/skills/echo"], "skills_sh_token": "tok"},
             )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["skills"][0]["tools_imported"] == 1
+        assert resp.json()["data"]["skills"][0]["tools_imported"] == 1
         mock_store.create_tool.assert_called_once()
 
     def test_successful_import_with_snippet(self):
@@ -633,8 +635,7 @@ class TestImportEndpoint:
                 json={"skill_ids": ["owner/repo/skill"], "skills_sh_token": "tok"},
             )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["skills"][0]["snippets_imported"] == 1
+        assert resp.json()["data"]["skills"][0]["snippets_imported"] == 1
         mock_store.create_snippet.assert_called_once()
 
     def test_tags_present_in_response(self):
@@ -644,7 +645,7 @@ class TestImportEndpoint:
                 "/plugins/skillssh-importer/import",
                 json={"skill_ids": ["owner/repo/skill"], "skills_sh_token": "tok"},
             )
-        tags = resp.json()["skills"][0]["tags"]
+        tags = resp.json()["data"]["skills"][0]["tags"]
         assert "skills.sh" in tags
         assert any("installs" in t for t in tags)
 
@@ -659,10 +660,10 @@ class TestImportEndpoint:
                 json={"skill_ids": ["bad/skill/id"], "skills_sh_token": "tok"},
             )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["success"] is False
-        assert len(data["failed"]) == 1
-        assert "bad/skill/id" in data["failed"][0]["skill_id"]
+        body = resp.json()
+        assert body["success"] is False
+        assert len(body["data"]["failed"]) == 1
+        assert "bad/skill/id" in body["data"]["failed"][0]["skill_id"]
 
     def test_partial_failure(self):
         """One skill fails, one succeeds — success=False, imported=1."""
@@ -694,10 +695,10 @@ class TestImportEndpoint:
                 json={"skill_ids": ["bad/id", "good/id"], "skills_sh_token": "tok"},
             )
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["success"] is False
-        assert data["imported"] == 1
-        assert len(data["failed"]) == 1
+        body = resp.json()
+        assert body["success"] is False
+        assert body["data"]["imported"] == 1
+        assert len(body["data"]["failed"]) == 1
 
     def test_skill_creation_called_once_per_skill(self):
         client, _, mock_store = _make_client()
@@ -719,6 +720,6 @@ class TestImportEndpoint:
                 "/plugins/skillssh-importer/import",
                 json={"skill_ids": ["owner/repo/skill"], "skills_sh_token": "tok"},
             )
-        audits = resp.json()["skills"][0]["audits"]
+        audits = resp.json()["data"]["skills"][0]["audits"]
         assert isinstance(audits, list)
         assert audits[0]["slug"] == "socket"

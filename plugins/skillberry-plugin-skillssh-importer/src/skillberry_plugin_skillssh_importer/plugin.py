@@ -538,7 +538,11 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                     owner=request.owner,
                     token=request.skills_sh_token,
                 )
-                return {"results": results, "count": len(results), "query": request.query}
+                return {
+                    "success": True,
+                    "message": f"Found {len(results)} skill{'s' if len(results) != 1 else ''} for '{request.query}'",
+                    "data": {"results": results, "count": len(results), "query": request.query},
+                }
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
             except httpx.HTTPStatusError as exc:
@@ -662,11 +666,23 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                     }
                 )
 
-            return {
-                "success": len(failed) == 0,
+            all_ok = len(failed) == 0 and len(imported_skills) > 0
+            partial = len(failed) > 0 and len(imported_skills) > 0
+            payload = {
                 "imported": len(imported_skills),
                 "skills": imported_skills,
                 "failed": failed,
+            }
+            if all_ok:
+                message = f"Imported {len(imported_skills)} skill{'s' if len(imported_skills) != 1 else ''} successfully"
+            elif partial:
+                message = f"Imported {len(imported_skills)}, failed {len(failed)}"
+            else:
+                message = f"All {len(failed)} skill{'s' if len(failed) != 1 else ''} failed to import"
+            return {
+                "success": len(failed) == 0 and len(imported_skills) > 0,
+                "message": message,
+                "data": payload,
             }
 
         return router
