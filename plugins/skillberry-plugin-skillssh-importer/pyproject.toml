@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillberry-plugin-skillssh-importer"
+version = "0.1.0"
+description = "Skillberry Store plugin for importing skills from the skills.sh directory"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.24.0",
+]
+
+[project.entry-points."skillberry_store.plugins"]
+skillssh-importer = "skillberry_plugin_skillssh_importer.plugin:SkillberryPluginSkillsShImporter"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+    "respx",
+]
+
+[tool.setuptools]
+packages = ["skillberry_plugin_skillssh_importer"]
+package-dir = {"" = "src"}
