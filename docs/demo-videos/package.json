@@ -9,7 +9,9 @@
     "render": "npx remotion render SkillberryDemo out/skillberry-demo.mp4",
     "render-overview": "npx remotion render SkillberryDemo skillberry-store-overview-video/out/skillberry-demo.mp4",
     "render-highlights": "REMOTION_ENTRY_POINT=src/highlights-index.ts npx remotion render SkillberryHighlights skillberry-store-highlights-video/out/skillberry-highlights.mp4",
-    "start-highlights": "REMOTION_ENTRY_POINT=src/highlights-index.ts npx remotion studio"
+    "start-highlights": "REMOTION_ENTRY_POINT=src/highlights-index.ts npx remotion studio",
+    "render-teaser": "REMOTION_ENTRY_POINT=src/shorts-index.ts npx remotion render SkillberryTeaser skillberry-store-teaser-video/out/skillberry-teaser.mp4",
+    "start-teaser": "REMOTION_ENTRY_POINT=src/shorts-index.ts npx remotion studio"
   },
   "keywords": [],
   "author": "",
