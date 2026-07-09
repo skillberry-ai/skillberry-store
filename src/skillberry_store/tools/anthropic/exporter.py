@@ -10,7 +10,6 @@ from typing import Dict, List, Optional, Any
 
 from .naming import validate_skill_slug
 
-
 WELLKNOWN_PRIMARY_PREFIX = ".well-known/agent-skills"
 WELLKNOWN_LEGACY_PREFIX = ".well-known/skills"
 
