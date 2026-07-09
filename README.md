@@ -2,7 +2,7 @@
 
 This service implements a smart skills repository for agentic workflows. Manage, execute, and organize your skills, tools and snippets with powerful search and lifecycle management.
 
-![Skillberry Store demo](https://i.imgur.com/ribHQNH.gif)
+![Skillberry Store demo](https://i.imgur.com/hpsGpnc.gif)
 
 ▶ [Watch full highlights video](https://github.com/user-attachments/assets/eab2f9f1-1196-4858-b4ca-72d6c664d9f3)
 
