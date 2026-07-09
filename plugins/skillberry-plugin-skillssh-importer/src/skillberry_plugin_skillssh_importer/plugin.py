@@ -77,6 +77,48 @@ def _cached_token_valid() -> Optional[str]:
     return None
 
 
+def _find_vercel_project_root() -> Optional[str]:
+    """Walk up from cwd to find the directory containing .vercel/project.json."""
+    try:
+        d = os.getcwd()
+        while True:
+            if os.path.isfile(os.path.join(d, ".vercel", "project.json")):
+                return d
+            parent = os.path.dirname(d)
+            if parent == d:
+                break
+            d = parent
+    except OSError:
+        pass
+    return None
+
+
+def _node_path_for_vercel_oidc() -> Optional[str]:
+    """Return a NODE_PATH that includes the node_modules containing @vercel/oidc.
+
+    Tries, in order:
+      1. node_modules/ sibling of .vercel/project.json (the linked project root)
+      2. node_modules/ next to this plugin file (workspace root fallback)
+    """
+    # Option 1: node_modules beside the linked Vercel project
+    root = _find_vercel_project_root()
+    if root:
+        candidate = os.path.join(root, "node_modules")
+        if os.path.isdir(os.path.join(candidate, "@vercel", "oidc")):
+            return candidate
+
+    # Option 2: node_modules relative to this source file
+    # Installed layout: plugins/.../plugin.py → workspace_root/node_modules
+    here = os.path.dirname(__file__)
+    for _ in range(6):  # walk up at most 6 levels
+        candidate = os.path.join(here, "node_modules")
+        if os.path.isdir(os.path.join(candidate, "@vercel", "oidc")):
+            return candidate
+        here = os.path.dirname(here)
+
+    return None
+
+
 def _acquire_via_vercel_oidc() -> Optional[str]:
     """Call ``@vercel/oidc`` via Node to get a fresh OIDC token.
 
@@ -97,12 +139,28 @@ def _acquire_via_vercel_oidc() -> Optional[str]:
         ".then(t => { process.stdout.write(t); process.exit(0); })"
         ".catch(e => { process.stderr.write(e.message); process.exit(1); })"
     )
+
+    # Build the environment for the child process:
+    # • NODE_PATH — ensures require('@vercel/oidc') resolves even when the
+    #   server process was not started from the workspace root.
+    # • cwd — @vercel/oidc walks up from cwd to find .vercel/project.json,
+    #   so we point it at the directory that contains that file.
+    node_path = _node_path_for_vercel_oidc()
+    project_root = _find_vercel_project_root()
+
+    child_env = os.environ.copy()
+    if node_path:
+        existing = child_env.get("NODE_PATH", "")
+        child_env["NODE_PATH"] = f"{node_path}:{existing}" if existing else node_path
+
     try:
         result = subprocess.run(
             ["node", "-e", script],
             capture_output=True,
             text=True,
             timeout=15,
+            cwd=project_root or None,
+            env=child_env,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
