@@ -315,9 +315,7 @@ def resolve_auth_headers(
     if entry is None:
         # No endpoint configured: override_token, then a global API_KEY, then
         # gh credentials, then anonymous.
-        return _bearer(
-            override_token or os.environ.get("API_KEY") or gh_cli_token()
-        )
+        return _bearer(override_token or os.environ.get("API_KEY") or gh_cli_token())
 
     # 1. Configured oauth_token wins.
     if entry.oauth_token:
