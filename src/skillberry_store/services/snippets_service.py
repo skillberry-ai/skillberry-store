@@ -197,15 +197,30 @@ class SnippetsService:
             logger.error(f"Error retrieving snippet '{uuid_or_name}': {e}")
             raise
 
-    def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """List all snippets with optional filtering.
+    def list_all(
+        self,
+        filters: Optional[Dict] = None,
+        fields: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all snippets with optional filtering and field projection.
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
+            fields: Optional projection spec. ``None`` or ``"full"`` returns
+                every field (current behavior). ``"list"`` returns the slim
+                per-type preset (drops the heavy ``content`` field). A
+                comma-separated string selects a caller-defined allowlist.
 
         Returns:
-            List[Dict[str, Any]]: List of snippet metadata dictionaries, sorted by modified_at descending.
+            List[Dict[str, Any]]: List of snippet metadata dictionaries,
+                sorted by modified_at descending. Fields are projected
+                according to ``fields``.
         """
+        from skillberry_store.services.list_projections import (
+            parse_fields_spec,
+            project_items,
+        )
+
         list_snippets_counter.inc()
         try:
             items = self.handler.list_all_dicts()
@@ -214,7 +229,8 @@ class SnippetsService:
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
             items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return items
+            allow = parse_fields_spec(fields, "snippet")
+            return project_items(items, allow)
         except Exception as e:
             logger.error(f"Error listing snippets: {e}")
             raise

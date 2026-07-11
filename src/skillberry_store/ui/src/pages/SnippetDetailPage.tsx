@@ -106,7 +106,7 @@ export function SnippetDetailPage() {
         description: snippet.description,
         state: snippet.state || 'approved',
         tags: snippet.tags || [],
-        content: snippet.content,
+        content: snippet.content ?? '',
         content_type: snippet.content_type || 'text/plain',
         extra: snippet.extra || {},
       });
@@ -337,7 +337,7 @@ export function SnippetDetailPage() {
                   minHeight: '100%',
                 }}
               >
-                {snippet.content}
+                {snippet.content ?? ''}
               </SyntaxHighlighter>
             </div>
           </CardBody>

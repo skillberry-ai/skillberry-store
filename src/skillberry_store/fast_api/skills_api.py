@@ -91,22 +91,37 @@ def register_skills_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "list-skills", "x-mcp-tool": True},
     )
-    def list_skills():
+    def list_skills(
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Field projection. Omit for full objects with populated "
+                "'tools'/'snippets' arrays (default). Use 'list' for the "
+                "slim list-view preset (skips populate_objects; caller uses "
+                "tool_uuids/snippet_uuids arrays), 'full' for the full "
+                "object, or a comma-separated allowlist of field names."
+            ),
+        ),
+    ):
         """List all skills in the store.
 
         Retrieves metadata for all skills currently stored in the system.
 
         Args:
-            None.
+            fields: Optional projection spec (see query-param description).
 
         Returns:
-            list: List of dictionaries, each containing skill metadata (name, uuid, description, tool_uuids, snippet_uuids, etc.).
+            list: List of dictionaries, each containing skill metadata
+                (name, uuid, description, tool_uuids, snippet_uuids,
+                etc. — subset when ``fields`` narrows the projection).
 
         Raises:
-            HTTPException: 500 if listing fails.
+            HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
         """
         try:
-            return service.list_all()
+            return service.list_all(fields=fields)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error listing skills: {str(e)}"

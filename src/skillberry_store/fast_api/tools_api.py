@@ -98,22 +98,36 @@ def register_tools_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "list-tools", "x-mcp-tool": True},
     )
-    def list_tools() -> List[Dict[str, Any]]:
+    def list_tools(
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Field projection. Omit for full objects (default). Use "
+                "'list' for the slim list-view preset (drops 'params', "
+                "'returns', 'dependencies', 'packaging_params'), 'full' "
+                "for the full object, or a comma-separated allowlist of "
+                "field names."
+            ),
+        ),
+    ) -> List[Dict[str, Any]]:
         """List all tools in the store.
 
         Retrieves metadata for all tools currently stored in the system.
 
         Args:
-            None.
+            fields: Optional projection spec (see query-param description).
 
         Returns:
-            list: List of dictionaries, each containing tool metadata (name, uuid, description, etc.).
+            list: List of dictionaries, each containing tool metadata
+                (subset when ``fields`` narrows the projection).
 
         Raises:
-            HTTPException: 500 if listing fails.
+            HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
         """
         try:
-            return service.list_all()
+            return service.list_all(fields=fields)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500,

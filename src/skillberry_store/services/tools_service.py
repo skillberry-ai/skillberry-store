@@ -420,15 +420,31 @@ class ToolsService:
             logger.error(f"Error retrieving module for '{uuid_or_name}': {e}")
             raise
 
-    def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """List all tools with optional filtering.
+    def list_all(
+        self,
+        filters: Optional[Dict] = None,
+        fields: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all tools with optional filtering and field projection.
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
+            fields: Optional projection spec. ``None`` or ``"full"`` returns
+                every field (current behavior). ``"list"`` drops the heavy
+                ``params`` / ``returns`` / ``dependencies`` /
+                ``packaging_params`` fields. A comma-separated string
+                selects a caller-defined allowlist.
 
         Returns:
-            List[Dict[str, Any]]: List of tool metadata dictionaries, sorted by modified_at descending.
+            List[Dict[str, Any]]: List of tool metadata dictionaries, sorted
+                by modified_at descending. Fields are projected according
+                to ``fields``.
         """
+        from skillberry_store.services.list_projections import (
+            parse_fields_spec,
+            project_items,
+        )
+
         list_tools_counter.inc()
         try:
             items = self.handler.list_all_dicts()
@@ -437,7 +453,8 @@ class ToolsService:
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
             items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return items
+            allow = parse_fields_spec(fields, "tool")
+            return project_items(items, allow)
         except Exception as e:
             logger.error(f"Error listing tools: {e}\n{traceback.format_exc()}")
             raise

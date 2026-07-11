@@ -793,7 +793,7 @@ export function SkillDetailPage() {
                                   minHeight: '100%',
                                 }}
                               >
-                                {selectedSnippet.content}
+                                {selectedSnippet.content ?? ''}
                               </SyntaxHighlighter>
                             </div>
                           </div>

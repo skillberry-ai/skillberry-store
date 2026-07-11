@@ -88,22 +88,36 @@ def register_snippets_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "list-snippets", "x-mcp-tool": True},
     )
-    def list_snippets():
+    def list_snippets(
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Field projection. Omit for full objects (default). Use "
+                "'list' for the slim list-view preset (drops 'content'), "
+                "'full' for the full object, or a comma-separated allowlist "
+                "of field names."
+            ),
+        ),
+    ):
         """List all snippets in the store.
 
         Retrieves metadata for all snippets currently stored in the system.
 
         Args:
-            None.
+            fields: Optional projection spec (see query-param description).
 
         Returns:
-            list: List of dictionaries, each containing snippet metadata (name, uuid, description, content, etc.).
+            list: List of dictionaries, each containing snippet metadata
+                (name, uuid, description, content, etc. — subset when
+                ``fields`` narrows the projection).
 
         Raises:
-            HTTPException: 500 if listing fails.
+            HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
         """
         try:
-            return service.list_all()
+            return service.list_all(fields=fields)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error listing snippets: {str(e)}"

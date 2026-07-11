@@ -73,6 +73,56 @@ def test_list_all_returns_sorted():
     assert result[0]["name"] == "a"  # most recent first
 
 
+def test_list_all_default_shape_is_unchanged():
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"},
+    ]
+    svc = SnippetsService(h)
+    result = svc.list_all()
+    assert result[0].get("content") == "body"
+
+
+def test_list_all_list_preset_drops_content():
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"},
+        {"uuid": "u2", "name": "b", "content": "big", "modified_at": "2024-01-01"},
+    ]
+    svc = SnippetsService(h)
+    result = svc.list_all(fields="list")
+    assert [r["name"] for r in result] == ["a", "b"]
+    assert all("content" not in r for r in result)
+    assert all("uuid" in r for r in result)
+
+
+def test_list_all_custom_allowlist():
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"},
+    ]
+    svc = SnippetsService(h)
+    result = svc.list_all(fields="uuid,name")
+    assert result == [{"uuid": "u1", "name": "a"}]
+
+
+def test_list_all_projection_does_not_mutate_cache_entries():
+    original = {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"}
+    h = _handler()
+    h.list_all_dicts.return_value = [original]
+    svc = SnippetsService(h)
+    svc.list_all(fields="list")
+    assert "content" in original
+    assert original == {
+        "uuid": "u1",
+        "name": "a",
+        "content": "body",
+        "modified_at": "2024-02-01",
+    }
+
+
+
+
 def test_update_merges_and_preserves_created_at():
     h = _handler()
     svc = SnippetsService(h)

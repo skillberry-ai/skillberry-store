@@ -35,6 +35,10 @@ export interface Skill {
   name: string;
   description: string;
   state?: ManifestState;
+  // Slim list-view responses expose tool_uuids/snippet_uuids only.
+  // Detail (GET /skills/{uuid}) additionally populates tools/snippets.
+  tool_uuids?: string[];
+  snippet_uuids?: string[];
   tools?: Tool[];
   snippets?: Snippet[];
   tags?: string[];
@@ -49,7 +53,9 @@ export interface Snippet {
   uuid: string;
   name: string;
   description: string;
-  content: string;
+  // `content` is absent on slim list-view responses (fields=list); the
+  // detail endpoint (GET /snippets/{uuid}) still returns it.
+  content?: string;
   state?: ManifestState;
   content_type?: string;
   tags?: string[];

@@ -71,6 +71,70 @@ def test_list_all_tolerates_skill_with_missing_tool():
     assert broken["snippets"] == []
 
 
+def test_list_all_default_populates_but_does_not_mutate_cache_entry(monkeypatch):
+    import skillberry_store.services.registry as registry
+    tools_svc = MagicMock()
+    tools_svc.get.return_value = {"uuid": "t1", "name": "tool1"}
+    snippets_svc = MagicMock()
+    snippets_svc.get.return_value = {"uuid": "s1", "name": "snip1"}
+    monkeypatch.setattr(registry, "_initialized", True)
+    monkeypatch.setattr(
+        registry, "_services", {"tool": tools_svc, "snippet": snippets_svc}
+    )
+    h = _handler()
+    original = {
+        "uuid": "sk1",
+        "name": "sk1",
+        "tool_uuids": ["t1"],
+        "snippet_uuids": ["s1"],
+        "modified_at": "2024-02-01",
+    }
+    h.list_all_dicts.return_value = [original]
+    svc = SkillsService(h)
+    result = svc.list_all()
+    assert result[0]["tools"] == [{"uuid": "t1", "name": "tool1"}]
+    assert result[0]["snippets"] == [{"uuid": "s1", "name": "snip1"}]
+    # Regression: the cached dict must not have grown 'tools' / 'snippets'.
+    assert "tools" not in original
+    assert "snippets" not in original
+
+
+def test_list_all_list_preset_skips_populate_and_keeps_uuid_arrays():
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {
+            "uuid": "sk1",
+            "name": "sk1",
+            "tool_uuids": ["t1", "t2"],
+            "snippet_uuids": ["s1"],
+            "modified_at": "2024-02-01",
+        },
+    ]
+    svc = SkillsService(h)
+    # No registry patching — a bug that reaches populate_objects would raise.
+    result = svc.list_all(fields="list")
+    assert result[0]["tool_uuids"] == ["t1", "t2"]
+    assert result[0]["snippet_uuids"] == ["s1"]
+    assert "tools" not in result[0]
+    assert "snippets" not in result[0]
+
+
+def test_list_all_custom_allowlist():
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {
+            "uuid": "sk1",
+            "name": "sk1",
+            "tool_uuids": ["t1"],
+            "snippet_uuids": [],
+            "modified_at": "2024-02-01",
+        },
+    ]
+    svc = SkillsService(h)
+    result = svc.list_all(fields="uuid,name")
+    assert result == [{"uuid": "sk1", "name": "sk1"}]
+
+
 def test_delete_updates_cache_then_deletes():
     h = _handler()
     mock_svc = MagicMock()

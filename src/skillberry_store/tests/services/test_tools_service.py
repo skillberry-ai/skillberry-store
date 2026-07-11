@@ -56,6 +56,77 @@ def test_list_all_sorted():
     assert len(result) == 1
 
 
+def test_list_all_default_shape_is_unchanged():
+    h = _handler()
+    heavy = {
+        "type": "object",
+        "properties": {"x": {"type": "int"}},
+        "required": [],
+        "optional": [],
+    }
+    h.list_all_dicts.return_value = [
+        {
+            "uuid": "u1",
+            "name": "a",
+            "modified_at": "2024-02-01",
+            "params": heavy,
+            "returns": {"type": "int"},
+            "dependencies": ["dep1"],
+            "packaging_params": {"foo": "bar"},
+        },
+    ]
+    svc = ToolsService(h)
+    result = svc.list_all()
+    assert result[0]["params"] == heavy
+    assert result[0]["dependencies"] == ["dep1"]
+
+
+def test_list_all_list_preset_drops_heavy_fields():
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {
+            "uuid": "u1",
+            "name": "a",
+            "modified_at": "2024-02-01",
+            "params": {"type": "object"},
+            "returns": {"type": "int"},
+            "dependencies": ["dep1"],
+            "packaging_params": {"foo": "bar"},
+            "module_name": "a.py",
+        },
+    ]
+    svc = ToolsService(h)
+    result = svc.list_all(fields="list")
+    assert result[0]["name"] == "a"
+    assert result[0]["module_name"] == "a.py"
+    for k in ("params", "returns", "dependencies", "packaging_params"):
+        assert k not in result[0]
+
+
+def test_list_all_custom_allowlist():
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {"uuid": "u1", "name": "a", "modified_at": "2024-02-01", "params": {}},
+    ]
+    svc = ToolsService(h)
+    result = svc.list_all(fields="uuid,name")
+    assert result == [{"uuid": "u1", "name": "a"}]
+
+
+def test_list_all_projection_does_not_mutate_cache_entries():
+    original = {
+        "uuid": "u1",
+        "name": "a",
+        "modified_at": "2024-02-01",
+        "params": {"type": "object"},
+    }
+    h = _handler()
+    h.list_all_dicts.return_value = [original]
+    svc = ToolsService(h)
+    svc.list_all(fields="list")
+    assert original["params"] == {"type": "object"}
+
+
 def test_get_module_returns_file_content():
     svc = ToolsService(_handler())
     content = svc.get_module("t1")

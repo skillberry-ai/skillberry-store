@@ -44,7 +44,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 // Tools API
 export const toolsApi = {
   list: async (): Promise<Tool[]> => {
-    const response = await fetch(`${API_BASE}/tools/`);
+    const response = await fetch(`${API_BASE}/tools/?fields=list`);
     return handleResponse<Tool[]>(response);
   },
 
@@ -125,7 +125,7 @@ export const toolsApi = {
 // Skills API
 export const skillsApi = {
   list: async (): Promise<Skill[]> => {
-    const response = await fetch(`${API_BASE}/skills/`);
+    const response = await fetch(`${API_BASE}/skills/?fields=list`);
     return handleResponse<Skill[]>(response);
   },
 
@@ -184,7 +184,7 @@ export const skillsApi = {
 // Snippets API
 export const snippetsApi = {
   list: async (): Promise<Snippet[]> => {
-    const response = await fetch(`${API_BASE}/snippets/`);
+    const response = await fetch(`${API_BASE}/snippets/?fields=list`);
     return handleResponse<Snippet[]>(response);
   },
 
@@ -198,7 +198,7 @@ export const snippetsApi = {
     const params = new URLSearchParams({
       name: snippet.name,
       description: snippet.description,
-      content: snippet.content,
+      content: snippet.content ?? '',
       version: snippet.version || '1.0.0',
       content_type: snippet.content_type || 'text/plain',
       state: snippet.state || 'approved',

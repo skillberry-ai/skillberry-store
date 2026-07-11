@@ -287,16 +287,35 @@ class SkillsService:
             logger.error(f"Error retrieving skill '{uuid_or_name}': {e}")
             raise
 
-    def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """List all skills with optional filtering and populated objects.
+    def list_all(
+        self,
+        filters: Optional[Dict] = None,
+        fields: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List all skills with optional filtering and field projection.
+
+        With no ``fields`` (or ``"full"``), each skill dict is returned with
+        its ``tool_uuids`` and ``snippet_uuids`` resolved into inlined
+        ``tools`` / ``snippets`` objects (current behavior, but on fresh
+        copies so the shared cache values are never mutated). With
+        ``fields="list"`` (or a custom allowlist), ``populate_objects`` is
+        skipped entirely — callers get the raw ``tool_uuids`` /
+        ``snippet_uuids`` lists and can size them with ``.length``.
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
+            fields: Optional projection spec (``None`` / ``"full"`` /
+                ``"list"`` / comma-separated allowlist).
 
         Returns:
-            List[Dict[str, Any]]: List of skill metadata dictionaries with tools and snippets populated,
-                                  sorted by modified_at descending.
+            List[Dict[str, Any]]: Skill metadata dictionaries sorted by
+                modified_at descending.
         """
+        from skillberry_store.services.list_projections import (
+            parse_fields_spec,
+            project_items,
+        )
+
         list_skills_counter.inc()
         try:
             items = self.handler.list_all_dicts()
@@ -304,15 +323,21 @@ class SkillsService:
                 items = [
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
-            for item in items:
-                try:
-                    self.populate_objects(item)
-                except RuntimeError as e:
-                    logger.warning(str(e))
-                    item.setdefault("tools", [])
-                    item.setdefault("snippets", [])
             items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return items
+            allow = parse_fields_spec(fields, "skill")
+            if allow is None:
+                enriched: List[Dict[str, Any]] = []
+                for item in items:
+                    fresh = dict(item)
+                    try:
+                        self.populate_objects(fresh)
+                    except RuntimeError as e:
+                        logger.warning(str(e))
+                        fresh.setdefault("tools", [])
+                        fresh.setdefault("snippets", [])
+                    enriched.append(fresh)
+                return enriched
+            return project_items(items, allow)
         except Exception as e:
             logger.error(f"Error listing skills: {e}")
             raise
