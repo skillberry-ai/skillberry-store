@@ -466,6 +466,7 @@ class ToolsService:
         similarity_threshold: float = 1.0,
         manifest_filter: str = ".",
         lifecycle_state: Optional["LifecycleState"] = None,
+        fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search tools by semantic similarity to a search term.
 
@@ -485,9 +486,16 @@ class ToolsService:
                 all entities.
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
+            fields: Optional projection spec. When ``None`` (default), each
+                match is returned as the legacy ``{"filename", "similarity_score"}``
+                pair. Otherwise the same grammar as list projection applies
+                (``"list"`` / ``"full"`` / comma-separated allowlist) and each
+                match is returned as a projected tool dict with
+                ``similarity_score`` merged in.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
+                Shape depends on ``fields`` (see above).
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -495,6 +503,10 @@ class ToolsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
+        from skillberry_store.services.list_projections import (
+            parse_fields_spec,
+            project_item,
+        )
 
         search_tools_counter.inc()
         try:
@@ -519,11 +531,12 @@ class ToolsService:
                 if not tool_name:
                     continue
                 try:
-                    tool_dict = self.get(tool_name)
-                    tool_dict["similarity_score"] = matched.get(
+                    fetched = self.get(tool_name)
+                    candidate = dict(fetched)
+                    candidate["similarity_score"] = matched.get(
                         "similarity_score", 0.0
                     )
-                    candidates.append(tool_dict)
+                    candidates.append(candidate)
                 except Exception as e:
                     logger.warning(f"Could not load tool {tool_name}: {e}")
             filtered_tools = apply_search_filters(
@@ -532,9 +545,19 @@ class ToolsService:
                 lifecycle_state=lifecycle_state,
             )
             filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            if fields is None:
+                return [
+                    {
+                        "filename": t.get("name", ""),
+                        "similarity_score": t.get("similarity_score", 0.0),
+                    }
+                    for t in filtered_tools
+                    if t.get("name")
+                ]
+            allow = parse_fields_spec(fields, "tool")
             return [
                 {
-                    "filename": t.get("name", ""),
+                    **project_item(t, allow),
                     "similarity_score": t.get("similarity_score", 0.0),
                 }
                 for t in filtered_tools

@@ -230,6 +230,16 @@ def register_snippets_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Optional projection over each matched snippet. Omit for the "
+                "legacy '{filename, similarity_score}' shape. Use 'list' for "
+                "the slim list-view preset merged with 'similarity_score', "
+                "'full' for the full snippet, or a comma-separated allowlist "
+                "of field names."
+            ),
+        ),
     ):
         """Search for snippets using semantic similarity.
 
@@ -242,12 +252,16 @@ def register_snippets_api(
             similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
             manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+            fields: Optional projection spec (see query-param description).
 
         Returns:
-            list: List of matched snippet names and similarity scores.
+            list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
+                when ``fields`` is omitted; otherwise projected snippet dicts
+                with ``similarity_score`` merged in.
 
         Raises:
-            HTTPException: 503 if search is not available, 500 for other errors.
+            HTTPException: 400 if ``fields`` is invalid, 503 if search is not
+                available, 500 for other errors.
         """
         try:
             return service.search(
@@ -256,7 +270,10 @@ def register_snippets_api(
                 similarity_threshold=similarity_threshold,
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
+                fields=fields,
             )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:

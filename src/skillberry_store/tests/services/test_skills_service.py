@@ -144,3 +144,62 @@ def test_delete_updates_cache_then_deletes():
     calls = [str(c) for c in h.mock_calls]
     assert any("update_cache" in c for c in calls)
     assert any("delete_object" in c for c in calls)
+
+
+def _search_handler_skills(cached_skill):
+    """Search relies on ``handler.read_dict(uuid)`` directly (unlike snippets/tools)."""
+    h = _handler()
+    h.read_dict.return_value = cached_skill
+    h.descriptions = MagicMock()
+    h.descriptions.search_description.return_value = [
+        {"filename": cached_skill["uuid"], "similarity_score": 0.4}
+    ]
+    return h
+
+
+def test_search_default_returns_legacy_shape():
+    cached = {
+        "uuid": "sk1",
+        "name": "sk1",
+        "state": "approved",
+        "tool_uuids": ["t1"],
+        "snippet_uuids": [],
+        "modified_at": "2024-02-01",
+    }
+    svc = SkillsService(_search_handler_skills(cached))
+    result = svc.search("q")
+    assert result == [{"filename": "sk1", "similarity_score": 0.4}]
+
+
+def test_search_does_not_mutate_cache_entry():
+    cached = {
+        "uuid": "sk1",
+        "name": "sk1",
+        "state": "approved",
+        "tool_uuids": ["t1"],
+        "snippet_uuids": [],
+        "modified_at": "2024-02-01",
+    }
+    svc = SkillsService(_search_handler_skills(cached))
+    svc.search("q")
+    assert "similarity_score" not in cached
+
+
+def test_search_with_fields_list_skips_populate_and_keeps_uuid_arrays():
+    cached = {
+        "uuid": "sk1",
+        "name": "sk1",
+        "state": "approved",
+        "tool_uuids": ["t1", "t2"],
+        "snippet_uuids": ["s1"],
+        "modified_at": "2024-02-01",
+    }
+    svc = SkillsService(_search_handler_skills(cached))
+    # No registry patching — reaching populate_objects would raise.
+    result = svc.search("q", fields="list")
+    r = result[0]
+    assert r["tool_uuids"] == ["t1", "t2"]
+    assert r["snippet_uuids"] == ["s1"]
+    assert r["similarity_score"] == 0.4
+    assert "tools" not in r
+    assert "snippets" not in r

@@ -253,6 +253,17 @@ def register_skills_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Optional projection over each matched skill. Omit for the "
+                "legacy '{filename, similarity_score}' shape. Use 'list' for "
+                "the slim list-view preset merged with 'similarity_score', "
+                "'full' for the raw skill dict (tool_uuids/snippet_uuids not "
+                "populated into inlined objects), or a comma-separated "
+                "allowlist of field names."
+            ),
+        ),
     ):
         """Return a list of skills that are similar to the given search term.
 
@@ -264,9 +275,12 @@ def register_skills_api(
             similarity_threshold: Threshold to be used.
             manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+            fields: Optional projection spec (see query-param description).
 
         Returns:
-            list: A list of matched skill names and similarity scores.
+            list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
+                when ``fields`` is omitted; otherwise projected skill dicts
+                with ``similarity_score`` merged in.
         """
         try:
             return service.search(
@@ -275,7 +289,10 @@ def register_skills_api(
                 similarity_threshold=similarity_threshold,
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
+                fields=fields,
             )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:

@@ -349,6 +349,7 @@ class SkillsService:
         similarity_threshold: float = 1.0,
         manifest_filter: str = ".",
         lifecycle_state: Optional["LifecycleState"] = None,
+        fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search skills by semantic similarity to a search term.
 
@@ -367,9 +368,20 @@ class SkillsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
+            fields: Optional projection spec. When ``None`` (default), each
+                match is returned as the legacy ``{"filename", "similarity_score"}``
+                pair (``filename`` is the skill UUID for parity with the
+                previous behavior). Otherwise the same grammar as list
+                projection applies (``"list"`` / ``"full"`` / comma-separated
+                allowlist) and each match is returned as a projected skill
+                dict with ``similarity_score`` merged in. In line with
+                ``list_all``, the projected path does not populate the inlined
+                ``tools`` / ``snippets`` arrays — callers that need those
+                should fetch each skill by UUID.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
+                Shape depends on ``fields`` (see above).
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -377,6 +389,10 @@ class SkillsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
+        from skillberry_store.services.list_projections import (
+            parse_fields_spec,
+            project_item,
+        )
 
         search_skills_counter.inc()
         try:
@@ -401,11 +417,12 @@ class SkillsService:
                 if not skill_uuid:
                     continue
                 try:
-                    skill_dict = self.handler.read_dict(skill_uuid)
-                    skill_dict["similarity_score"] = matched.get(
+                    fetched = self.handler.read_dict(skill_uuid)
+                    candidate = dict(fetched)
+                    candidate["similarity_score"] = matched.get(
                         "similarity_score", 0.0
                     )
-                    candidates.append(skill_dict)
+                    candidates.append(candidate)
                 except Exception as e:
                     logger.warning(f"Could not load skill {skill_uuid}: {e}")
             filtered_skills = apply_search_filters(
@@ -414,9 +431,19 @@ class SkillsService:
                 lifecycle_state=lifecycle_state,
             )
             filtered_skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            if fields is None:
+                return [
+                    {
+                        "filename": s.get("name", ""),
+                        "similarity_score": s.get("similarity_score", 0.0),
+                    }
+                    for s in filtered_skills
+                    if s.get("name")
+                ]
+            allow = parse_fields_spec(fields, "skill")
             return [
                 {
-                    "filename": s.get("name", ""),
+                    **project_item(s, allow),
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in filtered_skills

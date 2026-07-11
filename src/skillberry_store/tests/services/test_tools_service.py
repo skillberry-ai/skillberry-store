@@ -133,6 +133,65 @@ def test_get_module_returns_file_content():
     assert "def hello" in content
 
 
+def _search_handler_tools(cached_tool):
+    h = _handler()
+    h.read_dict.return_value = cached_tool
+    h.resolve_to_uuid_or_error.return_value = cached_tool["uuid"]
+    h.descriptions = MagicMock()
+    h.descriptions.search_description.return_value = [
+        {"filename": cached_tool["name"], "similarity_score": 0.3}
+    ]
+    return h
+
+
+def test_search_default_returns_legacy_shape():
+    cached = {
+        "uuid": "u1",
+        "name": "t1",
+        "state": "approved",
+        "params": {"type": "object"},
+        "modified_at": "2024-02-01",
+    }
+    svc = ToolsService(_search_handler_tools(cached))
+    result = svc.search("q")
+    assert result == [{"filename": "t1", "similarity_score": 0.3}]
+
+
+def test_search_does_not_mutate_cache_entry():
+    cached = {
+        "uuid": "u1",
+        "name": "t1",
+        "state": "approved",
+        "params": {"type": "object"},
+        "modified_at": "2024-02-01",
+    }
+    svc = ToolsService(_search_handler_tools(cached))
+    svc.search("q")
+    assert "similarity_score" not in cached
+
+
+def test_search_with_fields_list_drops_heavy_fields():
+    cached = {
+        "uuid": "u1",
+        "name": "t1",
+        "state": "approved",
+        "params": {"type": "object"},
+        "returns": {"type": "int"},
+        "dependencies": ["d1"],
+        "packaging_params": {"foo": "bar"},
+        "module_name": "t1.py",
+        "modified_at": "2024-02-01",
+    }
+    svc = ToolsService(_search_handler_tools(cached))
+    result = svc.search("q", fields="list")
+    r = result[0]
+    assert r["name"] == "t1"
+    assert r["module_name"] == "t1.py"
+    assert r["similarity_score"] == 0.3
+    for k in ("params", "returns", "dependencies", "packaging_params"):
+        assert k not in r
+
+
 def test_delete_updates_cache_then_deletes():
     h = _handler()
     svc = ToolsService(h)

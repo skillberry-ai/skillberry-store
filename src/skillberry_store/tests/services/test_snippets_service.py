@@ -148,3 +148,76 @@ def test_delete_cleans_up_description():
     svc = SnippetsService(h)
     svc.delete("s1")
     h.descriptions.delete_description.assert_called_once_with("aaaa-1111")
+
+
+def _search_handler(cached_snippet):
+    """Handler mock wired for search tests. Returns ``cached_snippet`` from
+    ``read_dict`` and drives one vector match for ``search_term`` == 's1'."""
+    h = _handler()
+    h.read_dict.return_value = cached_snippet
+    h.resolve_to_uuid_or_error.return_value = cached_snippet["uuid"]
+    h.descriptions = MagicMock()
+    h.descriptions.search_description.return_value = [
+        {"filename": cached_snippet["name"], "similarity_score": 0.2}
+    ]
+    return h
+
+
+def test_search_default_returns_legacy_shape():
+    cached = {
+        "uuid": "u1",
+        "name": "s1",
+        "content": "big body",
+        "state": "approved",
+        "modified_at": "2024-02-01",
+    }
+    svc = SnippetsService(_search_handler(cached))
+    result = svc.search("q")
+    assert result == [{"filename": "s1", "similarity_score": 0.2}]
+
+
+def test_search_does_not_mutate_cache_entry():
+    """Regression: previously the service assigned similarity_score onto
+    the dereferenced dict, polluting the DictCache."""
+    cached = {
+        "uuid": "u1",
+        "name": "s1",
+        "content": "body",
+        "state": "approved",
+        "modified_at": "2024-02-01",
+    }
+    svc = SnippetsService(_search_handler(cached))
+    svc.search("q")
+    assert "similarity_score" not in cached
+
+
+def test_search_with_fields_list_returns_projected_plus_score():
+    cached = {
+        "uuid": "u1",
+        "name": "s1",
+        "description": "d",
+        "content": "big body",
+        "state": "approved",
+        "tags": ["a"],
+        "modified_at": "2024-02-01",
+    }
+    svc = SnippetsService(_search_handler(cached))
+    result = svc.search("q", fields="list")
+    assert len(result) == 1
+    r = result[0]
+    assert r["name"] == "s1"
+    assert r["similarity_score"] == 0.2
+    assert "content" not in r
+
+
+def test_search_with_custom_fields_allowlist():
+    cached = {
+        "uuid": "u1",
+        "name": "s1",
+        "content": "body",
+        "state": "approved",
+        "modified_at": "2024-02-01",
+    }
+    svc = SnippetsService(_search_handler(cached))
+    result = svc.search("q", fields="uuid,name")
+    assert result == [{"uuid": "u1", "name": "s1", "similarity_score": 0.2}]
