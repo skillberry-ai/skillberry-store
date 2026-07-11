@@ -330,3 +330,82 @@ def test_search_with_fields_narrow_skips_populate_and_keeps_uuid_arrays():
     assert r["similarity_score"] == 0.4
     assert "tools" not in r
     assert "snippets" not in r
+
+
+# ── Phase 2 — list_all filter / sort / paginate ─────────────────────────
+
+
+def _list_handler_skills(items):
+    h = _handler()
+    h.list_all_dicts.return_value = items
+    return h
+
+
+def test_list_all_pagination_envelope_with_fields_list_skips_populate():
+    items = [
+        {
+            "uuid": f"sk{i}",
+            "name": f"sk{i}",
+            "tool_uuids": [f"t{i}"],
+            "snippet_uuids": [],
+            "modified_at": f"2024-01-{i:02d}",
+        }
+        for i in range(1, 6)
+    ]
+    svc = SkillsService(_list_handler_skills(items))
+    # No registry patching; populate would raise if it ran.
+    result = svc.list_all(fields="list", limit=2, offset=0)
+    assert isinstance(result, dict)
+    assert result["total"] == 5
+    for it in result["items"]:
+        assert "tools" not in it
+        assert "tool_uuids" in it
+
+
+def test_list_all_search_filters_before_pagination():
+    items = [
+        {"uuid": f"sk{i}", "name": f"foo{i}", "description": "d",
+         "tool_uuids": [], "snippet_uuids": [], "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 4)
+    ] + [
+        {"uuid": "sk9", "name": "bar", "description": "d",
+         "tool_uuids": [], "snippet_uuids": [], "modified_at": "2024-01-10"},
+    ]
+    svc = SkillsService(_list_handler_skills(items))
+    result = svc.list_all(fields="list", search="foo", limit=2, offset=0)
+    assert result["total"] == 3
+    assert len(result["items"]) == 2
+
+
+def test_list_all_populate_only_runs_on_the_page(monkeypatch):
+    """When fields is omitted, populate should run on the returned page —
+    not on the entire cache — so paginating a huge store does not fan out
+    thousands of tool/snippet reads."""
+    import skillberry_store.services.registry as registry
+
+    tools_svc = MagicMock()
+    tools_svc.get.side_effect = lambda uuid: {"uuid": uuid, "name": uuid}
+    snippets_svc = MagicMock()
+    snippets_svc.get.side_effect = lambda uuid: {"uuid": uuid, "name": uuid}
+    monkeypatch.setattr(registry, "_initialized", True)
+    monkeypatch.setattr(
+        registry, "_services", {"tool": tools_svc, "snippet": snippets_svc}
+    )
+
+    items = [
+        {
+            "uuid": f"sk{i}",
+            "name": f"sk{i}",
+            "tool_uuids": [f"t{i}"],
+            "snippet_uuids": [f"s{i}"],
+            "modified_at": f"2024-01-{i:02d}",
+        }
+        for i in range(1, 6)
+    ]
+    svc = SkillsService(_list_handler_skills(items))
+    result = svc.list_all(limit=2, offset=0)
+    assert result["total"] == 5
+    assert len(result["items"]) == 2
+    # Only the two skills on the page should have triggered populate.
+    assert tools_svc.get.call_count == 2
+    assert snippets_svc.get.call_count == 2

@@ -1,7 +1,7 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
@@ -10,12 +10,14 @@ import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportTools, importTools, downloadJSON } from '../utils/exportImportHelpers';
+import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
 import {
   PageSection,
   Title,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  Pagination,
   Button,
   Text,
   Label,
@@ -59,6 +61,8 @@ export function ToolsPage() {
   const [importError, setImportError] = useState('');
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
+  const { pageSize, setPageSize } = usePagination();
+  const [page, setPage] = useState<number>(1);
 
   // Fetch tools
   const { data: tools, isLoading, error } = useQuery({
@@ -131,8 +135,9 @@ export function ToolsPage() {
   };
 
   const handleSelectAll = (isSelected: boolean) => {
+    // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedTools(
-      isSelected ? (filteredTools?.map(t => t.name) || []) : []
+      isSelected ? (pagedTools?.map(t => t.name) || []) : []
     );
   };
 
@@ -286,6 +291,20 @@ export function ToolsPage() {
     return filtered;
   }, [tools, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
 
+  const totalFiltered = filteredTools?.length ?? 0;
+
+  // Main table renders only the current page; filter widgets and semantic
+  // search continue to see the full filtered set.
+  const pagedTools = useMemo(() => {
+    if (!filteredTools) return [] as Tool[];
+    const start = (page - 1) * pageSize;
+    return filteredTools.slice(start, start + pageSize);
+  }, [filteredTools, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection, pageSize]);
+
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
       index: activeSortIndex ?? 0,
@@ -399,7 +418,7 @@ export function ToolsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredTools || filteredTools.length === 0 ? (
+        {!filteredTools || totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : CubeIcon} />
             <Title headingLevel="h4" size="lg">
@@ -411,8 +430,8 @@ export function ToolsPage() {
                 : 'Create your first tool to get started'}
             </EmptyStateBody>
             {!searchTerm && (
-              <Button 
-                variant="primary" 
+              <Button
+                variant="primary"
                 icon={<PlusIcon />}
                 onClick={() => setIsCreateModalOpen(true)}
               >
@@ -421,13 +440,24 @@ export function ToolsPage() {
             )}
           </EmptyState>
         ) : (
+          <>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="top"
+            widgetId="tools-pagination-top"
+          />
           <Table aria-label="Tools table" variant="compact">
             <Thead>
               <Tr>
                 <Th
                   select={{
                     onSelect: (_event, isSelected) => handleSelectAll(isSelected),
-                    isSelected: selectedTools.length === filteredTools.length && filteredTools.length > 0,
+                    isSelected: selectedTools.length === totalFiltered && totalFiltered > 0,
                   }}
                 />
                 <Th sort={getSortParams(0)} width={20}>Name</Th>
@@ -439,7 +469,7 @@ export function ToolsPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {filteredTools.map((tool, index) => (
+              {pagedTools.map((tool, index) => (
                 <Tr key={tool.uuid}>
                   <Td
                     select={{
@@ -507,6 +537,17 @@ export function ToolsPage() {
               ))}
             </Tbody>
           </Table>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="bottom"
+            widgetId="tools-pagination-bottom"
+          />
+          </>
         )}
       </PageSection>
 

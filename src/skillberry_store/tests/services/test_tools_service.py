@@ -281,6 +281,38 @@ def test_search_with_fields_narrow_drops_heavy_fields():
         assert k not in r
 
 
+# ── Phase 2 — list_all filter / sort / paginate ─────────────────────────
+
+
+def _list_handler_tools(items):
+    h = _handler()
+    h.list_all_dicts.return_value = items
+    return h
+
+
+def test_list_all_pagination_envelope():
+    items = [
+        {"uuid": f"u{i}", "name": f"t{i}", "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 6)
+    ]
+    svc = ToolsService(_list_handler_tools(items))
+    result = svc.list_all(limit=2, offset=0)
+    assert isinstance(result, dict)
+    assert result["total"] == 5
+    assert len(result["items"]) == 2
+
+
+def test_list_all_search_and_state_filters():
+    items = [
+        {"uuid": "u1", "name": "http_get", "description": "d", "state": "approved", "modified_at": "2024-03"},
+        {"uuid": "u2", "name": "http_post", "description": "d", "state": "new", "modified_at": "2024-02"},
+        {"uuid": "u3", "name": "sort", "description": "d", "state": "approved", "modified_at": "2024-01"},
+    ]
+    svc = ToolsService(_list_handler_tools(items))
+    result = svc.list_all(search="http", state="approved")
+    assert [i["name"] for i in result] == ["http_get"]
+
+
 def test_delete_updates_cache_then_deletes():
     h = _handler()
     svc = ToolsService(h)

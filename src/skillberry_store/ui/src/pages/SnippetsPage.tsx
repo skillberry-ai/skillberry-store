@@ -1,7 +1,7 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
@@ -10,12 +10,14 @@ import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportSnippets, importSnippets, downloadJSON } from '../utils/exportImportHelpers';
+import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
 import {
   PageSection,
   Title,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  Pagination,
   Button,
   Text,
   Spinner,
@@ -69,6 +71,8 @@ export function SnippetsPage() {
   const [importError, setImportError] = useState('');
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
+  const { pageSize, setPageSize } = usePagination();
+  const [page, setPage] = useState<number>(1);
 
   const { data: snippets, isLoading, error } = useQuery({
     queryKey: ['snippets'],
@@ -163,8 +167,9 @@ export function SnippetsPage() {
   };
 
   const handleSelectAll = (isSelected: boolean) => {
+    // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedSnippets(
-      isSelected ? (filteredSnippets?.map(s => s.name) || []) : []
+      isSelected ? (pagedSnippets?.map(s => s.name) || []) : []
     );
   };
 
@@ -318,6 +323,25 @@ export function SnippetsPage() {
     return filtered;
   }, [snippets, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
 
+  const totalFiltered = filteredSnippets?.length ?? 0;
+
+  // The main table renders only the current page. Filter widgets, semantic
+  // search, "Select all matching", and Export continue to see the full
+  // filtered set. The server-side filter/sort/paginate query params exist
+  // on the API (available to CLI/SDK/MCP) but the UI stays client-side for
+  // now so the tag / namespace pickers keep enumerating every value.
+  const pagedSnippets = useMemo(() => {
+    if (!filteredSnippets) return [] as Snippet[];
+    const start = (page - 1) * pageSize;
+    return filteredSnippets.slice(start, start + pageSize);
+  }, [filteredSnippets, page, pageSize]);
+
+  // Snap back to page 1 whenever the filtered set shrinks or the filters
+  // change — otherwise the pager can point past the end.
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection, pageSize]);
+
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
       index: activeSortIndex ?? 0,
@@ -431,7 +455,7 @@ export function SnippetsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredSnippets || filteredSnippets.length === 0 ? (
+        {!filteredSnippets || totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : FileCodeIcon} />
             <Title headingLevel="h4" size="lg">
@@ -453,13 +477,24 @@ export function SnippetsPage() {
             )}
           </EmptyState>
         ) : (
+          <>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="top"
+            widgetId="snippets-pagination-top"
+          />
           <Table aria-label="Snippets table" variant="compact">
             <Thead>
               <Tr>
                 <Th
                   select={{
                     onSelect: (_event, isSelected) => handleSelectAll(isSelected),
-                    isSelected: selectedSnippets.length === filteredSnippets.length && filteredSnippets.length > 0,
+                    isSelected: selectedSnippets.length === totalFiltered && totalFiltered > 0,
                   }}
                 />
                 <Th sort={getSortParams(0)} width={20}>Name</Th>
@@ -471,7 +506,7 @@ export function SnippetsPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {filteredSnippets.map((snippet, index) => (
+              {pagedSnippets.map((snippet, index) => (
                 <Tr key={snippet.uuid}>
                   <Td
                     select={{
@@ -539,6 +574,17 @@ export function SnippetsPage() {
               ))}
             </Tbody>
           </Table>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="bottom"
+            widgetId="snippets-pagination-bottom"
+          />
+          </>
         )}
       </PageSection>
 

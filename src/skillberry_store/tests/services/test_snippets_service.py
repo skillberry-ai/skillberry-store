@@ -274,3 +274,99 @@ def test_search_with_custom_fields_allowlist():
     svc = SnippetsService(_search_handler(cached))
     result = svc.search("q", fields="uuid,name")
     assert result == [{"uuid": "u1", "name": "s1", "similarity_score": 0.2}]
+
+
+# ── Phase 2 — list_all filter / sort / paginate ─────────────────────────
+
+
+def _list_handler(items):
+    h = _handler()
+    h.list_all_dicts.return_value = items
+    return h
+
+
+def test_list_all_search_filters_by_name_and_description():
+    items = [
+        {"uuid": "u1", "name": "alpha", "description": "one", "modified_at": "2024-03"},
+        {"uuid": "u2", "name": "beta", "description": "matchable", "modified_at": "2024-02"},
+        {"uuid": "u3", "name": "gamma", "description": "zzz", "modified_at": "2024-01"},
+    ]
+    svc = SnippetsService(_list_handler(items))
+    result = svc.list_all(search="MATCH")
+    assert [i["name"] for i in result] == ["beta"]
+
+
+def test_list_all_tags_filter_and_semantics():
+    items = [
+        {"uuid": "u1", "name": "a", "tags": ["red"], "modified_at": "2024-03"},
+        {"uuid": "u2", "name": "b", "tags": ["red", "blue"], "modified_at": "2024-02"},
+    ]
+    svc = SnippetsService(_list_handler(items))
+    result = svc.list_all(tags=["red", "blue"])
+    assert [i["name"] for i in result] == ["b"]
+
+
+def test_list_all_state_filter():
+    items = [
+        {"uuid": "u1", "name": "a", "state": "approved", "modified_at": "2024-03"},
+        {"uuid": "u2", "name": "b", "state": "new", "modified_at": "2024-02"},
+    ]
+    svc = SnippetsService(_list_handler(items))
+    result = svc.list_all(state="new")
+    assert [i["name"] for i in result] == ["b"]
+
+
+def test_list_all_sort_name_asc():
+    items = [
+        {"uuid": "u1", "name": "b", "modified_at": "2024-03"},
+        {"uuid": "u2", "name": "a", "modified_at": "2024-02"},
+    ]
+    svc = SnippetsService(_list_handler(items))
+    result = svc.list_all(sort="name:asc")
+    assert [i["name"] for i in result] == ["a", "b"]
+
+
+def test_list_all_pagination_envelope():
+    items = [
+        {"uuid": f"u{i}", "name": f"n{i}", "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 6)
+    ]
+    svc = SnippetsService(_list_handler(items))
+    result = svc.list_all(limit=2, offset=1)
+    assert isinstance(result, dict)
+    assert result["total"] == 5
+    assert result["offset"] == 1
+    assert result["limit"] == 2
+    assert len(result["items"]) == 2
+
+
+def test_list_all_no_pagination_returns_bare_list():
+    items = [{"uuid": "u1", "name": "a", "modified_at": "2024-02-01"}]
+    svc = SnippetsService(_list_handler(items))
+    result = svc.list_all()
+    assert isinstance(result, list)
+
+
+def test_list_all_envelope_total_is_pre_slice_post_filter():
+    items = [
+        {"uuid": f"u{i}", "name": f"foo{i}", "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 6)
+    ] + [
+        {"uuid": "u9", "name": "bar", "modified_at": "2024-01-10"},
+    ]
+    svc = SnippetsService(_list_handler(items))
+    result = svc.list_all(search="foo", limit=2, offset=0)
+    assert result["total"] == 5
+    assert len(result["items"]) == 2
+
+
+def test_list_all_paginated_with_fields_list_projects_only_the_page():
+    items = [
+        {"uuid": f"u{i}", "name": f"n{i}", "content": "heavy" * 100, "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 6)
+    ]
+    svc = SnippetsService(_list_handler(items))
+    result = svc.list_all(fields="list", limit=2, offset=0)
+    assert result["total"] == 5
+    for it in result["items"]:
+        assert "content" not in it

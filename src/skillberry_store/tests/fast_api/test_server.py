@@ -195,3 +195,74 @@ def test_search_snippets_fields_narrow_returns_projected_with_score(fresh_sbs):
     assert r["similarity_score"] == 0.1
     assert "uuid" in r
     assert "content" not in r
+
+
+# ── Phase 2 — list pagination / filter / sort ───────────────────────────
+
+
+def test_list_snippets_pagination_returns_envelope(fresh_sbs):
+    """Setting ``limit`` switches the response to the envelope shape."""
+    client = TestClient(fresh_sbs)
+    for i in range(5):
+        _create_snippet(client, f"phase2_page_{i}", f"body {i}")
+
+    resp = client.get("/snippets/", params={"limit": 2, "offset": 0, "fields": "list"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert isinstance(body, dict)
+    assert body["total"] >= 5
+    assert body["offset"] == 0
+    assert body["limit"] == 2
+    assert len(body["items"]) == 2
+    for it in body["items"]:
+        assert "content" not in it
+
+
+def test_list_snippets_bare_array_when_no_pagination(fresh_sbs):
+    """Back-compat: no ``limit``/``offset`` → bare array."""
+    client = TestClient(fresh_sbs)
+    _create_snippet(client, "phase2_bare", "body")
+
+    resp = client.get("/snippets/")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, list)
+
+
+def test_list_snippets_search_filter(fresh_sbs):
+    """``search`` filters server-side over name + description."""
+    client = TestClient(fresh_sbs)
+    _create_snippet(client, "phase2_alpha_match", "aaa")
+    _create_snippet(client, "phase2_beta_match", "bbb")
+    _create_snippet(client, "phase2_gamma", "ccc")
+
+    resp = client.get(
+        "/snippets/",
+        params={"search": "beta", "limit": 10, "offset": 0, "fields": "list"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    names = {i["name"] for i in body["items"]}
+    assert names == {"phase2_beta_match"}
+
+
+def test_list_snippets_sort_name_asc(fresh_sbs):
+    """``sort=name:asc`` overrides the default modified_at desc."""
+    client = TestClient(fresh_sbs)
+    _create_snippet(client, "phase2_sortC", "x")
+    _create_snippet(client, "phase2_sortA", "x")
+    _create_snippet(client, "phase2_sortB", "x")
+
+    resp = client.get(
+        "/snippets/",
+        params={
+            "sort": "name:asc",
+            "limit": 10,
+            "offset": 0,
+            "fields": "list",
+            "search": "phase2_sort",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    names = [i["name"] for i in resp.json()["items"]]
+    assert names == ["phase2_sortA", "phase2_sortB", "phase2_sortC"]

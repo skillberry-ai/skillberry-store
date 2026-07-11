@@ -441,25 +441,29 @@ class ToolsService:
         self,
         filters: Optional[Dict] = None,
         fields: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """List all tools with optional filtering and field selection.
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        state: Optional[str] = None,
+        sort: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Any:
+        """List tools with optional filter / sort / paginate / project.
 
-        Args:
-            filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional field-selection spec (``None`` /
-                ``"narrow"`` / ``"wide"`` / ``"full"`` / CSV
-                allowlist). ``None`` and ``"narrow"`` both resolve to
-                the narrow preset (the default). See
-                :mod:`skillberry_store.services.field_selection`.
-
-        Returns:
-            List[Dict[str, Any]]: List of tool metadata dictionaries, sorted
-                by modified_at descending. Fields are filtered according
-                to ``fields``.
+        See :meth:`SnippetsService.list_all` for parameter semantics.
+        Response shape follows the same convention: bare list unless
+        ``limit`` or ``offset`` is provided, in which case it becomes an
+        ``{items, total, offset, limit}`` envelope.
         """
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_items_fields,
+        )
+        from skillberry_store.services.list_query import (
+            apply_filters,
+            apply_pagination,
+            apply_sort,
+            is_paginated,
         )
 
         list_tools_counter.inc()
@@ -469,9 +473,19 @@ class ToolsService:
                 items = [
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
-            items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            items = apply_filters(items, search=search, tags=tags, state=state)
+            items = apply_sort(items, sort)
+            page, total = apply_pagination(items, limit, offset)
             allow = parse_fields_spec(fields, "tool")
-            return select_items_fields(items, allow)
+            projected = select_items_fields(page, allow)
+            if not is_paginated(limit, offset):
+                return projected
+            return {
+                "items": projected,
+                "total": total,
+                "offset": offset or 0,
+                "limit": limit,
+            }
         except Exception as e:
             logger.error(f"Error listing tools: {e}\n{traceback.format_exc()}")
             raise

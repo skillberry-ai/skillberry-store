@@ -106,24 +106,59 @@ def register_skills_api(
                 "'_populate' to trigger inlining)."
             ),
         ),
+        search: Optional[str] = Query(
+            None,
+            description="Case-insensitive substring over name + description.",
+        ),
+        tags_filter: Optional[List[str]] = Query(
+            None,
+            alias="tags",
+            description=(
+                "Repeat to filter by multiple tags (AND semantics). Namespace "
+                "tags are ordinary tags — pass ``namespace:xyz`` to filter by "
+                "namespace."
+            ),
+        ),
+        state: Optional[str] = Query(
+            None, description="Exact-match lifecycle state filter."
+        ),
+        sort: Optional[str] = Query(
+            None,
+            description=(
+                "``field:direction`` (e.g. ``name:asc``). Defaults to "
+                "``modified_at:desc``."
+            ),
+        ),
+        limit: Optional[int] = Query(
+            None,
+            ge=0,
+            description=(
+                "Max items to return. Setting ``limit`` (or ``offset``) "
+                "switches the response to a ``{items, total, offset, limit}`` "
+                "envelope. Omit both for the legacy bare array."
+            ),
+        ),
+        offset: Optional[int] = Query(None, ge=0, description="Page offset."),
     ):
-        """List all skills in the store.
+        """List skills with optional filter / sort / paginate / project.
 
-        Retrieves metadata for all skills currently stored in the system.
-
-        Args:
-            fields: Optional field-selection spec (see query-param description).
-
-        Returns:
-            list: List of dictionaries, each containing skill metadata
-                (name, uuid, description, tool_uuids, snippet_uuids,
-                etc. — subset when ``fields`` narrows the field selection).
+        See query-param descriptions for behavior. When neither ``limit``
+        nor ``offset`` is set, returns a bare list. Otherwise returns
+        ``{items, total, offset, limit}``.
 
         Raises:
             HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
         """
         try:
-            return service.list_all(fields=fields)
+            return service.list_all(
+                fields=fields,
+                search=search,
+                tags=tags_filter,
+                state=state,
+                sort=sort,
+                limit=limit,
+                offset=offset,
+            )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:

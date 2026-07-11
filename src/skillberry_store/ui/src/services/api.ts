@@ -41,11 +41,50 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+// ── Shared shape for paginated list responses ────────────────────────────
+export interface PagedResponse<T> {
+  items: T[];
+  total: number;
+  offset: number;
+  limit: number | null;
+}
+
+// Options accepted by the paginated list endpoints (snippets/skills/tools).
+export interface ListPagedOptions {
+  limit: number;
+  offset: number;
+  search?: string;
+  tags?: string[];
+  state?: string;
+  sort?: string;
+  fields?: string;
+}
+
+function buildListParams(opts: ListPagedOptions): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set('limit', String(opts.limit));
+  params.set('offset', String(opts.offset));
+  params.set('fields', opts.fields ?? 'list');
+  if (opts.search) params.set('search', opts.search);
+  if (opts.state) params.set('state', opts.state);
+  if (opts.sort) params.set('sort', opts.sort);
+  if (opts.tags && opts.tags.length > 0) {
+    opts.tags.forEach(t => params.append('tags', t));
+  }
+  return params;
+}
+
 // Tools API
 export const toolsApi = {
   list: async (): Promise<Tool[]> => {
     const response = await fetch(`${API_BASE}/tools/?fields=narrow`);
     return handleResponse<Tool[]>(response);
+  },
+
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<Tool>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/tools/?${params.toString()}`);
+    return handleResponse<PagedResponse<Tool>>(response);
   },
 
   get: async (uuid: string): Promise<Tool> => {
@@ -138,6 +177,12 @@ export const skillsApi = {
     return handleResponse<Skill[]>(response);
   },
 
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<Skill>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/skills/?${params.toString()}`);
+    return handleResponse<PagedResponse<Skill>>(response);
+  },
+
   get: async (uuid: string): Promise<Skill> => {
     // Detail pages render the complete skill manifest with populated
     // ``tools`` / ``snippets``, so opt into ``full`` — the endpoint
@@ -204,6 +249,12 @@ export const snippetsApi = {
   list: async (): Promise<Snippet[]> => {
     const response = await fetch(`${API_BASE}/snippets/?fields=narrow`);
     return handleResponse<Snippet[]>(response);
+  },
+
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<Snippet>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/snippets/?${params.toString()}`);
+    return handleResponse<PagedResponse<Snippet>>(response);
   },
 
   get: async (uuid: string): Promise<Snippet> => {

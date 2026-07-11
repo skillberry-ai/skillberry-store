@@ -326,8 +326,14 @@ class SkillsService:
         self,
         filters: Optional[Dict] = None,
         fields: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """List all skills with optional filtering and field selection.
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        state: Optional[str] = None,
+        sort: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Any:
+        """List skills with optional filter / sort / paginate / project.
 
         Field-selection semantics (see
         :mod:`skillberry_store.services.field_selection`):
@@ -345,18 +351,24 @@ class SkillsService:
         * Explicit CSV allowlist — inlining runs iff ``"_populate"`` is
           in the allowlist.
 
-        Args:
-            filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional field-selection spec.
+        The filter / sort / paginate steps run on the raw skill dicts
+        BEFORE projection or populate so a caller paginating with a
+        narrow projection never has to populate the discarded pages.
 
-        Returns:
-            List[Dict[str, Any]]: Skill metadata dictionaries sorted by
-                modified_at descending.
+        Response shape mirrors the other services: bare list unless
+        ``limit`` or ``offset`` is set, in which case it becomes an
+        ``{items, total, offset, limit}`` envelope.
         """
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_items_fields,
             should_run_mechanism,
+        )
+        from skillberry_store.services.list_query import (
+            apply_filters,
+            apply_pagination,
+            apply_sort,
+            is_paginated,
         )
 
         list_skills_counter.inc()
@@ -366,11 +378,13 @@ class SkillsService:
                 items = [
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
-            items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            items = apply_filters(items, search=search, tags=tags, state=state)
+            items = apply_sort(items, sort)
+            page, total = apply_pagination(items, limit, offset)
             allow = parse_fields_spec(fields, "skill")
             if should_run_mechanism(allow, "_populate"):
                 enriched: List[Dict[str, Any]] = []
-                for item in items:
+                for item in page:
                     fresh = dict(item)
                     try:
                         self.populate_objects(fresh)
@@ -379,8 +393,17 @@ class SkillsService:
                         fresh.setdefault("tools", [])
                         fresh.setdefault("snippets", [])
                     enriched.append(fresh)
-                return select_items_fields(enriched, allow)
-            return select_items_fields(items, allow)
+                projected = enriched
+            else:
+                projected = select_items_fields(page, allow)
+            if not is_paginated(limit, offset):
+                return projected
+            return {
+                "items": projected,
+                "total": total,
+                "offset": offset or 0,
+                "limit": limit,
+            }
         except Exception as e:
             logger.error(f"Error listing skills: {e}")
             raise

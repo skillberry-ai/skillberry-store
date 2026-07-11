@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 
 import App from './App';
+import { PaginationProvider } from './contexts/PaginationContext';
 
 // PatternFly styles
 import '@patternfly/react-core/dist/styles/base.css';
@@ -25,9 +26,11 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      <PaginationProvider>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </PaginationProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );

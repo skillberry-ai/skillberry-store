@@ -218,25 +218,43 @@ class SnippetsService:
         self,
         filters: Optional[Dict] = None,
         fields: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """List all snippets with optional filtering and field selection.
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        state: Optional[str] = None,
+        sort: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Any:
+        """List snippets with optional filter / sort / paginate / project.
+
+        When neither ``limit`` nor ``offset`` is set the caller sees the
+        legacy bare list. When either is set the return is an envelope of
+        the form ``{"items", "total", "offset", "limit"}`` — ``total`` is
+        pre-slice, post-filter.
 
         Args:
-            filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional field-selection spec (``None`` /
-                ``"narrow"`` / ``"wide"`` / ``"full"`` / CSV
-                allowlist). ``None`` and ``"narrow"`` both resolve to
-                the narrow preset (the default). See
+            filters: Legacy exact-match filter (dict of field → value).
+            fields: Projection spec (``None`` / ``"narrow"`` / ``"wide"`` /
+                ``"full"`` / CSV allowlist). See
                 :mod:`skillberry_store.services.field_selection`.
-
-        Returns:
-            List[Dict[str, Any]]: List of snippet metadata dictionaries,
-                sorted by modified_at descending. Fields are filtered
-                according to ``fields``.
+            search: Case-insensitive substring over ``name`` + ``description``.
+            tags: Only return snippets that carry every tag in this list.
+            state: Only return snippets with this exact lifecycle state.
+            sort: ``field:direction`` (e.g., ``"name:asc"``). Defaults to
+                ``modified_at:desc`` for wire-compatibility.
+            limit: Page size. ``None`` → no slicing.
+            offset: Page offset. ``None`` → 0. When paired with ``limit`` or
+                any non-``None`` ``offset`` the response is an envelope.
         """
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_items_fields,
+        )
+        from skillberry_store.services.list_query import (
+            apply_filters,
+            apply_pagination,
+            apply_sort,
+            is_paginated,
         )
 
         list_snippets_counter.inc()
@@ -246,9 +264,19 @@ class SnippetsService:
                 items = [
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
-            items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            items = apply_filters(items, search=search, tags=tags, state=state)
+            items = apply_sort(items, sort)
+            page, total = apply_pagination(items, limit, offset)
             allow = parse_fields_spec(fields, "snippet")
-            return select_items_fields(items, allow)
+            projected = select_items_fields(page, allow)
+            if not is_paginated(limit, offset):
+                return projected
+            return {
+                "items": projected,
+                "total": total,
+                "offset": offset or 0,
+                "limit": limit,
+            }
         except Exception as e:
             logger.error(f"Error listing snippets: {e}")
             raise

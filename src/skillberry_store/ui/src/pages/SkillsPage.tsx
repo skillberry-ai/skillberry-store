@@ -1,19 +1,21 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TagFilter } from '../components/TagFilter';
 import { tagMatchesFilter } from '../utils/tagUtils';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportSkills, importSkills, downloadJSON } from '../utils/exportImportHelpers';
+import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
 import {
   PageSection,
   Title,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  Pagination,
   Button,
   Text,
   Spinner,
@@ -76,6 +78,8 @@ export function SkillsPage() {
   const [isAnthropicImportModalOpen, setIsAnthropicImportModalOpen] = useState(false);
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
+  const { pageSize, setPageSize } = usePagination();
+  const [page, setPage] = useState<number>(1);
   const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
     const stored = localStorage.getItem('skills-view-mode');
     return stored === 'cards' || stored === 'list' ? stored : 'cards';
@@ -283,8 +287,9 @@ export function SkillsPage() {
   };
 
   const handleSelectAll = (isSelected: boolean) => {
+    // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedSkills(
-      isSelected ? (filteredSkills?.map(s => s.name) || []) : []
+      isSelected ? (pagedSkills?.map(s => s.name) || []) : []
     );
   };
 
@@ -447,6 +452,23 @@ export function SkillsPage() {
     return filtered;
   }, [skills, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
 
+  const totalFiltered = filteredSkills?.length ?? 0;
+
+  // The main list/card view renders only the current page. Filter widgets,
+  // semantic search, "Select all matching", and Export continue to see the
+  // full filtered set. Server-side pagination is available on the API for
+  // CLI/SDK/MCP consumers; UI stays client-side so tag/namespace pickers
+  // can enumerate every value.
+  const pagedSkills = useMemo(() => {
+    if (!filteredSkills) return [] as Skill[];
+    const start = (page - 1) * pageSize;
+    return filteredSkills.slice(start, start + pageSize);
+  }, [filteredSkills, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection, pageSize, viewMode]);
+
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
       index: activeSortIndex ?? 0,
@@ -596,7 +618,7 @@ export function SkillsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredSkills || filteredSkills.length === 0 ? (
+        {!filteredSkills || totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : CodeIcon} />
             <Title headingLevel="h4" size="lg">
@@ -617,20 +639,44 @@ export function SkillsPage() {
               </Button>
             )}
           </EmptyState>
-        ) : viewMode === 'cards' ? (
-          <SkillCardView
-            skills={filteredSkills}
-            selectedSkills={selectedSkills}
-            onSelectSkill={handleSelectSkill}
-          />
         ) : (
-          <SkillListView
-            skills={filteredSkills}
-            selectedSkills={selectedSkills}
-            onSelectSkill={handleSelectSkill}
-            onSelectAll={handleSelectAll}
-            getSortParams={getSortParams}
+          <>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="top"
+            widgetId="skills-pagination-top"
           />
+          {viewMode === 'cards' ? (
+            <SkillCardView
+              skills={pagedSkills}
+              selectedSkills={selectedSkills}
+              onSelectSkill={handleSelectSkill}
+            />
+          ) : (
+            <SkillListView
+              skills={pagedSkills}
+              selectedSkills={selectedSkills}
+              onSelectSkill={handleSelectSkill}
+              onSelectAll={handleSelectAll}
+              getSortParams={getSortParams}
+            />
+          )}
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="bottom"
+            widgetId="skills-pagination-bottom"
+          />
+          </>
         )}
       </PageSection>
 
