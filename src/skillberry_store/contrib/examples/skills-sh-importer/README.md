@@ -15,35 +15,31 @@ This tool implements a 6-phase process to:
 **Key Features:**
 - A "skill" is defined as a subfolder in `/skills/` directory containing a `SKILL.md` file
 - **Clone mode** clones repositories from skills.sh until it finds N such skills (up to ~9,700 repos)
-- **Sitemap mode** downloads skills directly from the skills.sh API without git (up to ~20,000 skills)
 - **Automatic benchmarking** of all import operations (timing, size, file counts, throughput)
 - **Clone-only mode** for downloading skills without importing (Phases 1-2)
-- **Sitemap-only mode** for downloading ~20K skills via HTTP without any git clone
-- **Import-only mode** for importing downloaded skills (Phases 3-6) — useful for repeated benchmarking
+- **Import-only mode** for importing already-downloaded skills (Phases 3-6) — useful for repeated benchmarking
+- **`--overwrite`** re-clones repositories that already exist on disk (default: reuse them)
+- Failed or empty clones are cleaned up automatically — no partial or useless data is kept on disk
 
 ## How skills.sh exposes its catalog
 
-skills.sh publishes two public XML sitemaps that the tool uses to discover repositories and skills:
+skills.sh publishes a public XML sitemap that the tool uses to discover repositories:
 
 | Sitemap | Contents | Used by |
 |---------|----------|---------|
-| `sitemap-owners.xml` | ~9,700 `owner/repo` entries — every GitHub repository skills.sh knows about | Clone mode (Phase 1) |
-| `sitemap-skills-1.xml` + `sitemap-skills-2.xml` | ~20,000 individual `owner/repo/slug` skill entries — skills pre-snapshotted by skills.sh | Sitemap mode |
-
-The skill sitemaps are a **subset** of the owners sitemap: the ~20,000 snapshotted skills come from 2,462 of the 9,700 repos. The remaining ~7,200 repos are only reachable by cloning.
+| `sitemap-owners.xml` | ~9,700 `owner/repo` entries — every GitHub repository skills.sh knows about | Phase 1 (clone mode) |
 
 **Estimated total coverage:**
 
 | Mode | Skills accessible | Requires git |
 |------|-------------------|--------------|
-| `--sitemap-only` | ~20,000 (guaranteed) | No |
 | Clone (default) | ~38,000–79,000 (estimated) | Yes |
 
 ## Prerequisites
 
 ### System Requirements
 - Python 3.8+
-- Git installed and in PATH (not required for `--sitemap-only`)
+- Git installed and in PATH
 - Network access to GitHub and skills.sh
 - Skillberry-store running locally (for API imports)
 
@@ -65,9 +61,6 @@ python3 download_and_import_skills.py
 # Clone only — download repos without importing
 python3 download_and_import_skills.py --clone-only
 
-# Sitemap only — download ~20K skills via HTTP (no git required)
-python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills
-
 # Import only — use existing downloaded skills, skip phases 1-2
 python3 download_and_import_skills.py --import-only
 ```
@@ -80,11 +73,8 @@ python3 download_and_import_skills.py --max-skills 1000
 # Clone repos until finding 50 skills, without importing
 python3 download_and_import_skills.py --max-skills 50 --clone-only
 
-# Download all ~20K sitemap skills to a custom directory
-python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills2
-
-# Download first 500 sitemap skills, then import
-python3 download_and_import_skills.py --sitemap-only --max-skills 500 --skills-dir ./skills2
+# Re-clone from scratch, ignoring previously cloned repos
+python3 download_and_import_skills.py --max-skills 50 --overwrite
 
 # Import only first 10 skills from existing downloads (for benchmarking)
 python3 download_and_import_skills.py --import-only --max-skills 10
@@ -102,13 +92,13 @@ python3 download_and_import_skills.py \
     --output-dir ./results
 ```
 
-**Note on `--max-skills`:** limits the number of actual skills found (subfolders with SKILL.md). In clone mode the tool stops cloning once the target is reached; the final count may slightly exceed the target if the last cloned repository contains multiple skills. In sitemap mode the list is truncated exactly before downloading begins.
+**Note on `--max-skills`:** limits the number of actual skills found (subfolders with SKILL.md). In clone mode the tool stops cloning once the target is reached; the final count may slightly exceed the target if the last cloned repository contains multiple skills.
 
 ### CLI Arguments
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `--max-skills` | 10 (clone/full mode), unlimited (import-only / sitemap-only) | Target number of skills |
+| `--max-skills` | 10 (clone/full mode), unlimited (import-only) | Target number of skills |
 | `--sbs-url` | `http://localhost:8000` | Skillberry Store URL |
 | `--skills-url` | `https://skills.sh` | Skills.sh URL |
 | `--clone-depth` | `1` | Git clone depth (1 = shallow clone) |
@@ -116,10 +106,10 @@ python3 download_and_import_skills.py \
 | `--skills-dir` | `<temp>/skills-sh-repos` | Directory for skill repositories (absolute or relative) |
 | `--output-dir` | `.` (current directory) | Directory for output files. A timestamped subdirectory is created per run |
 | `--clone-only` | false | Run only Phases 1-2 (extract + clone); skip discovery and import |
-| `--sitemap-only` | false | Download ~20K skills via `/api/download` (no git). Replaces Phases 1-2 |
 | `--import-only` | false | Skip Phases 1-2; use existing skills from `--skills-dir` |
+| `--overwrite` | false | Remove and re-clone repo directories that already exist on disk |
 
-`--clone-only`, `--sitemap-only`, and `--import-only` are mutually exclusive.
+`--clone-only` and `--import-only` are mutually exclusive.
 
 **Note on directories:**
 - **--skills-dir**: Where skill repositories are stored
@@ -157,56 +147,11 @@ When using `--clone-only`, the script will:
 **Files created:**
 - `<output-dir>/<timestamp>/clone-results.json` — Clone status with skill counts per repo
 - `<output-dir>/<timestamp>/import-skills.log` — Execution log
-- `<skills-dir>/` — Cloned repositories (only those containing skills)
-
-## Sitemap-Only Mode
-
-Use `--sitemap-only` to download skills directly from the skills.sh `/api/download` endpoint, without cloning any git repositories. This covers all ~20,000 skills pre-snapshotted by skills.sh.
-
-### How it works
-
-1. Fetches `sitemap-skills-1.xml` and `sitemap-skills-2.xml` — the complete list of ~20,000 `owner/repo/slug` triples
-2. For each skill, calls `GET https://skills.sh/api/download/{owner}/{repo}/{slug}`, which returns a JSON snapshot of the skill's files
-3. Writes the files to `<skills-dir>/<owner>__<repo>/skills/<slug>/` — the same layout a git clone produces
-4. Hands off to Phase 3 (discover), which works identically for both clone and sitemap modes
-
-Re-runs are **idempotent**: already-downloaded skills are skipped.
-
-### Example Usage
-
-```bash
-# Download all ~20K skills (no git required)
-python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills2
-
-# Download first 500 skills, then import into Skillberry Store
-python3 download_and_import_skills.py --sitemap-only --max-skills 500 --skills-dir ./skills2
-
-# Re-run safely — existing skills are skipped
-python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills2
-```
-
-### Output in Sitemap-Only Mode
-
-When using `--sitemap-only`, the script will:
-1. ⏭️ Skip Phase 1 (HTML scrape / sitemap-owners)
-2. ✅ Execute Phase 2b (Download via `/api/download` from skill sitemaps)
-3. ✅ Execute Phase 3 (Discover skills in downloaded folders)
-4. ✅ Execute Phase 4 (Import with benchmarking)
-5. ✅ Execute Phase 5 (Validate)
-6. ✅ Execute Phase 6 (Report with benchmark statistics)
-
-To stop after downloading without importing, combine with `--import-only` on a subsequent run:
-```bash
-# Step 1: download only
-python3 download_and_import_skills.py --sitemap-only --skills-dir ./skills2
-
-# Step 2: import from what was downloaded
-python3 download_and_import_skills.py --import-only --skills-dir ./skills2
-```
+- `<skills-dir>/` — Cloned repositories (only those containing valid skills)
 
 ## Import-Only Mode
 
-Use `--import-only` to skip cloning/downloading and use existing skills already on disk. Ideal for:
+Use `--import-only` to skip cloning and use existing skills already on disk. Ideal for:
 
 - **Repeated benchmarking**: Test import performance multiple times on the same skill set
 - **Performance optimization**: Benchmark after making changes to the import process
@@ -229,19 +174,44 @@ python3 download_and_import_skills.py --import-only --sbs-url http://localhost:9
 
 When using `--import-only`, the script will:
 1. ⏭️ Skip Phase 1 (Extract metadata)
-2. ⏭️ Skip Phase 2 (Clone/download repositories)
+2. ⏭️ Skip Phase 2 (Clone repositories)
 3. ✅ Execute Phase 3 (Discover skills in existing repos)
 4. ✅ Execute Phase 4 (Import with benchmarking)
 5. ✅ Execute Phase 5 (Validate)
 6. ✅ Execute Phase 6 (Report with benchmark statistics)
+
+## Clone Behaviour and Cleanup
+
+### Default: skip existing directories
+
+By default, if a repo directory already exists in `--skills-dir`, it is assumed to be a previous successful clone and is **skipped** — no network request is made. This makes re-runs fast and safe.
+
+### `--overwrite`: force re-clone
+
+Pass `--overwrite` to remove and re-clone any directory that already exists:
+
+```bash
+python3 download_and_import_skills.py --max-skills 50 --overwrite --skills-dir ./skills2
+```
+
+### Automatic cleanup
+
+To keep `--skills-dir` free of broken or useless content, the tool applies these rules on every run:
+
+| Situation | What happens |
+|-----------|--------------|
+| `git clone` exits non-zero | Any partial directory is deleted; repo recorded as failed |
+| Clone times out (>120 s) | Any partial directory is deleted; repo recorded as failed |
+| Clone succeeds but repo has no valid skills | Directory is deleted; repo recorded as skipped |
+| Directory pre-existed (not cloned this run) | **Never** deleted, regardless of contents |
+
+Pre-existing directories are never touched by the cleanup logic — only directories created in the current run.
 
 ## Process Flow
 
 ### Phase 1: Extract Repository List from skills.sh
 
 Reads `sitemap-owners.xml` to obtain the full catalog of ~9,700 `owner/repo` pairs (sorted by popularity order on skills.sh). Falls back to HTML scraping if the sitemap is unavailable.
-
-> **Before this fix**, Phase 1 scraped the skills.sh homepage HTML, which only embedded ~81 seed repositories in its JavaScript payload. The sitemap approach returns the full ~9,700-repo catalog.
 
 **No limiting at this phase** — Phase 2 clones repositories one by one and stops when the skill target is reached.
 
@@ -250,25 +220,16 @@ Reads `sitemap-owners.xml` to obtain the full catalog of ~9,700 `owner/repo` pai
 - Clones repositories from the list produced by Phase 1
 - After each clone, counts subfolders in `/skills/` that contain `SKILL.md`
 - Accumulates the count until reaching `--max-skills`
-- Skips repositories without a `/skills/` folder
-- Already-cloned repositories are reused (idempotent re-runs)
+- Repos without a `/skills/` folder (or with no valid skills) are cleaned up immediately
+- Already-cloned repositories are reused by default; use `--overwrite` to force re-clone
 
 **Output:**
 - `clone-results.json` — `cloned_repos`, `skipped_repos`, `failed_repos`, `summary`
-- `<skills-dir>/` — Cloned repositories
-
-### Phase 2b (Sitemap Mode): Download Skills via `/api/download`
-
-Used instead of Phase 2 when `--sitemap-only` is passed.
-
-- Reads `sitemap-skills-1.xml` and `sitemap-skills-2.xml` (~20,000 skills)
-- For each skill, fetches `https://skills.sh/api/download/{owner}/{repo}/{slug}`
-- Writes files to `<skills-dir>/<owner>__<repo>/skills/<slug>/`
-- Skips skills already downloaded (idempotent)
+- `<skills-dir>/` — Cloned repositories (valid ones only)
 
 ### Phase 3: Discover Skills in /skills/ Folders
 
-Scans the skill directories on disk (produced by Phase 2 or 2b), finds every subfolder containing `SKILL.md`, and loads content and metadata.
+Scans the skill directories on disk (produced by Phase 2), finds every subfolder containing `SKILL.md`, and loads content and metadata.
 
 **Output:** `discovered-skills.json`
 
@@ -314,7 +275,7 @@ Generates a comprehensive report including benchmark statistics (total time, ave
 ```
 ./                                   # Default: current directory
 ├── 20260702_001751/                 # Timestamped run folder
-│   ├── clone-results.json           # Repository clone/download results
+│   ├── clone-results.json           # Repository clone results
 │   ├── discovered-skills.json       # Discovered skills
 │   ├── import-results.json          # Import results
 │   ├── benchmark-results.json       # Benchmark data and statistics
@@ -347,20 +308,10 @@ For each successful skill import:
 
 ### Use Cases
 
-**Repeated benchmarking with clone:**
+**Repeated benchmarking:**
 ```bash
 # Download once
 python3 download_and_import_skills.py --max-skills 50 --clone-only --skills-dir ./skills2
-
-# Benchmark multiple times
-python3 download_and_import_skills.py --import-only --max-skills 10 --skills-dir ./skills2
-python3 download_and_import_skills.py --import-only --max-skills 50 --skills-dir ./skills2
-```
-
-**Repeated benchmarking with sitemap:**
-```bash
-# Download once (no git)
-python3 download_and_import_skills.py --sitemap-only --max-skills 50 --skills-dir ./skills2
 
 # Benchmark multiple times
 python3 download_and_import_skills.py --import-only --max-skills 10 --skills-dir ./skills2
