@@ -6,7 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { CatalogImportView } from './CatalogImportView';
 import type { CatalogImportConfig, Plugin } from '@/types';
 
-// A deliberately non-skillssh config: proves the component bakes in NO plugin-specific
+// A deliberately generic "widget" config: proves the component bakes in NO plugin-specific
 // strings, endpoints, or field names — everything comes from `config` + the CatalogItem contract.
 const CONFIG: CatalogImportConfig = {
   type: 'catalog-import',
@@ -65,22 +65,23 @@ describe('CatalogImportView', () => {
     fireEvent.change(screen.getByLabelText('Search query'), { target: { value: 'wid' } });
     fireEvent.click(screen.getByRole('button', { name: /search/i }));
 
-    expect(await screen.findByText('Widget One')).toBeInTheDocument();
-    expect(await screen.findByText('A fine widget')).toBeInTheDocument();
+    // findByText throws if absent, so these assert presence on their own.
+    expect(await screen.findByText('Widget One')).toBeTruthy();
+    expect(await screen.findByText('A fine widget')).toBeTruthy();
 
     // Select the row's checkbox then import.
     fireEvent.click(screen.getAllByRole('checkbox')[1]);
     fireEvent.click(screen.getByRole('button', { name: /import selected/i }));
 
-    expect(await screen.findByText('Imported 1 skill')).toBeInTheDocument();
-    expect(screen.getByText(/2 tools, 0 snippets/)).toBeInTheDocument();
+    expect(await screen.findByText('Imported 1 skill')).toBeTruthy();
+    expect(screen.getByText(/2 tools, 0 snippets/)).toBeTruthy();
   });
 
   it('shows a disabled banner and setup steps when the plugin is not enabled', async () => {
     const disabled = { ...PLUGIN, enabled: false, status: 'Disabled: no token' } as unknown as Plugin;
     const cfg = { ...CONFIG, setup_instructions: { title: 'Auth required', steps: [{ label: 'Option A', description: 'do x' }], docs_url: 'https://d' } };
     render(<CatalogImportView config={cfg} plugin={disabled} isOpen={true} onClose={vi.fn()} />);
-    expect(screen.getByText('Auth required')).toBeInTheDocument();
-    expect(screen.getByText('Option A')).toBeInTheDocument();
+    expect(screen.getByText('Auth required')).toBeTruthy();
+    expect(screen.getByText('Option A')).toBeTruthy();
   });
 });
