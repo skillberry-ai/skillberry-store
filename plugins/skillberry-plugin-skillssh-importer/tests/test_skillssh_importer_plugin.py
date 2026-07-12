@@ -624,8 +624,11 @@ class TestImportEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        assert body["data"]["imported"] == 1
-        assert body["data"]["skills"][0]["skill_name"] == "find-skills"
+        assert len(body["data"]["imported"]) == 1
+        item = body["data"]["imported"][0]
+        assert item["title"] == "find-skills"
+        assert item["id"] == "vercel-labs/skills/find-skills"
+        assert "summary" in item
 
     def test_successful_import_with_tool(self):
         tools = [_FakeTool("echo", "Echo a message", "def echo(msg): return msg")]
@@ -636,7 +639,7 @@ class TestImportEndpoint:
                 json={"skill_ids": ["vercel-labs/skills/echo"], "skills_sh_token": "tok"},
             )
         assert resp.status_code == 200
-        assert resp.json()["data"]["skills"][0]["tools_imported"] == 1
+        assert resp.json()["data"]["imported"][0]["tools_imported"] == 1
         mock_store.create_tool.assert_called_once()
 
     def test_successful_import_with_snippet(self):
@@ -648,7 +651,7 @@ class TestImportEndpoint:
                 json={"skill_ids": ["owner/repo/skill"], "skills_sh_token": "tok"},
             )
         assert resp.status_code == 200
-        assert resp.json()["data"]["skills"][0]["snippets_imported"] == 1
+        assert resp.json()["data"]["imported"][0]["snippets_imported"] == 1
         mock_store.create_snippet.assert_called_once()
 
     def test_tags_present_in_response(self):
@@ -658,7 +661,7 @@ class TestImportEndpoint:
                 "/plugins/skillssh-importer/import",
                 json={"skill_ids": ["owner/repo/skill"], "skills_sh_token": "tok"},
             )
-        tags = resp.json()["data"]["skills"][0]["tags"]
+        tags = resp.json()["data"]["imported"][0]["tags"]
         assert "skills.sh" in tags
         assert any("installs" in t for t in tags)
 
@@ -676,7 +679,7 @@ class TestImportEndpoint:
         body = resp.json()
         assert body["success"] is False
         assert len(body["data"]["failed"]) == 1
-        assert "bad/skill/id" in body["data"]["failed"][0]["skill_id"]
+        assert "bad/skill/id" in body["data"]["failed"][0]["id"]
 
     def test_partial_failure(self):
         """One skill fails, one succeeds — success=False, imported=1."""
@@ -710,7 +713,7 @@ class TestImportEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is False
-        assert body["data"]["imported"] == 1
+        assert len(body["data"]["imported"]) == 1
         assert len(body["data"]["failed"]) == 1
 
     def test_skill_creation_called_once_per_skill(self):
@@ -733,6 +736,6 @@ class TestImportEndpoint:
                 "/plugins/skillssh-importer/import",
                 json={"skill_ids": ["owner/repo/skill"], "skills_sh_token": "tok"},
             )
-        audits = resp.json()["data"]["skills"][0]["audits"]
+        audits = resp.json()["data"]["imported"][0]["audits"]
         assert isinstance(audits, list)
         assert audits[0]["slug"] == "socket"

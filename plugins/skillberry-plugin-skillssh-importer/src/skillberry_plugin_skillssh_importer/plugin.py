@@ -452,6 +452,14 @@ def _files_from_detail(detail: Dict[str, Any]) -> List[Dict[str, str]]:
     return result
 
 
+def _import_summary(tools: int, snippets: int) -> str:
+    """Human-readable one-line summary of an imported skill's contents."""
+    return (
+        f"{tools} tool{'s' if tools != 1 else ''}, "
+        f"{snippets} snippet{'s' if snippets != 1 else ''}"
+    )
+
+
 def import_skill_from_skillssh(
     skill_id: str,
     extra_tags: Optional[List[str]] = None,
@@ -661,7 +669,7 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                     )
                 except (ValueError, Exception) as exc:
                     logger.warning(f"Failed to import skill '{skill_id}': {exc}")
-                    failed.append({"skill_id": skill_id, "error": str(exc)})
+                    failed.append({"id": skill_id, "error": str(exc)})
                     continue
 
                 skill_name = result["skill_name"]
@@ -726,8 +734,11 @@ class SkillberryPluginSkillsShImporter(PluginBase):
 
                 imported_skills.append(
                     {
-                        "skill_id": skill_id,
-                        "skill_name": skill_name,
+                        # Generic CatalogImportView contract (id / title / summary):
+                        "id": skill_id,
+                        "title": skill_name,
+                        "summary": _import_summary(len(tool_uuids), len(snippet_uuids)),
+                        # Structured fields for programmatic (MCP/agent) callers:
                         "skill_uuid": skill_uuid,
                         "tools_imported": len(tool_uuids),
                         "snippets_imported": len(snippet_uuids),
@@ -740,8 +751,7 @@ class SkillberryPluginSkillsShImporter(PluginBase):
             all_ok = len(failed) == 0 and len(imported_skills) > 0
             partial = len(failed) > 0 and len(imported_skills) > 0
             payload = {
-                "imported": len(imported_skills),
-                "skills": imported_skills,
+                "imported": imported_skills,
                 "failed": failed,
             }
             if all_ok:
