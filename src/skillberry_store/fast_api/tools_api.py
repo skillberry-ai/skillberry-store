@@ -365,6 +365,24 @@ def register_tools_api(
             )
 
     @app.get(
+        "/facets/tools",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "tool-facets", "x-mcp-tool": True},
+    )
+    def tool_facets():
+        """Return the unique tags / namespaces / states over all tools.
+
+        Powers filter-picker widgets so callers can enumerate every
+        available value without fetching every tool.
+        """
+        try:
+            return service.facets()
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error computing tool facets: {str(e)}"
+            )
+
+    @app.get(
         "/search/tools",
         tags=[tags],
         openapi_extra={"x-cli-name": "search-tools", "x-mcp-tool": True},

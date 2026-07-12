@@ -490,6 +490,12 @@ class ToolsService:
             logger.error(f"Error listing tools: {e}\n{traceback.format_exc()}")
             raise
 
+    def facets(self) -> Dict[str, List[str]]:
+        """Return the unique tags / namespaces / states over all tools."""
+        from skillberry_store.services.facets import compute_facets
+
+        return compute_facets(self.handler.list_all_dicts())
+
     def search(
         self,
         search_term: str,

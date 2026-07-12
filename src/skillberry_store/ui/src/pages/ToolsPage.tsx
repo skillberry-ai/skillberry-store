@@ -5,12 +5,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
-import { tagMatchesFilter } from '../utils/tagUtils';
 import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportTools, importTools, downloadJSON } from '../utils/exportImportHelpers';
 import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   PageSection,
   Title,
@@ -64,18 +64,67 @@ export function ToolsPage() {
   const { pageSize, setPageSize } = usePagination();
   const [page, setPage] = useState<number>(1);
 
-  // Fetch tools
-  const { data: tools, isLoading, error } = useQuery({
-    queryKey: ['tools'],
-    queryFn: toolsApi.list,
+  // ── Derived query args ────────────────────────────────────────────
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const isSemantic = searchMode === 'semantic' && debouncedSearch.length > 0;
+
+  const combinedTags = useMemo(
+    () => [
+      ...selectedTags,
+      ...selectedNamespaces.map(ns => `namespace:${ns}`),
+    ],
+    [selectedTags, selectedNamespaces]
+  );
+
+  const TOOL_SORT_FIELDS = ['name', 'description', 'state', 'module_name', 'version'] as const;
+  const sortSpec = useMemo(() => {
+    if (activeSortIndex === null) return undefined;
+    const field = TOOL_SORT_FIELDS[activeSortIndex] ?? 'modified_at';
+    return `${field}:${activeSortDirection}`;
+  }, [activeSortIndex, activeSortDirection]);
+
+  const offset = (page - 1) * pageSize;
+
+  // ── Queries ────────────────────────────────────────────────────────
+  const pagedQuery = useQuery({
+    queryKey: [
+      'tools',
+      'paged',
+      { offset, limit: pageSize, search: debouncedSearch, tags: combinedTags, sort: sortSpec, mode: searchMode },
+    ],
+    queryFn: () =>
+      toolsApi.listPaged({
+        limit: pageSize,
+        offset,
+        fields: 'list',
+        search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
+        tags: combinedTags,
+        sort: sortSpec,
+      }),
+    enabled: !isSemantic,
   });
 
-  // Semantic search tools (only when in semantic mode)
-  const { data: searchResults } = useQuery({
-    queryKey: ['tools', 'search', searchTerm, maxResults, similarityThreshold],
-    queryFn: () => toolsApi.search(searchTerm, maxResults, similarityThreshold),
-    enabled: searchTerm.length > 0 && searchMode === 'semantic',
+  const semanticQuery = useQuery({
+    queryKey: ['tools', 'semantic', debouncedSearch, maxResults, similarityThreshold],
+    queryFn: () => toolsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
+    enabled: isSemantic,
   });
+
+  const facetsQuery = useQuery({
+    queryKey: ['tools', 'facets'],
+    queryFn: toolsApi.facets,
+    staleTime: 60_000,
+  });
+
+  // ── Unified accessors ─────────────────────────────────────────────
+  const displayedTools: Tool[] = isSemantic
+    ? semanticQuery.data ?? []
+    : pagedQuery.data?.items ?? [];
+  const totalFiltered = isSemantic
+    ? displayedTools.length
+    : pagedQuery.data?.total ?? 0;
+  const isLoading = isSemantic ? semanticQuery.isLoading : pagedQuery.isLoading;
+  const error = isSemantic ? semanticQuery.error : pagedQuery.error;
 
   // Create tool mutation
   const createMutation = useMutation({
@@ -137,7 +186,7 @@ export function ToolsPage() {
   const handleSelectAll = (isSelected: boolean) => {
     // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedTools(
-      isSelected ? (pagedTools?.map(t => t.name) || []) : []
+      isSelected ? displayedTools.map(t => t.name) : []
     );
   };
 
@@ -146,12 +195,12 @@ export function ToolsPage() {
   };
 
   const handleExport = async () => {
-    const selectedToolObjects = tools?.filter(t => selectedTools.includes(t.name)) || [];
-    
-    // Use helper function to export tools with module content
+    // Selection can span pages — fetch each selected tool's full object.
+    const fetched = await Promise.all(
+      selectedTools.map(name => toolsApi.get(name).catch(() => null))
+    );
+    const selectedToolObjects = fetched.filter((t): t is Tool => t !== null);
     const toolsWithModules = await exportTools(selectedToolObjects);
-    
-    // Download as JSON file
     downloadJSON(toolsWithModules, `tools-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
@@ -190,120 +239,14 @@ export function ToolsPage() {
     }
   };
 
-  const getSortableRowValues = (tool: Tool): (string | number)[] => {
-    return [
-      tool.name,
-      tool.description || '',
-      tool.state || '',
-      tool.module_name || '',
-      tool.version || '',
-    ];
-  };
-
-  // Get all unique tags from tools (excluding namespace tags)
-  const allTags = useMemo(() => {
-    if (!tools) return [];
-    const tagSet = new Set<string>();
-    tools.forEach(tool => {
-      tool.tags?.forEach(tag => {
-        if (!tag.startsWith('namespace:')) {
-          tagSet.add(tag);
-        }
-      });
-    });
-    return Array.from(tagSet).sort();
-  }, [tools]);
-
-  // Get all unique namespaces from tools
-  const allNamespaces = useMemo(() => {
-    if (!tools) return [];
-    const namespaceSet = new Set<string>();
-    tools.forEach(tool => {
-      tool.tags?.forEach(tag => {
-        if (tag.startsWith('namespace:')) {
-          const namespace = tag.substring('namespace:'.length);
-          namespaceSet.add(namespace);
-        }
-      });
-    });
-    return Array.from(namespaceSet).sort();
-  }, [tools]);
-
-  const filteredTools = useMemo(() => {
-    let filtered = tools;
-
-    // Apply search filtering
-    if (searchTerm && filtered) {
-      if (searchMode === 'semantic' && searchResults) {
-        // Semantic search returns narrow rows plus a similarity score.
-        // The full tool row is already in the loaded list, so filter
-        // by uuid (stable across renames).
-        const matchedUuids = new Set(searchResults.map((r) => r.uuid));
-        filtered = filtered.filter((tool) => matchedUuids.has(tool.uuid));
-      } else if (searchMode === 'text') {
-        // Text search: filter by matching text in name or description
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((tool) =>
-          tool.name.toLowerCase().includes(lowerSearch) ||
-          tool.description?.toLowerCase().includes(lowerSearch)
-        );
-      } else if (searchMode === 'uuid') {
-        // UUID search: filter by matching UUID (partial match)
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((tool) =>
-          tool.uuid?.toLowerCase().includes(lowerSearch)
-        );
-      }
-    }
-
-    // Apply tag filtering (excluding namespace tags)
-    if (filtered && selectedTags.length > 0) {
-      filtered = filtered.filter(tool =>
-        selectedTags.every(selectedTag =>
-          tagMatchesFilter(tool.tags ?? [], selectedTag)
-        )
-      );
-    }
-
-    // Apply namespace filtering
-    if (filtered && selectedNamespaces.length > 0) {
-      filtered = filtered.filter(tool =>
-        selectedNamespaces.every(selectedNamespace =>
-          tool.tags?.includes(`namespace:${selectedNamespace}`)
-        )
-      );
-    }
-
-    if (filtered && activeSortIndex !== null) {
-      filtered = [...filtered].sort((a, b) => {
-        const aValue = getSortableRowValues(a)[activeSortIndex];
-        const bValue = getSortableRowValues(b)[activeSortIndex];
-        
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-          const comparison = aValue.localeCompare(bValue);
-          return activeSortDirection === 'asc' ? comparison : -comparison;
-        }
-        
-        return 0;
-      });
-    }
-
-    return filtered;
-  }, [tools, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
-
-  const totalFiltered = filteredTools?.length ?? 0;
-
-  // Main table renders only the current page; filter widgets and semantic
-  // search continue to see the full filtered set.
-  const pagedTools = useMemo(() => {
-    if (!filteredTools) return [] as Tool[];
-    const start = (page - 1) * pageSize;
-    return filteredTools.slice(start, start + pageSize);
-  }, [filteredTools, page, pageSize]);
+  // Picker widgets read the facets endpoint so they can enumerate every
+  // tag / namespace without fetching every tool.
+  const allTags = facetsQuery.data?.tags ?? [];
+  const allNamespaces = facetsQuery.data?.namespaces ?? [];
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection, pageSize]);
+  }, [debouncedSearch, searchMode, combinedTags, sortSpec, pageSize]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -418,7 +361,7 @@ export function ToolsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredTools || totalFiltered === 0 ? (
+        {totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : CubeIcon} />
             <Title headingLevel="h4" size="lg">
@@ -469,7 +412,7 @@ export function ToolsPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {pagedTools.map((tool, index) => (
+              {displayedTools.map((tool, index) => (
                 <Tr key={tool.uuid}>
                   <Td
                     select={{

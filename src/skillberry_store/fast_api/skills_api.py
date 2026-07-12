@@ -303,6 +303,24 @@ def register_skills_api(
             )
 
     @app.get(
+        "/facets/skills",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "skill-facets", "x-mcp-tool": True},
+    )
+    def skill_facets():
+        """Return the unique tags / namespaces / states over all skills.
+
+        Powers filter-picker widgets so callers can enumerate every
+        available value without fetching every skill.
+        """
+        try:
+            return service.facets()
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error computing skill facets: {str(e)}"
+            )
+
+    @app.get(
         "/search/skills",
         tags=[tags],
         openapi_extra={"x-cli-name": "search-skills", "x-mcp-tool": True},

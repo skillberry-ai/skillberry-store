@@ -274,6 +274,27 @@ def register_snippets_api(
             )
 
     @app.get(
+        "/facets/snippets",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "snippet-facets", "x-mcp-tool": True},
+    )
+    def snippet_facets():
+        """Return the unique tags / namespaces / states over all snippets.
+
+        Powers filter-picker widgets so callers can enumerate every
+        available value without fetching every snippet.
+
+        Returns:
+            dict: ``{"tags": [...], "namespaces": [...], "states": [...]}``.
+        """
+        try:
+            return service.facets()
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error computing snippet facets: {str(e)}"
+            )
+
+    @app.get(
         "/search/snippets",
         tags=[tags],
         openapi_extra={"x-cli-name": "search-snippets", "x-mcp-tool": True},

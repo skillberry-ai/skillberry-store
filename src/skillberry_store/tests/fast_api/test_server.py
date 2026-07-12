@@ -246,6 +246,39 @@ def test_list_snippets_search_filter(fresh_sbs):
     assert names == {"phase2_beta_match"}
 
 
+def test_facets_snippets_returns_tags_namespaces_states(fresh_sbs):
+    """``GET /facets/snippets`` returns deduped/sorted picker options."""
+    client = TestClient(fresh_sbs)
+
+    for name, tags in [
+        ("phase3_facet_a", ["python", "namespace:prod"]),
+        ("phase3_facet_b", ["python", "namespace:dev"]),
+        ("phase3_facet_c", ["docs"]),
+    ]:
+        params = {
+            "name": name,
+            "description": "d",
+            "content": "x",
+            "version": "1.0.0",
+            "content_type": "text/plain",
+            "state": "approved",
+        }
+        # httpx doesn't let dict values be lists; append tags via manual URL.
+        query = "&".join([f"{k}={v}" for k, v in params.items()])
+        for t in tags:
+            query += f"&tags={t}"
+        resp = client.post(f"/snippets/?{query}")
+        assert resp.status_code == 200, resp.text
+
+    resp = client.get("/facets/snippets")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "docs" in body["tags"] and "python" in body["tags"]
+    assert "namespace:prod" not in body["tags"]  # namespace tags peeled off
+    assert set(body["namespaces"]) >= {"prod", "dev"}
+    assert "approved" in body["states"]
+
+
 def test_list_snippets_sort_name_asc(fresh_sbs):
     """``sort=name:asc`` overrides the default modified_at desc."""
     client = TestClient(fresh_sbs)

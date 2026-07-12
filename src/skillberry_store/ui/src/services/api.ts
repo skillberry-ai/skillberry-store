@@ -49,6 +49,13 @@ export interface PagedResponse<T> {
   limit: number | null;
 }
 
+// ── Facets returned by GET /facets/{type} ────────────────────────────────
+export interface FacetsResponse {
+  tags: string[];
+  namespaces: string[];
+  states: string[];
+}
+
 // Options accepted by the paginated list endpoints (snippets/skills/tools).
 export interface ListPagedOptions {
   limit: number;
@@ -85,6 +92,11 @@ export const toolsApi = {
     const params = buildListParams(opts);
     const response = await fetch(`${API_BASE}/tools/?${params.toString()}`);
     return handleResponse<PagedResponse<Tool>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/tools`);
+    return handleResponse<FacetsResponse>(response);
   },
 
   get: async (uuid: string): Promise<Tool> => {
@@ -168,6 +180,22 @@ export const toolsApi = {
     const response = await fetch(`${API_BASE}/search/tools?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'list',
+  ): Promise<Array<Tool & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/tools?${params}`);
+    return handleResponse<Array<Tool & { similarity_score: number }>>(response);
+  },
 };
 
 // Skills API
@@ -181,6 +209,11 @@ export const skillsApi = {
     const params = buildListParams(opts);
     const response = await fetch(`${API_BASE}/skills/?${params.toString()}`);
     return handleResponse<PagedResponse<Skill>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/skills`);
+    return handleResponse<FacetsResponse>(response);
   },
 
   get: async (uuid: string): Promise<Skill> => {
@@ -242,6 +275,22 @@ export const skillsApi = {
     const response = await fetch(`${API_BASE}/search/skills?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'list',
+  ): Promise<Array<Skill & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/skills?${params}`);
+    return handleResponse<Array<Skill & { similarity_score: number }>>(response);
+  },
 };
 
 // Snippets API
@@ -255,6 +304,11 @@ export const snippetsApi = {
     const params = buildListParams(opts);
     const response = await fetch(`${API_BASE}/snippets/?${params.toString()}`);
     return handleResponse<PagedResponse<Snippet>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/snippets`);
+    return handleResponse<FacetsResponse>(response);
   },
 
   get: async (uuid: string): Promise<Snippet> => {
@@ -329,6 +383,22 @@ export const snippetsApi = {
     });
     const response = await fetch(`${API_BASE}/search/snippets?${params}`);
     return handleResponse<SearchResult[]>(response);
+  },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'list',
+  ): Promise<Array<Snippet & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/snippets?${params}`);
+    return handleResponse<Array<Snippet & { similarity_score: number }>>(response);
   },
 };
 

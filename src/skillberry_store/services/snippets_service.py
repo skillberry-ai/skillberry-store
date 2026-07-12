@@ -281,6 +281,12 @@ class SnippetsService:
             logger.error(f"Error listing snippets: {e}")
             raise
 
+    def facets(self) -> Dict[str, List[str]]:
+        """Return the unique tags / namespaces / states over all snippets."""
+        from skillberry_store.services.facets import compute_facets
+
+        return compute_facets(self.handler.list_all_dicts())
+
     def search(
         self,
         search_term: str,

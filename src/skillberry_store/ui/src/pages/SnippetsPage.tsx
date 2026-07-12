@@ -5,12 +5,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
-import { tagMatchesFilter } from '../utils/tagUtils';
 import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportSnippets, importSnippets, downloadJSON } from '../utils/exportImportHelpers';
 import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   PageSection,
   Title,
@@ -74,17 +74,70 @@ export function SnippetsPage() {
   const { pageSize, setPageSize } = usePagination();
   const [page, setPage] = useState<number>(1);
 
-  const { data: snippets, isLoading, error } = useQuery({
-    queryKey: ['snippets'],
-    queryFn: snippetsApi.list,
+  // ── Derived query args ────────────────────────────────────────────
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const isSemantic = searchMode === 'semantic' && debouncedSearch.length > 0;
+
+  const combinedTags = useMemo(
+    () => [
+      ...selectedTags,
+      ...selectedNamespaces.map(ns => `namespace:${ns}`),
+    ],
+    [selectedTags, selectedNamespaces]
+  );
+
+  const SNIPPET_SORT_FIELDS = ['name', 'description', 'state', 'content_type', 'version'] as const;
+  const sortSpec = useMemo(() => {
+    if (activeSortIndex === null) return undefined;
+    const field = SNIPPET_SORT_FIELDS[activeSortIndex] ?? 'modified_at';
+    return `${field}:${activeSortDirection}`;
+  }, [activeSortIndex, activeSortDirection]);
+
+  const offset = (page - 1) * pageSize;
+
+  // ── Queries ────────────────────────────────────────────────────────
+  // Server-paginated in text/uuid/empty modes; semantic mode goes to a
+  // separate /search endpoint that returns projected results (no paging —
+  // bounded by max_number_of_results).
+  const pagedQuery = useQuery({
+    queryKey: [
+      'snippets',
+      'paged',
+      { offset, limit: pageSize, search: debouncedSearch, tags: combinedTags, sort: sortSpec, mode: searchMode },
+    ],
+    queryFn: () =>
+      snippetsApi.listPaged({
+        limit: pageSize,
+        offset,
+        fields: 'list',
+        search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
+        tags: combinedTags,
+        sort: sortSpec,
+      }),
+    enabled: !isSemantic,
   });
 
-  // Semantic search snippets (only when in semantic mode)
-  const { data: searchResults } = useQuery({
-    queryKey: ['snippets', 'search', searchTerm, maxResults, similarityThreshold],
-    queryFn: () => snippetsApi.search(searchTerm, maxResults, similarityThreshold),
-    enabled: searchTerm.length > 0 && searchMode === 'semantic',
+  const semanticQuery = useQuery({
+    queryKey: ['snippets', 'semantic', debouncedSearch, maxResults, similarityThreshold],
+    queryFn: () => snippetsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
+    enabled: isSemantic,
   });
+
+  const facetsQuery = useQuery({
+    queryKey: ['snippets', 'facets'],
+    queryFn: snippetsApi.facets,
+    staleTime: 60_000,
+  });
+
+  // ── Unified accessors ─────────────────────────────────────────────
+  const displayedSnippets: Snippet[] = isSemantic
+    ? semanticQuery.data ?? []
+    : pagedQuery.data?.items ?? [];
+  const totalFiltered = isSemantic
+    ? displayedSnippets.length
+    : pagedQuery.data?.total ?? 0;
+  const isLoading = isSemantic ? semanticQuery.isLoading : pagedQuery.isLoading;
+  const error = isSemantic ? semanticQuery.error : pagedQuery.error;
 
   // Create snippet mutation
   const createMutation = useMutation({
@@ -169,7 +222,7 @@ export function SnippetsPage() {
   const handleSelectAll = (isSelected: boolean) => {
     // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedSnippets(
-      isSelected ? (pagedSnippets?.map(s => s.name) || []) : []
+      isSelected ? displayedSnippets.map(s => s.name) : []
     );
   };
 
@@ -178,12 +231,18 @@ export function SnippetsPage() {
   };
 
   const handleExport = async () => {
-    const selectedSnippetObjects = snippets?.filter(s => selectedSnippets.includes(s.name)) || [];
+    // Selection can span pages — fetch each selected snippet's full object
+    // so `content` is present in the export.
+    const fetched = await Promise.all(
+      selectedSnippets.map(name =>
+        snippetsApi.get(name).catch(() => null)
+      )
+    );
+    const selectedSnippetObjects = fetched.filter(
+      (s): s is Snippet => s !== null
+    );
 
-    // Re-fetch full manifests (list-page items use a narrow preset).
-    const snippetsForExport = await exportSnippets(selectedSnippetObjects);
-
-    // Download as JSON file
+    const snippetsForExport = exportSnippets(selectedSnippetObjects);
     downloadJSON(snippetsForExport, `snippets-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
@@ -222,125 +281,16 @@ export function SnippetsPage() {
     }
   };
 
-  const getSortableRowValues = (snippet: Snippet): (string | number)[] => {
-    return [
-      snippet.name,
-      snippet.description || '',
-      snippet.state || '',
-      snippet.content_type || '',
-      snippet.version || '',
-    ];
-  };
+  // Picker widgets read the facets endpoint so they can enumerate every
+  // tag / namespace without fetching every snippet.
+  const allTags = facetsQuery.data?.tags ?? [];
+  const allNamespaces = facetsQuery.data?.namespaces ?? [];
 
-  // Get all unique tags from snippets (excluding namespace tags)
-  const allTags = useMemo(() => {
-    if (!snippets) return [];
-    const tagSet = new Set<string>();
-    snippets.forEach(snippet => {
-      snippet.tags?.forEach(tag => {
-        if (!tag.startsWith('namespace:')) {
-          tagSet.add(tag);
-        }
-      });
-    });
-    return Array.from(tagSet).sort();
-  }, [snippets]);
-
-  // Get all unique namespaces from snippets
-  const allNamespaces = useMemo(() => {
-    if (!snippets) return [];
-    const namespaceSet = new Set<string>();
-    snippets.forEach(snippet => {
-      snippet.tags?.forEach(tag => {
-        if (tag.startsWith('namespace:')) {
-          const namespace = tag.substring('namespace:'.length);
-          namespaceSet.add(namespace);
-        }
-      });
-    });
-    return Array.from(namespaceSet).sort();
-  }, [snippets]);
-
-  const filteredSnippets = useMemo(() => {
-    let filtered = snippets;
-
-    // Apply search filtering
-    if (searchTerm && filtered) {
-      if (searchMode === 'semantic' && searchResults) {
-        // Semantic search returns narrow rows plus a similarity score.
-        // The full snippet row is already in the loaded list, so
-        // filter by uuid (stable across renames).
-        const matchedUuids = new Set(searchResults.map((r) => r.uuid));
-        filtered = filtered.filter((snippet) => matchedUuids.has(snippet.uuid));
-      } else if (searchMode === 'text') {
-        // Text search: filter by matching text in name or description
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((snippet) =>
-          snippet.name.toLowerCase().includes(lowerSearch) ||
-          snippet.description?.toLowerCase().includes(lowerSearch)
-        );
-      } else if (searchMode === 'uuid') {
-        // UUID search: filter by matching UUID (partial match)
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((snippet) =>
-          snippet.uuid?.toLowerCase().includes(lowerSearch)
-        );
-      }
-    }
-
-    // Apply tag filtering (excluding namespace tags)
-    if (filtered && selectedTags.length > 0) {
-      filtered = filtered.filter(snippet =>
-        selectedTags.every(selectedTag =>
-          tagMatchesFilter(snippet.tags ?? [], selectedTag)
-        )
-      );
-    }
-
-    // Apply namespace filtering
-    if (filtered && selectedNamespaces.length > 0) {
-      filtered = filtered.filter(snippet =>
-        selectedNamespaces.every(selectedNamespace =>
-          snippet.tags?.includes(`namespace:${selectedNamespace}`)
-        )
-      );
-    }
-
-    if (filtered && activeSortIndex !== null) {
-      filtered = [...filtered].sort((a, b) => {
-        const aValue = getSortableRowValues(a)[activeSortIndex];
-        const bValue = getSortableRowValues(b)[activeSortIndex];
-        
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-          const comparison = aValue.localeCompare(bValue);
-          return activeSortDirection === 'asc' ? comparison : -comparison;
-        }
-        
-        return 0;
-      });
-    }
-
-    return filtered;
-  }, [snippets, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
-
-  const totalFiltered = filteredSnippets?.length ?? 0;
-
-  // The main table renders only the current page. Filter widgets, semantic
-  // search, "Select all matching", and Export continue to see the full
-  // filtered set. The server-side filter/sort/paginate query params exist
-  // on the API (available to CLI/SDK/MCP) but the UI stays client-side for
-  // now so the tag / namespace pickers keep enumerating every value.
-  const pagedSnippets = useMemo(() => {
-    if (!filteredSnippets) return [] as Snippet[];
-    const start = (page - 1) * pageSize;
-    return filteredSnippets.slice(start, start + pageSize);
-  }, [filteredSnippets, page, pageSize]);
-
-  // Snap back to page 1 whenever the filtered set shrinks or the filters
-  // change — otherwise the pager can point past the end.
+  // Snap back to page 1 whenever the filters that would change the total
+  // count change — otherwise the pager can point past the end.
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection, pageSize]);
+  }, [debouncedSearch, searchMode, combinedTags, sortSpec, pageSize]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -455,7 +405,7 @@ export function SnippetsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredSnippets || totalFiltered === 0 ? (
+        {totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : FileCodeIcon} />
             <Title headingLevel="h4" size="lg">
@@ -506,7 +456,7 @@ export function SnippetsPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {pagedSnippets.map((snippet, index) => (
+              {displayedSnippets.map((snippet, index) => (
                 <Tr key={snippet.uuid}>
                   <Td
                     select={{

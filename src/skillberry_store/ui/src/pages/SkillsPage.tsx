@@ -4,11 +4,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TagFilter } from '../components/TagFilter';
-import { tagMatchesFilter } from '../utils/tagUtils';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportSkills, importSkills, downloadJSON } from '../utils/exportImportHelpers';
 import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   PageSection,
   Title,
@@ -91,17 +91,67 @@ export function SkillsPage() {
   const [toolSearchTerm, setToolSearchTerm] = useState('');
   const [snippetSearchTerm, setSnippetSearchTerm] = useState('');
 
-  const { data: skills, isLoading, error } = useQuery({
-    queryKey: ['skills'],
-    queryFn: skillsApi.list,
+  // ── Derived query args ────────────────────────────────────────────
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const isSemantic = searchMode === 'semantic' && debouncedSearch.length > 0;
+
+  const combinedTags = useMemo(
+    () => [
+      ...selectedTags,
+      ...selectedNamespaces.map(ns => `namespace:${ns}`),
+    ],
+    [selectedTags, selectedNamespaces]
+  );
+
+  const SKILL_SORT_FIELDS = ['name', 'description', 'version'] as const;
+  const sortSpec = useMemo(() => {
+    if (activeSortIndex === null) return undefined;
+    const field = SKILL_SORT_FIELDS[activeSortIndex] ?? 'modified_at';
+    return `${field}:${activeSortDirection}`;
+  }, [activeSortIndex, activeSortDirection]);
+
+  const offset = (page - 1) * pageSize;
+
+  // ── Queries ────────────────────────────────────────────────────────
+  const pagedQuery = useQuery({
+    queryKey: [
+      'skills',
+      'paged',
+      { offset, limit: pageSize, search: debouncedSearch, tags: combinedTags, sort: sortSpec, mode: searchMode },
+    ],
+    queryFn: () =>
+      skillsApi.listPaged({
+        limit: pageSize,
+        offset,
+        fields: 'list',
+        search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
+        tags: combinedTags,
+        sort: sortSpec,
+      }),
+    enabled: !isSemantic,
   });
 
-  // Semantic search skills (only when in semantic mode)
-  const { data: searchResults } = useQuery({
-    queryKey: ['skills', 'search', searchTerm, maxResults, similarityThreshold],
-    queryFn: () => skillsApi.search(searchTerm, maxResults, similarityThreshold),
-    enabled: searchTerm.length > 0 && searchMode === 'semantic',
+  const semanticQuery = useQuery({
+    queryKey: ['skills', 'semantic', debouncedSearch, maxResults, similarityThreshold],
+    queryFn: () => skillsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
+    enabled: isSemantic,
   });
+
+  const facetsQuery = useQuery({
+    queryKey: ['skills', 'facets'],
+    queryFn: skillsApi.facets,
+    staleTime: 60_000,
+  });
+
+  // ── Unified accessors ─────────────────────────────────────────────
+  const displayedSkills: Skill[] = isSemantic
+    ? semanticQuery.data ?? []
+    : pagedQuery.data?.items ?? [];
+  const totalFiltered = isSemantic
+    ? displayedSkills.length
+    : pagedQuery.data?.total ?? 0;
+  const isLoading = isSemantic ? semanticQuery.isLoading : pagedQuery.isLoading;
+  const error = isSemantic ? semanticQuery.error : pagedQuery.error;
 
   // Fetch all tools for the "Create Skill" modal dropdown.
   // Gated on the modal being open so page-mount and background /changes
@@ -289,7 +339,7 @@ export function SkillsPage() {
   const handleSelectAll = (isSelected: boolean) => {
     // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedSkills(
-      isSelected ? (pagedSkills?.map(s => s.name) || []) : []
+      isSelected ? displayedSkills.map(s => s.name) : []
     );
   };
 
@@ -298,23 +348,22 @@ export function SkillsPage() {
   };
 
   const handleExport = async () => {
-    const selectedSkillObjects = skills?.filter(s => selectedSkills.includes(s.name)) || [];
-    
-    // Re-fetch full manifests (list-page items use a narrow preset)
-    // and normalize to the backend export shape.
-    const skillsForExport = await exportSkills(selectedSkillObjects);
-    
-    // Generate filename based on selected skills
+    // Selection can span pages — fetch each selected skill's full object.
+    const fetched = await Promise.all(
+      selectedSkills.map(name => skillsApi.get(name).catch(() => null))
+    );
+    const selectedSkillObjects = fetched.filter((s): s is Skill => s !== null);
+
+    const skillsForExport = exportSkills(selectedSkillObjects);
+
+
     let filename: string;
     if (selectedSkillObjects.length === 1) {
-      // Single skill: use skill name
       filename = `${selectedSkillObjects[0].name}.json`;
     } else {
-      // Multiple skills: use date-based name
       filename = `skills-export-${new Date().toISOString().split('T')[0]}.json`;
     }
-    
-    // Download as JSON file
+
     downloadJSON(skillsForExport, filename);
   };
 
@@ -353,121 +402,14 @@ export function SkillsPage() {
     }
   };
 
-  const getSortableRowValues = (skill: Skill): (string | number)[] => {
-    return [
-      skill.name,
-      skill.description || '',
-      skill.version || '',
-    ];
-  };
-
-  // Get all unique tags from skills (excluding namespace tags)
-  const allTags = useMemo(() => {
-    if (!skills) return [];
-    const tagSet = new Set<string>();
-    skills.forEach(skill => {
-      skill.tags?.forEach(tag => {
-        if (!tag.startsWith('namespace:')) {
-          tagSet.add(tag);
-        }
-      });
-    });
-    return Array.from(tagSet).sort();
-  }, [skills]);
-
-  // Get all unique namespaces from skills
-  const allNamespaces = useMemo(() => {
-    if (!skills) return [];
-    const namespaceSet = new Set<string>();
-    skills.forEach(skill => {
-      skill.tags?.forEach(tag => {
-        if (tag.startsWith('namespace:')) {
-          const namespace = tag.substring('namespace:'.length);
-          namespaceSet.add(namespace);
-        }
-      });
-    });
-    return Array.from(namespaceSet).sort();
-  }, [skills]);
-
-  const filteredSkills = useMemo(() => {
-    let filtered = skills;
-
-    // Apply search filtering
-    if (searchTerm && filtered) {
-      if (searchMode === 'semantic' && searchResults) {
-        // Semantic search returns narrow rows plus a similarity score.
-        // The full skill row is already in the loaded list, so filter
-        // by uuid (stable across renames).
-        const matchedUuids = new Set(searchResults.map((r) => r.uuid));
-        filtered = filtered.filter((skill) => matchedUuids.has(skill.uuid));
-      } else if (searchMode === 'text') {
-        // Text search: filter by matching text in name or description
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((skill) =>
-          skill.name.toLowerCase().includes(lowerSearch) ||
-          skill.description?.toLowerCase().includes(lowerSearch)
-        );
-      } else if (searchMode === 'uuid') {
-        // UUID search: filter by matching UUID (partial match)
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((skill) =>
-          skill.uuid?.toLowerCase().includes(lowerSearch)
-        );
-      }
-    }
-
-    // Apply tag filtering (excluding namespace tags)
-    if (filtered && selectedTags.length > 0) {
-      filtered = filtered.filter(skill =>
-        selectedTags.every(selectedTag =>
-          tagMatchesFilter(skill.tags ?? [], selectedTag)
-        )
-      );
-    }
-
-    // Apply namespace filtering
-    if (filtered && selectedNamespaces.length > 0) {
-      filtered = filtered.filter(skill =>
-        selectedNamespaces.every(selectedNamespace =>
-          skill.tags?.includes(`namespace:${selectedNamespace}`)
-        )
-      );
-    }
-
-    if (filtered && activeSortIndex !== null) {
-      filtered = [...filtered].sort((a, b) => {
-        const aValue = getSortableRowValues(a)[activeSortIndex];
-        const bValue = getSortableRowValues(b)[activeSortIndex];
-        
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-          const comparison = aValue.localeCompare(bValue);
-          return activeSortDirection === 'asc' ? comparison : -comparison;
-        }
-        
-        return 0;
-      });
-    }
-
-    return filtered;
-  }, [skills, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
-
-  const totalFiltered = filteredSkills?.length ?? 0;
-
-  // The main list/card view renders only the current page. Filter widgets,
-  // semantic search, "Select all matching", and Export continue to see the
-  // full filtered set. Server-side pagination is available on the API for
-  // CLI/SDK/MCP consumers; UI stays client-side so tag/namespace pickers
-  // can enumerate every value.
-  const pagedSkills = useMemo(() => {
-    if (!filteredSkills) return [] as Skill[];
-    const start = (page - 1) * pageSize;
-    return filteredSkills.slice(start, start + pageSize);
-  }, [filteredSkills, page, pageSize]);
+  // Picker widgets read the facets endpoint so they can enumerate every
+  // tag / namespace without fetching every skill.
+  const allTags = facetsQuery.data?.tags ?? [];
+  const allNamespaces = facetsQuery.data?.namespaces ?? [];
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection, pageSize, viewMode]);
+  }, [debouncedSearch, searchMode, combinedTags, sortSpec, pageSize, viewMode]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -618,7 +560,7 @@ export function SkillsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredSkills || totalFiltered === 0 ? (
+        {totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : CodeIcon} />
             <Title headingLevel="h4" size="lg">
@@ -653,13 +595,13 @@ export function SkillsPage() {
           />
           {viewMode === 'cards' ? (
             <SkillCardView
-              skills={pagedSkills}
+              skills={displayedSkills}
               selectedSkills={selectedSkills}
               onSelectSkill={handleSelectSkill}
             />
           ) : (
             <SkillListView
-              skills={pagedSkills}
+              skills={displayedSkills}
               selectedSkills={selectedSkills}
               onSelectSkill={handleSelectSkill}
               onSelectAll={handleSelectAll}
