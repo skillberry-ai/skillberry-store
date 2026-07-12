@@ -111,9 +111,13 @@ Search the skills.sh catalogue.
 | `owner` | string | | — | Restrict to a GitHub owner (e.g. `"vercel-labs"`) |
 | `skills_sh_token` | string | | — | Override token for this request |
 
-Returns `{ results: [...], count: N, query: "..." }`.
-Each result has `id`, `name`, `source`, `installs`, `url`, and `sourceType`.
-Pass the `id` values to `/import`.
+Returns `{ "success": true, "data": { "items": [...], "count": N, "query": "..." } }`.
+Each item follows the generic `CatalogItem` contract the core UI's catalog-import
+renderer consumes — `id`, `title`, `subtitle`, `source`, `description` (lazily
+filled by `/skill-description`), `details` (popover rows: `{label, value, href?}`),
+and `badges`. skills.sh-specific fields (`sourceType`, `installUrl`, `isDuplicate`,
+install counts) are folded into `details`/`badges` by the plugin, so no skills.sh
+field names leak into the core UI. Pass the `id` values to `/import`.
 
 ### `POST /import`
 
@@ -126,24 +130,29 @@ Import one or more skills from skills.sh into the store.
 | `fetch_audits` | boolean | | `true` | Fetch security audit results and attach as tags |
 | `skills_sh_token` | string | | — | Override token for this request |
 
-Returns:
+Returns (the `data.imported` items carry the generic `id`/`title`/`summary` fields
+the core UI renders, plus structured fields for programmatic callers; `data.failed`
+items are `{ id, error }`):
 ```json
 {
   "success": true,
-  "imported": 1,
-  "skills": [
-    {
-      "skill_id": "vercel-labs/skills/find-skills",
-      "skill_name": "find-skills",
-      "skill_uuid": "...",
-      "tools_imported": 2,
-      "snippets_imported": 1,
-      "tags": ["skills.sh", "installs:10k+", "audit:socket:pass", "audit:pass"],
-      "installs": 24531,
-      "audits": [{ "slug": "socket", "status": "pass", "summary": "No alerts", ... }]
-    }
-  ],
-  "failed": []
+  "message": "Imported 1 skill successfully",
+  "data": {
+    "imported": [
+      {
+        "id": "vercel-labs/skills/find-skills",
+        "title": "find-skills",
+        "summary": "2 tools, 1 snippet",
+        "skill_uuid": "...",
+        "tools_imported": 2,
+        "snippets_imported": 1,
+        "tags": ["skills.sh", "installs:10k+", "audit:socket:pass", "audit:pass"],
+        "installs": 24531,
+        "audits": [{ "slug": "socket", "status": "pass", "summary": "No alerts", ... }]
+      }
+    ],
+    "failed": []
+  }
 }
 ```
 
