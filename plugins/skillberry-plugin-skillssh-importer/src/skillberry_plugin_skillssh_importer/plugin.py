@@ -279,6 +279,45 @@ def _invalidate_cache() -> None:
         _TOKEN_CACHE = None
 
 
+def _to_catalog_item(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Map one raw skills.sh search entry to the generic CatalogItem contract.
+
+    Keeps every skills.sh-specific field name inside the plugin so the core UI
+    stays generic.
+    """
+    skill_id = raw.get("id", "")
+    name = raw.get("name") or skill_id
+    source = raw.get("source") or (skill_id.split("/")[0] if "/" in skill_id else "")
+
+    details: List[Dict[str, str]] = [{"label": "ID", "value": skill_id}]
+    installs = raw.get("installs")
+    if installs is not None:
+        details.append({"label": "Installs", "value": f"{int(installs):,}"})
+    source_type = raw.get("sourceType")
+    if source_type:
+        details.append({"label": "Source type", "value": str(source_type)})
+    install_url = raw.get("installUrl")
+    if install_url:
+        details.append({"label": "Install URL", "value": install_url, "href": install_url})
+    url = raw.get("url")
+    if url:
+        details.append({"label": "View on skills.sh", "value": url, "href": url})
+
+    badges: List[Dict[str, str]] = []
+    if raw.get("isDuplicate"):
+        badges.append({"label": "Duplicate", "color": "orange"})
+
+    return {
+        "id": skill_id,
+        "title": name,
+        "subtitle": skill_id,
+        "source": source,
+        "description": None,  # lazily filled by /skill-description
+        "details": details,
+        "badges": badges,
+    }
+
+
 def search_skills(
     query: str,
     limit: int = 50,
@@ -547,10 +586,11 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                     owner=request.owner,
                     token=request.skills_sh_token,
                 )
+                items = [_to_catalog_item(r) for r in results]
                 return {
                     "success": True,
-                    "message": f"Found {len(results)} skill{'s' if len(results) != 1 else ''} for '{request.query}'",
-                    "data": {"results": results, "count": len(results), "query": request.query},
+                    "message": f"Found {len(items)} skill{'s' if len(items) != 1 else ''} for '{request.query}'",
+                    "data": {"items": items, "count": len(items), "query": request.query},
                 }
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
@@ -578,7 +618,7 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                 from skillberry_store.tools.anthropic.importer import parse_skill_metadata
                 meta = parse_skill_metadata(files)
                 description = (meta or {}).get("description", "") or ""
-                return {"description": description, "installs": detail.get("installs", 0)}
+                return {"description": description}
             except Exception:
                 return {"description": ""}
 

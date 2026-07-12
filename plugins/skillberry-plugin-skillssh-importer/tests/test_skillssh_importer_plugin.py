@@ -501,13 +501,17 @@ class TestSearchEndpoint:
         assert resp.status_code == 400
         assert "token" in resp.json()["detail"].lower()
 
-    def test_returns_results(self):
+    def test_returns_normalized_items(self):
         mock_results = [
             {
                 "id": "vercel-labs/skills/find-skills",
                 "name": "find-skills",
+                "source": "vercel-labs",
                 "installs": 24531,
+                "sourceType": "github",
+                "installUrl": "https://skills.sh/install/find-skills",
                 "url": "https://skills.sh/vercel-labs/skills/find-skills",
+                "isDuplicate": True,
             }
         ]
         client, _, _ = _make_client()
@@ -522,10 +526,19 @@ class TestSearchEndpoint:
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
-        assert "Found" in body["message"]
         data = body["data"]
         assert data["count"] == 1
-        assert data["results"][0]["id"] == "vercel-labs/skills/find-skills"
+        item = data["items"][0]
+        assert item["id"] == "vercel-labs/skills/find-skills"
+        assert item["title"] == "find-skills"
+        assert item["subtitle"] == "vercel-labs/skills/find-skills"
+        assert item["source"] == "vercel-labs"
+        assert item["description"] is None
+        # popover details are plugin-built; no raw skills.sh field names leak
+        labels = {d["label"] for d in item["details"]}
+        assert "Installs" in labels and "Source type" in labels
+        assert any(d.get("href") for d in item["details"])
+        assert item["badges"] == [{"label": "Duplicate", "color": "orange"}]
 
     def test_http_error_returns_502(self):
         import httpx
