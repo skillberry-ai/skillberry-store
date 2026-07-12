@@ -773,14 +773,24 @@ class SkillberryPluginSkillsShImporter(PluginBase):
 
     def get_ui_config(self) -> Optional[Dict[str, Any]]:
         enabled = _has_token_source()
-        base: Dict[str, Any] = {
-            "icon": "SearchIcon",
-            "color": "#0F766E" if enabled else "#6B7280",
-            "custom_component": "SkillsShImporter",
+        # Declarative custom-UI spec consumed by the core UI's generic
+        # "catalog-import" archetype renderer. All skillssh-specific chrome,
+        # endpoints, and copy live here (in the plugin), not in the core UI.
+        custom_ui: Dict[str, Any] = {
+            "type": "catalog-import",
+            "title": "Import from skills.sh",
+            "description": "Search the skills.sh directory and import selected skills into the store.",
+            "search_endpoint": "/api/plugins/skillssh-importer/search",
+            "detail_endpoint": "/api/plugins/skillssh-importer/skill-description/{id}",
+            "import_endpoint": "/api/plugins/skillssh-importer/import",
+            "search_placeholder": "Search skills (e.g. pptx, react native, supabase…)",
+            "min_query_chars": 2,
+            "import_button_label": "Import selected",
+            "import_extra_params": {"fetch_audits": True},
+            "columns": {"primary": "Name / ID", "secondary": "Source", "description": "Description"},
         }
         if not enabled:
-            base["disabled_message"] = self.get_status_message()
-            base["setup_instructions"] = {
+            custom_ui["setup_instructions"] = {
                 "title": "Authentication required",
                 "steps": [
                     {
@@ -802,6 +812,13 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                 ],
                 "docs_url": "https://skills.sh/docs/api#authentication",
             }
+
+        base: Dict[str, Any] = {
+            "icon": "SearchIcon",
+            "color": "#0F766E" if enabled else "#6B7280",
+            "custom_ui": custom_ui,
+        }
+        if not enabled:
             base["actions"] = []
             return base
         base["actions"] = [

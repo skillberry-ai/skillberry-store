@@ -445,25 +445,28 @@ class TestRouterStructure:
             ui = SkillberryPluginSkillsShImporter().get_ui_config()
         assert ui["color"] == "#6B7280"
 
-    def test_ui_config_disabled_has_message(self):
+    def test_ui_config_has_catalog_import_custom_ui(self):
         with patch(
             "skillberry_plugin_skillssh_importer.plugin._has_token_source",
-            return_value=False,
+            return_value=True,
         ):
             ui = SkillberryPluginSkillsShImporter().get_ui_config()
-        assert "disabled_message" in ui
-        assert "Disabled:" in ui["disabled_message"]
+        cu = ui["custom_ui"]
+        assert cu["type"] == "catalog-import"
+        assert cu["search_endpoint"].endswith("/search")
+        assert cu["import_endpoint"].endswith("/import")
+        assert "{id}" in cu["detail_endpoint"]
+        assert "custom_component" not in ui  # coupling removed
 
-    def test_ui_config_disabled_has_setup_instructions(self):
+    def test_ui_config_disabled_has_setup_instructions_in_custom_ui(self):
         with patch(
             "skillberry_plugin_skillssh_importer.plugin._has_token_source",
             return_value=False,
         ):
             ui = SkillberryPluginSkillsShImporter().get_ui_config()
-        si = ui["setup_instructions"]
+        si = ui["custom_ui"]["setup_instructions"]
         assert "title" in si
         assert len(si["steps"]) == 2
-        assert "docs_url" in si
         assert si["docs_url"] == "https://skills.sh/docs/api#authentication"
         step_labels = [s["label"] for s in si["steps"]]
         assert any("Option A" in l for l in step_labels)
