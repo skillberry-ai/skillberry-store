@@ -90,7 +90,7 @@ async def test_list_vnfs_servers(run_sbs, imported_skill_uuid):
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/vnfs_servers/")
         assert response.status_code == 200
-        # List endpoint returns a bare array (parity with skills/tools/snippets).
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
         vnfs_servers = response.json()
         assert isinstance(vnfs_servers, list)
         assert len(vnfs_servers) > 0
@@ -104,7 +104,7 @@ async def test_list_vnfs_servers(run_sbs, imported_skill_uuid):
 async def test_get_vnfs_server(run_sbs, imported_skill_uuid):
     """Test getting a specific VNFS server by name."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server?fields=full")
+        response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
         assert response.status_code == 200
         vnfs = response.json()
         assert vnfs.get("name") == "test_vnfs_server"
@@ -122,7 +122,7 @@ async def test_create_duplicate_vnfs_server(run_sbs, imported_skill_uuid):
     """Test that creating a duplicate VNFS server with same UUID fails."""
     async with httpx.AsyncClient() as client:
         # First get the existing VNFS server to obtain its UUID
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
         assert get_response.status_code == 200, "test_vnfs_server should exist from previous test"
         server_data = get_response.json()
         existing_uuid = server_data.get("uuid")
@@ -184,7 +184,7 @@ async def test_create_vnfs_server_same_name_different_uuid(run_sbs, imported_ski
         # Verify both servers exist
         get_response = await client.get(f"{BASE_URL}/vnfs_servers/")
         assert get_response.status_code == 200
-        # List endpoint returns a bare array.
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
         servers = get_response.json()
         same_name_servers = [s for s in servers if s.get("name") == "same_name_server"]
         assert len(same_name_servers) >= 2, "Should have at least 2 servers with same name"
@@ -198,7 +198,7 @@ async def test_create_vnfs_server_same_name_different_uuid(run_sbs, imported_ski
 async def test_get_nonexistent_vnfs_server(run_sbs, imported_skill_uuid):
     """Test that getting a non-existent VNFS server fails."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/vnfs_servers/nonexistent_vnfs_server?fields=full")
+        response = await client.get(f"{BASE_URL}/vnfs_servers/nonexistent_vnfs_server")
         assert response.status_code == 404
 
 
@@ -221,7 +221,7 @@ async def test_update_vnfs_server(run_sbs, imported_skill_uuid):
         assert "port" in data
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
         assert get_response.status_code == 200
         vnfs = get_response.json()
         assert vnfs.get("description") == "Updated test VNFS server description"
@@ -249,7 +249,7 @@ async def test_start_vnfs_server(run_sbs, imported_skill_uuid):
     """Test starting a VNFS server."""
     async with httpx.AsyncClient() as client:
         # First, ensure the server exists
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
         assert get_response.status_code == 200
         
         # Try to start the server
@@ -286,7 +286,7 @@ async def test_delete_vnfs_server(run_sbs, imported_skill_uuid):
         assert "deleted successfully" in data.get("message", "")
 
         # Verify deletion by UUID (more reliable than by name)
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{server_uuid}?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{server_uuid}")
         assert get_response.status_code == 404
 
 
@@ -325,7 +325,7 @@ async def test_vnfs_server_lifecycle(run_sbs, imported_skill_uuid):
         assert create_response.json().get("name") == vnfs_name
 
         # 2. Read
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}")
         assert get_response.status_code == 200
         vnfs = get_response.json()
         assert vnfs.get("name") == vnfs_name
@@ -345,7 +345,7 @@ async def test_vnfs_server_lifecycle(run_sbs, imported_skill_uuid):
         assert "updated successfully" in update_response.json().get("message", "")
 
         # 4. Verify update
-        get_updated_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}?fields=full")
+        get_updated_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}")
         assert get_updated_response.status_code == 200
         updated_vnfs = get_updated_response.json()
         assert updated_vnfs.get("description") == "Updated lifecycle test VNFS server"
@@ -361,7 +361,7 @@ async def test_vnfs_server_lifecycle(run_sbs, imported_skill_uuid):
         assert "deleted successfully" in delete_response.json().get("message", "")
 
         # 7. Verify deletion
-        get_deleted_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}?fields=full")
+        get_deleted_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}")
         assert get_deleted_response.status_code == 404
 
 
@@ -416,10 +416,9 @@ async def test_search_vnfs_servers(run_sbs, imported_skill_uuid):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching VNFS server"
         
-        # Verify python_vnfs_server is in results. Default search shape
-        # is the full object with ``similarity_score`` merged in.
-        names = [r.get("name") for r in results]
-        assert "python_vnfs_server" in names, f"python_vnfs_server should be in search results, got: {names}"
+        # Verify python_vnfs_server is in results
+        filenames = [r.get("filename") for r in results]
+        assert "python_vnfs_server" in filenames, f"python_vnfs_server should be in search results, got: {filenames}"
         
         # Test search for "file transfers"
         search_response = await client.get(
@@ -486,7 +485,7 @@ async def test_create_vnfs_server_with_nfs_protocol(run_sbs, imported_skill_uuid
         assert data.get("name") == "test_nfs_protocol_server"
         
         # Verify the server was created with NFS protocol
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_nfs_protocol_server?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_nfs_protocol_server")
         assert get_response.status_code == 200
         vnfs = get_response.json()
         assert vnfs.get("protocol") == "nfs"
@@ -536,13 +535,13 @@ async def test_multiple_vnfs_servers_same_name_different_uuid(run_sbs, imported_
         assert returned_uuid2 == uuid2
         
         # Verify both servers exist and can be retrieved by UUID
-        get_response1 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid1}?fields=full")
+        get_response1 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid1}")
         assert get_response1.status_code == 200
         server1 = get_response1.json()
         assert server1.get("uuid") == uuid1
         assert server1.get("description") == "First server with this name"
         
-        get_response2 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid2}?fields=full")
+        get_response2 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid2}")
         assert get_response2.status_code == 200
         server2 = get_response2.json()
         assert server2.get("uuid") == uuid2

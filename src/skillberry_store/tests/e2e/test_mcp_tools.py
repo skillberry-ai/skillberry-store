@@ -78,7 +78,7 @@ async def create_vmcp_server_with_tool(client, tool_name: str, tool_code: bytes,
     print(f"List response status: {list_response.status_code}")
     server_running = False
     if list_response.status_code == 200:
-        # List endpoint returns a bare array.
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
         servers = list_response.json()
         print(f"Available VMCP servers (UUIDs): {[s.get('uuid') for s in servers]}")
         server_info = None
@@ -202,15 +202,13 @@ def placeholder():
         print("\n" + "="*60)
         print("Step 4a: Verifying tool is in tools list...")
         print("="*60)
-        # Ask for the wide preset so packaging_format / packaging_params
-        # (not in the narrow listing default) are returned.
-        list_response = await client.get(f"{BASE_URL}/tools/?fields=wide")
+        list_response = await client.get(f"{BASE_URL}/tools/?fields=full")
         assert list_response.status_code == 200, f"Failed to list tools: {list_response.text}"
         tools_list = list_response.json()
         tool_names = [t.get("name") for t in tools_list]
         print(f"Available tools: {tool_names}")
         assert tool_name in tool_names, f"Tool '{tool_name}' not found in tools list"
-
+        
         # Find our tool in the list and verify its properties
         our_tool = next((t for t in tools_list if t.get("name") == tool_name), None)
         assert our_tool is not None, f"Tool '{tool_name}' not found in tools list"
@@ -485,7 +483,6 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
         print(f"List response status: {list_response.status_code}")
         server_running = False
         if list_response.status_code == 200:
-            # List endpoint returns a bare array.
             servers = list_response.json()
             print(f"Available VMCP servers (UUIDs): {[s.get('uuid') for s in servers]}")
             server_info = None

@@ -8,11 +8,31 @@ def _app(servers):
     app = FastAPI()
     svc = MagicMock()
 
-    def _list_all(skill_uuid=None, fields=None):
+    # Phase 3 (vmcp/vnfs): ``list_all`` now returns a bare list (or an
+    # envelope when paginated). The other new query params (fields / search
+    # / tags / state / sort / limit / offset) are accepted but ignored by
+    # this mock — the tests only exercise the ``skill_uuid`` code path.
+    def _list_all(
+        skill_uuid=None,
+        fields=None,
+        search=None,
+        tags=None,
+        state=None,
+        sort=None,
+        limit=None,
+        offset=None,
+    ):
         matches = servers if skill_uuid is None else [
             s for s in servers if s.get("skill_uuid") == skill_uuid
         ]
-        return list(matches)
+        if limit is None and offset is None:
+            return list(matches)
+        return {
+            "items": list(matches),
+            "total": len(matches),
+            "offset": offset or 0,
+            "limit": limit,
+        }
 
     svc.list_all.side_effect = _list_all
     register_vnfs_api(app, service=svc)

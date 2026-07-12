@@ -47,6 +47,9 @@ def test_create_raises_on_duplicate():
 def test_list_includes_running_status():
     svc = VmcpService(_handler(), _manager())
     result = svc.list_all()
+    # After Phase 3 (vmcp/vnfs) the wrapper was dropped for parity with the
+    # other list endpoints — the service now returns a bare list of enriched
+    # server dicts, and the current-page enrichment adds ``running``.
     assert isinstance(result, list)
     assert len(result) == 1
     assert result[0]["running"] is True
@@ -62,148 +65,84 @@ def test_delete_stops_runtime_and_removes_persistent():
     h.delete_object.assert_called_once()
 
 
-# ── field selection (?fields) ──────────────────────────────────────────
+# ── Phase 3 (vmcp/vnfs) — pagination / facets / enrichment ──────────────
 
 
-def test_list_all_fields_none_returns_narrow_enriched_shape():
-    """Default (no ``fields``) is ``narrow``. For vMCP, narrow includes
-    ``_enhance`` so enhancement still runs and ``running`` / ``runtime``
-    are merged in."""
-    svc = VmcpService(_handler(), _manager())
-    result = svc.list_all()
-    assert result[0]["running"] is True
-    assert result[0]["runtime"] is not None
-    assert "port" in result[0]
-
-
-def test_list_all_fields_narrow_preset_runs_enhance():
-    """``narrow`` includes ``_enhance``, so the enhancement mechanism
-    runs and ``running`` / ``runtime`` are merged in."""
-    svc = VmcpService(_handler(), _manager())
-    result = svc.list_all(fields="narrow")
-    assert result[0]["running"] is True
-    assert "runtime" in result[0]
-    assert result[0]["name"] == "vm1"
-
-
-def test_list_all_fields_wide_preset_runs_enhance():
-    """By the preset-ordering invariant, ``_enhance`` inherits from
-    narrow to wide, so wide runs enhancement and carries ``running`` /
-    ``runtime`` alongside the extra manifest fields (``skill_uuid``,
-    ``extra``, ``created_at`` …)."""
-    svc = VmcpService(_handler(), _manager())
-    result = svc.list_all(fields="wide")
-    assert result[0]["running"] is True
-    assert "runtime" in result[0]
-    assert result[0]["name"] == "vm1"
-    # wide-only manifest field is present too.
-    assert "skill_uuid" in result[0] or result[0].get("port") is not None
-
-
-def test_list_all_fields_csv_allowlist_narrows_output():
-    """A CSV allowlist without ``_enhance`` does not activate enhancement."""
-    svc = VmcpService(_handler(), _manager())
-    result = svc.list_all(fields="uuid,name")
-    assert result == [{"uuid": "eeee-5555", "name": "vm1"}]
-
-
-def test_list_all_fields_csv_with_enhance_flag_runs_enhance():
-    """Explicit CSV allowlist naming ``_enhance`` runs the mechanism."""
-    svc = VmcpService(_handler(), _manager())
-    result = svc.list_all(fields="uuid,name,running,_enhance")
-    assert result[0]["running"] is True
-    assert result[0]["uuid"] == "eeee-5555"
-
-
-def test_list_all_fields_full_returns_all_fields():
-    svc = VmcpService(_handler(), _manager())
-    result = svc.list_all(fields="full")
-    assert "running" in result[0]
-    assert "runtime" in result[0]
-
-
-def test_list_all_running_only_csv_needs_enhance_flag_to_populate():
-    """A CSV allowlist naming ``running`` alone won't populate the
-    field — enhancement is gated on ``_enhance``, not on ``running``."""
-    svc = VmcpService(_handler(), _manager())
-    result = svc.list_all(fields="running")
-    # Enhancement did not run → 'running' was never set, so the
-    # projection drops it.
-    assert result == [{}]
-
-
-def _search_handler_vmcp(cached_vmcp):
-    """Build a handler mock wired for ``VmcpService.search``."""
+def _multi_handler(items):
     h = _handler()
-    h.read_dict.return_value = cached_vmcp
-    h.descriptions = MagicMock()
-    h.descriptions.search_description.return_value = [
-        {"filename": cached_vmcp["uuid"], "similarity_score": 0.4}
-    ]
+    h.list_all_dicts.return_value = items
     return h
 
 
-def test_search_default_returns_narrow_enhanced_object_with_score():
-    """Default ``fields=None`` resolves to ``narrow``. For vMCP,
-    narrow tags ``_enhance``, so enhancement runs and the response
-    carries ``running`` / ``runtime`` alongside ``similarity_score``."""
-    cached = {
-        "uuid": "vm1",
-        "name": "vm1",
-        "state": "approved",
-        "modified_at": "2024-02-01",
-    }
-    svc = VmcpService(_search_handler_vmcp(cached), _manager())
-    result = svc.search("q")
-    assert len(result) == 1
-    r = result[0]
-    assert r["name"] == "vm1"
-    assert r["running"] is True
-    assert "runtime" in r
-    assert r["similarity_score"] == 0.4
-
-
-def test_search_does_not_mutate_cache_entry():
-    cached = {
-        "uuid": "vm1",
-        "name": "vm1",
-        "state": "approved",
-        "modified_at": "2024-02-01",
-    }
-    svc = VmcpService(_search_handler_vmcp(cached), _manager())
-    svc.search("q")
-    # The cached dict must stay clean — ``similarity_score`` is added to a
-    # fresh copy inside search().
-    assert "similarity_score" not in cached
-
-
-def test_search_with_fields_full_returns_dict_plus_score():
-    cached = {
-        "uuid": "vm1",
-        "name": "vm1",
-        "state": "approved",
-        "port": 8100,
-        "modified_at": "2024-02-01",
-    }
-    svc = VmcpService(_search_handler_vmcp(cached), _manager())
-    result = svc.search("q", fields="full")
-    r = result[0]
-    assert r["uuid"] == "vm1"
-    assert r["port"] == 8100
-    assert r["similarity_score"] == 0.4
-
-
-def test_search_with_fields_csv_narrows_output_and_keeps_score():
-    cached = {
-        "uuid": "vm1",
-        "name": "vm1",
-        "state": "approved",
-        "port": 8100,
-        "description": "hidden",
-        "modified_at": "2024-02-01",
-    }
-    svc = VmcpService(_search_handler_vmcp(cached), _manager())
-    result = svc.search("q", fields="uuid,name")
-    assert result == [
-        {"uuid": "vm1", "name": "vm1", "similarity_score": 0.4}
+def test_list_all_pagination_envelope():
+    items = [
+        {"uuid": f"u{i}", "name": f"vm{i}", "port": 8000 + i, "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 6)
     ]
+    svc = VmcpService(_multi_handler(items), _manager())
+    result = svc.list_all(limit=2, offset=0)
+    assert isinstance(result, dict)
+    assert result["total"] == 5
+    assert result["offset"] == 0
+    assert result["limit"] == 2
+    assert len(result["items"]) == 2
+
+
+def test_list_all_enrichment_only_runs_on_the_page():
+    """Runtime enrichment must not fan out over discarded pages."""
+    items = [
+        {"uuid": f"u{i}", "name": f"vm{i}", "port": 8000 + i, "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 6)
+    ]
+    mgr = _manager()
+    svc = VmcpService(_multi_handler(items), mgr)
+    svc.list_all(limit=2, offset=0)
+    assert mgr.get_server.call_count == 2
+
+
+def test_list_all_fields_list_preset_projects_and_still_enriches():
+    items = [
+        {
+            "uuid": "u1",
+            "name": "vm1",
+            "port": 8100,
+            "modified_at": "2024-02-01",
+            "extra_disk_field": {"heavy": "x"},
+        },
+    ]
+    svc = VmcpService(_multi_handler(items), _manager())
+    result = svc.list_all(fields="narrow")
+    assert result[0]["name"] == "vm1"
+    assert result[0]["running"] is True  # enrichment survives projection
+    assert "extra_disk_field" not in result[0]  # not in the preset
+
+
+def test_list_all_search_filter():
+    items = [
+        {"uuid": "u1", "name": "alpha", "description": "d", "modified_at": "2024-03"},
+        {"uuid": "u2", "name": "beta", "description": "matchable", "modified_at": "2024-02"},
+    ]
+    svc = VmcpService(_multi_handler(items), _manager())
+    result = svc.list_all(search="MATCH")
+    assert [i["name"] for i in result] == ["beta"]
+
+
+def test_list_all_does_not_mutate_cache_entries():
+    """Enrichment must be on fresh copies — cache entries stay clean."""
+    original = {"uuid": "u1", "name": "vm1", "port": 8100, "modified_at": "2024-02-01"}
+    svc = VmcpService(_multi_handler([original]), _manager())
+    svc.list_all()
+    assert "running" not in original
+    assert "runtime" not in original
+
+
+def test_facets_returns_tags_namespaces_states():
+    items = [
+        {"uuid": "u1", "tags": ["prod", "namespace:team-a"], "state": "approved"},
+        {"uuid": "u2", "tags": ["dev"], "state": "new"},
+    ]
+    svc = VmcpService(_multi_handler(items), _manager())
+    facets = svc.facets()
+    assert set(facets["tags"]) >= {"prod", "dev"}
+    assert facets["namespaces"] == ["team-a"]
+    assert set(facets["states"]) == {"approved", "new"}

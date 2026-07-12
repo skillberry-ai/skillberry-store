@@ -223,98 +223,115 @@ class VmcpService:
                 raise KeyError(f"VMCP server '{label}' not found")
             raise
 
-    def get(
-        self,
-        uuid_or_name: str,
-        fields: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Get VMCP server metadata by UUID or name, optionally with
-        runtime status.
-
-        Field-selection semantics mirror :meth:`list_all`:
-
-        * ``fields`` omitted / ``"narrow"`` / ``"full"`` — the
-          ``_enhance`` mechanism runs; ``running`` and ``runtime`` are
-          computed and merged before field selection is applied. Default
-          is ``"narrow"``.
-        * ``fields="wide"`` — persisted manifest fields only;
-          enhancement is skipped (no subprocess-manager calls).
-        * Explicit CSV allowlist — enhancement runs iff ``"_enhance"``
-          is in the allowlist.
+    def get(self, uuid_or_name: str) -> Dict[str, Any]:
+        """Get VMCP server metadata by UUID or name with runtime status.
 
         Args:
             uuid_or_name: VMCP server UUID or name.
-            fields: Optional field-selection spec.
 
         Returns:
-            Dict[str, Any]: VMCP server metadata, field-selected
-                according to ``fields``.
+            Dict[str, Any]: VMCP server metadata with 'running' and 'runtime' fields.
 
         Raises:
             KeyError: If VMCP server not found.
         """
-        from skillberry_store.services.field_selection import (
-            parse_fields_spec,
-            select_item_fields,
-            should_run_mechanism,
-        )
-
         get_vmcp_counter.inc()
         try:
-            allow = parse_fields_spec(fields, "vmcp")
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.read_lock(uuid):
                 d = self._safe_read(uuid, uuid_or_name)
-                if should_run_mechanism(allow, "_enhance"):
-                    try:
-                        runtime_details = self.server_manager.get_server_details(
-                            d.get("name", ""), d.get("uuid", "")
-                        )
-                        d["runtime"] = runtime_details
-                        d["running"] = True
-                    except Exception:
-                        d["running"] = False
-                        d["runtime"] = None
-                return select_item_fields(d, allow)
+                try:
+                    runtime_details = self.server_manager.get_server_details(
+                        d.get("name", ""), d.get("uuid", "")
+                    )
+                    d["runtime"] = runtime_details
+                    d["running"] = True
+                except Exception:
+                    d["running"] = False
+                    d["runtime"] = None
+                return d
         except KeyError:
             raise
         except Exception as e:
             logger.error(f"Error retrieving vmcp server '{uuid_or_name}': {e}")
             raise
 
+    def _enrich_with_runtime(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a fresh copy of ``item`` with ``running`` / ``runtime`` merged in.
+
+        Never mutates the cache dict. Runtime lookup failures are swallowed —
+        the server appears as not-running.
+        """
+        runtime = None
+        try:
+            runtime = self.server_manager.get_server(
+                item.get("name", ""), item.get("uuid", "")
+            )
+        except Exception:
+            pass
+        enriched = dict(item)
+        enriched["running"] = runtime is not None
+        enriched["runtime"] = (
+            {
+                "name": runtime.name,
+                "description": runtime.description,
+                "port": runtime.port,
+                "tools": runtime.tool_uuids,
+            }
+            if runtime
+            else None
+        )
+        return enriched
+
+    def facets(self) -> Dict[str, List[str]]:
+        """Return the unique tags / namespaces / states over all VMCP servers."""
+        from skillberry_store.services.facets import compute_facets
+
+        return compute_facets(self.handler.list_all_dicts())
+
     def list_all(
         self,
         skill_uuid: Optional[str] = None,
         fields: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """List all VMCP servers, optionally enhanced with runtime status.
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        state: Optional[str] = None,
+        sort: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Any:
+        """List VMCP servers with optional filter / sort / paginate / project.
 
-        Field-selection semantics (see
-        :mod:`skillberry_store.services.field_selection`):
+        Runtime enrichment (``running`` / ``runtime``) is applied only to the
+        current page, so paginating a big store never fans out server-manager
+        lookups over discarded pages.
 
-        * ``fields`` omitted / ``"narrow"`` / ``"full"`` — the
-          ``_enhance`` mechanism runs; ``running`` and ``runtime`` are
-          computed and merged into each server dict before field
-          selection is applied. Default is ``"narrow"``.
-        * ``fields="wide"`` — persisted manifest fields only; enhancement
-          is skipped (no subprocess-manager calls).
-        * Explicit CSV allowlist — enhancement runs iff ``"_enhance"``
-          is in the allowlist.
+        Response shape: bare array when neither ``limit`` nor ``offset`` is
+        set (breaking change vs. the pre-Phase-2 wrapped-dict shape); an
+        ``{items, total, offset, limit}`` envelope otherwise.
 
         Args:
-            skill_uuid: When provided, restrict the result to servers whose
-                ``skill_uuid`` matches this value.
-            fields: Optional field-selection spec.
-
-        Returns:
-            List[Dict[str, Any]]: Server info dicts sorted by
-                ``modified_at`` descending, field-selected according to
-                ``fields``.
+            skill_uuid: Legacy exact-match filter, kept for back-compat.
+            fields: Projection spec (``None`` / ``"list"`` / ``"full"`` /
+                comma-separated allowlist).
+            search: Case-insensitive substring over ``name`` + ``description``.
+            tags: AND-semantics tag filter (namespace tags included as
+                ``namespace:xyz``).
+            state: Exact-match lifecycle state.
+            sort: ``field:direction`` (default ``modified_at:desc``).
+            limit: Page size. ``None`` → no slicing.
+            offset: Page offset. ``None`` → 0.
         """
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_items_fields,
             should_run_mechanism,
+        )
+        from skillberry_store.services.list_query import (
+            apply_filters,
+            apply_pagination,
+            apply_sort,
+            is_paginated,
         )
 
         list_vmcp_counter.inc()
@@ -322,38 +339,33 @@ class VmcpService:
             items = self.handler.list_all_dicts()
             if skill_uuid:
                 items = [i for i in items if i.get("skill_uuid") == skill_uuid]
+            items = apply_filters(items, search=search, tags=tags, state=state)
+            items = apply_sort(items, sort)
+            page, total = apply_pagination(items, limit, offset)
+
             allow = parse_fields_spec(fields, "vmcp")
             enhance = should_run_mechanism(allow, "_enhance")
-            servers: List[Dict[str, Any]] = []
-            for item in items:
+            enriched: List[Dict[str, Any]] = []
+            for item in page:
                 try:
-                    info = dict(item)
-                    if enhance:
-                        runtime = None
-                        try:
-                            runtime = self.server_manager.get_server(
-                                item.get("name", ""), item.get("uuid", "")
-                            )
-                        except Exception:
-                            pass
-                        info["running"] = runtime is not None
-                        info["runtime"] = (
-                            {
-                                "name": runtime.name,
-                                "description": runtime.description,
-                                "port": runtime.port,
-                                "tools": runtime.tool_uuids,
-                            }
-                            if runtime
-                            else None
-                        )
-                    servers.append(info)
+                    enriched.append(
+                        self._enrich_with_runtime(item) if enhance else dict(item)
+                    )
                 except Exception as e:
                     logger.warning(
                         f"Error loading vmcp server '{item.get('name')}': {e}"
                     )
-            servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return select_items_fields(servers, allow)
+
+            projected = select_items_fields(enriched, allow)
+
+            if not is_paginated(limit, offset):
+                return projected
+            return {
+                "items": projected,
+                "total": total,
+                "offset": offset or 0,
+                "limit": limit,
+            }
         except Exception as e:
             logger.error(f"Error listing vmcp servers: {e}")
             raise
@@ -369,33 +381,19 @@ class VmcpService:
     ) -> List[Dict[str, Any]]:
         """Search VMCP servers by semantic similarity to a search term.
 
-        Performs a vector-similarity search over VMCP server descriptions, then
-        filters by similarity threshold, manifest properties, and lifecycle state,
-        and returns matched names with similarity scores sorted by ``modified_at``
-        (most recent first).
-
         Args:
             search_term: Free-text query to match against VMCP descriptions.
             max_number_of_results: Upper bound on candidates returned by the
                 vector index before threshold filtering.
             similarity_threshold: Maximum allowed similarity score (lower is
                 more similar).
-            manifest_filter: Manifest property filter expression
-                (e.g. ``"tags:python"``, ``"state:approved"``).
+            manifest_filter: Manifest property filter expression.
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-            fields: Optional field-selection spec — same grammar as
-                :meth:`list_all` (``None`` / ``"narrow"`` / ``"wide"``
-                / ``"full"`` / CSV allowlist). Each match is a
-                field-selected VMCP dict with ``similarity_score``
-                merged in. Default (``None``) resolves to ``"narrow"``
-                — narrow tags ``_enhance`` for vMCP, so the mechanism
-                runs and ``running`` / ``runtime`` are merged in.
-
-        Returns:
-            List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
-                Each entry is a field-selected VMCP dict plus a
-                ``similarity_score`` key.
+            fields: Optional projection spec. ``None`` (default) returns the
+                legacy ``{"filename", "similarity_score"}`` shape. Any other
+                value returns projected VMCP dicts with ``similarity_score``
+                merged in — matches the pattern used by the other services.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -406,7 +404,6 @@ class VmcpService:
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_item_fields,
-            should_run_mechanism,
         )
 
         search_vmcp_counter.inc()
@@ -442,27 +439,16 @@ class VmcpService:
                 lifecycle_state=lifecycle_state,
             )
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            if fields is None:
+                return [
+                    {
+                        "filename": s.get("name", ""),
+                        "similarity_score": s.get("similarity_score", 0.0),
+                    }
+                    for s in result_items
+                    if s.get("name")
+                ]
             allow = parse_fields_spec(fields, "vmcp")
-            if should_run_mechanism(allow, "_enhance"):
-                for s in result_items:
-                    runtime = None
-                    try:
-                        runtime = self.server_manager.get_server(
-                            s.get("name", ""), s.get("uuid", "")
-                        )
-                    except Exception:
-                        pass
-                    s["running"] = runtime is not None
-                    s["runtime"] = (
-                        {
-                            "name": runtime.name,
-                            "description": runtime.description,
-                            "port": runtime.port,
-                            "tools": runtime.tool_uuids,
-                        }
-                        if runtime
-                        else None
-                    )
             return [
                 {
                     **select_item_fields(s, allow),

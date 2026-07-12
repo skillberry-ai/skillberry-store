@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 
@@ -84,6 +84,25 @@ def register_vnfs_api(
             )
 
     @app.get(
+        "/facets/vnfs_servers",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "vnfs-server-facets", "x-mcp-tool": True},
+    )
+    def vnfs_server_facets():
+        """Return the unique tags / namespaces / states over all vNFS servers.
+
+        Powers filter-picker widgets so callers can enumerate every
+        available value without fetching every server.
+        """
+        try:
+            return service.facets()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error computing vNFS server facets: {exc}",
+            )
+
+    @app.get(
         "/vnfs_servers/",
         tags=[tags],
         openapi_extra={"x-cli-name": "list-vnfs-servers", "x-mcp-tool": True},
@@ -91,39 +110,68 @@ def register_vnfs_api(
     def list_vnfs_servers(
         skill_uuid: Optional[str] = None,
         fields: Optional[str] = Query(
-            "narrow",
+            None,
             description=(
-                "Field selection. 'minimal' returns uuid only. Omit or "
-                "'narrow' for the UI listing set — runs enhancement "
-                "(default). 'wide' returns every persisted manifest "
-                "field plus the runtime enrichment inherited from "
-                "narrow. 'full' returns the complete object with the "
-                "'_enhance' mechanism running — 'running' and "
-                "'export_path' are computed and merged in. Or supply a "
-                "comma-separated allowlist (include '_enhance' to "
-                "trigger enhancement)."
+                "Field projection. Omit for the full enriched shape. Use "
+                "'list' for the slim list-view preset (persistent metadata "
+                "+ runtime status), 'full' for every field, or a "
+                "comma-separated allowlist."
             ),
         ),
+        search: Optional[str] = Query(
+            None,
+            description="Case-insensitive substring over name + description.",
+        ),
+        tags_filter: Optional[List[str]] = Query(
+            None,
+            alias="tags",
+            description=(
+                "Repeat to filter by multiple tags (AND semantics). Namespace "
+                "tags are ordinary tags — pass ``namespace:xyz`` to filter by "
+                "namespace."
+            ),
+        ),
+        state: Optional[str] = Query(
+            None, description="Exact-match lifecycle state filter."
+        ),
+        sort: Optional[str] = Query(
+            None,
+            description=(
+                "``field:direction`` (e.g. ``name:asc``). Defaults to "
+                "``modified_at:desc``."
+            ),
+        ),
+        limit: Optional[int] = Query(
+            None,
+            ge=0,
+            description=(
+                "Max items to return. Setting ``limit`` (or ``offset``) "
+                "switches the response to a ``{items, total, offset, limit}`` "
+                "envelope. Omit both for a bare array."
+            ),
+        ),
+        offset: Optional[int] = Query(None, ge=0, description="Page offset."),
     ):
-        """List all virtual NFS servers in the store.
+        """List vNFS servers with optional filter / sort / paginate / project.
 
-        Retrieves metadata for all virtual NFS servers, optionally filtered by skill UUID.
-
-        Args:
-            skill_uuid: Optional skill UUID to filter servers by.
-            fields: Optional field-selection spec (see query-param description).
-
-        Returns:
-            list: List of server metadata dicts (each with runtime status and export path).
-                Fields are filtered when ``fields`` narrows the selection.
-
-        Raises:
-            HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
+        Response shape: bare array when neither ``limit`` nor ``offset`` is
+        set (a breaking change vs. the pre-Phase-2 ``{virtual_nfs_servers:
+        {...}}`` wrapper); envelope ``{items, total, offset, limit}``
+        otherwise. Runtime enrichment runs only on the current page.
         """
         try:
-            return service.list_all(skill_uuid=skill_uuid, fields=fields)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            return service.list_all(
+                skill_uuid=skill_uuid,
+                fields=fields,
+                search=search,
+                tags=tags_filter,
+                state=state,
+                sort=sort,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         except Exception as exc:
             raise HTTPException(
                 status_code=500, detail=f"Error listing vNFS servers: {exc}"
@@ -134,43 +182,25 @@ def register_vnfs_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "get-vnfs-server", "x-mcp-tool": True},
     )
-    def get_vnfs_server(
-        uuid_or_name: str,
-        fields: Optional[str] = Query(
-            "narrow",
-            description=(
-                "Field selection. 'minimal' returns uuid only. Omit or "
-                "'narrow' for the UI listing set (default; ``running`` "
-                "and ``export_path`` are computed). 'wide' returns every "
-                "persisted manifest field without runtime enhancement. "
-                "'full' returns the complete object with runtime "
-                "enhancement. Or supply a comma-separated allowlist."
-            ),
-        ),
-    ):
+    def get_vnfs_server(uuid_or_name: str):
         """Get metadata for a specific virtual NFS server by UUID or name.
 
-        Retrieves the manifest/metadata for a virtual NFS server
-        identified by either its UUID or its unique name.
+        Retrieves the complete manifest/metadata for a virtual NFS server identified
+        by either its UUID or its unique name.
 
         Args:
             uuid_or_name: The UUID or name of the virtual NFS server to retrieve.
-            fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            dict: Virtual NFS server metadata (subset when ``fields``
-                narrows the field selection).
+            dict: Virtual NFS server metadata including name, uuid, skill_uuid, port, etc.
 
         Raises:
-            HTTPException: 400 if ``fields`` is invalid, 404 if server
-                not found, 500 for other errors.
+            HTTPException: 404 if server not found, 500 for other errors.
         """
         try:
-            return service.get(uuid_or_name, fields=fields)
+            return service.get(uuid_or_name)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
         except Exception as exc:
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving vNFS server: {exc}"
@@ -296,37 +326,23 @@ def register_vnfs_api(
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
         fields: Optional[str] = Query(
-            "narrow",
+            None,
             description=(
-                "Field selection over each match. Same grammar as the "
-                "list endpoint. 'minimal' for uuid-only results (cross-"
-                "reference a loaded listing). Default (omit / 'narrow') "
-                "returns the UI listing set (also runs enhancement). "
-                "'wide' returns every persisted manifest field and "
-                "also runs enhancement. 'full' returns the complete "
-                "object with enhancement. CSV allowlist also supported "
-                "(name '_enhance' to trigger the mechanism). Each "
-                "match is a field-selected vNFS dict with "
-                "'similarity_score' merged in."
+                "Optional projection over each matched server. Omit for the "
+                "legacy '{filename, similarity_score}' shape. Otherwise the "
+                "same grammar as list projection applies."
             ),
         ),
     ):
         """Search for virtual NFS servers using semantic similarity.
 
-        Returns virtual NFS servers that are semantically similar to the search
-        term and match the specified filters.
-
         Args:
             search_term: Search term to find similar virtual NFS servers.
-            max_number_of_results: Maximum number of results to return (default: 5).
-            similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
-            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
-            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
-            fields: Optional field-selection spec (see query-param description).
-
-        Returns:
-            list: Field-selected vNFS dicts with ``similarity_score``
-                merged in.
+            max_number_of_results: Maximum number of results to return.
+            similarity_threshold: Maximum similarity score threshold.
+            manifest_filter: Manifest properties to filter.
+            lifecycle_state: State to filter by.
+            fields: Optional projection spec (see query-param description).
 
         Raises:
             HTTPException: 400 if ``fields`` is invalid, 503 if search is not
@@ -341,8 +357,8 @@ def register_vnfs_api(
                 lifecycle_state=lifecycle_state,
                 fields=fields,
             )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as exc:

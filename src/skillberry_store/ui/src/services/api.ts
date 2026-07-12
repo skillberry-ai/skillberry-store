@@ -84,7 +84,7 @@ function buildListParams(opts: ListPagedOptions): URLSearchParams {
 // Tools API
 export const toolsApi = {
   list: async (): Promise<Tool[]> => {
-    const response = await fetch(`${API_BASE}/tools/?fields=narrow`);
+    const response = await fetch(`${API_BASE}/tools/?fields=list`);
     return handleResponse<Tool[]>(response);
   },
 
@@ -100,10 +100,7 @@ export const toolsApi = {
   },
 
   get: async (uuid: string): Promise<Tool> => {
-    // Detail pages render the complete tool manifest (params, returns,
-    // packaging_*, module_name, dependencies, …), so opt into ``full``
-    // — the endpoint default is ``narrow``.
-    const response = await fetch(`${API_BASE}/tools/${uuid}?fields=full`);
+    const response = await fetch(`${API_BASE}/tools/${uuid}`);
     return handleResponse<Tool>(response);
   },
 
@@ -166,12 +163,6 @@ export const toolsApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
-    // Search runs with the endpoint default (?fields=narrow) so the
-    // response carries the full row for callers that render results
-    // directly (e.g. paginated views where the search hit may not be
-    // in the currently loaded page). The `?fields=minimal` preset is
-    // still supported by the server; opt into it explicitly if you
-    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -201,7 +192,7 @@ export const toolsApi = {
 // Skills API
 export const skillsApi = {
   list: async (): Promise<Skill[]> => {
-    const response = await fetch(`${API_BASE}/skills/?fields=narrow`);
+    const response = await fetch(`${API_BASE}/skills/?fields=list`);
     return handleResponse<Skill[]>(response);
   },
 
@@ -217,10 +208,7 @@ export const skillsApi = {
   },
 
   get: async (uuid: string): Promise<Skill> => {
-    // Detail pages render the complete skill manifest with populated
-    // ``tools`` / ``snippets``, so opt into ``full`` — the endpoint
-    // default is ``narrow`` (no inlining).
-    const response = await fetch(`${API_BASE}/skills/${uuid}?fields=full`);
+    const response = await fetch(`${API_BASE}/skills/${uuid}`);
     return handleResponse<Skill>(response);
   },
 
@@ -261,12 +249,6 @@ export const skillsApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
-    // Search runs with the endpoint default (?fields=narrow) so the
-    // response carries the full row for callers that render results
-    // directly (e.g. paginated views where the search hit may not be
-    // in the currently loaded page). The `?fields=minimal` preset is
-    // still supported by the server; opt into it explicitly if you
-    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -296,7 +278,7 @@ export const skillsApi = {
 // Snippets API
 export const snippetsApi = {
   list: async (): Promise<Snippet[]> => {
-    const response = await fetch(`${API_BASE}/snippets/?fields=narrow`);
+    const response = await fetch(`${API_BASE}/snippets/?fields=list`);
     return handleResponse<Snippet[]>(response);
   },
 
@@ -312,10 +294,7 @@ export const snippetsApi = {
   },
 
   get: async (uuid: string): Promise<Snippet> => {
-    // Detail pages render the complete snippet manifest (including
-    // ``content``), so opt into ``full`` — the endpoint default is
-    // ``narrow`` (no ``content``).
-    const response = await fetch(`${API_BASE}/snippets/${uuid}?fields=full`);
+    const response = await fetch(`${API_BASE}/snippets/${uuid}`);
     return handleResponse<Snippet>(response);
   },
 
@@ -370,12 +349,6 @@ export const snippetsApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
-    // Search runs with the endpoint default (?fields=narrow) so the
-    // response carries the full row for callers that render results
-    // directly (e.g. paginated views where the search hit may not be
-    // in the currently loaded page). The `?fields=minimal` preset is
-    // still supported by the server; opt into it explicitly if you
-    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -405,15 +378,24 @@ export const snippetsApi = {
 // VMCP Servers API
 export const vmcpApi = {
   list: async (): Promise<VMCPServer[]> => {
-    const response = await fetch(`${API_BASE}/vmcp_servers/?fields=narrow`);
+    // Server returns a bare array under ?fields=list.
+    const response = await fetch(`${API_BASE}/vmcp_servers/?fields=list`);
     return handleResponse<VMCPServer[]>(response);
   },
 
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<VMCPServer>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/vmcp_servers/?${params.toString()}`);
+    return handleResponse<PagedResponse<VMCPServer>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/vmcp_servers`);
+    return handleResponse<FacetsResponse>(response);
+  },
+
   get: async (uuid: string): Promise<VMCPServer> => {
-    // Detail pages render the complete vMCP manifest plus runtime,
-    // so opt into ``full`` — the endpoint default is ``narrow``
-    // (skill_uuid / extra / timestamps are omitted at narrow).
-    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}?fields=full`);
+    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}`);
     return handleResponse<VMCPServer>(response);
   },
 
@@ -480,12 +462,6 @@ export const vmcpApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
-    // Search runs with the endpoint default (?fields=narrow) so the
-    // response carries the full row for callers that render results
-    // directly (e.g. paginated views where the search hit may not be
-    // in the currently loaded page). The `?fields=minimal` preset is
-    // still supported by the server; opt into it explicitly if you
-    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -494,20 +470,44 @@ export const vmcpApi = {
     const response = await fetch(`${API_BASE}/search/vmcp_servers?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'list',
+  ): Promise<Array<VMCPServer & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/vmcp_servers?${params}`);
+    return handleResponse<Array<VMCPServer & { similarity_score: number }>>(response);
+  },
 };
 
 // vNFS Servers API
 export const vnfsApi = {
   list: async (): Promise<VNFSServer[]> => {
-    const response = await fetch(`${API_BASE}/vnfs_servers/?fields=narrow`);
+    const response = await fetch(`${API_BASE}/vnfs_servers/?fields=list`);
     return handleResponse<VNFSServer[]>(response);
   },
 
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<VNFSServer>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/vnfs_servers/?${params.toString()}`);
+    return handleResponse<PagedResponse<VNFSServer>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/vnfs_servers`);
+    return handleResponse<FacetsResponse>(response);
+  },
+
   get: async (uuid: string): Promise<VNFSServer> => {
-    // Detail pages render the complete vNFS manifest plus runtime,
-    // so opt into ``full`` — the endpoint default is ``narrow``
-    // (skill_uuid / extra / timestamps are omitted at narrow).
-    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}?fields=full`);
+    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}`);
     return handleResponse<VNFSServer>(response);
   },
 
@@ -565,12 +565,6 @@ export const vnfsApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
-    // Search runs with the endpoint default (?fields=narrow) so the
-    // response carries the full row for callers that render results
-    // directly (e.g. paginated views where the search hit may not be
-    // in the currently loaded page). The `?fields=minimal` preset is
-    // still supported by the server; opt into it explicitly if you
-    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -578,6 +572,22 @@ export const vnfsApi = {
     });
     const response = await fetch(`${API_BASE}/search/vnfs_servers?${params}`);
     return handleResponse<SearchResult[]>(response);
+  },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'list',
+  ): Promise<Array<VNFSServer & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/vnfs_servers?${params}`);
+    return handleResponse<Array<VNFSServer & { similarity_score: number }>>(response);
   },
 };
 

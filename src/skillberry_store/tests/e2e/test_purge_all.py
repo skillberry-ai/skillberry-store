@@ -118,7 +118,7 @@ async def test_purge_all_clears_all_objects(run_sbs):
         assert r.status_code == 200
         assert len(r.json()) > 0, "Expected tools before purge"
 
-        # List endpoints return bare arrays.
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
         r = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert r.status_code == 200
         vmcp_before = r.json()

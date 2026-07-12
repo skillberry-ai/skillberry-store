@@ -297,8 +297,6 @@ class StoreAPI:
         if not self.vmcp_service:
             return None
         try:
-            # Plugins consume ``skill_uuid`` (not in the narrow preset)
-            # plus the full runtime bundle. Opt into ``full``.
             return self.vmcp_service.get(uuid_or_name, fields="full")
         except KeyError:
             return None
@@ -306,11 +304,15 @@ class StoreAPI:
     def list_vmcps(self) -> List[Dict[str, Any]]:
         if not self.vmcp_service:
             return []
-        # ``VmcpService.list_all()`` returns a bare list of server dicts.
-        # Plugins consume ``skill_uuid`` (not in the narrow preset) and
-        # the full runtime bundle, so opt into ``full``.
-        result = self.vmcp_service.list_all(fields="full")
-        return list(result) if isinstance(result, list) else []
+        # ``VmcpService.list_all()`` returns a bare list now (see Phase 3).
+        result = self.vmcp_service.list_all()
+        if isinstance(result, list):
+            return result
+        # Envelope shape when the caller paginates. Not expected here (we
+        # pass no ``limit`` / ``offset``) but tolerate it defensively.
+        if isinstance(result, dict) and "items" in result:
+            return list(result["items"])
+        return []
 
     def start_vmcp(self, uuid_or_name: str, env_id: str = "") -> bool:
         if not self.vmcp_service:

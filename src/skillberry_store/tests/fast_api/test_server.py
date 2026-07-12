@@ -206,7 +206,7 @@ def test_list_snippets_pagination_returns_envelope(fresh_sbs):
     for i in range(5):
         _create_snippet(client, f"phase2_page_{i}", f"body {i}")
 
-    resp = client.get("/snippets/", params={"limit": 2, "offset": 0, "fields": "list"})
+    resp = client.get("/snippets/", params={"limit": 2, "offset": 0, "fields": "narrow"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert isinstance(body, dict)
@@ -238,7 +238,7 @@ def test_list_snippets_search_filter(fresh_sbs):
 
     resp = client.get(
         "/snippets/",
-        params={"search": "beta", "limit": 10, "offset": 0, "fields": "list"},
+        params={"search": "beta", "limit": 10, "offset": 0, "fields": "narrow"},
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -292,7 +292,7 @@ def test_list_snippets_sort_name_asc(fresh_sbs):
             "sort": "name:asc",
             "limit": 10,
             "offset": 0,
-            "fields": "list",
+            "fields": "narrow",
             "search": "phase2_sort",
         },
     )

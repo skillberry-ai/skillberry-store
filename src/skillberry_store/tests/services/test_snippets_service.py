@@ -366,7 +366,7 @@ def test_list_all_paginated_with_fields_list_projects_only_the_page():
         for i in range(1, 6)
     ]
     svc = SnippetsService(_list_handler(items))
-    result = svc.list_all(fields="list", limit=2, offset=0)
+    result = svc.list_all(fields="narrow", limit=2, offset=0)
     assert result["total"] == 5
     for it in result["items"]:
         assert "content" not in it

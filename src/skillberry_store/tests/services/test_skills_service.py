@@ -354,7 +354,7 @@ def test_list_all_pagination_envelope_with_fields_list_skips_populate():
     ]
     svc = SkillsService(_list_handler_skills(items))
     # No registry patching; populate would raise if it ran.
-    result = svc.list_all(fields="list", limit=2, offset=0)
+    result = svc.list_all(fields="narrow", limit=2, offset=0)
     assert isinstance(result, dict)
     assert result["total"] == 5
     for it in result["items"]:
@@ -372,21 +372,21 @@ def test_list_all_search_filters_before_pagination():
          "tool_uuids": [], "snippet_uuids": [], "modified_at": "2024-01-10"},
     ]
     svc = SkillsService(_list_handler_skills(items))
-    result = svc.list_all(fields="list", search="foo", limit=2, offset=0)
+    result = svc.list_all(fields="narrow", search="foo", limit=2, offset=0)
     assert result["total"] == 3
     assert len(result["items"]) == 2
 
 
 def test_list_all_populate_only_runs_on_the_page(monkeypatch):
-    """When fields is omitted, populate should run on the returned page —
+    """When fields="full", populate should run on the returned page —
     not on the entire cache — so paginating a huge store does not fan out
     thousands of tool/snippet reads."""
     import skillberry_store.services.registry as registry
 
     tools_svc = MagicMock()
-    tools_svc.get.side_effect = lambda uuid: {"uuid": uuid, "name": uuid}
+    tools_svc.get.side_effect = lambda uuid, fields=None: {"uuid": uuid, "name": uuid}
     snippets_svc = MagicMock()
-    snippets_svc.get.side_effect = lambda uuid: {"uuid": uuid, "name": uuid}
+    snippets_svc.get.side_effect = lambda uuid, fields=None: {"uuid": uuid, "name": uuid}
     monkeypatch.setattr(registry, "_initialized", True)
     monkeypatch.setattr(
         registry, "_services", {"tool": tools_svc, "snippet": snippets_svc}
@@ -403,7 +403,7 @@ def test_list_all_populate_only_runs_on_the_page(monkeypatch):
         for i in range(1, 6)
     ]
     svc = SkillsService(_list_handler_skills(items))
-    result = svc.list_all(limit=2, offset=0)
+    result = svc.list_all(fields="full", limit=2, offset=0)
     assert result["total"] == 5
     assert len(result["items"]) == 2
     # Only the two skills on the page should have triggered populate.

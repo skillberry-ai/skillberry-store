@@ -66,7 +66,7 @@ async def test_list_vmcp_servers(run_sbs):
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert response.status_code == 200
-        # List endpoint returns a bare array (parity with skills/tools/snippets).
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
         vmcp_servers = response.json()
         assert isinstance(vmcp_servers, list)
         assert len(vmcp_servers) > 0
@@ -79,7 +79,7 @@ async def test_list_vmcp_servers(run_sbs):
 async def test_get_vmcp_server(run_sbs):
     """Test getting a specific VMCP server by name."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server?fields=full")
+        response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server")
         assert response.status_code == 200
         vmcp = response.json()
         assert vmcp.get("name") == "test_vmcp_server"
@@ -94,7 +94,7 @@ async def test_get_vmcp_server(run_sbs):
 async def test_get_nonexistent_vmcp_server(run_sbs):
     """Test that getting a non-existent VMCP server fails."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/vmcp_servers/nonexistent_vmcp_server?fields=full")
+        response = await client.get(f"{BASE_URL}/vmcp_servers/nonexistent_vmcp_server")
         assert response.status_code == 404  # File not found results in 404
 
 
@@ -118,7 +118,7 @@ async def test_update_vmcp_server(run_sbs):
         assert "port" in data
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server")
         assert get_response.status_code == 200
         vmcp = get_response.json()
         assert vmcp.get("description") == "Updated test VMCP server description"
@@ -153,7 +153,7 @@ async def test_delete_vmcp_server(run_sbs):
         assert "deleted successfully" in data.get("message", "")
 
         # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vmcp_servers/test_vmcp_server")
         assert get_response.status_code == 404  # File not found results in 404
 
 
@@ -193,7 +193,7 @@ async def test_vmcp_server_lifecycle(run_sbs):
         assert create_response.json().get("name") == vmcp_name
 
         # 2. Read
-        get_response = await client.get(f"{BASE_URL}/vmcp_servers/{vmcp_name}?fields=full")
+        get_response = await client.get(f"{BASE_URL}/vmcp_servers/{vmcp_name}")
         assert get_response.status_code == 200
         vmcp = get_response.json()
         assert vmcp.get("name") == vmcp_name
@@ -214,7 +214,7 @@ async def test_vmcp_server_lifecycle(run_sbs):
         assert "updated successfully" in update_response.json().get("message", "")
 
         # 4. Verify update
-        get_updated_response = await client.get(f"{BASE_URL}/vmcp_servers/{vmcp_name}?fields=full")
+        get_updated_response = await client.get(f"{BASE_URL}/vmcp_servers/{vmcp_name}")
         assert get_updated_response.status_code == 200
         updated_vmcp = get_updated_response.json()
         assert updated_vmcp.get("description") == "Updated lifecycle test VMCP server"
@@ -227,7 +227,7 @@ async def test_vmcp_server_lifecycle(run_sbs):
         assert "deleted successfully" in delete_response.json().get("message", "")
 
         # 6. Verify deletion
-        get_deleted_response = await client.get(f"{BASE_URL}/vmcp_servers/{vmcp_name}?fields=full")
+        get_deleted_response = await client.get(f"{BASE_URL}/vmcp_servers/{vmcp_name}")
         assert get_deleted_response.status_code == 404  # File not found results in 404
 
 
@@ -285,10 +285,9 @@ async def test_search_vmcp_servers(run_sbs):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching VMCP server"
         
-        # Verify python_vmcp_server is in results. Default search shape
-        # is the full object with ``similarity_score`` merged in.
-        names = [r.get("name") for r in results]
-        assert "python_vmcp_server" in names, f"python_vmcp_server should be in search results, got: {names}"
+        # Verify python_vmcp_server is in results
+        filenames = [r.get("filename") for r in results]
+        assert "python_vmcp_server" in filenames, f"python_vmcp_server should be in search results, got: {filenames}"
         
         # Test search for "HTTP requests"
         search_response = await client.get(
@@ -386,13 +385,13 @@ async def test_multiple_vmcp_servers_same_name_different_uuid(run_sbs):
         assert returned_uuid2 == uuid2
         
         # Verify both servers exist and can be retrieved by UUID
-        get_response1 = await client.get(f"{BASE_URL}/vmcp_servers/{uuid1}?fields=full")
+        get_response1 = await client.get(f"{BASE_URL}/vmcp_servers/{uuid1}")
         assert get_response1.status_code == 200
         server1 = get_response1.json()
         assert server1.get("uuid") == uuid1
         assert server1.get("description") == "First VMCP server with this name"
         
-        get_response2 = await client.get(f"{BASE_URL}/vmcp_servers/{uuid2}?fields=full")
+        get_response2 = await client.get(f"{BASE_URL}/vmcp_servers/{uuid2}")
         assert get_response2.status_code == 200
         server2 = get_response2.json()
         assert server2.get("uuid") == uuid2
@@ -401,7 +400,7 @@ async def test_multiple_vmcp_servers_same_name_different_uuid(run_sbs):
         # Verify both servers are in the list
         list_response = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert list_response.status_code == 200
-        # List endpoint returns a bare array.
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
         servers = list_response.json()
 
         # Both servers should be accessible (they share a name but have different UUIDs).
