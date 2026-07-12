@@ -213,6 +213,10 @@ plugin-dast = [
   "skillberry-plugin-dast>=0.1.0",
 ]
 
+plugin-skillssh-importer = [
+  "skillberry-plugin-skillssh-importer>=0.1.0",
+]
+
 # Install all plugins
 plugins-all = [
   "skillberry-plugin-creator>=0.2.0",
@@ -230,6 +234,7 @@ plugins-all = [
   "skillberry-plugin-dependency-tracker>=0.1.0",
   "skillberry-plugin-ask-runspace>=0.1.0",
   "skillberry-plugin-dast>=0.1.0",
+  "skillberry-plugin-skillssh-importer>=0.1.0",
 ]
 
 test = [
@@ -253,6 +258,7 @@ skillberry-plugin-doc-generator = { path = "plugins/skillberry-plugin-doc-genera
 skillberry-plugin-dependency-tracker = { path = "plugins/skillberry-plugin-dependency-tracker", editable = true }
 skillberry-plugin-ask-runspace = { path = "plugins/skillberry-plugin-ask-runspace", editable = true }
 skillberry-plugin-dast = { path = "plugins/skillberry-plugin-dast", editable = true }
+skillberry-plugin-skillssh-importer = { path = "plugins/skillberry-plugin-skillssh-importer", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
 torch = { index = "pytorch-cpu" }
 

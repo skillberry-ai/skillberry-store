@@ -1,5 +1,7 @@
 """Network-free tests for the GitHub provenance source (pure mappers)."""
 
+from datetime import datetime, timedelta, timezone
+
 from skillberry_plugin_provenance.sources.base import (
     CONFIDENCE_HIGH,
     CONFIDENCE_LOW,
@@ -153,11 +155,19 @@ def test_confidence_medium_for_copyleft_reputable():
 
 
 def test_assess_confidence_new_anonymous_repo_is_low():
+    # Dates are computed relative to now() so the repo is always genuinely
+    # "new" (< 30 days, the medium-confidence threshold) whenever CI runs —
+    # hardcoded dates here would become "old" as wall-clock time advances.
+    now = datetime.now(timezone.utc)
+
+    def _iso(days_ago: int) -> str:
+        return (now - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     fresh = {
         "stargazers_count": 0,
         "owner": {"login": "newbie", "type": "User"},
-        "created_at": "2026-06-10T00:00:00Z",  # days old
-        "pushed_at": "2026-06-12T00:00:00Z",
+        "created_at": _iso(5),  # a few days old → below the 30-day threshold
+        "pushed_at": _iso(3),
     }
     bg = build_background(
         {"owner": "newbie", "repo": "z", "ref": "main", "path": ""},

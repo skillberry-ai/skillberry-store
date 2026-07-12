@@ -18,13 +18,22 @@ import { CubeIcon } from '@patternfly/react-icons';
 import { pluginsApi } from '@/services/api';
 import { PluginCard } from '@/components/PluginCard';
 import { PluginActionForm } from '@/components/PluginActionForm';
+import { CatalogImportView } from '@/components/CatalogImportView';
 import type { Plugin, PluginAction } from '@/types';
+
+// Generic custom-UI archetypes. A plugin's ui_config.custom_ui.type selects one.
+// No entry here names a specific plugin.
+const CUSTOM_UI_ARCHETYPES = {
+  'catalog-import': CatalogImportView,
+} as const;
 
 export function PluginsPage() {
   const [selectedAction, setSelectedAction] = useState<{
     action: PluginAction;
     pluginName: string;
   } | null>(null);
+  // Custom-UI modal — keyed by plugin slug (renders a generic archetype).
+  const [customModalSlug, setCustomModalSlug] = useState<string | null>(null);
 
   // Fetch plugins
   const { data: plugins, isLoading, error } = useQuery({
@@ -60,6 +69,12 @@ export function PluginsPage() {
   });
 
   const handleActionClick = (plugin: Plugin, action: PluginAction) => {
+    // If the plugin declared a custom_ui spec, open the generic archetype modal
+    // instead of the generic action form.
+    if (plugin.ui_config?.custom_ui) {
+      setCustomModalSlug(plugin.slug);
+      return;
+    }
     setSelectedAction({
       action,
       pluginName: plugin.slug,
@@ -142,6 +157,22 @@ export function PluginsPage() {
           onSubmit={handleActionSubmit}
         />
       )}
+
+      {customModalSlug && (() => {
+        const plugin = plugins?.find((p) => p.slug === customModalSlug);
+        const config = plugin?.ui_config?.custom_ui;
+        if (!plugin || !config) return null;
+        const View = CUSTOM_UI_ARCHETYPES[config.type];
+        if (!View) return null;
+        return (
+          <View
+            config={config}
+            plugin={plugin}
+            isOpen={true}
+            onClose={() => setCustomModalSlug(null)}
+          />
+        );
+      })()}
     </PageSection>
   );
 }

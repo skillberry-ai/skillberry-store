@@ -183,12 +183,56 @@ export interface PluginNotificationsConfig {
   };
 }
 
+// ── Generic custom-UI archetypes ─────────────────────────────────────────────
+// A plugin may ship a declarative `custom_ui` spec that the core UI renders with
+// a generic archetype component (dispatched by `custom_ui.type`). No core UI code
+// is specific to any single plugin.
+
+export interface CatalogItemDetail { label: string; value: string; href?: string; }
+export interface CatalogItemBadge { label: string; color?: string; }
+
+/** One row in a catalog-import result table, normalized by the plugin backend. */
+export interface CatalogItem {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  source?: string | null;
+  description?: string | null;
+  details?: CatalogItemDetail[];
+  badges?: CatalogItemBadge[];
+}
+
+export interface PluginSetupStep { label: string; description: string; }
+export interface PluginSetupInstructions {
+  title: string;
+  steps: PluginSetupStep[];
+  docs_url?: string;
+}
+
+/** Declarative spec for the generic "search catalog → select → import" archetype. */
+export interface CatalogImportConfig {
+  type: 'catalog-import';
+  title: string;
+  description?: string;
+  search_endpoint: string;
+  detail_endpoint?: string;
+  import_endpoint: string;
+  search_placeholder?: string;
+  min_query_chars?: number;
+  import_button_label?: string;
+  import_extra_params?: Record<string, any>;
+  columns?: { primary?: string; secondary?: string; description?: string };
+  setup_instructions?: PluginSetupInstructions;
+}
+
 export interface PluginUIConfig {
   icon: string;
   color: string;
   actions: PluginAction[];
   settings_schema?: Record<string, any>;
   notifications?: PluginNotificationsConfig;
+  /** When set, PluginsPage renders a generic custom-UI archetype (dispatched by custom_ui.type). */
+  custom_ui?: CatalogImportConfig;
 }
 
 export interface Plugin {
