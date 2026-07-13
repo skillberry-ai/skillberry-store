@@ -20,6 +20,19 @@ PRESETS: List[Dict[str, Union[str, List[str], Dict[str, str]]]] = [
      # Optimization benefits from the multi-agent team workflow, so turn on the
      # experimental agent-teams flag for this preset (merged into the agent env).
      "env": {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}},
+    {"id": "dream", "label": "Dream — improve an agent's skills from its trajectories",
+     "prompt": ("Run a skill 'dreaming' pass. You are given an agent's recent execution "
+                "trajectories (inlined in this request, or fetched via an attached "
+                "trajectories MCP). Study where the agent struggled, repeated work, or hit "
+                "errors, and identify which of its skills were involved. Then improve those "
+                "skills IN PLACE via the skillberry-store MCP: update each skill under its "
+                "existing name so the store chains the previous version as its parent "
+                "(version history is preserved) — do not create *_optimized duplicates. "
+                "Record a short rationale per change, and make NO change to a skill when the "
+                "trajectories don't justify one."),
+     "skills": [],
+     # Dreaming reviews multiple trajectories and skills; the agent-teams workflow helps.
+     "env": {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}},
     {"id": "skill", "label": "Create a skill that…",
      "prompt": "Create a new skill that <describe it>, following the Anthropic skill format (a SKILL.md plus supporting files).",
      "skills": ["https://github.com/anthropics/skills/tree/main/skills/skill-creator"],
