@@ -36,6 +36,7 @@ import {
   MenuToggle,
   MenuToggleElement,
   Radio,
+  Checkbox,
   CodeBlock,
   CodeBlockCode,
   ClipboardCopy,
@@ -43,6 +44,7 @@ import {
 import { EditIcon, TrashIcon } from '@patternfly/react-icons';
 import { vnfsApi, skillsApi } from '@/services/api';
 import type { VNFSServer } from '@/types';
+import { validateSkillSlug } from '@/utils/skillSlug';
 
 export function VNFSServerDetailPage() {
   const { uuid } = useParams<{ uuid: string }>();
@@ -61,6 +63,7 @@ export function VNFSServerDetailPage() {
     port: undefined as number | undefined,
     skill_uuid: '',
     protocol: 'webdav',
+    npx_compat: false,
     extra: {} as Record<string, any>,
   });
   const [tagInput, setTagInput] = useState('');
@@ -149,6 +152,7 @@ export function VNFSServerDetailPage() {
         port: server.port,
         skill_uuid: server.skill_uuid || '',
         protocol: server.protocol || 'webdav',
+        npx_compat: !!server.npx_compat,
         extra: server.extra || {},
       });
       setExtraInput(JSON.stringify(server.extra || {}, null, 2));
@@ -161,6 +165,21 @@ export function VNFSServerDetailPage() {
     if (!editedServer.name || !editedServer.description) {
       setEditError('Please fill in all required fields');
       return;
+    }
+    if (editedServer.npx_compat) {
+      if (editedServer.protocol !== 'webdav') {
+        setEditError('npx install requires the WebDAV protocol.');
+        return;
+      }
+      const selected = allSkills?.find(s => s.uuid === editedServer.skill_uuid);
+      const validation = validateSkillSlug(selected?.name);
+      if (!validation.ok) {
+        setEditError(
+          `Cannot enable npx install: ${validation.reason}` +
+            (validation.suggested ? ` Rename the skill to "${validation.suggested}" first.` : '')
+        );
+        return;
+      }
     }
     let parsedExtra = {};
     try {
@@ -256,7 +275,12 @@ export function VNFSServerDetailPage() {
               <DescriptionListGroup>
                 <DescriptionListTerm>Protocol</DescriptionListTerm>
                 <DescriptionListDescription>
-                  <Label color={protocol === 'nfs' ? 'blue' : 'cyan'}>{protocol}</Label>
+                  <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                    <Label color={protocol === 'nfs' ? 'blue' : 'cyan'}>{protocol}</Label>
+                    {server.npx_compat && (
+                      <Label color="purple" title="Publishes /.well-known/agent-skills for npx skills install">npx</Label>
+                    )}
+                  </div>
                 </DescriptionListDescription>
               </DescriptionListGroup>
 
@@ -403,6 +427,26 @@ export function VNFSServerDetailPage() {
           </Card>
         )}
 
+        {/* npx skills install */}
+        {server.install_url && (
+          <Card style={{ marginTop: '1rem' }}>
+            <CardTitle>Install with <code>npx skills</code></CardTitle>
+            <CardBody>
+              <Text style={{ marginBottom: '1rem' }}>
+                This vNFS publishes a well-known agent-skills endpoint. Run the command
+                below on any machine that can reach the server to install the skill
+                directly through <code>npx skills</code>.
+              </Text>
+              <ClipboardCopy isReadOnly hoverTip="Copy" clickTip="Copied" style={{ marginBottom: '0.5rem' }}>
+                {`npx skills add ${server.install_url}`}
+              </ClipboardCopy>
+              <Text component="small" style={{ display: 'block', color: '#6a6e73' }}>
+                Manifest: <a href={`${server.install_url}/.well-known/agent-skills/index.json`} target="_blank" rel="noreferrer">{server.install_url}/.well-known/agent-skills/index.json</a>
+              </Text>
+            </CardBody>
+          </Card>
+        )}
+
         {/* Mount Instructions */}
         <Card style={{ marginTop: '1rem' }}>
           <CardTitle>Mount Instructions</CardTitle>
@@ -526,9 +570,29 @@ export function VNFSServerDetailPage() {
           <FormGroup label="Protocol" isRequired fieldId="edit-server-protocol">
             <div style={{ display: 'flex', gap: '1.5rem' }}>
               <Radio id="edit-protocol-webdav" name="edit-protocol" label="WebDAV" value="webdav" isChecked={editedServer.protocol === 'webdav'} onChange={() => setEditedServer({ ...editedServer, protocol: 'webdav' })} />
-              <Radio id="edit-protocol-nfs" name="edit-protocol" label="NFS" value="nfs" isChecked={editedServer.protocol === 'nfs'} onChange={() => setEditedServer({ ...editedServer, protocol: 'nfs' })} />
+              <Radio id="edit-protocol-nfs" name="edit-protocol" label="NFS" value="nfs" isChecked={editedServer.protocol === 'nfs'} onChange={() => setEditedServer({ ...editedServer, protocol: 'nfs', npx_compat: false })} />
             </div>
           </FormGroup>
+          {editedServer.protocol === 'webdav' && (
+            <FormGroup fieldId="edit-server-npx-compat">
+              <Checkbox
+                id="edit-server-npx-compat"
+                label={<span>Install with <code>npx skills</code> (publish well-known agent-skills endpoint)</span>}
+                isChecked={editedServer.npx_compat}
+                onChange={(_, checked) => setEditedServer({ ...editedServer, npx_compat: checked })}
+              />
+              {editedServer.npx_compat && editedServer.skill_uuid && (() => {
+                const selected = allSkills?.find(s => s.uuid === editedServer.skill_uuid);
+                const validation = validateSkillSlug(selected?.name);
+                if (validation.ok) return null;
+                return (
+                  <Alert variant="warning" isInline title="Skill name is not a valid npx slug" style={{ marginTop: '0.5rem' }}>
+                    {validation.reason} Rename the skill to <code>{validation.suggested || '<slug>'}</code> before enabling npx install.
+                  </Alert>
+                );
+              })()}
+            </FormGroup>
+          )}
           <FormGroup label="Name" isRequired fieldId="edit-server-name">
             <TextInput isRequired type="text" id="edit-server-name" value={editedServer.name} onChange={(_, v) => setEditedServer({ ...editedServer, name: v })} />
           </FormGroup>

@@ -31,12 +31,13 @@ search_vnfs_counter = Counter(f"{prom_prefix}search_counter", "vNFS search opera
 
 def _to_ns(data: Dict[str, Any]) -> SimpleNamespace:
     """Build a SimpleNamespace with attributes needed by VirtualNfsServerManager.add_server.
-    
+
     Args:
         data: Dictionary containing vNFS server configuration.
-        
+
     Returns:
-        SimpleNamespace: Object with name, uuid, port, skill_uuid, description, and protocol attributes.
+        SimpleNamespace: Object with name, uuid, port, skill_uuid, description,
+        protocol, and npx_compat attributes.
     """
     return SimpleNamespace(
         name=data.get("name"),
@@ -45,7 +46,41 @@ def _to_ns(data: Dict[str, Any]) -> SimpleNamespace:
         skill_uuid=data.get("skill_uuid"),
         description=data.get("description") or "",
         protocol=data.get("protocol", "webdav"),
+        npx_compat=bool(data.get("npx_compat", False)),
     )
+
+
+def _compute_install_url(data: Dict[str, Any], request_host: Optional[str] = None) -> Optional[str]:
+    """Return the ``npx skills add`` URL for a vNFS, or None when not applicable.
+
+    Only vNFS servers with ``protocol == "webdav"`` and ``npx_compat == True``
+    have an install URL. The host is resolved with the following precedence:
+
+    1. ``SBS_VNFS_PUBLIC_HOST`` env var (deployment override).
+    2. The ``Host`` header from the current request (when provided).
+    3. ``localhost`` as a safe local default.
+
+    Args:
+        data: vNFS server dict with at least ``port`` and ``protocol``.
+        request_host: Optional value of the request ``Host`` header
+            (already stripped of any port suffix).
+
+    Returns:
+        The install URL string, or None when the vNFS is not eligible.
+    """
+    import os
+
+    if data.get("protocol") != "webdav" or not data.get("npx_compat"):
+        return None
+    port = data.get("port")
+    if not port:
+        return None
+    host = (
+        os.environ.get("SBS_VNFS_PUBLIC_HOST")
+        or request_host
+        or "localhost"
+    )
+    return f"http://{host}:{port}"
 
 
 class VnfsService:
@@ -204,9 +239,13 @@ class VnfsService:
                     )
                     d["running"] = runtime is not None and runtime.running
                     d["export_path"] = str(runtime.export_path) if runtime else None
+                    if runtime is not None:
+                        d["npx_compat"] = getattr(runtime, "npx_compat", d.get("npx_compat", False))
                 except Exception:
                     d["running"] = False
                     d["export_path"] = None
+                d.setdefault("npx_compat", False)
+                d["install_url"] = _compute_install_url(d)
                 return d
         except KeyError:
             raise
@@ -250,10 +289,12 @@ class VnfsService:
                         "port": item.get("port"),
                         "skill_uuid": item.get("skill_uuid"),
                         "protocol": item.get("protocol", "webdav"),
+                        "npx_compat": bool(item.get("npx_compat", False)),
                         "modified_at": item.get("modified_at", ""),
                         "running": runtime is not None and runtime.running,
                         "export_path": str(runtime.export_path) if runtime else None,
                     }
+                    info["install_url"] = _compute_install_url(info)
                     servers.append(info)
                 except Exception as e:
                     logger.warning(

@@ -91,6 +91,8 @@ export interface VNFSServer {
   port?: number;
   skill_uuid?: string;
   protocol?: string;
+  npx_compat?: boolean;
+  install_url?: string | null;
   extra?: Record<string, any>;
   running?: boolean;
   export_path?: string;

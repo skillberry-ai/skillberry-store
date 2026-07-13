@@ -58,6 +58,7 @@ class VirtualNfsServerManager:
                 protocol=getattr(schema, "protocol", "webdav"),
                 description=schema.description or "",
                 uuid=schema.uuid,
+                npx_compat=getattr(schema, "npx_compat", False),
             )
             server.start(skill, tools, snippets, tool_modules)
             self.servers[runtime_server_name] = server
@@ -169,6 +170,7 @@ class VirtualNfsServerManager:
                         protocol=data.get("protocol", "webdav"),
                         description=data.get("description", ""),
                         uuid=uuid,
+                        npx_compat=bool(data.get("npx_compat", False)),
                     )
                     server.start(skill, tools, snippets, tool_modules)
                     self.servers[runtime_server_name] = server

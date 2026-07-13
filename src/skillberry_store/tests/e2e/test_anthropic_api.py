@@ -192,7 +192,7 @@ async def test_export_anthropic_skill(run_sbs):
         export_response = await client.get(
             f"{BASE_URL}/skills/{skill_name}/export-anthropic"
         )
-        
+
         assert export_response.status_code == 200
         assert export_response.headers['content-type'] == 'application/zip'
         assert 'attachment' in export_response.headers.get('content-disposition', '')
@@ -246,7 +246,7 @@ async def test_import_export_roundtrip(run_sbs):
         )
         assert export_response.status_code == 200
         exported_zip = export_response.content
-        
+
         # Step 3: Delete the original skill
         delete_response = await client.delete(f"{BASE_URL}/skills/{skill_name_1}")
         assert delete_response.status_code == 200
@@ -480,7 +480,7 @@ async def test_import_export_roundtrip_with_treat_all_as_documents(run_sbs):
         )
         assert export_response.status_code == 200
         exported_zip = export_response.content
-        
+
         # Step 3: Delete the original skill
         delete_response = await client.delete(f"{BASE_URL}/skills/{skill_name_1}")
         assert delete_response.status_code == 200

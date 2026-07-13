@@ -184,12 +184,14 @@ class VirtualNfsServer:
         protocol: str = "webdav",
         description: str = "",
         uuid: Optional[str] = None,
+        npx_compat: bool = False,
     ):
         self.name = name
         self.skill_uuid = skill_uuid
         self.description = description
         self.protocol = protocol
         self.uuid = uuid or name
+        self.npx_compat = npx_compat
 
         if port is None:
             self.port = self._find_available_port()
@@ -239,13 +241,19 @@ class VirtualNfsServer:
         from skillberry_store.tools.anthropic.exporter import export_skill_to_directory
 
         export_skill_to_directory(
-            skill, tools, snippets, str(self.export_path), tool_modules
+            skill,
+            tools,
+            snippets,
+            str(self.export_path),
+            tool_modules,
+            npx_compat=self.npx_compat,
         )
         self.backend.start(str(self.export_path), self.port)
         self.running = True
         logger.info(
             f"VirtualNfsServer '{self.name}' started on port {self.port} "
-            f"({self.protocol}), export_path={self.export_path}"
+            f"({self.protocol}, npx_compat={self.npx_compat}), "
+            f"export_path={self.export_path}"
         )
 
     def stop(self) -> None:
@@ -269,7 +277,12 @@ class VirtualNfsServer:
         from skillberry_store.tools.anthropic.exporter import export_skill_to_directory
 
         export_skill_to_directory(
-            skill, tools, snippets, str(self.export_path), tool_modules
+            skill,
+            tools,
+            snippets,
+            str(self.export_path),
+            tool_modules,
+            npx_compat=self.npx_compat,
         )
         logger.info(f"VirtualNfsServer '{self.name}' files refreshed")
 
@@ -280,6 +293,7 @@ class VirtualNfsServer:
             "port": self.port,
             "protocol": self.protocol,
             "description": self.description,
+            "npx_compat": self.npx_compat,
             "running": self.running,
             "export_path": str(self.export_path),
         }

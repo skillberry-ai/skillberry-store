@@ -4,8 +4,45 @@
 """Exporter for converting Skillberry skills to Anthropic skill format."""
 
 import io
+import json
 import zipfile
 from typing import Dict, List, Optional, Any
+
+from .naming import validate_skill_slug
+
+WELLKNOWN_PRIMARY_PREFIX = ".well-known/agent-skills"
+WELLKNOWN_LEGACY_PREFIX = ".well-known/skills"
+
+
+class InvalidSkillNameError(ValueError):
+    """Raised when a skill's name is not a valid slug and strict mode is on.
+
+    Carries a suggested slug so callers (API, UI) can offer a rename shortcut.
+    """
+
+    def __init__(self, name: str, reason: str, suggested: str):
+        super().__init__(
+            f"Skill name '{name}' is not a valid slug: {reason} "
+            f"Suggested: '{suggested}'."
+        )
+        self.name = name
+        self.reason = reason
+        self.suggested = suggested
+
+
+def _enforce_skill_name(skill: Dict[str, Any]) -> None:
+    """Validate ``skill['name']`` against the npx / Anthropic slug rule.
+
+    Raises:
+        InvalidSkillNameError: When the name is not slug-safe.
+    """
+    result = validate_skill_slug(skill.get("name"))
+    if not result.ok:
+        raise InvalidSkillNameError(
+            name=skill.get("name") or "",
+            reason=result.reason,
+            suggested=result.suggested,
+        )
 
 
 def extract_file_path_from_tags(tags: Optional[List[str]]) -> Optional[str]:
@@ -304,6 +341,104 @@ def _build_file_structure(
     return result
 
 
+def _extract_frontmatter_description(skill_md: bytes) -> str:
+    """Return the ``description`` field from a SKILL.md frontmatter block.
+
+    Falls back to an empty string when the field is not present. Kept
+    intentionally small — the writer of the frontmatter is our own
+    :func:`generate_skill_md`, so we do not need a full YAML parser.
+    """
+    try:
+        text = skill_md.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+    if not text.startswith("---"):
+        return ""
+    # Slice between the first and second '---' fence.
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return ""
+    for line in parts[1].splitlines():
+        if line.startswith("description:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+def build_wellknown_index(
+    slug: str, description: str, relative_files: List[str]
+) -> bytes:
+    """Build the ``index.json`` payload for the well-known agent-skills provider.
+
+    Args:
+        slug: The skill slug (matches the folder name under
+            ``.well-known/agent-skills/``).
+        description: Description to advertise, sourced from the same SKILL.md
+            frontmatter that lands in the export.
+        relative_files: Sorted list of file paths inside ``<slug>/``. Each
+            entry must be fetchable at
+            ``/.well-known/agent-skills/<slug>/<entry>``.
+
+    Returns:
+        UTF-8 JSON bytes ready to be written to
+        ``.well-known/agent-skills/index.json``.
+    """
+    payload = {
+        "version": 1,
+        "skills": [
+            {
+                "name": slug,
+                "description": description,
+                "files": list(relative_files),
+            }
+        ],
+    }
+    # sort_keys is deliberate: manifest bytes are stable across restarts.
+    return (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def _augment_with_wellknown_layout(files: Dict[str, bytes]) -> Dict[str, bytes]:
+    """Return ``files`` extended with the well-known layout.
+
+    Given the canonical export layout produced by
+    :func:`_build_file_structure` — every path prefixed by ``<skill>/`` —
+    this returns a superset dict that additionally contains:
+
+    - The same files under ``.well-known/agent-skills/<skill>/``.
+    - The same files under ``.well-known/skills/<skill>/`` (legacy alias).
+    - ``.well-known/agent-skills/index.json`` listing every file.
+    - ``.well-known/skills/index.json`` (byte-identical copy).
+
+    The input dict is not mutated.
+    """
+    if not files:
+        return dict(files)
+
+    # Discover the skill folder (all keys share the same first segment by
+    # construction).
+    first_key = next(iter(files))
+    slug = first_key.split("/", 1)[0]
+
+    result: Dict[str, bytes] = dict(files)
+    relative_files: List[str] = []
+    skill_md_bytes = b""
+
+    for path, content in files.items():
+        rel = path[len(slug) + 1 :]
+        relative_files.append(rel)
+        result[f"{WELLKNOWN_PRIMARY_PREFIX}/{slug}/{rel}"] = content
+        result[f"{WELLKNOWN_LEGACY_PREFIX}/{slug}/{rel}"] = content
+        if rel == "SKILL.md":
+            skill_md_bytes = content
+
+    relative_files.sort()
+    description = _extract_frontmatter_description(skill_md_bytes)
+    index_bytes = build_wellknown_index(slug, description, relative_files)
+    result[f"{WELLKNOWN_PRIMARY_PREFIX}/index.json"] = index_bytes
+    result[f"{WELLKNOWN_LEGACY_PREFIX}/index.json"] = index_bytes
+
+    return result
+
+
 def export_skill_to_anthropic_format(
     skill: Dict[str, Any],
     tools: List[Dict[str, Any]],
@@ -338,6 +473,7 @@ def export_skill_to_directory(
     snippets: List[Dict[str, Any]],
     output_dir: str,
     tool_modules: Optional[Dict[str, str]] = None,
+    npx_compat: bool = False,
 ) -> None:
     """Export skill to a directory on disk.
 
@@ -350,10 +486,23 @@ def export_skill_to_directory(
         snippets: List of snippet dictionaries
         output_dir: Destination directory path (created if absent)
         tool_modules: Dictionary mapping tool names to module content
+        npx_compat: When True, validate the skill's ``name`` as a slug and
+            additionally materialize a well-known agent-skills layout at
+            ``.well-known/agent-skills/`` (plus the legacy
+            ``.well-known/skills/`` alias) so ``npx skills add
+            http://host:port`` can discover and install the skill.
+
+    Raises:
+        InvalidSkillNameError: If ``npx_compat`` is True and the skill's
+            ``name`` is not a valid slug.
     """
     from pathlib import Path
 
+    if npx_compat:
+        _enforce_skill_name(skill)
     files = _build_file_structure(skill, tools, snippets, tool_modules)
+    if npx_compat:
+        files = _augment_with_wellknown_layout(files)
     for rel_path, content in files.items():
         dest = Path(output_dir) / rel_path
         dest.parent.mkdir(parents=True, exist_ok=True)
