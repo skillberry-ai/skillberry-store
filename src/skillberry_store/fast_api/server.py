@@ -48,7 +48,7 @@ class SBSettings(BaseSettings):
         "INFO", validation_alias="UVICORN_LOG_LEVEL"
     )
     observability: bool = Field(True, validation_alias="OBSERVABILITY")
-    sbs_vdb: str = Field("faiss", env="SBS_VDB")
+    sbs_vdb: str = Field("faiss", validation_alias="SBS_VDB")
 
     @property
     def display_host(self) -> str:
