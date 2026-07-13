@@ -99,16 +99,21 @@ export function SkillsPage() {
     enabled: searchTerm.length > 0 && searchMode === 'semantic',
   });
 
-  // Fetch all tools for the dropdown
+  // Fetch all tools for the "Create Skill" modal dropdown.
+  // Gated on the modal being open so page-mount and background /changes
+  // invalidations don't drag the full tools list across the wire when the
+  // user only wants to browse skills.
   const { data: allTools } = useQuery({
     queryKey: ['tools'],
     queryFn: toolsApi.list,
+    enabled: isCreateModalOpen,
   });
 
-  // Fetch all snippets for the dropdown
+  // Fetch all snippets for the "Create Skill" modal dropdown. Same gating.
   const { data: allSnippets } = useQuery({
     queryKey: ['snippets'],
     queryFn: snippetsApi.list,
+    enabled: isCreateModalOpen,
   });
 
   // Create skill mutation
