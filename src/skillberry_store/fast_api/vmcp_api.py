@@ -101,22 +101,38 @@ def register_vmcp_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "list-vmcp-servers", "x-mcp-tool": True},
     )
-    def list_vmcp_servers(skill_uuid: Optional[str] = None):
+    def list_vmcp_servers(
+        skill_uuid: Optional[str] = None,
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Field selection. Omit for the full runtime-enriched server "
+                "object (default). Use 'list' for the slim list-view preset "
+                "(keeps runtime-status fields the list UI depends on), "
+                "'full' for the full object, or a comma-separated allowlist "
+                "of field names."
+            ),
+        ),
+    ):
         """List all virtual MCP servers in the store.
 
         Retrieves metadata for all virtual MCP servers, optionally filtered by skill UUID.
 
         Args:
             skill_uuid: Optional skill UUID to filter servers by.
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
             list: List of server metadata dicts (each with runtime status).
+                Fields are filtered when ``fields`` narrows the selection.
 
         Raises:
-            HTTPException: 500 if listing fails.
+            HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
         """
         try:
-            return service.list_all(skill_uuid=skill_uuid)
+            return service.list_all(skill_uuid=skill_uuid, fields=fields)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error listing vmcp servers: {str(e)}"
@@ -273,6 +289,16 @@ def register_vmcp_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Optional field selection over each matched vMCP server. "
+                "Omit for the legacy '{filename, similarity_score}' shape. "
+                "Use 'list' for the slim list-view preset merged with "
+                "'similarity_score', 'full' for the raw vMCP dict, or a "
+                "comma-separated allowlist of field names."
+            ),
+        ),
     ):
         """Search for virtual MCP servers using semantic similarity.
 
@@ -285,12 +311,16 @@ def register_vmcp_api(
             similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
             manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            list: List of matched server names and similarity scores.
+            list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
+                when ``fields`` is omitted; otherwise field-selected vMCP
+                dicts with ``similarity_score`` merged in.
 
         Raises:
-            HTTPException: 503 if search is not available, 500 for other errors.
+            HTTPException: 400 if ``fields`` is invalid, 503 if search is not
+                available, 500 for other errors.
         """
         try:
             return service.search(
@@ -299,7 +329,10 @@ def register_vmcp_api(
                 similarity_threshold=similarity_threshold,
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
+                fields=fields,
             )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:

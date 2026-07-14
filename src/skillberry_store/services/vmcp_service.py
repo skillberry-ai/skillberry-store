@@ -256,17 +256,32 @@ class VmcpService:
             logger.error(f"Error retrieving vmcp server '{uuid_or_name}': {e}")
             raise
 
-    def list_all(self, skill_uuid: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_all(
+        self,
+        skill_uuid: Optional[str] = None,
+        fields: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """List all VMCP servers with runtime status.
 
         Args:
             skill_uuid: When provided, restrict the result to servers whose
                 ``skill_uuid`` matches this value.
+            fields: Optional field-selection spec (``None`` / ``"full"`` /
+                ``"list"`` / comma-separated allowlist). See
+                :mod:`skillberry_store.services.field_selection`. The runtime
+                enrichment fields (``running`` / ``runtime``) are always
+                populated before selection.
 
         Returns:
             List[Dict[str, Any]]: Server info dicts with runtime status, sorted
-                by ``modified_at`` descending.
+                by ``modified_at`` descending. Fields are filtered according
+                to ``fields``.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_items_fields,
+        )
+
         list_vmcp_counter.inc()
         try:
             items = self.handler.list_all_dicts()
@@ -310,7 +325,8 @@ class VmcpService:
                         f"Error loading vmcp server '{item.get('name')}': {e}"
                     )
             servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return servers
+            allow = parse_fields_spec(fields, "vmcp")
+            return select_items_fields(servers, allow)
         except Exception as e:
             logger.error(f"Error listing vmcp servers: {e}")
             raise
@@ -322,6 +338,7 @@ class VmcpService:
         similarity_threshold: float = 1.0,
         manifest_filter: str = ".",
         lifecycle_state: Optional["LifecycleState"] = None,
+        fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search VMCP servers by semantic similarity to a search term.
 
@@ -340,9 +357,17 @@ class VmcpService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
+            fields: Optional field-selection spec. When ``None`` (default),
+                each match is returned as the legacy
+                ``{"filename", "similarity_score"}`` pair. Otherwise the same
+                grammar as list field-selection applies (``"list"`` /
+                ``"full"`` / comma-separated allowlist) and each match is
+                returned as a field-selected VMCP dict with
+                ``similarity_score`` merged in.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
+                Shape depends on ``fields`` (see above).
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -350,6 +375,10 @@ class VmcpService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
 
         search_vmcp_counter.inc()
         try:
@@ -372,9 +401,10 @@ class VmcpService:
                 if not vmcp_uuid:
                     continue
                 try:
-                    d = self.handler.read_dict(vmcp_uuid)
-                    d["similarity_score"] = m.get("similarity_score", 0.0)
-                    candidates.append(d)
+                    fetched = self.handler.read_dict(vmcp_uuid)
+                    candidate = dict(fetched)
+                    candidate["similarity_score"] = m.get("similarity_score", 0.0)
+                    candidates.append(candidate)
                 except Exception as exc:
                     logger.warning(f"Could not load vmcp '{vmcp_uuid}': {exc}")
             result_items = apply_search_filters(
@@ -383,9 +413,19 @@ class VmcpService:
                 lifecycle_state=lifecycle_state,
             )
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            if fields is None:
+                return [
+                    {
+                        "filename": s.get("name", ""),
+                        "similarity_score": s.get("similarity_score", 0.0),
+                    }
+                    for s in result_items
+                    if s.get("name")
+                ]
+            allow = parse_fields_spec(fields, "vmcp")
             return [
                 {
-                    "filename": s.get("name", ""),
+                    **select_item_fields(s, allow),
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in result_items

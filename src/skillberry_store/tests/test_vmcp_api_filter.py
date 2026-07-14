@@ -7,7 +7,7 @@ def _app(servers):
     app = FastAPI()
     svc = MagicMock()
 
-    def _list_all(skill_uuid=None):
+    def _list_all(skill_uuid=None, fields=None):
         matches = servers if skill_uuid is None else [
             s for s in servers if s.get("skill_uuid") == skill_uuid
         ]

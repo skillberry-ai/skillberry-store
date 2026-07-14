@@ -214,17 +214,32 @@ class VnfsService:
             logger.error(f"Error retrieving vnfs server '{uuid_or_name}': {exc}")
             raise
 
-    def list_all(self, skill_uuid: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list_all(
+        self,
+        skill_uuid: Optional[str] = None,
+        fields: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """List all vNFS servers with runtime status.
 
         Args:
             skill_uuid: When provided, restrict the result to servers whose
                 ``skill_uuid`` matches this value.
+            fields: Optional field-selection spec (``None`` / ``"full"`` /
+                ``"list"`` / comma-separated allowlist). See
+                :mod:`skillberry_store.services.field_selection`. The runtime
+                enrichment fields (``running`` / ``export_path``) are always
+                populated before selection.
 
         Returns:
             List[Dict[str, Any]]: Server info dicts with runtime status and
-                export paths, sorted by ``modified_at`` descending.
+                export paths, sorted by ``modified_at`` descending. Fields
+                are filtered according to ``fields``.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_items_fields,
+        )
+
         list_vnfs_counter.inc()
         try:
             items = self.handler.list_all_dicts()
@@ -260,7 +275,8 @@ class VnfsService:
                         f"Error loading vnfs server '{item.get('name')}': {e}"
                     )
             servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return servers
+            allow = parse_fields_spec(fields, "vnfs")
+            return select_items_fields(servers, allow)
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")
             raise
@@ -272,6 +288,7 @@ class VnfsService:
         similarity_threshold: float = 1.0,
         manifest_filter: str = ".",
         lifecycle_state: Optional["LifecycleState"] = None,
+        fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search vNFS servers by semantic similarity to a search term.
 
@@ -290,9 +307,17 @@ class VnfsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
+            fields: Optional field-selection spec. When ``None`` (default),
+                each match is returned as the legacy
+                ``{"filename", "similarity_score"}`` pair. Otherwise the same
+                grammar as list field-selection applies (``"list"`` /
+                ``"full"`` / comma-separated allowlist) and each match is
+                returned as a field-selected vNFS dict with
+                ``similarity_score`` merged in.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
+                Shape depends on ``fields`` (see above).
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -300,6 +325,10 @@ class VnfsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
 
         search_vnfs_counter.inc()
         try:
@@ -322,9 +351,10 @@ class VnfsService:
                 if not vnfs_uuid:
                     continue
                 try:
-                    d = self.handler.read_dict(vnfs_uuid)
-                    d["similarity_score"] = m.get("similarity_score", 0.0)
-                    candidates.append(d)
+                    fetched = self.handler.read_dict(vnfs_uuid)
+                    candidate = dict(fetched)
+                    candidate["similarity_score"] = m.get("similarity_score", 0.0)
+                    candidates.append(candidate)
                 except Exception as exc:
                     logger.warning(f"Could not load vnfs '{vnfs_uuid}': {exc}")
             result_items = apply_search_filters(
@@ -333,9 +363,19 @@ class VnfsService:
                 lifecycle_state=lifecycle_state,
             )
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            if fields is None:
+                return [
+                    {
+                        "filename": s.get("name", ""),
+                        "similarity_score": s.get("similarity_score", 0.0),
+                    }
+                    for s in result_items
+                    if s.get("name")
+                ]
+            allow = parse_fields_spec(fields, "vnfs")
             return [
                 {
-                    "filename": s.get("name", ""),
+                    **select_item_fields(s, allow),
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in result_items

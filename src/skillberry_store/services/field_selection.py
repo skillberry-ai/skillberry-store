@@ -65,10 +65,52 @@ SKILL_LIST_FIELDS: Set[str] = {
     "snippet_uuids",
 }
 
+# vMCP / vNFS list presets include the runtime-status fields (``running``,
+# ``runtime`` for vMCP; ``running``, ``export_path`` for vNFS) — the list UI
+# depends on them.
+VMCP_LIST_FIELDS: Set[str] = {
+    "uuid",
+    "name",
+    "description",
+    "state",
+    "tags",
+    "version",
+    "extra",
+    "parent",
+    "created_at",
+    "modified_at",
+    "author",
+    "port",
+    "skill_uuid",
+    "running",
+    "runtime",
+}
+
+VNFS_LIST_FIELDS: Set[str] = {
+    "uuid",
+    "name",
+    "description",
+    "state",
+    "tags",
+    "version",
+    "extra",
+    "parent",
+    "created_at",
+    "modified_at",
+    "author",
+    "port",
+    "skill_uuid",
+    "protocol",
+    "running",
+    "export_path",
+}
+
 _LIST_PRESETS: Dict[str, Set[str]] = {
     "snippet": SNIPPET_LIST_FIELDS,
     "tool": TOOL_LIST_FIELDS,
     "skill": SKILL_LIST_FIELDS,
+    "vmcp": VMCP_LIST_FIELDS,
+    "vnfs": VNFS_LIST_FIELDS,
 }
 
 

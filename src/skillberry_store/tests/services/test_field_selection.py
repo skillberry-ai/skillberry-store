@@ -6,6 +6,8 @@ from skillberry_store.services.field_selection import (
     SKILL_LIST_FIELDS,
     SNIPPET_LIST_FIELDS,
     TOOL_LIST_FIELDS,
+    VMCP_LIST_FIELDS,
+    VNFS_LIST_FIELDS,
     parse_fields_spec,
     select_item_fields,
     select_items_fields,
@@ -32,6 +34,8 @@ def test_parse_list_per_type():
     assert parse_fields_spec("list", "snippet") == SNIPPET_LIST_FIELDS
     assert parse_fields_spec("list", "tool") == TOOL_LIST_FIELDS
     assert parse_fields_spec("list", "skill") == SKILL_LIST_FIELDS
+    assert parse_fields_spec("list", "vmcp") == VMCP_LIST_FIELDS
+    assert parse_fields_spec("list", "vnfs") == VNFS_LIST_FIELDS
 
 
 def test_parse_list_unknown_type_raises():
@@ -100,3 +104,15 @@ def test_skill_preset_omits_populated_arrays():
     assert "snippets" not in SKILL_LIST_FIELDS
     assert "tool_uuids" in SKILL_LIST_FIELDS
     assert "snippet_uuids" in SKILL_LIST_FIELDS
+
+
+def test_vmcp_preset_keeps_runtime_status_fields():
+    # The list UI depends on ``running`` / ``runtime`` — they must survive
+    # the slim projection.
+    assert "running" in VMCP_LIST_FIELDS
+    assert "runtime" in VMCP_LIST_FIELDS
+
+
+def test_vnfs_preset_keeps_runtime_status_fields():
+    assert "running" in VNFS_LIST_FIELDS
+    assert "export_path" in VNFS_LIST_FIELDS

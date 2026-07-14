@@ -57,3 +57,103 @@ def test_delete_stops_runtime_then_removes_persistent():
         svc.delete("v1")
     mgr.remove_server.assert_called_once()
     h.delete_object.assert_called_once()
+
+
+# ── field selection (?fields) ──────────────────────────────────────────
+
+
+def test_list_all_fields_none_returns_full_enriched_shape():
+    svc = VnfsService(_handler(), _manager())
+    result = svc.list_all()
+    assert result[0]["running"] is True
+    assert result[0]["export_path"] == "/tmp/export"
+    assert "port" in result[0]
+
+
+def test_list_all_fields_list_preset_keeps_runtime_status():
+    svc = VnfsService(_handler(), _manager())
+    result = svc.list_all(fields="list")
+    # Preset keeps the runtime-status fields the list UI depends on.
+    assert result[0]["running"] is True
+    assert result[0]["export_path"] == "/tmp/export"
+    assert result[0]["name"] == "v1"
+
+
+def test_list_all_fields_csv_allowlist_narrows_output():
+    svc = VnfsService(_handler(), _manager())
+    result = svc.list_all(fields="uuid,name")
+    assert result == [{"uuid": "dddd-4444", "name": "v1"}]
+
+
+def test_list_all_fields_full_returns_all_fields():
+    svc = VnfsService(_handler(), _manager())
+    result = svc.list_all(fields="full")
+    assert "running" in result[0]
+    assert "export_path" in result[0]
+
+
+def _search_handler_vnfs(cached_vnfs):
+    """Build a handler mock wired for ``VnfsService.search``."""
+    h = _handler()
+    h.read_dict.return_value = cached_vnfs
+    h.descriptions = MagicMock()
+    h.descriptions.search_description.return_value = [
+        {"filename": cached_vnfs["uuid"], "similarity_score": 0.4}
+    ]
+    return h
+
+
+def test_search_default_returns_legacy_shape():
+    cached = {
+        "uuid": "v1",
+        "name": "v1",
+        "state": "approved",
+        "modified_at": "2024-02-01",
+    }
+    svc = VnfsService(_search_handler_vnfs(cached), _manager())
+    result = svc.search("q")
+    assert result == [{"filename": "v1", "similarity_score": 0.4}]
+
+
+def test_search_does_not_mutate_cache_entry():
+    cached = {
+        "uuid": "v1",
+        "name": "v1",
+        "state": "approved",
+        "modified_at": "2024-02-01",
+    }
+    svc = VnfsService(_search_handler_vnfs(cached), _manager())
+    svc.search("q")
+    assert "similarity_score" not in cached
+
+
+def test_search_with_fields_full_returns_dict_plus_score():
+    cached = {
+        "uuid": "v1",
+        "name": "v1",
+        "state": "approved",
+        "port": 9000,
+        "modified_at": "2024-02-01",
+    }
+    svc = VnfsService(_search_handler_vnfs(cached), _manager())
+    result = svc.search("q", fields="full")
+    r = result[0]
+    assert r["uuid"] == "v1"
+    assert r["port"] == 9000
+    assert r["similarity_score"] == 0.4
+
+
+def test_search_with_fields_csv_narrows_output_and_keeps_score():
+    cached = {
+        "uuid": "v1",
+        "name": "v1",
+        "state": "approved",
+        "port": 9000,
+        "description": "hidden",
+        "modified_at": "2024-02-01",
+    }
+    svc = VnfsService(_search_handler_vnfs(cached), _manager())
+    result = svc.search("q", fields="uuid,name")
+    assert result == [
+        {"uuid": "v1", "name": "v1", "similarity_score": 0.4}
+    ]
