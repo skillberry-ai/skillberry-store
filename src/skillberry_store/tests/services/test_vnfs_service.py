@@ -44,7 +44,9 @@ def test_create_raises_on_duplicate():
 def test_list_includes_running_status():
     svc = VnfsService(_handler(), _manager())
     result = svc.list_all()
-    assert "virtual_nfs_servers" in result
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0]["running"] is True
 
 
 def test_delete_stops_runtime_then_removes_persistent():

@@ -110,7 +110,7 @@ def register_vmcp_api(
             skill_uuid: Optional skill UUID to filter servers by.
 
         Returns:
-            dict: Dictionary containing virtual_mcp_servers with server metadata.
+            list: List of server metadata dicts (each with runtime status).
 
         Raises:
             HTTPException: 500 if listing fails.

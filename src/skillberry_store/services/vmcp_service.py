@@ -256,7 +256,7 @@ class VmcpService:
             logger.error(f"Error retrieving vmcp server '{uuid_or_name}': {e}")
             raise
 
-    def list_all(self, skill_uuid: Optional[str] = None) -> Dict[str, Any]:
+    def list_all(self, skill_uuid: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all VMCP servers with runtime status.
 
         Args:
@@ -264,8 +264,8 @@ class VmcpService:
                 ``skill_uuid`` matches this value.
 
         Returns:
-            Dict[str, Any]: Dictionary with 'virtual_mcp_servers' key containing server info
-                           indexed by UUID, including runtime status.
+            List[Dict[str, Any]]: Server info dicts with runtime status, sorted
+                by ``modified_at`` descending.
         """
         list_vmcp_counter.inc()
         try:
@@ -310,7 +310,7 @@ class VmcpService:
                         f"Error loading vmcp server '{item.get('name')}': {e}"
                     )
             servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return {"virtual_mcp_servers": {s["uuid"]: s for s in servers}}
+            return servers
         except Exception as e:
             logger.error(f"Error listing vmcp servers: {e}")
             raise

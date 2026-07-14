@@ -258,9 +258,7 @@ export const snippetsApi = {
 export const vmcpApi = {
   list: async (): Promise<VMCPServer[]> => {
     const response = await fetch(`${API_BASE}/vmcp_servers/`);
-    const data = await handleResponse<{ virtual_mcp_servers: Record<string, VMCPServer> }>(response);
-    // Convert the object to an array
-    return Object.values(data.virtual_mcp_servers);
+    return handleResponse<VMCPServer[]>(response);
   },
 
   get: async (uuid: string): Promise<VMCPServer> => {
@@ -345,8 +343,7 @@ export const vmcpApi = {
 export const vnfsApi = {
   list: async (): Promise<VNFSServer[]> => {
     const response = await fetch(`${API_BASE}/vnfs_servers/`);
-    const data = await handleResponse<{ virtual_nfs_servers: Record<string, VNFSServer> }>(response);
-    return Object.values(data.virtual_nfs_servers);
+    return handleResponse<VNFSServer[]>(response);
   },
 
   get: async (uuid: string): Promise<VNFSServer> => {

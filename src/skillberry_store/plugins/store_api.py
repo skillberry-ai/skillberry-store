@@ -286,8 +286,9 @@ class StoreAPI:
     def list_vmcps(self) -> List[Dict[str, Any]]:
         if not self.vmcp_service:
             return []
+        # ``VmcpService.list_all()`` returns a bare list of server dicts.
         result = self.vmcp_service.list_all()
-        return list(result.get("virtual_mcp_servers", {}).values())
+        return list(result) if isinstance(result, list) else []
 
     def start_vmcp(self, uuid_or_name: str, env_id: str = "") -> bool:
         if not self.vmcp_service:

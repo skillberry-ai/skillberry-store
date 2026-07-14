@@ -97,7 +97,7 @@ def register_vnfs_api(
             skill_uuid: Optional skill UUID to filter servers by.
 
         Returns:
-            dict: Dictionary containing virtual_nfs_servers with server metadata.
+            list: List of server metadata dicts (each with runtime status and export path).
 
         Raises:
             HTTPException: 500 if listing fails.

@@ -214,7 +214,7 @@ class VnfsService:
             logger.error(f"Error retrieving vnfs server '{uuid_or_name}': {exc}")
             raise
 
-    def list_all(self, skill_uuid: Optional[str] = None) -> Dict[str, Any]:
+    def list_all(self, skill_uuid: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all vNFS servers with runtime status.
 
         Args:
@@ -222,8 +222,8 @@ class VnfsService:
                 ``skill_uuid`` matches this value.
 
         Returns:
-            Dict[str, Any]: Dictionary with 'virtual_nfs_servers' key containing server info
-                           indexed by UUID, including runtime status and export paths.
+            List[Dict[str, Any]]: Server info dicts with runtime status and
+                export paths, sorted by ``modified_at`` descending.
         """
         list_vnfs_counter.inc()
         try:
@@ -260,7 +260,7 @@ class VnfsService:
                         f"Error loading vnfs server '{item.get('name')}': {e}"
                     )
             servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return {"virtual_nfs_servers": {s["uuid"]: s for s in servers}}
+            return servers
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")
             raise

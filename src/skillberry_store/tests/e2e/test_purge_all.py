@@ -118,14 +118,15 @@ async def test_purge_all_clears_all_objects(run_sbs):
         assert r.status_code == 200
         assert len(r.json()) > 0, "Expected tools before purge"
 
+        # List endpoints return bare arrays.
         r = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert r.status_code == 200
-        vmcp_before = r.json().get("virtual_mcp_servers", {})
+        vmcp_before = r.json()
         assert len(vmcp_before) >= 2, "Expected at least 2 VMCP servers before purge"
 
         r = await client.get(f"{BASE_URL}/vnfs_servers/")
         assert r.status_code == 200
-        vnfs_before = r.json().get("virtual_nfs_servers", {})
+        vnfs_before = r.json()
         assert len(vnfs_before) >= 2, "Expected at least 2 VNFS servers before purge"
 
         # ── 4. Purge everything ───────────────────────────────────────────────
@@ -149,14 +150,14 @@ async def test_purge_all_clears_all_objects(run_sbs):
 
         r = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert r.status_code == 200
-        vmcp_after = r.json().get("virtual_mcp_servers", {})
-        assert vmcp_after == {}, (
-            f"Expected empty VMCP dict after purge, got: {vmcp_after}"
+        vmcp_after = r.json()
+        assert vmcp_after == [], (
+            f"Expected empty VMCP list after purge, got: {vmcp_after}"
         )
 
         r = await client.get(f"{BASE_URL}/vnfs_servers/")
         assert r.status_code == 200
-        vnfs_after = r.json().get("virtual_nfs_servers", {})
-        assert vnfs_after == {}, (
-            f"Expected empty VNFS dict after purge, got: {vnfs_after}"
+        vnfs_after = r.json()
+        assert vnfs_after == [], (
+            f"Expected empty VNFS list after purge, got: {vnfs_after}"
         )

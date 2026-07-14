@@ -113,19 +113,14 @@ async def _snapshot(client: httpx.AsyncClient) -> dict:
     assert r.status_code == 200
     skills = _strip(r.json(), set())
 
+    # List endpoints return bare arrays.
     r = await client.get(f"{BASE_URL}/vmcp_servers/")
     assert r.status_code == 200
-    vmcp = _strip(
-        list(r.json().get("virtual_mcp_servers", {}).values()),
-        _VMCP_RUNTIME_FIELDS,
-    )
+    vmcp = _strip(r.json(), _VMCP_RUNTIME_FIELDS)
 
     r = await client.get(f"{BASE_URL}/vnfs_servers/")
     assert r.status_code == 200
-    vnfs = _strip(
-        list(r.json().get("virtual_nfs_servers", {}).values()),
-        _VNFS_RUNTIME_FIELDS,
-    )
+    vnfs = _strip(r.json(), _VNFS_RUNTIME_FIELDS)
 
     return {
         "tools": tools,

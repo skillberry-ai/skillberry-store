@@ -78,11 +78,11 @@ async def create_vmcp_server_with_tool(client, tool_name: str, tool_code: bytes,
     print(f"List response status: {list_response.status_code}")
     server_running = False
     if list_response.status_code == 200:
-        servers = list_response.json().get("virtual_mcp_servers", {})
-        print(f"Available VMCP servers (UUIDs): {list(servers.keys())}")
-        # Find server by name in the values (dict is now keyed by UUID)
+        # List endpoint returns a bare array.
+        servers = list_response.json()
+        print(f"Available VMCP servers (UUIDs): {[s.get('uuid') for s in servers]}")
         server_info = None
-        for server in servers.values():
+        for server in servers:
             if server.get('name') == vmcp_server_name:
                 server_info = server
                 break
@@ -483,11 +483,11 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
         print(f"List response status: {list_response.status_code}")
         server_running = False
         if list_response.status_code == 200:
-            servers = list_response.json().get("virtual_mcp_servers", {})
-            print(f"Available VMCP servers (UUIDs): {list(servers.keys())}")
-            # Find server by name in the values (dict is now keyed by UUID)
+            # List endpoint returns a bare array.
+            servers = list_response.json()
+            print(f"Available VMCP servers (UUIDs): {[s.get('uuid') for s in servers]}")
             server_info = None
-            for server in servers.values():
+            for server in servers:
                 if server.get('name') == vmcp_server_name:
                     server_info = server
                     break
