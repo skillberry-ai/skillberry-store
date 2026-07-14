@@ -95,7 +95,7 @@ def register_skills_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Field projection. Omit for full objects with populated "
+                "Field selection. Omit for full objects with populated "
                 "'tools'/'snippets' arrays (default). Use 'list' for the "
                 "slim list-view preset (skips populate_objects; caller uses "
                 "tool_uuids/snippet_uuids arrays), 'full' for the full "
@@ -108,12 +108,12 @@ def register_skills_api(
         Retrieves metadata for all skills currently stored in the system.
 
         Args:
-            fields: Optional projection spec (see query-param description).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
             list: List of dictionaries, each containing skill metadata
                 (name, uuid, description, tool_uuids, snippet_uuids,
-                etc. — subset when ``fields`` narrows the projection).
+                etc. — subset when ``fields`` narrows the field selection).
 
         Raises:
             HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
@@ -256,9 +256,9 @@ def register_skills_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Optional projection over each matched skill. Omit for the "
-                "legacy '{filename, similarity_score}' shape. Use 'list' for "
-                "the slim list-view preset merged with 'similarity_score', "
+                "Optional field selection over each matched skill. Omit for "
+                "the legacy '{filename, similarity_score}' shape. Use 'list' "
+                "for the slim list-view preset merged with 'similarity_score', "
                 "'full' for the raw skill dict (tool_uuids/snippet_uuids not "
                 "populated into inlined objects), or a comma-separated "
                 "allowlist of field names."
@@ -275,12 +275,12 @@ def register_skills_api(
             similarity_threshold: Threshold to be used.
             manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
-            fields: Optional projection spec (see query-param description).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
             list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
-                when ``fields`` is omitted; otherwise projected skill dicts
-                with ``similarity_score`` merged in.
+                when ``fields`` is omitted; otherwise field-selected skill
+                dicts with ``similarity_score`` merged in.
         """
         try:
             return service.search(

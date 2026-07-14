@@ -92,7 +92,7 @@ def register_snippets_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Field projection. Omit for full objects (default). Use "
+                "Field selection. Omit for full objects (default). Use "
                 "'list' for the slim list-view preset (drops 'content'), "
                 "'full' for the full object, or a comma-separated allowlist "
                 "of field names."
@@ -104,12 +104,12 @@ def register_snippets_api(
         Retrieves metadata for all snippets currently stored in the system.
 
         Args:
-            fields: Optional projection spec (see query-param description).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
             list: List of dictionaries, each containing snippet metadata
                 (name, uuid, description, content, etc. — subset when
-                ``fields`` narrows the projection).
+                ``fields`` narrows the field selection).
 
         Raises:
             HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
@@ -233,11 +233,11 @@ def register_snippets_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Optional projection over each matched snippet. Omit for the "
-                "legacy '{filename, similarity_score}' shape. Use 'list' for "
-                "the slim list-view preset merged with 'similarity_score', "
-                "'full' for the full snippet, or a comma-separated allowlist "
-                "of field names."
+                "Optional field selection over each matched snippet. Omit "
+                "for the legacy '{filename, similarity_score}' shape. Use "
+                "'list' for the slim list-view preset merged with "
+                "'similarity_score', 'full' for the full snippet, or a "
+                "comma-separated allowlist of field names."
             ),
         ),
     ):
@@ -252,12 +252,12 @@ def register_snippets_api(
             similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
             manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
-            fields: Optional projection spec (see query-param description).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
             list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
-                when ``fields`` is omitted; otherwise projected snippet dicts
-                with ``similarity_score`` merged in.
+                when ``fields`` is omitted; otherwise field-selected snippet
+                dicts with ``similarity_score`` merged in.
 
         Raises:
             HTTPException: 400 if ``fields`` is invalid, 503 if search is not

@@ -1,14 +1,14 @@
-"""Unit tests for the field-projection helpers used by list endpoints."""
+"""Unit tests for the field-selection helpers used by list endpoints."""
 
 import pytest
 
-from skillberry_store.services.list_projections import (
+from skillberry_store.services.field_selection import (
     SKILL_LIST_FIELDS,
     SNIPPET_LIST_FIELDS,
     TOOL_LIST_FIELDS,
     parse_fields_spec,
-    project_item,
-    project_items,
+    select_item_fields,
+    select_items_fields,
 )
 
 
@@ -48,39 +48,39 @@ def test_parse_csv_empty_string_falls_through_to_none():
     assert parse_fields_spec(",,,", "snippet") is None
 
 
-def test_project_item_none_returns_input_ref():
+def test_select_item_fields_none_returns_input_ref():
     item = {"uuid": "u1", "name": "n"}
-    assert project_item(item, None) is item
+    assert select_item_fields(item, None) is item
 
 
-def test_project_item_returns_fresh_dict_subset():
+def test_select_item_fields_returns_fresh_dict_subset():
     item = {"uuid": "u1", "name": "n", "content": "big"}
-    result = project_item(item, {"uuid", "name"})
+    result = select_item_fields(item, {"uuid", "name"})
     assert result == {"uuid": "u1", "name": "n"}
     assert result is not item
 
 
-def test_project_item_ignores_missing_fields():
+def test_select_item_fields_ignores_missing_fields():
     item = {"uuid": "u1"}
-    result = project_item(item, {"uuid", "modified_at"})
+    result = select_item_fields(item, {"uuid", "modified_at"})
     assert result == {"uuid": "u1"}
 
 
-def test_project_item_does_not_mutate_source():
+def test_select_item_fields_does_not_mutate_source():
     item = {"uuid": "u1", "name": "n", "content": "big"}
-    project_item(item, {"uuid"})
+    select_item_fields(item, {"uuid"})
     assert item == {"uuid": "u1", "name": "n", "content": "big"}
 
 
-def test_project_items_shape():
+def test_select_items_fields_shape():
     items = [{"uuid": "a", "content": "1"}, {"uuid": "b", "content": "2"}]
-    result = project_items(items, {"uuid"})
+    result = select_items_fields(items, {"uuid"})
     assert result == [{"uuid": "a"}, {"uuid": "b"}]
 
 
-def test_project_items_none_returns_new_list_with_same_refs():
+def test_select_items_fields_none_returns_new_list_with_same_refs():
     items = [{"uuid": "a"}, {"uuid": "b"}]
-    result = project_items(items, None)
+    result = select_items_fields(items, None)
     assert result == items
     assert result is not items
     assert result[0] is items[0]

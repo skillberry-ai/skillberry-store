@@ -101,9 +101,9 @@ def _search_snippets_via_mocked_vector(client: TestClient, matched_name: str, **
     """Patch the snippet handler's vector index to force ``matched_name`` as
     the only search hit; issue a search request with the extra ``params``.
 
-    Search vectorization is stochastic and slow in tests; the projection
+    Search vectorization is stochastic and slow in tests; the field-selection
     layer under test is orthogonal to how the vector search ranks things,
-    so we stub the index and verify projection.
+    so we stub the index and verify field selection.
     """
     from unittest.mock import patch
     from skillberry_store.modules.object_handler import get_object_handler

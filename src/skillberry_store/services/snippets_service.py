@@ -202,23 +202,23 @@ class SnippetsService:
         filters: Optional[Dict] = None,
         fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List all snippets with optional filtering and field projection.
+        """List all snippets with optional filtering and field selection.
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional projection spec. ``None`` or ``"full"`` returns
-                every field (current behavior). ``"list"`` returns the slim
-                per-type preset (drops the heavy ``content`` field). A
-                comma-separated string selects a caller-defined allowlist.
+            fields: Optional field-selection spec. ``None`` or ``"full"``
+                returns every field (current behavior). ``"list"`` returns
+                the slim per-type preset (drops the heavy ``content`` field).
+                A comma-separated string selects a caller-defined allowlist.
 
         Returns:
             List[Dict[str, Any]]: List of snippet metadata dictionaries,
-                sorted by modified_at descending. Fields are projected
+                sorted by modified_at descending. Fields are filtered
                 according to ``fields``.
         """
-        from skillberry_store.services.list_projections import (
+        from skillberry_store.services.field_selection import (
             parse_fields_spec,
-            project_items,
+            select_items_fields,
         )
 
         list_snippets_counter.inc()
@@ -230,7 +230,7 @@ class SnippetsService:
                 ]
             items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
             allow = parse_fields_spec(fields, "snippet")
-            return project_items(items, allow)
+            return select_items_fields(items, allow)
         except Exception as e:
             logger.error(f"Error listing snippets: {e}")
             raise
@@ -261,11 +261,12 @@ class SnippetsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-            fields: Optional projection spec. When ``None`` (default), each
-                match is returned as the legacy ``{"filename", "similarity_score"}``
-                pair. Otherwise the same grammar as list projection applies
-                (``"list"`` / ``"full"`` / comma-separated allowlist) and each
-                match is returned as a projected snippet dict with
+            fields: Optional field-selection spec. When ``None`` (default),
+                each match is returned as the legacy
+                ``{"filename", "similarity_score"}`` pair. Otherwise the same
+                grammar as list field-selection applies (``"list"`` /
+                ``"full"`` / comma-separated allowlist) and each match is
+                returned as a field-selected snippet dict with
                 ``similarity_score`` merged in.
 
         Returns:
@@ -278,9 +279,9 @@ class SnippetsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
-        from skillberry_store.services.list_projections import (
+        from skillberry_store.services.field_selection import (
             parse_fields_spec,
-            project_item,
+            select_item_fields,
         )
 
         search_snippets_counter.inc()
@@ -328,7 +329,7 @@ class SnippetsService:
             allow = parse_fields_spec(fields, "snippet")
             return [
                 {
-                    **project_item(s, allow),
+                    **select_item_fields(s, allow),
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in result_snippets

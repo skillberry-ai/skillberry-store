@@ -102,7 +102,7 @@ def register_tools_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Field projection. Omit for full objects (default). Use "
+                "Field selection. Omit for full objects (default). Use "
                 "'list' for the slim list-view preset (drops 'params', "
                 "'returns', 'dependencies', 'packaging_params'), 'full' "
                 "for the full object, or a comma-separated allowlist of "
@@ -115,11 +115,11 @@ def register_tools_api(
         Retrieves metadata for all tools currently stored in the system.
 
         Args:
-            fields: Optional projection spec (see query-param description).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
             list: List of dictionaries, each containing tool metadata
-                (subset when ``fields`` narrows the projection).
+                (subset when ``fields`` narrows the field selection).
 
         Raises:
             HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
@@ -323,9 +323,9 @@ def register_tools_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Optional projection over each matched tool. Omit for the "
-                "legacy '{filename, similarity_score}' shape. Use 'list' for "
-                "the slim list-view preset merged with 'similarity_score', "
+                "Optional field selection over each matched tool. Omit for "
+                "the legacy '{filename, similarity_score}' shape. Use 'list' "
+                "for the slim list-view preset merged with 'similarity_score', "
                 "'full' for the full tool, or a comma-separated allowlist of "
                 "field names."
             ),
@@ -341,12 +341,12 @@ def register_tools_api(
             similarity_threshold: Threshold to be used.
             manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
-            fields: Optional projection spec (see query-param description).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
             list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
-                when ``fields`` is omitted; otherwise projected tool dicts
-                with ``similarity_score`` merged in.
+                when ``fields`` is omitted; otherwise field-selected tool
+                dicts with ``similarity_score`` merged in.
         """
         try:
             return service.search(

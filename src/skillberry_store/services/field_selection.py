@@ -1,4 +1,4 @@
-"""Field-projection helpers for the bulk list endpoints.
+"""Field-selection helpers for the bulk list endpoints.
 
 The list endpoints (``GET /snippets/``, ``GET /skills/``, ``GET /tools/``) can
 return slim, list-view-oriented objects when the caller passes
@@ -79,14 +79,14 @@ def parse_fields_spec(
 
     Args:
         fields_spec: Raw value from the query string. ``None``, empty, or
-            ``"full"`` means "no projection — return every field". ``"list"``
-            selects the per-type preset. Any other value is parsed as a
-            comma-separated allowlist.
+            ``"full"`` means "no field selection — return every field".
+            ``"list"`` selects the per-type preset. Any other value is parsed
+            as a comma-separated allowlist.
         object_type: Object-type key (``"snippet"``, ``"tool"``, ``"skill"``).
             Only consulted when ``fields_spec == "list"``.
 
     Returns:
-        The set of field names to keep, or ``None`` when no projection
+        The set of field names to keep, or ``None`` when no field selection
         should be applied.
 
     Raises:
@@ -106,10 +106,10 @@ def parse_fields_spec(
     return allow or None
 
 
-def project_item(
+def select_item_fields(
     item: Dict[str, Any], allow: Optional[Set[str]]
 ) -> Dict[str, Any]:
-    """Return a projected view of ``item``.
+    """Return a field-selected view of ``item``.
 
     When ``allow`` is ``None`` the input dict is returned unchanged (the
     caller must not mutate it — cache values are shared references). When
@@ -121,10 +121,10 @@ def project_item(
     return {k: item[k] for k in item.keys() & allow}
 
 
-def project_items(
+def select_items_fields(
     items: Iterable[Dict[str, Any]], allow: Optional[Set[str]]
 ) -> List[Dict[str, Any]]:
-    """Apply :func:`project_item` to each element; always returns a new list."""
+    """Apply :func:`select_item_fields` to each element; always returns a new list."""
     if allow is None:
         return list(items)
-    return [project_item(i, allow) for i in items]
+    return [select_item_fields(i, allow) for i in items]

@@ -106,7 +106,7 @@ def test_list_all_custom_allowlist():
     assert result == [{"uuid": "u1", "name": "a"}]
 
 
-def test_list_all_projection_does_not_mutate_cache_entries():
+def test_list_all_field_selection_does_not_mutate_cache_entries():
     original = {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"}
     h = _handler()
     h.list_all_dicts.return_value = [original]

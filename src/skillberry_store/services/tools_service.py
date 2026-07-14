@@ -425,24 +425,24 @@ class ToolsService:
         filters: Optional[Dict] = None,
         fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List all tools with optional filtering and field projection.
+        """List all tools with optional filtering and field selection.
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional projection spec. ``None`` or ``"full"`` returns
-                every field (current behavior). ``"list"`` drops the heavy
-                ``params`` / ``returns`` / ``dependencies`` /
+            fields: Optional field-selection spec. ``None`` or ``"full"``
+                returns every field (current behavior). ``"list"`` drops the
+                heavy ``params`` / ``returns`` / ``dependencies`` /
                 ``packaging_params`` fields. A comma-separated string
                 selects a caller-defined allowlist.
 
         Returns:
             List[Dict[str, Any]]: List of tool metadata dictionaries, sorted
-                by modified_at descending. Fields are projected according
+                by modified_at descending. Fields are filtered according
                 to ``fields``.
         """
-        from skillberry_store.services.list_projections import (
+        from skillberry_store.services.field_selection import (
             parse_fields_spec,
-            project_items,
+            select_items_fields,
         )
 
         list_tools_counter.inc()
@@ -454,7 +454,7 @@ class ToolsService:
                 ]
             items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
             allow = parse_fields_spec(fields, "tool")
-            return project_items(items, allow)
+            return select_items_fields(items, allow)
         except Exception as e:
             logger.error(f"Error listing tools: {e}\n{traceback.format_exc()}")
             raise
@@ -486,11 +486,12 @@ class ToolsService:
                 all entities.
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-            fields: Optional projection spec. When ``None`` (default), each
-                match is returned as the legacy ``{"filename", "similarity_score"}``
-                pair. Otherwise the same grammar as list projection applies
-                (``"list"`` / ``"full"`` / comma-separated allowlist) and each
-                match is returned as a projected tool dict with
+            fields: Optional field-selection spec. When ``None`` (default),
+                each match is returned as the legacy
+                ``{"filename", "similarity_score"}`` pair. Otherwise the same
+                grammar as list field-selection applies (``"list"`` /
+                ``"full"`` / comma-separated allowlist) and each match is
+                returned as a field-selected tool dict with
                 ``similarity_score`` merged in.
 
         Returns:
@@ -503,9 +504,9 @@ class ToolsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
-        from skillberry_store.services.list_projections import (
+        from skillberry_store.services.field_selection import (
             parse_fields_spec,
-            project_item,
+            select_item_fields,
         )
 
         search_tools_counter.inc()
@@ -557,7 +558,7 @@ class ToolsService:
             allow = parse_fields_spec(fields, "tool")
             return [
                 {
-                    **project_item(t, allow),
+                    **select_item_fields(t, allow),
                     "similarity_score": t.get("similarity_score", 0.0),
                 }
                 for t in filtered_tools

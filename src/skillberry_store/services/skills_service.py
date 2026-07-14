@@ -292,7 +292,7 @@ class SkillsService:
         filters: Optional[Dict] = None,
         fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List all skills with optional filtering and field projection.
+        """List all skills with optional filtering and field selection.
 
         With no ``fields`` (or ``"full"``), each skill dict is returned with
         its ``tool_uuids`` and ``snippet_uuids`` resolved into inlined
@@ -304,16 +304,16 @@ class SkillsService:
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional projection spec (``None`` / ``"full"`` /
+            fields: Optional field-selection spec (``None`` / ``"full"`` /
                 ``"list"`` / comma-separated allowlist).
 
         Returns:
             List[Dict[str, Any]]: Skill metadata dictionaries sorted by
                 modified_at descending.
         """
-        from skillberry_store.services.list_projections import (
+        from skillberry_store.services.field_selection import (
             parse_fields_spec,
-            project_items,
+            select_items_fields,
         )
 
         list_skills_counter.inc()
@@ -337,7 +337,7 @@ class SkillsService:
                         fresh.setdefault("snippets", [])
                     enriched.append(fresh)
                 return enriched
-            return project_items(items, allow)
+            return select_items_fields(items, allow)
         except Exception as e:
             logger.error(f"Error listing skills: {e}")
             raise
@@ -368,14 +368,15 @@ class SkillsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-            fields: Optional projection spec. When ``None`` (default), each
-                match is returned as the legacy ``{"filename", "similarity_score"}``
-                pair (``filename`` is the skill UUID for parity with the
-                previous behavior). Otherwise the same grammar as list
-                projection applies (``"list"`` / ``"full"`` / comma-separated
-                allowlist) and each match is returned as a projected skill
-                dict with ``similarity_score`` merged in. In line with
-                ``list_all``, the projected path does not populate the inlined
+            fields: Optional field-selection spec. When ``None`` (default),
+                each match is returned as the legacy
+                ``{"filename", "similarity_score"}`` pair (``filename`` is the
+                skill UUID for parity with the previous behavior). Otherwise
+                the same grammar as list field-selection applies (``"list"``
+                / ``"full"`` / comma-separated allowlist) and each match is
+                returned as a field-selected skill dict with
+                ``similarity_score`` merged in. In line with ``list_all``,
+                the field-selected path does not populate the inlined
                 ``tools`` / ``snippets`` arrays — callers that need those
                 should fetch each skill by UUID.
 
@@ -389,9 +390,9 @@ class SkillsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
-        from skillberry_store.services.list_projections import (
+        from skillberry_store.services.field_selection import (
             parse_fields_spec,
-            project_item,
+            select_item_fields,
         )
 
         search_skills_counter.inc()
@@ -443,7 +444,7 @@ class SkillsService:
             allow = parse_fields_spec(fields, "skill")
             return [
                 {
-                    **project_item(s, allow),
+                    **select_item_fields(s, allow),
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in filtered_skills
