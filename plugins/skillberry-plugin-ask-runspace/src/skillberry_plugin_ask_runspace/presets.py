@@ -24,12 +24,17 @@ PRESETS: List[Dict[str, Union[str, List[str], Dict[str, str]]]] = [
      "prompt": ("Run a skill 'dreaming' pass. You are given an agent's recent execution "
                 "trajectories (inlined in this request, or fetched via an attached "
                 "trajectories MCP). Study where the agent struggled, repeated work, or hit "
-                "errors, and identify which of its skills were involved. Then improve those "
-                "skills IN PLACE via the skillberry-store MCP: update each skill under its "
-                "existing name so the store chains the previous version as its parent "
-                "(version history is preserved) — do not create *_optimized duplicates. "
-                "Record a short rationale per change, and make NO change to a skill when the "
-                "trajectories don't justify one."),
+                "errors, and identify which of its skills were involved. Then improve them "
+                "via the skillberry-store MCP.\n"
+                "Store objects are IMMUTABLE and versioned like git: revising a skill under "
+                "its EXISTING NAME produces a NEW VERSION with a new UUID whose parent is the "
+                "previous version — the latest is resolved by name, and a specific version by "
+                "UUID (stability, traceability, lineage). Keep the same name so it stays the "
+                "same logical skill; do NOT invent a new name (e.g. no *_optimized).\n"
+                "Do whatever the trajectories call for: revise an involved skill (new version, "
+                "same name), and/or add supporting snippets or a genuinely new skill if that "
+                "is the right fix. Record a short rationale per change, and make NO change "
+                "when the trajectories don't justify one."),
      "skills": [],
      # Dreaming reviews multiple trajectories and skills; the agent-teams workflow helps.
      "env": {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}},

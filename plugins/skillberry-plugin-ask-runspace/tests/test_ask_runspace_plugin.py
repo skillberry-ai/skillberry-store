@@ -28,12 +28,15 @@ def test_optimize_preset_enables_agent_teams():
     assert by_id["custom"]["env"] == {}
 
 
-def test_dream_preset_optimizes_skills_in_place():
+def test_dream_preset_versions_skills_immutably():
     by_id = {p["id"]: p for p in PRESETS}
     assert "dream" in by_id
     dream = by_id["dream"]
-    assert "IN PLACE" in dream["prompt"]
-    assert "_optimized" in dream["prompt"]  # instructs against *_optimized duplicates
+    # Immutable, git-like versioning: new version under the same name, no invented names.
+    assert "IMMUTABLE" in dream["prompt"]
+    assert "NEW VERSION" in dream["prompt"]
+    assert "same name" in dream["prompt"]
+    assert "_optimized" in dream["prompt"]  # explicitly forbids inventing a new name
     assert dream["env"] == {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}
 
 
