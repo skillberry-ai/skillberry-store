@@ -176,8 +176,7 @@ class FaissDB(VectorDBInterface):
 
             results.append(
                 {
-                    "filename": str_id,
-                    "id": str_id,
+                    "uuid": str_id,
                     "score": score,
                     "similarity_score": float(dist),
                     "metadata": metadata,

@@ -229,7 +229,7 @@ export function VNFSServersPage() {
     if (searchTerm && filtered) {
       if (searchMode === 'semantic' && searchResults) {
         filtered = filtered.filter(s =>
-          searchResults.some(r => r.name === s.name || r.filename === s.name)
+          searchResults.some(r => r.uuid === s.uuid)
         );
       } else if (searchMode === 'text') {
         const lower = searchTerm.toLowerCase();

@@ -707,18 +707,20 @@ async def test_search_tools(run_sbs):
 """
     
     async with httpx.AsyncClient() as client:
-        # Create the test tools
+        # Create the test tools and capture their UUIDs by name
+        name_to_uuid: dict[str, str] = {}
         for tool_params in test_tools:
             files = {
                 "module": (f"{tool_params['name']}.py", module_content, "text/x-python")
             }
             response = await client.post(f"{BASE_URL}/tools/", params=tool_params, files=files)
             assert response.status_code == 200, f"Failed to create tool {tool_params['name']}: {response.text}"
-        
+            name_to_uuid[tool_params["name"]] = response.json()["uuid"]
+
         # Wait a moment for indexing
         import asyncio
         await asyncio.sleep(1)
-        
+
         # Test search for "calculator"
         search_response = await client.get(
             f"{BASE_URL}/search/tools",
@@ -731,10 +733,10 @@ async def test_search_tools(run_sbs):
         assert search_response.status_code == 200, f"Search failed: {search_response.text}"
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching tool"
-        
-        # Verify calculator_tool is in results
-        filenames = [r.get("filename") for r in results]
-        assert "calculator_tool" in filenames, f"calculator_tool should be in search results, got: {filenames}"
+
+        # Verify calculator_tool is in results (matching by UUID)
+        result_uuids = [r.get("uuid") for r in results]
+        assert name_to_uuid["calculator_tool"] in result_uuids, f"calculator_tool should be in search results, got: {result_uuids}"
         
         # Test search for "string"
         search_response = await client.get(

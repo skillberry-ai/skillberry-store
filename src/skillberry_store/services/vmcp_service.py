@@ -342,7 +342,7 @@ class VmcpService:
                 ``LifecycleState.ANY`` when ``None`` is passed.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches, each ``{"uuid": <uuid>, "similarity_score": <float>}``.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -358,22 +358,22 @@ class VmcpService:
             if not self.handler.descriptions:
                 raise RuntimeError("VMCP server search is not available")
 
-            matched_entities = self.handler.descriptions.search_description(
+            matches = self.handler.descriptions.search_description(
                 search_term=search_term, k=max_number_of_results
             )
-            filtered = [
+            filtered_matches = [
                 m
-                for m in matched_entities
+                for m in matches
                 if float(m.get("similarity_score", 0)) <= similarity_threshold
             ]
             candidates: List[Dict[str, Any]] = []
-            for m in filtered:
-                vmcp_uuid = m.get("filename") or m.get("name")
+            for match in filtered_matches:
+                vmcp_uuid = match.get("uuid")
                 if not vmcp_uuid:
                     continue
                 try:
                     d = self.handler.read_dict(vmcp_uuid)
-                    d["similarity_score"] = m.get("similarity_score", 0.0)
+                    d["similarity_score"] = match.get("similarity_score", 0.0)
                     candidates.append(d)
                 except Exception as exc:
                     logger.warning(f"Could not load vmcp '{vmcp_uuid}': {exc}")
@@ -385,11 +385,11 @@ class VmcpService:
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
             return [
                 {
-                    "filename": s.get("name", ""),
+                    "uuid": s["uuid"],
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in result_items
-                if s.get("name")
+                if s.get("uuid")
             ]
         except RuntimeError:
             raise

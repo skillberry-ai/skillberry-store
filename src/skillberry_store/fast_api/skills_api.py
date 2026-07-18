@@ -251,7 +251,7 @@ def register_skills_api(
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
 
         Returns:
-            list: A list of matched skill names and similarity scores.
+            list: A list of matched skill UUIDs and similarity scores.
         """
         try:
             return service.search(

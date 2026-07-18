@@ -42,9 +42,15 @@ def skill_handler(tmp_path):
 
 
 def _search_names(service, term: str) -> list[str]:
-    """Return the list of names returned by service.search() for *term*."""
+    """Return the list of names for the UUIDs returned by service.search() for *term*."""
     results = service.search(term, max_number_of_results=10, similarity_threshold=100.0)
-    return [r["filename"] for r in results]
+    names = []
+    for r in results:
+        try:
+            names.append(service.get(r["uuid"]).get("name", ""))
+        except Exception:
+            pass
+    return names
 
 
 # ---------------------------------------------------------------------------

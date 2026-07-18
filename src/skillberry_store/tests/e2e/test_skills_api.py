@@ -364,14 +364,16 @@ async def test_search_skills(run_sbs):
             }
         ]
         
-        # Create the test skills
+        # Create the test skills and capture their UUIDs by name
+        name_to_uuid: dict[str, str] = {}
         for skill_data in test_skills:
             response = await client.post(f"{BASE_URL}/skills/", params=skill_data)
             assert response.status_code == 200, f"Failed to create skill {skill_data['name']}: {response.text}"
-        
+            name_to_uuid[skill_data["name"]] = response.json()["uuid"]
+
         # Wait a moment for indexing
         await asyncio.sleep(1)
-        
+
         # Test search for "data analysis"
         search_response = await client.get(
             f"{BASE_URL}/search/skills",
@@ -384,10 +386,10 @@ async def test_search_skills(run_sbs):
         assert search_response.status_code == 200, f"Search failed: {search_response.text}"
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching skill"
-        
-        # Verify data_analysis_skill is in results
-        filenames = [r.get("filename") for r in results]
-        assert "data_analysis_skill" in filenames, f"data_analysis_skill should be in search results, got: {filenames}"
+
+        # Verify data_analysis_skill is in results (matching by UUID)
+        result_uuids = [r.get("uuid") for r in results]
+        assert name_to_uuid["data_analysis_skill"] in result_uuids, f"data_analysis_skill should be in search results, got: {result_uuids}"
         
         # Test search for "web development"
         search_response = await client.get(

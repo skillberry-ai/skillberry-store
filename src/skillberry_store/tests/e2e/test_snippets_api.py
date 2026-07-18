@@ -250,17 +250,19 @@ async def test_search_snippets(run_sbs):
     ]
     
     async with httpx.AsyncClient() as client:
-        # Create the test snippets
+        # Create the test snippets and capture their UUIDs by name
+        name_to_uuid: dict[str, str] = {}
         for snippet_data in test_snippets:
             content = snippet_data["content"]  # Keep content in params
             files = {"file": ("snippet.txt", content.encode(), "text/plain")}
             response = await client.post(f"{BASE_URL}/snippets/", params=snippet_data, files=files)
             assert response.status_code == 200, f"Failed to create snippet {snippet_data['name']}: {response.text}"
-        
+            name_to_uuid[snippet_data["name"]] = response.json()["uuid"]
+
         # Wait a moment for indexing
         import asyncio
         await asyncio.sleep(1)
-        
+
         # Test search for "logging"
         search_response = await client.get(
             f"{BASE_URL}/search/snippets",
@@ -273,10 +275,10 @@ async def test_search_snippets(run_sbs):
         assert search_response.status_code == 200, f"Search failed: {search_response.text}"
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching snippet"
-        
-        # Verify python_logging_snippet is in results
-        filenames = [r.get("filename") for r in results]
-        assert "python_logging_snippet" in filenames, f"python_logging_snippet should be in search results, got: {filenames}"
+
+        # Verify python_logging_snippet is in results (matching by UUID)
+        result_uuids = [r.get("uuid") for r in results]
+        assert name_to_uuid["python_logging_snippet"] in result_uuids, f"python_logging_snippet should be in search results, got: {result_uuids}"
         
         # Test search for "HTTP requests"
         search_response = await client.get(

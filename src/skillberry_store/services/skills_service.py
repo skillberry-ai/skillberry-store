@@ -344,7 +344,7 @@ class SkillsService:
                 ``LifecycleState.ANY`` when ``None`` is passed.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches, each ``{"uuid": <uuid>, "similarity_score": <float>}``.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -362,22 +362,22 @@ class SkillsService:
                     "Skill search is not available - descriptions not initialized"
                 )
 
-            matched_entities = self.handler.descriptions.search_description(
+            matches = self.handler.descriptions.search_description(
                 search_term=search_term, k=max_number_of_results
             )
-            filtered_matched = [
+            filtered_matches = [
                 m
-                for m in matched_entities
+                for m in matches
                 if float(m["similarity_score"]) <= similarity_threshold
             ]
             candidates: List[Dict[str, Any]] = []
-            for matched in filtered_matched:
-                skill_uuid = matched.get("filename")
+            for match in filtered_matches:
+                skill_uuid = match.get("uuid")
                 if not skill_uuid:
                     continue
                 try:
                     skill_dict = self.handler.read_dict(skill_uuid)
-                    skill_dict["similarity_score"] = matched.get(
+                    skill_dict["similarity_score"] = match.get(
                         "similarity_score", 0.0
                     )
                     candidates.append(skill_dict)
@@ -391,11 +391,11 @@ class SkillsService:
             filtered_skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
             return [
                 {
-                    "filename": s.get("name", ""),
+                    "uuid": s["uuid"],
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in filtered_skills
-                if s.get("name")
+                if s.get("uuid")
             ]
         except RuntimeError:
             raise

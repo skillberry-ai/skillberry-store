@@ -385,11 +385,9 @@ export function SkillsPage() {
     // Apply search filtering
     if (searchTerm && filtered) {
       if (searchMode === 'semantic' && searchResults) {
-        // Semantic search: filter by backend results (handle both name and filename)
+        // Semantic search: filter by backend results (match by uuid)
         filtered = filtered.filter((skill) =>
-          searchResults.some((result) =>
-            (result.name === skill.name) || (result.filename === skill.name)
-          )
+          searchResults.some((result) => result.uuid === skill.uuid)
         );
       } else if (searchMode === 'text') {
         // Text search: filter by matching text in name or description

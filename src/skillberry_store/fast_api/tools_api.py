@@ -319,7 +319,7 @@ def register_tools_api(
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
 
         Returns:
-            list: A list of matched tool names and similarity scores.
+            list: A list of matched tool UUIDs and similarity scores.
         """
         try:
             return service.search(

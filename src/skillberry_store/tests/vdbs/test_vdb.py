@@ -14,16 +14,16 @@ def _test_vdb(sbs_vdb):
         vector_index=vector_index,
         vdb_type=sbs_vdb,
     )
-    filename = "test_add_vectors.txt"
-    descriptions.write_description(filename=filename, description="test1")
+    entity_uuid = "test_add_vectors.txt"
+    descriptions.write_description(filename=entity_uuid, description="test1")
     search_results = descriptions.search_description("test1", 2)
     assert len(search_results) != 0
-    assert(search_results[0]["filename"] == filename)
+    assert(search_results[0]["uuid"] == entity_uuid)
 
-    descriptions.update_description(filename=filename, new_description="different")
+    descriptions.update_description(filename=entity_uuid, new_description="different")
     search_results = descriptions.search_description("different", 2)
     assert len(search_results) != 0
-    assert(search_results[0]["filename"] == filename)
+    assert(search_results[0]["uuid"] == entity_uuid)
 
 
 def test_vdb_faiss():

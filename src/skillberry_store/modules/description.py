@@ -161,6 +161,6 @@ class Description:
         self, search_term: str, k: int = _embedding_model_search_k
     ) -> list[dict[str, str | Any]]:
         embedding = text_to_vector(search_term)
-        matched_files = self.vector_index.search(embedding, k)
-        logger.info(f"Search results for term '{search_term}': {matched_files}")
-        return matched_files
+        matches = self.vector_index.search(embedding, k)
+        logger.info(f"Search results for term '{search_term}': {matches}")
+        return matches

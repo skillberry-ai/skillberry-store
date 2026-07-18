@@ -268,14 +268,16 @@ async def test_search_vmcp_servers(run_sbs):
     ]
     
     async with httpx.AsyncClient() as client:
-        # Create the test VMCP servers
+        # Create the test VMCP servers and capture their UUIDs by name
+        name_to_uuid: dict[str, str] = {}
         for vmcp_data in test_vmcp_servers:
             response = await client.post(f"{BASE_URL}/vmcp_servers/", params=vmcp_data)
             assert response.status_code == 200, f"Failed to create VMCP server {vmcp_data['name']}: {response.text}"
-        
+            name_to_uuid[vmcp_data["name"]] = response.json()["uuid"]
+
         # Wait a moment for indexing
         await asyncio.sleep(1)
-        
+
         # Test search for "Python logging"
         search_response = await client.get(
             f"{BASE_URL}/search/vmcp_servers",
@@ -288,10 +290,10 @@ async def test_search_vmcp_servers(run_sbs):
         assert search_response.status_code == 200, f"Search failed: {search_response.text}"
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching VMCP server"
-        
-        # Verify python_vmcp_server is in results
-        filenames = [r.get("filename") for r in results]
-        assert "python_vmcp_server" in filenames, f"python_vmcp_server should be in search results, got: {filenames}"
+
+        # Verify python_vmcp_server is in results (matching by UUID)
+        result_uuids = [r.get("uuid") for r in results]
+        assert name_to_uuid["python_vmcp_server"] in result_uuids, f"python_vmcp_server should be in search results, got: {result_uuids}"
         
         # Test search for "HTTP requests"
         search_response = await client.get(

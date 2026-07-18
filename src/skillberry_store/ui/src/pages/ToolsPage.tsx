@@ -230,11 +230,9 @@ export function ToolsPage() {
     // Apply search filtering
     if (searchTerm && filtered) {
       if (searchMode === 'semantic' && searchResults) {
-        // Semantic search: filter by backend results (handle both name and filename)
+        // Semantic search: filter by backend results (match by uuid)
         filtered = filtered.filter((tool) =>
-          searchResults.some((result) =>
-            (result.name === tool.name) || (result.filename === tool.name)
-          )
+          searchResults.some((result) => result.uuid === tool.uuid)
         );
       } else if (searchMode === 'text') {
         // Text search: filter by matching text in name or description

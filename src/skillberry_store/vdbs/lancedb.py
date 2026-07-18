@@ -52,8 +52,7 @@ class LanceDB(VectorDBInterface):
         
         return [
             {
-                "filename": row["id"],
-                "id": row["id"],
+                "uuid": row["id"],
                 "score": 1 / (1 + row["_distance"]),
                 "similarity_score": row["_distance"],
                 "metadata": row["metadata"]

@@ -99,8 +99,7 @@ export interface VNFSServer {
 }
 
 export interface SearchResult {
-  name?: string;
-  filename?: string;
+  uuid: string;
   similarity_score: number;
 }
 

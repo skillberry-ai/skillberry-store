@@ -230,7 +230,7 @@ def register_snippets_api(
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
 
         Returns:
-            list: List of matched snippet names and similarity scores.
+            list: List of matched snippet UUIDs and similarity scores.
 
         Raises:
             HTTPException: 503 if search is not available, 500 for other errors.

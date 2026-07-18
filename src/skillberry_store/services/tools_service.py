@@ -470,7 +470,7 @@ class ToolsService:
                 ``LifecycleState.ANY`` when ``None`` is passed.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches, each ``{"uuid": <uuid>, "similarity_score": <float>}``.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -488,27 +488,27 @@ class ToolsService:
                     "Tool search is not available - descriptions not initialized"
                 )
 
-            matched_entities = self.handler.descriptions.search_description(
+            matches = self.handler.descriptions.search_description(
                 search_term=search_term, k=max_number_of_results
             )
-            filtered_matched = [
+            filtered_matches = [
                 m
-                for m in matched_entities
+                for m in matches
                 if float(m["similarity_score"]) <= similarity_threshold
             ]
             candidates: List[Dict[str, Any]] = []
-            for matched in filtered_matched:
-                tool_name = matched.get("filename") or matched.get("name")
-                if not tool_name:
+            for match in filtered_matches:
+                tool_uuid = match.get("uuid")
+                if not tool_uuid:
                     continue
                 try:
-                    tool_dict = self.get(tool_name)
-                    tool_dict["similarity_score"] = matched.get(
+                    tool_dict = self.get(tool_uuid)
+                    tool_dict["similarity_score"] = match.get(
                         "similarity_score", 0.0
                     )
                     candidates.append(tool_dict)
                 except Exception as e:
-                    logger.warning(f"Could not load tool {tool_name}: {e}")
+                    logger.warning(f"Could not load tool {tool_uuid}: {e}")
             filtered_tools = apply_search_filters(
                 candidates,
                 manifest_filter=manifest_filter,
@@ -517,11 +517,11 @@ class ToolsService:
             filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
             return [
                 {
-                    "filename": t.get("name", ""),
+                    "uuid": t["uuid"],
                     "similarity_score": t.get("similarity_score", 0.0),
                 }
                 for t in filtered_tools
-                if t.get("name")
+                if t.get("uuid")
             ]
         except RuntimeError:
             raise
