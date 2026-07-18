@@ -81,7 +81,7 @@ def test_list_all_default_shape_is_unchanged():
     assert result[0]["dependencies"] == ["dep1"]
 
 
-def test_list_all_list_preset_drops_heavy_fields():
+def test_list_all_narrow_preset_drops_heavy_fields():
     h = _handler()
     h.list_all_dicts.return_value = [
         {
@@ -92,15 +92,49 @@ def test_list_all_list_preset_drops_heavy_fields():
             "returns": {"type": "int"},
             "dependencies": ["dep1"],
             "packaging_params": {"foo": "bar"},
+            "programming_language": "python",
+            "packaging_format": "code",
             "module_name": "a.py",
         },
     ]
     svc = ToolsService(h)
-    result = svc.list_all(fields="list")
+    result = svc.list_all(fields="narrow")
     assert result[0]["name"] == "a"
     assert result[0]["module_name"] == "a.py"
-    for k in ("params", "returns", "dependencies", "packaging_params"):
-        assert k not in result[0]
+    for k in (
+        "params",
+        "returns",
+        "dependencies",
+        "packaging_params",
+        "programming_language",
+        "packaging_format",
+    ):
+        assert k not in result[0], f"narrow unexpectedly contains {k}"
+
+
+def test_list_all_wide_preset_keeps_persisted_fields():
+    """``wide`` returns every persisted manifest field — the heavy ones
+    that ``narrow`` drops (params/returns/deps/etc) come back."""
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {
+            "uuid": "u1",
+            "name": "a",
+            "modified_at": "2024-02-01",
+            "params": {"type": "object"},
+            "returns": {"type": "int"},
+            "dependencies": ["dep1"],
+            "packaging_params": {"foo": "bar"},
+            "programming_language": "python",
+            "module_name": "a.py",
+        },
+    ]
+    svc = ToolsService(h)
+    result = svc.list_all(fields="wide")
+    r = result[0]
+    assert r["params"] == {"type": "object"}
+    assert r["dependencies"] == ["dep1"]
+    assert r["programming_language"] == "python"
 
 
 def test_list_all_custom_allowlist():
@@ -123,7 +157,7 @@ def test_list_all_field_selection_does_not_mutate_cache_entries():
     h = _handler()
     h.list_all_dicts.return_value = [original]
     svc = ToolsService(h)
-    svc.list_all(fields="list")
+    svc.list_all(fields="narrow")
     assert original["params"] == {"type": "object"}
 
 
@@ -144,7 +178,9 @@ def _search_handler_tools(cached_tool):
     return h
 
 
-def test_search_default_returns_legacy_shape():
+def test_search_default_returns_full_object_with_score():
+    """Default ``fields=None`` resolves to ``full`` — the whole tool
+    dict is returned with ``similarity_score`` merged in."""
     cached = {
         "uuid": "u1",
         "name": "t1",
@@ -154,7 +190,11 @@ def test_search_default_returns_legacy_shape():
     }
     svc = ToolsService(_search_handler_tools(cached))
     result = svc.search("q")
-    assert result == [{"filename": "t1", "similarity_score": 0.3}]
+    assert len(result) == 1
+    r = result[0]
+    assert r["name"] == "t1"
+    assert r["params"] == {"type": "object"}
+    assert r["similarity_score"] == 0.3
 
 
 def test_search_does_not_mutate_cache_entry():
@@ -170,7 +210,7 @@ def test_search_does_not_mutate_cache_entry():
     assert "similarity_score" not in cached
 
 
-def test_search_with_fields_list_drops_heavy_fields():
+def test_search_with_fields_narrow_drops_heavy_fields():
     cached = {
         "uuid": "u1",
         "name": "t1",
@@ -183,7 +223,7 @@ def test_search_with_fields_list_drops_heavy_fields():
         "modified_at": "2024-02-01",
     }
     svc = ToolsService(_search_handler_tools(cached))
-    result = svc.search("q", fields="list")
+    result = svc.search("q", fields="narrow")
     r = result[0]
     assert r["name"] == "t1"
     assert r["module_name"] == "t1.py"

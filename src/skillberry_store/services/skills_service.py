@@ -294,18 +294,25 @@ class SkillsService:
     ) -> List[Dict[str, Any]]:
         """List all skills with optional filtering and field selection.
 
-        With no ``fields`` (or ``"full"``), each skill dict is returned with
-        its ``tool_uuids`` and ``snippet_uuids`` resolved into inlined
-        ``tools`` / ``snippets`` objects (current behavior, but on fresh
-        copies so the shared cache values are never mutated). With
-        ``fields="list"`` (or a custom allowlist), ``populate_objects`` is
-        skipped entirely — callers get the raw ``tool_uuids`` /
-        ``snippet_uuids`` lists and can size them with ``.length``.
+        Field-selection semantics (see
+        :mod:`skillberry_store.services.field_selection`):
+
+        * ``fields`` omitted / ``"full"`` — every field is returned, and
+          the ``_populate`` mechanism runs (``tool_uuids`` /
+          ``snippet_uuids`` are resolved into inlined ``tools`` /
+          ``snippets`` full objects).
+        * ``fields="narrow"`` — the minimal set the UI listing page
+          renders (uuid, name, description, state, tags, version,
+          tool_uuids, snippet_uuids). ``_populate`` is *not* tagged in
+          narrow, so no inlining runs.
+        * ``fields="wide"`` — every persisted manifest field, but no
+          flag fields → no inlining.
+        * Explicit CSV allowlist — inlining runs iff ``"_populate"`` is
+          in the allowlist.
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional field-selection spec (``None`` / ``"full"`` /
-                ``"list"`` / comma-separated allowlist).
+            fields: Optional field-selection spec.
 
         Returns:
             List[Dict[str, Any]]: Skill metadata dictionaries sorted by
@@ -314,6 +321,7 @@ class SkillsService:
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_items_fields,
+            should_run_mechanism,
         )
 
         list_skills_counter.inc()
@@ -325,7 +333,7 @@ class SkillsService:
                 ]
             items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
             allow = parse_fields_spec(fields, "skill")
-            if allow is None:
+            if should_run_mechanism(allow, "_populate"):
                 enriched: List[Dict[str, Any]] = []
                 for item in items:
                     fresh = dict(item)
@@ -336,7 +344,7 @@ class SkillsService:
                         fresh.setdefault("tools", [])
                         fresh.setdefault("snippets", [])
                     enriched.append(fresh)
-                return enriched
+                return select_items_fields(enriched, allow)
             return select_items_fields(items, allow)
         except Exception as e:
             logger.error(f"Error listing skills: {e}")
@@ -368,21 +376,18 @@ class SkillsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-            fields: Optional field-selection spec. When ``None`` (default),
-                each match is returned as the legacy
-                ``{"filename", "similarity_score"}`` pair (``filename`` is the
-                skill UUID for parity with the previous behavior). Otherwise
-                the same grammar as list field-selection applies (``"list"``
-                / ``"full"`` / comma-separated allowlist) and each match is
-                returned as a field-selected skill dict with
-                ``similarity_score`` merged in. In line with ``list_all``,
-                the field-selected path does not populate the inlined
-                ``tools`` / ``snippets`` arrays — callers that need those
-                should fetch each skill by UUID.
+            fields: Optional field-selection spec — same grammar as
+                :meth:`list_all` (``None`` / ``"full"`` / ``"narrow"`` /
+                ``"wide"`` / CSV allowlist). Each match is a
+                field-selected skill dict with ``similarity_score``
+                merged in. Default (``None``) is ``"full"`` — the
+                ``_populate`` mechanism runs and ``tools`` / ``snippets``
+                are inlined.
 
         Returns:
             List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
-                Shape depends on ``fields`` (see above).
+                Each entry is a field-selected skill dict plus a
+                ``similarity_score`` key.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -393,6 +398,7 @@ class SkillsService:
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_item_fields,
+            should_run_mechanism,
         )
 
         search_skills_counter.inc()
@@ -432,16 +438,15 @@ class SkillsService:
                 lifecycle_state=lifecycle_state,
             )
             filtered_skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            if fields is None:
-                return [
-                    {
-                        "filename": s.get("name", ""),
-                        "similarity_score": s.get("similarity_score", 0.0),
-                    }
-                    for s in filtered_skills
-                    if s.get("name")
-                ]
             allow = parse_fields_spec(fields, "skill")
+            if should_run_mechanism(allow, "_populate"):
+                for s in filtered_skills:
+                    try:
+                        self.populate_objects(s)
+                    except RuntimeError as e:
+                        logger.warning(str(e))
+                        s.setdefault("tools", [])
+                        s.setdefault("snippets", [])
             return [
                 {
                     **select_item_fields(s, allow),

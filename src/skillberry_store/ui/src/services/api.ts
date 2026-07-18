@@ -44,7 +44,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 // Tools API
 export const toolsApi = {
   list: async (): Promise<Tool[]> => {
-    const response = await fetch(`${API_BASE}/tools/?fields=list`);
+    const response = await fetch(`${API_BASE}/tools/?fields=narrow`);
     return handleResponse<Tool[]>(response);
   },
 
@@ -125,7 +125,7 @@ export const toolsApi = {
 // Skills API
 export const skillsApi = {
   list: async (): Promise<Skill[]> => {
-    const response = await fetch(`${API_BASE}/skills/?fields=list`);
+    const response = await fetch(`${API_BASE}/skills/?fields=narrow`);
     return handleResponse<Skill[]>(response);
   },
 
@@ -184,7 +184,7 @@ export const skillsApi = {
 // Snippets API
 export const snippetsApi = {
   list: async (): Promise<Snippet[]> => {
-    const response = await fetch(`${API_BASE}/snippets/?fields=list`);
+    const response = await fetch(`${API_BASE}/snippets/?fields=narrow`);
     return handleResponse<Snippet[]>(response);
   },
 
@@ -257,7 +257,7 @@ export const snippetsApi = {
 // VMCP Servers API
 export const vmcpApi = {
   list: async (): Promise<VMCPServer[]> => {
-    const response = await fetch(`${API_BASE}/vmcp_servers/`);
+    const response = await fetch(`${API_BASE}/vmcp_servers/?fields=narrow`);
     return handleResponse<VMCPServer[]>(response);
   },
 
@@ -342,7 +342,7 @@ export const vmcpApi = {
 // vNFS Servers API
 export const vnfsApi = {
   list: async (): Promise<VNFSServer[]> => {
-    const response = await fetch(`${API_BASE}/vnfs_servers/`);
+    const response = await fetch(`${API_BASE}/vnfs_servers/?fields=narrow`);
     return handleResponse<VNFSServer[]>(response);
   },
 

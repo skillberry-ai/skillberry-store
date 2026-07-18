@@ -219,25 +219,33 @@ class VnfsService:
         skill_uuid: Optional[str] = None,
         fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List all vNFS servers with runtime status.
+        """List all vNFS servers, optionally enhanced with runtime status.
+
+        Field-selection semantics (see
+        :mod:`skillberry_store.services.field_selection`):
+
+        * ``fields`` omitted / ``"full"`` / ``"narrow"`` — the
+          ``_enhance`` mechanism runs; ``running`` and ``export_path``
+          are computed and merged into each server dict.
+        * ``fields="wide"`` — persisted manifest fields only; enhancement
+          is skipped.
+        * Explicit CSV allowlist — enhancement runs iff ``"_enhance"``
+          is in the allowlist.
 
         Args:
             skill_uuid: When provided, restrict the result to servers whose
                 ``skill_uuid`` matches this value.
-            fields: Optional field-selection spec (``None`` / ``"full"`` /
-                ``"list"`` / comma-separated allowlist). See
-                :mod:`skillberry_store.services.field_selection`. The runtime
-                enrichment fields (``running`` / ``export_path``) are always
-                populated before selection.
+            fields: Optional field-selection spec.
 
         Returns:
-            List[Dict[str, Any]]: Server info dicts with runtime status and
-                export paths, sorted by ``modified_at`` descending. Fields
-                are filtered according to ``fields``.
+            List[Dict[str, Any]]: Server info dicts sorted by
+                ``modified_at`` descending, field-selected according to
+                ``fields``.
         """
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_items_fields,
+            should_run_mechanism,
         )
 
         list_vnfs_counter.inc()
@@ -245,37 +253,30 @@ class VnfsService:
             items = self.handler.list_all_dicts()
             if skill_uuid:
                 items = [i for i in items if i.get("skill_uuid") == skill_uuid]
-            servers = []
+            allow = parse_fields_spec(fields, "vnfs")
+            enhance = should_run_mechanism(allow, "_enhance")
+            servers: List[Dict[str, Any]] = []
             for item in items:
                 try:
-                    runtime = None
-                    try:
-                        runtime = self.server_manager.get_server(
-                            item.get("name", ""), item.get("uuid", "")
+                    info = dict(item)
+                    if enhance:
+                        runtime = None
+                        try:
+                            runtime = self.server_manager.get_server(
+                                item.get("name", ""), item.get("uuid", "")
+                            )
+                        except Exception:
+                            pass
+                        info["running"] = runtime is not None and runtime.running
+                        info["export_path"] = (
+                            str(runtime.export_path) if runtime else None
                         )
-                    except Exception:
-                        pass
-                    info = {
-                        "uuid": item.get("uuid"),
-                        "name": item.get("name"),
-                        "description": item.get("description"),
-                        "version": item.get("version"),
-                        "state": item.get("state"),
-                        "tags": item.get("tags", []),
-                        "port": item.get("port"),
-                        "skill_uuid": item.get("skill_uuid"),
-                        "protocol": item.get("protocol", "webdav"),
-                        "modified_at": item.get("modified_at", ""),
-                        "running": runtime is not None and runtime.running,
-                        "export_path": str(runtime.export_path) if runtime else None,
-                    }
                     servers.append(info)
                 except Exception as e:
                     logger.warning(
                         f"Error loading vnfs server '{item.get('name')}': {e}"
                     )
             servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            allow = parse_fields_spec(fields, "vnfs")
             return select_items_fields(servers, allow)
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")
@@ -307,17 +308,18 @@ class VnfsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-            fields: Optional field-selection spec. When ``None`` (default),
-                each match is returned as the legacy
-                ``{"filename", "similarity_score"}`` pair. Otherwise the same
-                grammar as list field-selection applies (``"list"`` /
-                ``"full"`` / comma-separated allowlist) and each match is
-                returned as a field-selected vNFS dict with
-                ``similarity_score`` merged in.
+            fields: Optional field-selection spec — same grammar as
+                :meth:`list_all` (``None`` / ``"full"`` / ``"narrow"`` /
+                ``"wide"`` / CSV allowlist). Each match is a
+                field-selected vNFS dict with ``similarity_score`` merged
+                in. Default (``None``) is ``"full"`` — the ``_enhance``
+                mechanism runs and ``running`` / ``export_path`` are
+                merged in.
 
         Returns:
             List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
-                Shape depends on ``fields`` (see above).
+                Each entry is a field-selected vNFS dict plus a
+                ``similarity_score`` key.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -328,6 +330,7 @@ class VnfsService:
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_item_fields,
+            should_run_mechanism,
         )
 
         search_vnfs_counter.inc()
@@ -363,16 +366,20 @@ class VnfsService:
                 lifecycle_state=lifecycle_state,
             )
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            if fields is None:
-                return [
-                    {
-                        "filename": s.get("name", ""),
-                        "similarity_score": s.get("similarity_score", 0.0),
-                    }
-                    for s in result_items
-                    if s.get("name")
-                ]
             allow = parse_fields_spec(fields, "vnfs")
+            if should_run_mechanism(allow, "_enhance"):
+                for s in result_items:
+                    runtime = None
+                    try:
+                        runtime = self.server_manager.get_server(
+                            s.get("name", ""), s.get("uuid", "")
+                        )
+                    except Exception:
+                        pass
+                    s["running"] = runtime is not None and runtime.running
+                    s["export_path"] = (
+                        str(runtime.export_path) if runtime else None
+                    )
             return [
                 {
                     **select_item_fields(s, allow),

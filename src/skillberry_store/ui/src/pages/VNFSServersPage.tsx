@@ -179,9 +179,10 @@ export function VNFSServersPage() {
     deleteMutation.mutate(selectedServers);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const selected = servers?.filter(s => selectedServers.includes(s.name)) || [];
-    downloadJSON(exportVNFSServers(selected), `vnfs-servers-export-${new Date().toISOString().split('T')[0]}.json`);
+    const forExport = await exportVNFSServers(selected);
+    downloadJSON(forExport, `vnfs-servers-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
   const handleImport = async () => {

@@ -95,11 +95,15 @@ def register_skills_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Field selection. Omit for full objects with populated "
-                "'tools'/'snippets' arrays (default). Use 'list' for the "
-                "slim list-view preset (skips populate_objects; caller uses "
-                "tool_uuids/snippet_uuids arrays), 'full' for the full "
-                "object, or a comma-separated allowlist of field names."
+                "Field selection. Omit or 'full' for the complete object "
+                "with the '_populate' mechanism running — 'tools' and "
+                "'snippets' are inlined from tool_uuids/snippet_uuids "
+                "(default). 'narrow' returns the minimal set required "
+                "by the UI listing page (no inlining; use "
+                "tool_uuids/snippet_uuids). 'wide' returns every "
+                "persisted manifest field (no inlining). Or supply a "
+                "comma-separated allowlist of field names (include "
+                "'_populate' to trigger inlining)."
             ),
         ),
     ):
@@ -256,12 +260,14 @@ def register_skills_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Optional field selection over each matched skill. Omit for "
-                "the legacy '{filename, similarity_score}' shape. Use 'list' "
-                "for the slim list-view preset merged with 'similarity_score', "
-                "'full' for the raw skill dict (tool_uuids/snippet_uuids not "
-                "populated into inlined objects), or a comma-separated "
-                "allowlist of field names."
+                "Field selection over each match. Same grammar as the "
+                "list endpoint. Default (omit / 'full') triggers "
+                "'_populate' — 'tools' and 'snippets' are inlined. "
+                "'narrow' returns the UI listing set (no inlining). "
+                "'wide' returns every persisted manifest field (no "
+                "inlining). CSV allowlist also supported. Each match is "
+                "a field-selected skill dict with 'similarity_score' "
+                "merged in."
             ),
         ),
     ):
@@ -278,9 +284,8 @@ def register_skills_api(
             fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
-                when ``fields`` is omitted; otherwise field-selected skill
-                dicts with ``similarity_score`` merged in.
+            list: Field-selected skill dicts with ``similarity_score``
+                merged in.
         """
         try:
             return service.search(

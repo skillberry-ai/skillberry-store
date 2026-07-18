@@ -112,14 +112,14 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <WrenchIcon />
           {(() => {
-            const count = skill.tool_uuids?.length ?? skill.tools?.length ?? 0;
+            const count = skill.tool_uuids?.length ?? 0;
             return count > 0 ? `${count} tools` : '—';
           })()}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <FileCodeIcon />
           {(() => {
-            const count = skill.snippet_uuids?.length ?? skill.snippets?.length ?? 0;
+            const count = skill.snippet_uuids?.length ?? 0;
             return count > 0 ? `${count} snippets` : '—';
           })()}
         </span>

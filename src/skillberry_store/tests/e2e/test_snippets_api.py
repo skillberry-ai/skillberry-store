@@ -274,9 +274,11 @@ async def test_search_snippets(run_sbs):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching snippet"
         
-        # Verify python_logging_snippet is in results
-        filenames = [r.get("filename") for r in results]
-        assert "python_logging_snippet" in filenames, f"python_logging_snippet should be in search results, got: {filenames}"
+        # Verify python_logging_snippet is in results. Default search
+        # shape is the full object with ``similarity_score`` merged in —
+        # read the ``name`` field.
+        names = [r.get("name") for r in results]
+        assert "python_logging_snippet" in names, f"python_logging_snippet should be in search results, got: {names}"
         
         # Test search for "HTTP requests"
         search_response = await client.get(

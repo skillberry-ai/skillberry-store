@@ -99,7 +99,9 @@ def test_list_all_default_populates_but_does_not_mutate_cache_entry(monkeypatch)
     assert "snippets" not in original
 
 
-def test_list_all_list_preset_skips_populate_and_keeps_uuid_arrays():
+def test_list_all_narrow_preset_skips_populate_and_keeps_uuid_arrays():
+    """``narrow`` does not tag ``_populate``, so ``populate_objects`` must
+    not run — callers read counts from ``tool_uuids`` / ``snippet_uuids``."""
     h = _handler()
     h.list_all_dicts.return_value = [
         {
@@ -112,11 +114,59 @@ def test_list_all_list_preset_skips_populate_and_keeps_uuid_arrays():
     ]
     svc = SkillsService(h)
     # No registry patching — a bug that reaches populate_objects would raise.
-    result = svc.list_all(fields="list")
+    result = svc.list_all(fields="narrow")
     assert result[0]["tool_uuids"] == ["t1", "t2"]
     assert result[0]["snippet_uuids"] == ["s1"]
     assert "tools" not in result[0]
     assert "snippets" not in result[0]
+
+
+def test_list_all_wide_preset_skips_populate():
+    """``wide`` is manifest data only — no flag fields, no bundling."""
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {
+            "uuid": "sk1",
+            "name": "sk1",
+            "tool_uuids": ["t1"],
+            "snippet_uuids": ["s1"],
+            "modified_at": "2024-02-01",
+        },
+    ]
+    svc = SkillsService(h)
+    result = svc.list_all(fields="wide")
+    assert result[0]["tool_uuids"] == ["t1"]
+    assert "tools" not in result[0]
+    assert "snippets" not in result[0]
+
+
+def test_list_all_populate_flag_in_csv_triggers_populate(monkeypatch):
+    """Explicit CSV allowlist containing ``_populate`` must run the
+    populate mechanism."""
+    from skillberry_store.services import registry
+
+    tools_svc = MagicMock()
+    tools_svc.get.side_effect = lambda u: {"uuid": u, "name": f"tool-{u}"}
+    snippets_svc = MagicMock()
+    snippets_svc.get.side_effect = lambda u: {"uuid": u, "name": f"snip-{u}"}
+    monkeypatch.setattr(registry, "_initialized", True)
+    monkeypatch.setattr(
+        registry, "_services", {"tool": tools_svc, "snippet": snippets_svc}
+    )
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {
+            "uuid": "sk1",
+            "name": "sk1",
+            "tool_uuids": ["t1"],
+            "snippet_uuids": ["s1"],
+            "modified_at": "2024-02-01",
+        },
+    ]
+    svc = SkillsService(h)
+    result = svc.list_all(fields="uuid,tools,snippets,_populate")
+    assert result[0]["tools"] == [{"uuid": "t1", "name": "tool-t1"}]
+    assert result[0]["snippets"] == [{"uuid": "s1", "name": "snip-s1"}]
 
 
 def test_list_all_custom_allowlist():
@@ -157,21 +207,41 @@ def _search_handler_skills(cached_skill):
     return h
 
 
-def test_search_default_returns_legacy_shape():
+def test_search_default_runs_populate_and_returns_full_object(monkeypatch):
+    """Default ``fields=None`` resolves to ``full`` — ``_populate`` runs
+    and the response includes inlined ``tools`` / ``snippets``."""
+    from skillberry_store.services import registry
+
+    tools_svc = MagicMock()
+    tools_svc.get.side_effect = lambda u: {"uuid": u, "name": f"tool-{u}"}
+    snippets_svc = MagicMock()
+    snippets_svc.get.side_effect = lambda u: {"uuid": u, "name": f"snip-{u}"}
+    monkeypatch.setattr(registry, "_initialized", True)
+    monkeypatch.setattr(
+        registry, "_services", {"tool": tools_svc, "snippet": snippets_svc}
+    )
     cached = {
         "uuid": "sk1",
         "name": "sk1",
         "state": "approved",
         "tool_uuids": ["t1"],
-        "snippet_uuids": [],
+        "snippet_uuids": ["s1"],
         "modified_at": "2024-02-01",
     }
     svc = SkillsService(_search_handler_skills(cached))
     result = svc.search("q")
-    assert result == [{"filename": "sk1", "similarity_score": 0.4}]
+    assert len(result) == 1
+    r = result[0]
+    assert r["name"] == "sk1"
+    assert r["tools"] == [{"uuid": "t1", "name": "tool-t1"}]
+    assert r["snippets"] == [{"uuid": "s1", "name": "snip-s1"}]
+    assert r["similarity_score"] == 0.4
 
 
 def test_search_does_not_mutate_cache_entry():
+    """Search must not attach ``similarity_score`` (or bundled outputs)
+    onto the shared cache dict — the field is only merged into the
+    per-match projected copy."""
     cached = {
         "uuid": "sk1",
         "name": "sk1",
@@ -181,11 +251,13 @@ def test_search_does_not_mutate_cache_entry():
         "modified_at": "2024-02-01",
     }
     svc = SkillsService(_search_handler_skills(cached))
-    svc.search("q")
+    svc.search("q", fields="narrow")
     assert "similarity_score" not in cached
+    assert "tools" not in cached
+    assert "snippets" not in cached
 
 
-def test_search_with_fields_list_skips_populate_and_keeps_uuid_arrays():
+def test_search_with_fields_narrow_skips_populate_and_keeps_uuid_arrays():
     cached = {
         "uuid": "sk1",
         "name": "sk1",
@@ -196,7 +268,7 @@ def test_search_with_fields_list_skips_populate_and_keeps_uuid_arrays():
     }
     svc = SkillsService(_search_handler_skills(cached))
     # No registry patching — reaching populate_objects would raise.
-    result = svc.search("q", fields="list")
+    result = svc.search("q", fields="narrow")
     r = result[0]
     assert r["tool_uuids"] == ["t1", "t2"]
     assert r["snippet_uuids"] == ["s1"]

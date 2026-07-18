@@ -1,8 +1,8 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { toolsApi, snippetsApi, vmcpApi, vnfsApi } from '@/services/api';
-import type { Tool, Snippet, VMCPServer, VNFSServer } from '@/types';
+import { toolsApi, skillsApi, snippetsApi, vmcpApi, vnfsApi } from '@/services/api';
+import type { Tool, Skill, Snippet, VMCPServer, VNFSServer } from '@/types';
 import JSZip from 'jszip';
 
 export interface ImportResult {
@@ -11,17 +11,27 @@ export interface ImportResult {
 }
 
 /**
- * Export tools with their module content
+ * Export tools with their module content.
+ *
+ * The input list may have been fetched with a narrow field-selection
+ * preset, so the full manifest is re-fetched via ``toolsApi.get`` (which
+ * always returns every field) before the module content is attached.
  */
 export async function exportTools(tools: Tool[]): Promise<(Tool & { module_content?: string })[]> {
   return await Promise.all(
     tools.map(async (tool) => {
+      let full: Tool = tool;
       try {
-        const module = await toolsApi.getModule(tool.name);
-        return { ...tool, module_content: module };
+        full = await toolsApi.get(tool.uuid!);
       } catch (error) {
-        console.error(`Failed to fetch module for ${tool.name}:`, error);
-        return { ...tool, module_content: undefined };
+        console.error(`Failed to fetch full tool ${tool.name}:`, error);
+      }
+      try {
+        const module = await toolsApi.getModule(full.name);
+        return { ...full, module_content: module };
+      } catch (error) {
+        console.error(`Failed to fetch module for ${full.name}:`, error);
+        return { ...full, module_content: undefined };
       }
     })
   );
@@ -65,10 +75,21 @@ export async function importTools(tools: (Tool & { module_content?: string })[])
 }
 
 /**
- * Export snippets (they already contain content in the schema)
+ * Export snippets. The list-page items are fetched with a narrow preset
+ * (no ``content``), so each snippet is re-fetched via ``snippetsApi.get``
+ * to obtain the full manifest before export.
  */
-export function exportSnippets(snippets: Snippet[]): Snippet[] {
-  return snippets;
+export async function exportSnippets(snippets: Snippet[]): Promise<Snippet[]> {
+  return await Promise.all(
+    snippets.map(async (s) => {
+      try {
+        return await snippetsApi.get(s.uuid!);
+      } catch (error) {
+        console.error(`Failed to fetch full snippet ${s.name}:`, error);
+        return s;
+      }
+    })
+  );
 }
 
 /**
@@ -91,24 +112,29 @@ export async function importSnippets(snippets: Snippet[]): Promise<ImportResult>
 }
 
 /**
- * Export skills with tool and snippet UUIDs (matching backend format)
+ * Export skills with tool and snippet UUIDs (matching backend format).
+ * Each skill is fetched via ``skillsApi.get`` to obtain the full
+ * manifest (list-page items use a narrow preset).
  */
-export function exportSkills(skills: any[]): any[] {
-  return skills.map(skill => {
-    // If the skill already has tool_uuids and snippet_uuids (from backend), use them
-    // Otherwise, extract from the populated tools and snippets arrays
-    const tool_uuids = skill.tool_uuids || skill.tools?.map((t: any) => t.uuid) || [];
-    const snippet_uuids = skill.snippet_uuids || skill.snippets?.map((s: any) => s.uuid) || [];
-
-    return {
-      name: skill.name,
-      version: skill.version || '1.0.0',
-      description: skill.description,
-      tags: skill.tags || [],
-      tool_uuids,
-      snippet_uuids,
-    };
-  });
+export async function exportSkills(skills: Skill[]): Promise<any[]> {
+  const full = await Promise.all(
+    skills.map(async (skill) => {
+      try {
+        return await skillsApi.get(skill.uuid!);
+      } catch (error) {
+        console.error(`Failed to fetch full skill ${skill.name}:`, error);
+        return skill as any;
+      }
+    })
+  );
+  return full.map(skill => ({
+    name: skill.name,
+    version: skill.version || '1.0.0',
+    description: skill.description,
+    tags: skill.tags || [],
+    tool_uuids: skill.tool_uuids || [],
+    snippet_uuids: skill.snippet_uuids || [],
+  }));
 }
 
 /**
@@ -179,10 +205,20 @@ export async function importSkills(skills: any[]): Promise<ImportResult> {
 }
 
 /**
- * Export VMCP servers
+ * Export VMCP servers. Re-fetched via ``vmcpApi.get`` so the export
+ * contains every field (list-page items use a narrow preset).
  */
-export function exportVMCPServers(servers: VMCPServer[]): VMCPServer[] {
-  return servers;
+export async function exportVMCPServers(servers: VMCPServer[]): Promise<VMCPServer[]> {
+  return await Promise.all(
+    servers.map(async (s) => {
+      try {
+        return await vmcpApi.get(s.uuid!);
+      } catch (error) {
+        console.error(`Failed to fetch full vmcp server ${s.name}:`, error);
+        return s;
+      }
+    })
+  );
 }
 
 /**
@@ -220,10 +256,20 @@ export function downloadJSON(data: any, filename: string): void {
 }
 
 /**
- * Export vNFS servers
+ * Export vNFS servers. Re-fetched via ``vnfsApi.get`` so the export
+ * contains every field (list-page items use a narrow preset).
  */
-export function exportVNFSServers(servers: VNFSServer[]): VNFSServer[] {
-  return servers;
+export async function exportVNFSServers(servers: VNFSServer[]): Promise<VNFSServer[]> {
+  return await Promise.all(
+    servers.map(async (s) => {
+      try {
+        return await vnfsApi.get(s.uuid!);
+      } catch (error) {
+        console.error(`Failed to fetch full vnfs server ${s.name}:`, error);
+        return s;
+      }
+    })
+  );
 }
 
 /**

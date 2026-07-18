@@ -70,19 +70,37 @@ def test_list_all_fields_none_returns_full_enriched_shape():
     assert "port" in result[0]
 
 
-def test_list_all_fields_list_preset_keeps_runtime_status():
+def test_list_all_fields_narrow_preset_runs_enhance():
+    """``narrow`` includes ``_enhance``, so enhancement runs and
+    ``running`` / ``export_path`` are merged in."""
     svc = VnfsService(_handler(), _manager())
-    result = svc.list_all(fields="list")
-    # Preset keeps the runtime-status fields the list UI depends on.
+    result = svc.list_all(fields="narrow")
     assert result[0]["running"] is True
     assert result[0]["export_path"] == "/tmp/export"
     assert result[0]["name"] == "v1"
 
 
+def test_list_all_fields_wide_preset_skips_enhance():
+    """``wide`` is manifest data only — enhancement does NOT run."""
+    svc = VnfsService(_handler(), _manager())
+    result = svc.list_all(fields="wide")
+    assert "running" not in result[0]
+    assert "export_path" not in result[0]
+    assert result[0]["name"] == "v1"
+
+
 def test_list_all_fields_csv_allowlist_narrows_output():
+    """A CSV allowlist without ``_enhance`` does not activate enhancement."""
     svc = VnfsService(_handler(), _manager())
     result = svc.list_all(fields="uuid,name")
     assert result == [{"uuid": "dddd-4444", "name": "v1"}]
+
+
+def test_list_all_fields_csv_with_enhance_flag_runs_enhance():
+    svc = VnfsService(_handler(), _manager())
+    result = svc.list_all(fields="uuid,name,running,_enhance")
+    assert result[0]["running"] is True
+    assert result[0]["uuid"] == "dddd-4444"
 
 
 def test_list_all_fields_full_returns_all_fields():
@@ -103,7 +121,9 @@ def _search_handler_vnfs(cached_vnfs):
     return h
 
 
-def test_search_default_returns_legacy_shape():
+def test_search_default_returns_full_enhanced_object_with_score():
+    """Default ``fields=None`` resolves to ``full`` — enhancement runs
+    and the response is the full object with ``similarity_score``."""
     cached = {
         "uuid": "v1",
         "name": "v1",
@@ -112,7 +132,12 @@ def test_search_default_returns_legacy_shape():
     }
     svc = VnfsService(_search_handler_vnfs(cached), _manager())
     result = svc.search("q")
-    assert result == [{"filename": "v1", "similarity_score": 0.4}]
+    assert len(result) == 1
+    r = result[0]
+    assert r["name"] == "v1"
+    assert r["running"] is True
+    assert r["export_path"] == "/tmp/export"
+    assert r["similarity_score"] == 0.4
 
 
 def test_search_does_not_mutate_cache_entry():

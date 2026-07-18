@@ -1,56 +1,166 @@
-"""Unit tests for the field-selection helpers used by list endpoints."""
+"""Unit tests for the field-selection helpers used by list/search endpoints."""
 
 import pytest
 
 from skillberry_store.services import field_selection as fs
 from skillberry_store.services.field_selection import (
-    SKILL_LIST_FIELDS,
-    SNIPPET_LIST_FIELDS,
-    TOOL_LIST_FIELDS,
-    VMCP_LIST_FIELDS,
-    VNFS_LIST_FIELDS,
+    _FIELD_TAGS_BY_TYPE,
+    _PRESET_NAMES,
     parse_fields_spec,
     select_item_fields,
     select_items_fields,
+    should_run_mechanism,
 )
+
+
+ALL_TYPES = ["snippet", "tool", "skill", "vmcp", "vnfs"]
+
+
+# ── parse_fields_spec: default / full ────────────────────────────────
 
 
 def test_parse_none_returns_none():
     assert parse_fields_spec(None, "snippet") is None
+
+
+def test_parse_empty_returns_none():
     assert parse_fields_spec("", "snippet") is None
 
 
 def test_parse_full_returns_none():
+    """``"full"`` resolves to the no-filtering sentinel (``None``) — all
+    fields are returned and all bundling mechanisms run."""
     assert parse_fields_spec("full", "snippet") is None
 
 
-def test_parse_list_returns_preset_copy():
-    result = parse_fields_spec("list", "snippet")
-    assert result == SNIPPET_LIST_FIELDS
-    result.add("_scratch")
-    assert "_scratch" not in SNIPPET_LIST_FIELDS
-
-
-def test_parse_list_per_type():
-    assert parse_fields_spec("list", "snippet") == SNIPPET_LIST_FIELDS
-    assert parse_fields_spec("list", "tool") == TOOL_LIST_FIELDS
-    assert parse_fields_spec("list", "skill") == SKILL_LIST_FIELDS
-    assert parse_fields_spec("list", "vmcp") == VMCP_LIST_FIELDS
-    assert parse_fields_spec("list", "vnfs") == VNFS_LIST_FIELDS
-
-
-def test_parse_list_unknown_type_raises():
+def test_parse_none_unknown_type_raises():
     with pytest.raises(ValueError, match="No field tags registered"):
-        parse_fields_spec("list", "unknown")
+        parse_fields_spec(None, "unknown")
+
+
+# ── parse_fields_spec: narrow / wide ─────────────────────────────────
+
+
+def test_parse_narrow_returns_narrow_set_per_type():
+    assert parse_fields_spec("narrow", "snippet") == fs._fields_with_preset(
+        "snippet", "narrow"
+    )
+    assert parse_fields_spec("narrow", "tool") == fs._fields_with_preset(
+        "tool", "narrow"
+    )
+    assert parse_fields_spec("narrow", "skill") == fs._fields_with_preset(
+        "skill", "narrow"
+    )
+    assert parse_fields_spec("narrow", "vmcp") == fs._fields_with_preset(
+        "vmcp", "narrow"
+    )
+    assert parse_fields_spec("narrow", "vnfs") == fs._fields_with_preset(
+        "vnfs", "narrow"
+    )
+
+
+def test_parse_wide_returns_wide_set_per_type():
+    for t in ALL_TYPES:
+        assert parse_fields_spec("wide", t) == fs._fields_with_preset(t, "wide")
+
+
+def test_parse_preset_unknown_type_raises():
+    with pytest.raises(ValueError, match="No field tags registered"):
+        parse_fields_spec("narrow", "unknown")
+
+
+def test_parse_returned_set_is_fresh_copy():
+    """Mutating the returned set must not affect the underlying tag table."""
+    result = parse_fields_spec("narrow", "snippet")
+    result.add("_scratch")
+    assert "_scratch" not in fs._fields_with_preset("snippet", "narrow")
+
+
+# ── parse_fields_spec: CSV allowlist ─────────────────────────────────
 
 
 def test_parse_csv_allowlist():
     assert parse_fields_spec("uuid,name", "snippet") == {"uuid", "name"}
+
+
+def test_parse_csv_strips_whitespace_and_empty():
     assert parse_fields_spec(" uuid , name , ", "snippet") == {"uuid", "name"}
 
 
-def test_parse_csv_empty_string_falls_through_to_none():
+def test_parse_csv_all_commas_falls_through_to_none():
+    """No tokens → treated as default (full)."""
     assert parse_fields_spec(",,,", "snippet") is None
+
+
+def test_registered_preset_name_never_falls_through_to_csv(monkeypatch):
+    """``"narrow"`` must always resolve as a preset, never as a literal
+    field name via the CSV path."""
+    monkeypatch.setitem(
+        fs._FIELD_TAGS_BY_TYPE,
+        "snippet",
+        {"uuid": {"narrow"}, "detail": {"narrow"}},
+    )
+    assert parse_fields_spec("narrow", "snippet") == {"uuid", "detail"}
+
+
+def test_csv_can_include_flag_field():
+    """Explicit CSV allowlists may name a flag field to trigger a
+    bundling mechanism."""
+    result = parse_fields_spec("uuid,name,_populate", "skill")
+    assert result == {"uuid", "name", "_populate"}
+
+
+# ── should_run_mechanism ─────────────────────────────────────────────
+
+
+def test_should_run_mechanism_none_allow_runs():
+    """``None`` (full/default) triggers every mechanism."""
+    assert should_run_mechanism(None, "_populate") is True
+    assert should_run_mechanism(None, "_enhance") is True
+
+
+def test_should_run_mechanism_flag_in_allow():
+    assert should_run_mechanism({"uuid", "_populate"}, "_populate") is True
+    assert should_run_mechanism({"uuid", "_enhance"}, "_enhance") is True
+
+
+def test_should_run_mechanism_flag_absent():
+    assert should_run_mechanism({"uuid", "name"}, "_populate") is False
+    assert should_run_mechanism({"uuid", "name"}, "_enhance") is False
+
+
+def test_narrow_skill_does_not_trigger_populate():
+    """Skill narrow deliberately excludes ``_populate`` — the list page
+    reads counts from ``tool_uuids`` / ``snippet_uuids`` without needing
+    the inlined arrays."""
+    allow = parse_fields_spec("narrow", "skill")
+    assert should_run_mechanism(allow, "_populate") is False
+
+
+def test_narrow_vmcp_triggers_enhance():
+    """vMCP narrow must trigger ``_enhance`` — the Status column reads
+    ``running``, which only appears when enhancement runs."""
+    allow = parse_fields_spec("narrow", "vmcp")
+    assert should_run_mechanism(allow, "_enhance") is True
+
+
+def test_narrow_vnfs_triggers_enhance():
+    allow = parse_fields_spec("narrow", "vnfs")
+    assert should_run_mechanism(allow, "_enhance") is True
+
+
+def test_wide_never_triggers_bundling_mechanisms():
+    """Principle: ``wide`` is manifest data only. Flag fields are not in
+    wide, so none of the bundling mechanisms activate."""
+    for t in ALL_TYPES:
+        allow = parse_fields_spec("wide", t)
+        for flag in ("_populate", "_enhance"):
+            assert should_run_mechanism(allow, flag) is False, (
+                f"{t}.wide unexpectedly triggers {flag}"
+            )
+
+
+# ── select_item_fields ───────────────────────────────────────────────
 
 
 def test_select_item_fields_none_returns_input_ref():
@@ -91,109 +201,158 @@ def test_select_items_fields_none_returns_new_list_with_same_refs():
     assert result[0] is items[0]
 
 
-def test_snippet_preset_omits_content():
-    assert "content" not in SNIPPET_LIST_FIELDS
+# ── invariants on the preset registry ────────────────────────────────
 
 
-def test_tool_preset_omits_heavy_fields():
-    for k in ("params", "returns", "dependencies", "packaging_params"):
-        assert k not in TOOL_LIST_FIELDS
+def test_registered_preset_names():
+    """The public preset names are exactly the three called out by the
+    spec — narrow / wide / full — plus nothing else."""
+    assert _PRESET_NAMES == {"narrow", "wide", "full"}
 
 
-def test_skill_preset_omits_populated_arrays():
-    assert "tools" not in SKILL_LIST_FIELDS
-    assert "snippets" not in SKILL_LIST_FIELDS
-    assert "tool_uuids" in SKILL_LIST_FIELDS
-    assert "snippet_uuids" in SKILL_LIST_FIELDS
+def test_every_type_has_narrow_wide_full():
+    """Each registered type must define at least one field tagged with
+    every preset name."""
+    for t in ALL_TYPES:
+        for preset in ("narrow", "wide", "full"):
+            assert fs._fields_with_preset(t, preset), (
+                f"type '{t}' has no fields tagged '{preset}'"
+            )
 
 
-def test_vmcp_preset_keeps_runtime_status_fields():
-    # The list UI depends on ``running`` / ``runtime`` — they must survive
-    # the slim projection.
-    assert "running" in VMCP_LIST_FIELDS
-    assert "runtime" in VMCP_LIST_FIELDS
+def test_narrow_subset_of_full_per_type():
+    """``narrow`` must be a subset of ``full`` for every type."""
+    for t in ALL_TYPES:
+        narrow = fs._fields_with_preset(t, "narrow")
+        full = fs._fields_with_preset(t, "full")
+        assert narrow <= full, (
+            f"type '{t}' narrow={narrow} not subset of full={full}"
+        )
 
 
-def test_vnfs_preset_keeps_runtime_status_fields():
-    assert "running" in VNFS_LIST_FIELDS
-    assert "export_path" in VNFS_LIST_FIELDS
+def test_wide_subset_of_full_per_type():
+    for t in ALL_TYPES:
+        wide = fs._fields_with_preset(t, "wide")
+        full = fs._fields_with_preset(t, "full")
+        assert wide <= full, (
+            f"type '{t}' wide={wide} not subset of full={full}"
+        )
 
 
-# ── tag-based preset registry ─────────────────────────────────────────
+def test_wide_never_contains_flag_fields():
+    """Boolean flag fields (prefix ``_``) trigger bundling mechanisms —
+    they belong to ``full`` (and to ``narrow`` when the list UI needs
+    the mechanism's output) but never to ``wide``."""
+    for t in ALL_TYPES:
+        wide = fs._fields_with_preset(t, "wide")
+        flags = {name for name in wide if name.startswith("_")}
+        assert not flags, f"type '{t}' has flag fields in wide: {flags}"
 
 
-def test_list_constants_match_tagged_fields_per_type():
-    """The public ``*_LIST_FIELDS`` constants are computed views over the
-    ``"list"`` tag of each type's field-tag table. Any drift (a field
-    tagged ``"list"`` but missing from the constant, or vice-versa) is a
-    bug in the registry."""
-    assert SNIPPET_LIST_FIELDS == fs._fields_with_preset("snippet", "list")
-    assert TOOL_LIST_FIELDS == fs._fields_with_preset("tool", "list")
-    assert SKILL_LIST_FIELDS == fs._fields_with_preset("skill", "list")
-    assert VMCP_LIST_FIELDS == fs._fields_with_preset("vmcp", "list")
-    assert VNFS_LIST_FIELDS == fs._fields_with_preset("vnfs", "list")
+def test_full_covers_every_declared_field():
+    """Every field in each type's tag table must carry the ``full``
+    preset — ``full`` is the total set."""
+    for t, tags in _FIELD_TAGS_BY_TYPE.items():
+        for name, presets in tags.items():
+            assert "full" in presets, (
+                f"type '{t}' field '{name}' not tagged 'full' (presets={presets})"
+            )
 
 
-def test_all_known_presets_currently_only_list():
-    """Today the registry only declares the ``"list"`` preset. This test
-    documents that invariant; adding a new preset should require an
-    intentional update here."""
-    assert fs._all_known_presets() == {"list"}
+# ── per-type narrow shape (the UI listing-page contract) ─────────────
 
 
-def test_field_can_carry_multiple_presets(monkeypatch):
-    """Tagging a single field with more than one preset must resolve
-    correctly for each preset independently — the core new-model
-    invariant."""
-    monkeypatch.setitem(
-        fs._FIELD_TAGS_BY_TYPE,
-        "snippet",
-        {
-            "uuid": {"list", "summary"},
-            "name": {"list", "summary"},
-            "description": {"list"},
-            "content": set(),
-        },
-    )
-    assert parse_fields_spec("list", "snippet") == {"uuid", "name", "description"}
-    assert parse_fields_spec("summary", "snippet") == {"uuid", "name"}
+def test_snippet_narrow_shape():
+    assert fs._fields_with_preset("snippet", "narrow") == {
+        "uuid",
+        "name",
+        "description",
+        "state",
+        "tags",
+        "version",
+        "content_type",
+    }
 
 
-def test_known_preset_undeclared_for_type_raises(monkeypatch):
-    """If a preset name is declared for *some* type but no field of the
-    target type carries it, requesting it must raise — no silent CSV
-    fallback that would return ``{}`` per item."""
-    # ``"summary"`` is declared for snippet but not for tool.
-    monkeypatch.setitem(
-        fs._FIELD_TAGS_BY_TYPE,
-        "snippet",
-        {"uuid": {"list", "summary"}, "name": {"list"}},
-    )
-    monkeypatch.setitem(
-        fs._FIELD_TAGS_BY_TYPE,
-        "tool",
-        {"uuid": {"list"}, "name": {"list"}},
-    )
-    assert parse_fields_spec("summary", "snippet") == {"uuid"}
-    with pytest.raises(ValueError, match="No 'summary' preset"):
-        parse_fields_spec("summary", "tool")
+def test_tool_narrow_shape():
+    assert fs._fields_with_preset("tool", "narrow") == {
+        "uuid",
+        "name",
+        "description",
+        "state",
+        "tags",
+        "version",
+        "module_name",
+    }
 
 
-def test_csv_still_supported_for_arbitrary_allowlist():
-    """A caller-defined CSV must still resolve to the literal token set —
-    the "unknown-preset-name" branch only triggers when the token is a
-    registered preset name for some type."""
-    assert parse_fields_spec("uuid,name,port", "vmcp") == {"uuid", "name", "port"}
+def test_skill_narrow_shape():
+    assert fs._fields_with_preset("skill", "narrow") == {
+        "uuid",
+        "name",
+        "description",
+        "state",
+        "tags",
+        "version",
+        "tool_uuids",
+        "snippet_uuids",
+    }
 
 
-def test_registered_preset_name_never_falls_through_to_csv(monkeypatch):
-    """Backstop: a bare token that happens to be a known preset name must
-    always take the preset path, never the CSV path — regardless of the
-    caller's intent."""
-    monkeypatch.setitem(
-        fs._FIELD_TAGS_BY_TYPE,
-        "snippet",
-        {"uuid": {"list"}, "detail": {"list"}},
-    )
-    # ``"list"`` is a known preset — this must NOT parse as ``{"list"}``.
-    assert parse_fields_spec("list", "snippet") == {"uuid", "detail"}
+def test_vmcp_narrow_shape():
+    """vMCP narrow includes ``_enhance``, ``running``, and ``runtime`` —
+    enhancement runs and both bundled outputs come with it (the list
+    view happens to render only ``running``)."""
+    assert fs._fields_with_preset("vmcp", "narrow") == {
+        "uuid",
+        "name",
+        "description",
+        "state",
+        "tags",
+        "version",
+        "port",
+        "_enhance",
+        "running",
+        "runtime",
+    }
+
+
+def test_vnfs_narrow_shape():
+    assert fs._fields_with_preset("vnfs", "narrow") == {
+        "uuid",
+        "name",
+        "description",
+        "state",
+        "tags",
+        "version",
+        "port",
+        "protocol",
+        "_enhance",
+        "running",
+        "export_path",
+    }
+
+
+# ── wide invariant: every persisted schema field, no flags ───────────
+
+
+def test_wide_contains_manifest_base_fields():
+    """Every type inherits from ManifestSchema — its base fields must be
+    in ``wide`` (and ``full``) for every type."""
+    base = {
+        "uuid",
+        "name",
+        "version",
+        "description",
+        "state",
+        "tags",
+        "extra",
+        "parent",
+        "created_at",
+        "modified_at",
+    }
+    for t in ALL_TYPES:
+        wide = fs._fields_with_preset(t, "wide")
+        assert base <= wide, (
+            f"type '{t}' wide is missing manifest fields: {base - wide}"
+        )

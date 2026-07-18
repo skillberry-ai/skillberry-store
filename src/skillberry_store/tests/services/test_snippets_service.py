@@ -83,17 +83,28 @@ def test_list_all_default_shape_is_unchanged():
     assert result[0].get("content") == "body"
 
 
-def test_list_all_list_preset_drops_content():
+def test_list_all_narrow_preset_drops_content():
     h = _handler()
     h.list_all_dicts.return_value = [
         {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"},
         {"uuid": "u2", "name": "b", "content": "big", "modified_at": "2024-01-01"},
     ]
     svc = SnippetsService(h)
-    result = svc.list_all(fields="list")
+    result = svc.list_all(fields="narrow")
     assert [r["name"] for r in result] == ["a", "b"]
     assert all("content" not in r for r in result)
     assert all("uuid" in r for r in result)
+
+
+def test_list_all_wide_preset_keeps_content():
+    """``wide`` is every persisted manifest field — including ``content``."""
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"},
+    ]
+    svc = SnippetsService(h)
+    result = svc.list_all(fields="wide")
+    assert result[0]["content"] == "body"
 
 
 def test_list_all_custom_allowlist():
@@ -111,7 +122,7 @@ def test_list_all_field_selection_does_not_mutate_cache_entries():
     h = _handler()
     h.list_all_dicts.return_value = [original]
     svc = SnippetsService(h)
-    svc.list_all(fields="list")
+    svc.list_all(fields="narrow")
     assert "content" in original
     assert original == {
         "uuid": "u1",
@@ -163,7 +174,9 @@ def _search_handler(cached_snippet):
     return h
 
 
-def test_search_default_returns_legacy_shape():
+def test_search_default_returns_full_object_with_score():
+    """Default ``fields=None`` resolves to ``full`` — each match is the
+    complete snippet dict with ``similarity_score`` merged in."""
     cached = {
         "uuid": "u1",
         "name": "s1",
@@ -173,7 +186,12 @@ def test_search_default_returns_legacy_shape():
     }
     svc = SnippetsService(_search_handler(cached))
     result = svc.search("q")
-    assert result == [{"filename": "s1", "similarity_score": 0.2}]
+    assert len(result) == 1
+    r = result[0]
+    assert r["uuid"] == "u1"
+    assert r["name"] == "s1"
+    assert r["content"] == "big body"
+    assert r["similarity_score"] == 0.2
 
 
 def test_search_does_not_mutate_cache_entry():
@@ -191,7 +209,7 @@ def test_search_does_not_mutate_cache_entry():
     assert "similarity_score" not in cached
 
 
-def test_search_with_fields_list_returns_projected_plus_score():
+def test_search_with_fields_narrow_returns_projected_plus_score():
     cached = {
         "uuid": "u1",
         "name": "s1",
@@ -202,7 +220,7 @@ def test_search_with_fields_list_returns_projected_plus_score():
         "modified_at": "2024-02-01",
     }
     svc = SnippetsService(_search_handler(cached))
-    result = svc.search("q", fields="list")
+    result = svc.search("q", fields="narrow")
     assert len(result) == 1
     r = result[0]
     assert r["name"] == "s1"

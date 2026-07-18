@@ -416,9 +416,10 @@ async def test_search_vnfs_servers(run_sbs, imported_skill_uuid):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching VNFS server"
         
-        # Verify python_vnfs_server is in results
-        filenames = [r.get("filename") for r in results]
-        assert "python_vnfs_server" in filenames, f"python_vnfs_server should be in search results, got: {filenames}"
+        # Verify python_vnfs_server is in results. Default search shape
+        # is the full object with ``similarity_score`` merged in.
+        names = [r.get("name") for r in results]
+        assert "python_vnfs_server" in names, f"python_vnfs_server should be in search results, got: {names}"
         
         # Test search for "file transfers"
         search_response = await client.get(

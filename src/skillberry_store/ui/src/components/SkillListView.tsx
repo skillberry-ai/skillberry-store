@@ -88,7 +88,7 @@ export function SkillListView({
               style={{ cursor: 'pointer' }}
             >
               {(() => {
-                const count = skill.tool_uuids?.length ?? skill.tools?.length ?? 0;
+                const count = skill.tool_uuids?.length ?? 0;
                 return count > 0 ? count : '-';
               })()}
             </Td>
@@ -98,7 +98,7 @@ export function SkillListView({
               style={{ cursor: 'pointer' }}
             >
               {(() => {
-                const count = skill.snippet_uuids?.length ?? skill.snippets?.length ?? 0;
+                const count = skill.snippet_uuids?.length ?? 0;
                 return count > 0 ? count : '-';
               })()}
             </Td>

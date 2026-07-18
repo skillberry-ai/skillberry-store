@@ -261,25 +261,34 @@ class VmcpService:
         skill_uuid: Optional[str] = None,
         fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """List all VMCP servers with runtime status.
+        """List all VMCP servers, optionally enhanced with runtime status.
+
+        Field-selection semantics (see
+        :mod:`skillberry_store.services.field_selection`):
+
+        * ``fields`` omitted / ``"full"`` / ``"narrow"`` — the
+          ``_enhance`` mechanism runs; ``running`` and ``runtime`` are
+          computed and merged into each server dict before field
+          selection is applied.
+        * ``fields="wide"`` — persisted manifest fields only; enhancement
+          is skipped (no subprocess-manager calls).
+        * Explicit CSV allowlist — enhancement runs iff ``"_enhance"``
+          is in the allowlist.
 
         Args:
             skill_uuid: When provided, restrict the result to servers whose
                 ``skill_uuid`` matches this value.
-            fields: Optional field-selection spec (``None`` / ``"full"`` /
-                ``"list"`` / comma-separated allowlist). See
-                :mod:`skillberry_store.services.field_selection`. The runtime
-                enrichment fields (``running`` / ``runtime``) are always
-                populated before selection.
+            fields: Optional field-selection spec.
 
         Returns:
-            List[Dict[str, Any]]: Server info dicts with runtime status, sorted
-                by ``modified_at`` descending. Fields are filtered according
-                to ``fields``.
+            List[Dict[str, Any]]: Server info dicts sorted by
+                ``modified_at`` descending, field-selected according to
+                ``fields``.
         """
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_items_fields,
+            should_run_mechanism,
         )
 
         list_vmcp_counter.inc()
@@ -287,28 +296,22 @@ class VmcpService:
             items = self.handler.list_all_dicts()
             if skill_uuid:
                 items = [i for i in items if i.get("skill_uuid") == skill_uuid]
-            servers = []
+            allow = parse_fields_spec(fields, "vmcp")
+            enhance = should_run_mechanism(allow, "_enhance")
+            servers: List[Dict[str, Any]] = []
             for item in items:
                 try:
-                    runtime = None
-                    try:
-                        runtime = self.server_manager.get_server(
-                            item.get("name", ""), item.get("uuid", "")
-                        )
-                    except Exception:
-                        pass
-                    info = {
-                        "uuid": item.get("uuid"),
-                        "name": item.get("name"),
-                        "description": item.get("description"),
-                        "version": item.get("version"),
-                        "state": item.get("state"),
-                        "tags": item.get("tags", []),
-                        "port": item.get("port"),
-                        "skill_uuid": item.get("skill_uuid"),
-                        "modified_at": item.get("modified_at", ""),
-                        "running": runtime is not None,
-                        "runtime": (
+                    info = dict(item)
+                    if enhance:
+                        runtime = None
+                        try:
+                            runtime = self.server_manager.get_server(
+                                item.get("name", ""), item.get("uuid", "")
+                            )
+                        except Exception:
+                            pass
+                        info["running"] = runtime is not None
+                        info["runtime"] = (
                             {
                                 "name": runtime.name,
                                 "description": runtime.description,
@@ -317,15 +320,13 @@ class VmcpService:
                             }
                             if runtime
                             else None
-                        ),
-                    }
+                        )
                     servers.append(info)
                 except Exception as e:
                     logger.warning(
                         f"Error loading vmcp server '{item.get('name')}': {e}"
                     )
             servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            allow = parse_fields_spec(fields, "vmcp")
             return select_items_fields(servers, allow)
         except Exception as e:
             logger.error(f"Error listing vmcp servers: {e}")
@@ -357,17 +358,18 @@ class VmcpService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-            fields: Optional field-selection spec. When ``None`` (default),
-                each match is returned as the legacy
-                ``{"filename", "similarity_score"}`` pair. Otherwise the same
-                grammar as list field-selection applies (``"list"`` /
-                ``"full"`` / comma-separated allowlist) and each match is
-                returned as a field-selected VMCP dict with
-                ``similarity_score`` merged in.
+            fields: Optional field-selection spec — same grammar as
+                :meth:`list_all` (``None`` / ``"full"`` / ``"narrow"`` /
+                ``"wide"`` / CSV allowlist). Each match is a
+                field-selected VMCP dict with ``similarity_score`` merged
+                in. Default (``None``) is ``"full"`` — the ``_enhance``
+                mechanism runs and ``running`` / ``runtime`` are merged
+                in.
 
         Returns:
             List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
-                Shape depends on ``fields`` (see above).
+                Each entry is a field-selected VMCP dict plus a
+                ``similarity_score`` key.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -378,6 +380,7 @@ class VmcpService:
         from skillberry_store.services.field_selection import (
             parse_fields_spec,
             select_item_fields,
+            should_run_mechanism,
         )
 
         search_vmcp_counter.inc()
@@ -413,16 +416,27 @@ class VmcpService:
                 lifecycle_state=lifecycle_state,
             )
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            if fields is None:
-                return [
-                    {
-                        "filename": s.get("name", ""),
-                        "similarity_score": s.get("similarity_score", 0.0),
-                    }
-                    for s in result_items
-                    if s.get("name")
-                ]
             allow = parse_fields_spec(fields, "vmcp")
+            if should_run_mechanism(allow, "_enhance"):
+                for s in result_items:
+                    runtime = None
+                    try:
+                        runtime = self.server_manager.get_server(
+                            s.get("name", ""), s.get("uuid", "")
+                        )
+                    except Exception:
+                        pass
+                    s["running"] = runtime is not None
+                    s["runtime"] = (
+                        {
+                            "name": runtime.name,
+                            "description": runtime.description,
+                            "port": runtime.port,
+                            "tools": runtime.tool_uuids,
+                        }
+                        if runtime
+                        else None
+                    )
             return [
                 {
                     **select_item_fields(s, allow),

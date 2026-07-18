@@ -221,12 +221,12 @@ export function VMCPServersPage() {
     deleteMutation.mutate(selectedServers);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const selectedServerObjects = servers?.filter(s => selectedServers.includes(s.name)) || [];
-    
-    // Use helper function to export VMCP servers
-    const serversForExport = exportVMCPServers(selectedServerObjects);
-    
+
+    // Re-fetch full manifests (list-page items use a narrow preset).
+    const serversForExport = await exportVMCPServers(selectedServerObjects);
+
     // Download as JSON file
     downloadJSON(serversForExport, `vmcp-servers-export-${new Date().toISOString().split('T')[0]}.json`);
   };

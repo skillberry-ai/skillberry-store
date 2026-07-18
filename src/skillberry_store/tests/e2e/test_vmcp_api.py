@@ -285,9 +285,10 @@ async def test_search_vmcp_servers(run_sbs):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching VMCP server"
         
-        # Verify python_vmcp_server is in results
-        filenames = [r.get("filename") for r in results]
-        assert "python_vmcp_server" in filenames, f"python_vmcp_server should be in search results, got: {filenames}"
+        # Verify python_vmcp_server is in results. Default search shape
+        # is the full object with ``similarity_score`` merged in.
+        names = [r.get("name") for r in results]
+        assert "python_vmcp_server" in names, f"python_vmcp_server should be in search results, got: {names}"
         
         # Test search for "HTTP requests"
         search_response = await client.get(

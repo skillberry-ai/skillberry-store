@@ -732,9 +732,10 @@ async def test_search_tools(run_sbs):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching tool"
         
-        # Verify calculator_tool is in results
-        filenames = [r.get("filename") for r in results]
-        assert "calculator_tool" in filenames, f"calculator_tool should be in search results, got: {filenames}"
+        # Verify calculator_tool is in results. Default search shape is
+        # the full object with ``similarity_score`` merged in.
+        names = [r.get("name") for r in results]
+        assert "calculator_tool" in names, f"calculator_tool should be in search results, got: {names}"
         
         # Test search for "string"
         search_response = await client.get(

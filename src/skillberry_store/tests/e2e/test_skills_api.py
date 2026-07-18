@@ -385,9 +385,10 @@ async def test_search_skills(run_sbs):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching skill"
         
-        # Verify data_analysis_skill is in results
-        filenames = [r.get("filename") for r in results]
-        assert "data_analysis_skill" in filenames, f"data_analysis_skill should be in search results, got: {filenames}"
+        # Verify data_analysis_skill is in results. Default search shape
+        # is the full object with ``similarity_score`` merged in.
+        names = [r.get("name") for r in results]
+        assert "data_analysis_skill" in names, f"data_analysis_skill should be in search results, got: {names}"
         
         # Test search for "web development"
         search_response = await client.get(

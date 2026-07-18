@@ -64,14 +64,14 @@ def test_list_snippets_default_returns_bare_array_with_content(fresh_sbs):
     assert entry["content"] == "hello world"
 
 
-def test_list_snippets_fields_list_drops_content(fresh_sbs):
-    """?fields=list returns the slim preset (no heavy `content` field)."""
+def test_list_snippets_fields_narrow_drops_content(fresh_sbs):
+    """?fields=narrow returns the minimal listing-page set (no `content`)."""
     client = TestClient(fresh_sbs)
 
     _create_snippet(client, "phase1_slim_a", "body-a")
     _create_snippet(client, "phase1_slim_b", "body-b")
 
-    resp = client.get("/snippets/", params={"fields": "list"})
+    resp = client.get("/snippets/", params={"fields": "narrow"})
     assert resp.status_code == 200
     body = resp.json()
     assert isinstance(body, list)
@@ -81,6 +81,19 @@ def test_list_snippets_fields_list_drops_content(fresh_sbs):
     for s in body:
         assert "content" not in s
         assert "uuid" in s
+
+
+def test_list_snippets_fields_wide_keeps_content(fresh_sbs):
+    """``wide`` returns every persisted manifest field, including `content`."""
+    client = TestClient(fresh_sbs)
+
+    _create_snippet(client, "phase1_wide_a", "body-wide")
+
+    resp = client.get("/snippets/", params={"fields": "wide"})
+    assert resp.status_code == 200
+    body = resp.json()
+    entry = next(s for s in body if s["name"] == "phase1_wide_a")
+    assert entry["content"] == "body-wide"
 
 
 def test_list_snippets_custom_allowlist(fresh_sbs):
@@ -117,26 +130,29 @@ def _search_snippets_via_mocked_vector(client: TestClient, matched_name: str, **
         return client.get("/search/snippets", params={"search_term": "q", **params})
 
 
-def test_search_snippets_default_returns_legacy_shape(fresh_sbs):
-    """Default search shape must remain ``{filename, similarity_score}``."""
+def test_search_snippets_default_returns_full_with_score(fresh_sbs):
+    """Default (no ``fields``) is equivalent to ``full`` — the whole
+    snippet dict with ``similarity_score`` merged in."""
     client = TestClient(fresh_sbs)
-    _create_snippet(client, "phase1_search_legacy", "body-a")
+    _create_snippet(client, "phase1_search_full", "body-a")
 
-    resp = _search_snippets_via_mocked_vector(client, "phase1_search_legacy")
+    resp = _search_snippets_via_mocked_vector(client, "phase1_search_full")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert isinstance(body, list) and len(body) == 1
-    assert set(body[0].keys()) == {"filename", "similarity_score"}
-    assert body[0]["filename"] == "phase1_search_legacy"
+    r = body[0]
+    assert r["name"] == "phase1_search_full"
+    assert r["content"] == "body-a"
+    assert r["similarity_score"] == 0.1
 
 
-def test_search_snippets_fields_list_returns_projected_with_score(fresh_sbs):
-    """``?fields=list`` returns slim snippet dicts with score merged in."""
+def test_search_snippets_fields_narrow_returns_projected_with_score(fresh_sbs):
+    """``?fields=narrow`` returns slim snippet dicts with score merged in."""
     client = TestClient(fresh_sbs)
     _create_snippet(client, "phase1_search_slim", "long body content")
 
     resp = _search_snippets_via_mocked_vector(
-        client, "phase1_search_slim", fields="list"
+        client, "phase1_search_slim", fields="narrow"
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()

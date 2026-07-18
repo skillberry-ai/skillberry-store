@@ -206,10 +206,9 @@ class SnippetsService:
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional field-selection spec. ``None`` or ``"full"``
-                returns every field (current behavior). ``"list"`` returns
-                the slim per-type preset (drops the heavy ``content`` field).
-                A comma-separated string selects a caller-defined allowlist.
+            fields: Optional field-selection spec (``None`` / ``"full"``
+                / ``"narrow"`` / ``"wide"`` / CSV allowlist). See
+                :mod:`skillberry_store.services.field_selection`.
 
         Returns:
             List[Dict[str, Any]]: List of snippet metadata dictionaries,
@@ -261,17 +260,17 @@ class SnippetsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-            fields: Optional field-selection spec. When ``None`` (default),
-                each match is returned as the legacy
-                ``{"filename", "similarity_score"}`` pair. Otherwise the same
-                grammar as list field-selection applies (``"list"`` /
-                ``"full"`` / comma-separated allowlist) and each match is
-                returned as a field-selected snippet dict with
-                ``similarity_score`` merged in.
+            fields: Optional field-selection spec — same grammar as
+                :meth:`list_all` (``None`` / ``"full"`` / ``"narrow"`` /
+                ``"wide"`` / CSV allowlist). Each match is a
+                field-selected snippet dict with ``similarity_score``
+                merged in. Default (``None``) is ``"full"`` — every
+                field is returned.
 
         Returns:
             List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
-                Shape depends on ``fields`` (see above).
+                Each entry is a field-selected snippet dict plus a
+                ``similarity_score`` key.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -317,15 +316,6 @@ class SnippetsService:
                 lifecycle_state=lifecycle_state,
             )
             result_snippets.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            if fields is None:
-                return [
-                    {
-                        "filename": s.get("name", ""),
-                        "similarity_score": s.get("similarity_score", 0.0),
-                    }
-                    for s in result_snippets
-                    if s.get("name")
-                ]
             allow = parse_fields_spec(fields, "snippet")
             return [
                 {

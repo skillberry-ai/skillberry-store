@@ -172,12 +172,12 @@ export function SnippetsPage() {
     deleteMutation.mutate(selectedSnippets);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const selectedSnippetObjects = snippets?.filter(s => selectedSnippets.includes(s.name)) || [];
-    
-    // Use helper function to export snippets
-    const snippetsForExport = exportSnippets(selectedSnippetObjects);
-    
+
+    // Re-fetch full manifests (list-page items use a narrow preset).
+    const snippetsForExport = await exportSnippets(selectedSnippetObjects);
+
     // Download as JSON file
     downloadJSON(snippetsForExport, `snippets-export-${new Date().toISOString().split('T')[0]}.json`);
   };

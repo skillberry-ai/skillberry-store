@@ -93,11 +93,14 @@ def register_vnfs_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Field selection. Omit for the full runtime-enriched server "
-                "object (default). Use 'list' for the slim list-view preset "
-                "(keeps runtime-status fields the list UI depends on), "
-                "'full' for the full object, or a comma-separated allowlist "
-                "of field names."
+                "Field selection. Omit or 'full' for the complete object "
+                "with the '_enhance' mechanism running — 'running' and "
+                "'export_path' are computed and merged in (default). "
+                "'narrow' returns the minimal set required by the UI "
+                "listing page (still runs enhancement). 'wide' returns "
+                "every persisted manifest field only (enhancement "
+                "skipped). Or supply a comma-separated allowlist "
+                "(include '_enhance' to trigger enhancement)."
             ),
         ),
     ):
@@ -276,11 +279,14 @@ def register_vnfs_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Optional field selection over each matched vNFS server. "
-                "Omit for the legacy '{filename, similarity_score}' shape. "
-                "Use 'list' for the slim list-view preset merged with "
-                "'similarity_score', 'full' for the raw vNFS dict, or a "
-                "comma-separated allowlist of field names."
+                "Field selection over each match. Same grammar as the "
+                "list endpoint. Default (omit / 'full') triggers "
+                "'_enhance' — 'running' and 'export_path' are merged "
+                "in. 'narrow' returns the UI listing set (also runs "
+                "enhancement). 'wide' returns every persisted manifest "
+                "field (enhancement skipped). CSV allowlist also "
+                "supported. Each match is a field-selected vNFS dict "
+                "with 'similarity_score' merged in."
             ),
         ),
     ):
@@ -298,9 +304,8 @@ def register_vnfs_api(
             fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
-                when ``fields`` is omitted; otherwise field-selected vNFS
-                dicts with ``similarity_score`` merged in.
+            list: Field-selected vNFS dicts with ``similarity_score``
+                merged in.
 
         Raises:
             HTTPException: 400 if ``fields`` is invalid, 503 if search is not

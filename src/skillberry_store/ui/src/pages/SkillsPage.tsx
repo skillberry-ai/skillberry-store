@@ -290,8 +290,9 @@ export function SkillsPage() {
   const handleExport = async () => {
     const selectedSkillObjects = skills?.filter(s => selectedSkills.includes(s.name)) || [];
     
-    // Use helper function to export skills with UUIDs (matching backend format)
-    const skillsForExport = exportSkills(selectedSkillObjects);
+    // Re-fetch full manifests (list-page items use a narrow preset)
+    // and normalize to the backend export shape.
+    const skillsForExport = await exportSkills(selectedSkillObjects);
     
     // Generate filename based on selected skills
     let filename: string;

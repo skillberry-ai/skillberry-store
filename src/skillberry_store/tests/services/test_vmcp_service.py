@@ -73,19 +73,40 @@ def test_list_all_fields_none_returns_full_enriched_shape():
     assert "port" in result[0]
 
 
-def test_list_all_fields_list_preset_keeps_runtime_status():
+def test_list_all_fields_narrow_preset_runs_enhance():
+    """``narrow`` includes ``_enhance``, so the enhancement mechanism
+    runs and ``running`` / ``runtime`` are merged in."""
     svc = VmcpService(_handler(), _manager())
-    result = svc.list_all(fields="list")
-    # Preset keeps the runtime-status fields the list UI depends on.
+    result = svc.list_all(fields="narrow")
     assert result[0]["running"] is True
     assert "runtime" in result[0]
     assert result[0]["name"] == "vm1"
 
 
+def test_list_all_fields_wide_preset_skips_enhance():
+    """``wide`` is manifest data only — enhancement does NOT run, so
+    ``running`` and ``runtime`` are absent."""
+    svc = VmcpService(_handler(), _manager())
+    result = svc.list_all(fields="wide")
+    assert "running" not in result[0]
+    assert "runtime" not in result[0]
+    assert result[0]["name"] == "vm1"
+    assert result[0]["port"] is not None or "port" in result[0]
+
+
 def test_list_all_fields_csv_allowlist_narrows_output():
+    """A CSV allowlist without ``_enhance`` does not activate enhancement."""
     svc = VmcpService(_handler(), _manager())
     result = svc.list_all(fields="uuid,name")
     assert result == [{"uuid": "eeee-5555", "name": "vm1"}]
+
+
+def test_list_all_fields_csv_with_enhance_flag_runs_enhance():
+    """Explicit CSV allowlist naming ``_enhance`` runs the mechanism."""
+    svc = VmcpService(_handler(), _manager())
+    result = svc.list_all(fields="uuid,name,running,_enhance")
+    assert result[0]["running"] is True
+    assert result[0]["uuid"] == "eeee-5555"
 
 
 def test_list_all_fields_full_returns_all_fields():
@@ -95,13 +116,14 @@ def test_list_all_fields_full_returns_all_fields():
     assert "runtime" in result[0]
 
 
-def test_list_all_fields_invalid_object_type_raises_via_bad_preset():
-    # Purely covers the preset registration: parse_fields_spec is validated
-    # by its own tests. Here we just guarantee our service passes "vmcp"
-    # through so a caller-defined allowlist works end-to-end.
+def test_list_all_running_only_csv_needs_enhance_flag_to_populate():
+    """A CSV allowlist naming ``running`` alone won't populate the
+    field — enhancement is gated on ``_enhance``, not on ``running``."""
     svc = VmcpService(_handler(), _manager())
     result = svc.list_all(fields="running")
-    assert result == [{"running": True}]
+    # Enhancement did not run → 'running' was never set, so the
+    # projection drops it.
+    assert result == [{}]
 
 
 def _search_handler_vmcp(cached_vmcp):
@@ -115,7 +137,9 @@ def _search_handler_vmcp(cached_vmcp):
     return h
 
 
-def test_search_default_returns_legacy_shape():
+def test_search_default_returns_full_enhanced_object_with_score():
+    """Default ``fields=None`` resolves to ``full`` — enhancement runs
+    and the response is the full object with ``similarity_score``."""
     cached = {
         "uuid": "vm1",
         "name": "vm1",
@@ -124,7 +148,12 @@ def test_search_default_returns_legacy_shape():
     }
     svc = VmcpService(_search_handler_vmcp(cached), _manager())
     result = svc.search("q")
-    assert result == [{"filename": "vm1", "similarity_score": 0.4}]
+    assert len(result) == 1
+    r = result[0]
+    assert r["name"] == "vm1"
+    assert r["running"] is True
+    assert "runtime" in r
+    assert r["similarity_score"] == 0.4
 
 
 def test_search_does_not_mutate_cache_entry():

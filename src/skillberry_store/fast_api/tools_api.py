@@ -102,11 +102,11 @@ def register_tools_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Field selection. Omit for full objects (default). Use "
-                "'list' for the slim list-view preset (drops 'params', "
-                "'returns', 'dependencies', 'packaging_params'), 'full' "
-                "for the full object, or a comma-separated allowlist of "
-                "field names."
+                "Field selection. Omit or 'full' for the complete object "
+                "(default). 'narrow' returns the minimal set required by "
+                "the UI listing page for this type. 'wide' returns every "
+                "persisted manifest field. Or supply a comma-separated "
+                "allowlist of field names."
             ),
         ),
     ) -> List[Dict[str, Any]]:
@@ -323,11 +323,12 @@ def register_tools_api(
         fields: Optional[str] = Query(
             None,
             description=(
-                "Optional field selection over each matched tool. Omit for "
-                "the legacy '{filename, similarity_score}' shape. Use 'list' "
-                "for the slim list-view preset merged with 'similarity_score', "
-                "'full' for the full tool, or a comma-separated allowlist of "
-                "field names."
+                "Field selection over each match. Same grammar as the "
+                "list endpoint (omit or 'full' for the complete object; "
+                "'narrow' for the UI listing set; 'wide' for every "
+                "persisted manifest field; CSV allowlist). Each match "
+                "is a field-selected tool dict with 'similarity_score' "
+                "merged in."
             ),
         ),
     ) -> List:
@@ -344,9 +345,8 @@ def register_tools_api(
             fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            list: Matches. Legacy ``{"filename", "similarity_score"}`` shape
-                when ``fields`` is omitted; otherwise field-selected tool
-                dicts with ``similarity_score`` merged in.
+            list: Field-selected tool dicts with ``similarity_score``
+                merged in.
         """
         try:
             return service.search(
