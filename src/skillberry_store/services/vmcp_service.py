@@ -223,33 +223,59 @@ class VmcpService:
                 raise KeyError(f"VMCP server '{label}' not found")
             raise
 
-    def get(self, uuid_or_name: str) -> Dict[str, Any]:
-        """Get VMCP server metadata by UUID or name with runtime status.
+    def get(
+        self,
+        uuid_or_name: str,
+        fields: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get VMCP server metadata by UUID or name, optionally with
+        runtime status.
+
+        Field-selection semantics mirror :meth:`list_all`:
+
+        * ``fields`` omitted / ``"narrow"`` / ``"full"`` — the
+          ``_enhance`` mechanism runs; ``running`` and ``runtime`` are
+          computed and merged before field selection is applied. Default
+          is ``"narrow"``.
+        * ``fields="wide"`` — persisted manifest fields only;
+          enhancement is skipped (no subprocess-manager calls).
+        * Explicit CSV allowlist — enhancement runs iff ``"_enhance"``
+          is in the allowlist.
 
         Args:
             uuid_or_name: VMCP server UUID or name.
+            fields: Optional field-selection spec.
 
         Returns:
-            Dict[str, Any]: VMCP server metadata with 'running' and 'runtime' fields.
+            Dict[str, Any]: VMCP server metadata, field-selected
+                according to ``fields``.
 
         Raises:
             KeyError: If VMCP server not found.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+            should_run_mechanism,
+        )
+
         get_vmcp_counter.inc()
         try:
+            allow = parse_fields_spec(fields, "vmcp")
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.read_lock(uuid):
                 d = self._safe_read(uuid, uuid_or_name)
-                try:
-                    runtime_details = self.server_manager.get_server_details(
-                        d.get("name", ""), d.get("uuid", "")
-                    )
-                    d["runtime"] = runtime_details
-                    d["running"] = True
-                except Exception:
-                    d["running"] = False
-                    d["runtime"] = None
-                return d
+                if should_run_mechanism(allow, "_enhance"):
+                    try:
+                        runtime_details = self.server_manager.get_server_details(
+                            d.get("name", ""), d.get("uuid", "")
+                        )
+                        d["runtime"] = runtime_details
+                        d["running"] = True
+                    except Exception:
+                        d["running"] = False
+                        d["runtime"] = None
+                return select_item_fields(d, allow)
         except KeyError:
             raise
         except Exception as e:

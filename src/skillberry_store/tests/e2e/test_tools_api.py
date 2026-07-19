@@ -102,7 +102,7 @@ async def test_create_tool_with_file(run_sbs):
         assert result.get("module_name") == "test_module_file.py"
         
         # Verify the tool was created
-        get_response = await client.get(f"{BASE_URL}/tools/test_tool_with_file")
+        get_response = await client.get(f"{BASE_URL}/tools/test_tool_with_file?fields=full")
         assert get_response.status_code == 200
         tool = get_response.json()
         assert tool.get("module_name") == "test_module_file.py"
@@ -260,7 +260,7 @@ async def test_add_tool_from_python_endpoint(run_sbs):
             "y": {"type": "string", "description": "Second number"},
         }
 
-        get_response = await client.get(f"{BASE_URL}/tools/add_via_tools_add")
+        get_response = await client.get(f"{BASE_URL}/tools/add_via_tools_add?fields=full")
         assert get_response.status_code == 200
         tool = get_response.json()
         assert tool.get("module_name") == "add_via_tools_add.py"
@@ -339,7 +339,7 @@ async def test_add_tool_from_python_endpoint_update(run_sbs):
         assert updated.get("uuid") == first_uuid    # When updating with add from python, UUID should be the same
         assert updated.get("description") == "Add two integers with updated description."
 
-        get_response = await client.get(f"{BASE_URL}/tools/add_via_tools_add_update")
+        get_response = await client.get(f"{BASE_URL}/tools/add_via_tools_add_update?fields=full")
         assert get_response.status_code == 200
         tool = get_response.json()
         assert tool.get("description") == "Add two integers with updated description."
@@ -368,7 +368,7 @@ async def test_list_tools(run_sbs):
 async def test_get_tool(run_sbs):
     """Test getting a specific tool by name."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/tools/test_tool")
+        response = await client.get(f"{BASE_URL}/tools/test_tool?fields=full")
         assert response.status_code == 200
         tool = response.json()
         assert tool.get("name") == "test_tool"
@@ -381,7 +381,7 @@ async def test_get_tool(run_sbs):
 async def test_get_nonexistent_tool(run_sbs):
     """Test that getting a non-existent tool fails."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/tools/nonexistent_tool")
+        response = await client.get(f"{BASE_URL}/tools/nonexistent_tool?fields=full")
         assert response.status_code == 404
 
 
@@ -418,7 +418,7 @@ async def test_update_tool(run_sbs):
         assert "updated successfully" in data.get("message", "")
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/tools/test_tool")
+        get_response = await client.get(f"{BASE_URL}/tools/test_tool?fields=full")
         assert get_response.status_code == 200
         tool = get_response.json()
         assert tool.get("description") == "Updated test tool description"
@@ -446,7 +446,7 @@ async def test_delete_tool(run_sbs):
     """Test deleting a tool by UUID."""
     async with httpx.AsyncClient() as client:
         # First get the tool by name to obtain its UUID
-        get_response = await client.get(f"{BASE_URL}/tools/test_tool")
+        get_response = await client.get(f"{BASE_URL}/tools/test_tool?fields=full")
         assert get_response.status_code == 200
         tool_data = get_response.json()
         tool_uuid = tool_data.get("uuid")
@@ -459,7 +459,7 @@ async def test_delete_tool(run_sbs):
         assert "deleted successfully" in data.get("message", "")
 
         # Verify deletion by UUID
-        verify_response = await client.get(f"{BASE_URL}/tools/{tool_uuid}")
+        verify_response = await client.get(f"{BASE_URL}/tools/{tool_uuid}?fields=full")
         assert verify_response.status_code == 404
 
 
@@ -495,7 +495,7 @@ async def test_tool_lifecycle(run_sbs):
         assert create_response.json().get("name") == tool_name
 
         # 2. Read
-        get_response = await client.get(f"{BASE_URL}/tools/{tool_name}")
+        get_response = await client.get(f"{BASE_URL}/tools/{tool_name}?fields=full")
         assert get_response.status_code == 200
         tool = get_response.json()
         assert tool.get("name") == tool_name
@@ -529,7 +529,7 @@ async def test_tool_lifecycle(run_sbs):
         assert "updated successfully" in update_response.json().get("message", "")
 
         # 4. Verify update
-        get_updated_response = await client.get(f"{BASE_URL}/tools/{tool_name}")
+        get_updated_response = await client.get(f"{BASE_URL}/tools/{tool_name}?fields=full")
         assert get_updated_response.status_code == 200
         updated_tool = get_updated_response.json()
         assert updated_tool.get("module_name") == "lifecycle_module.py"  # module_name doesn't change in update
@@ -541,7 +541,7 @@ async def test_tool_lifecycle(run_sbs):
         assert "deleted successfully" in delete_response.json().get("message", "")
 
         # 6. Verify deletion
-        get_deleted_response = await client.get(f"{BASE_URL}/tools/{tool_name}")
+        get_deleted_response = await client.get(f"{BASE_URL}/tools/{tool_name}?fields=full")
         assert get_deleted_response.status_code == 404
 
 
@@ -965,7 +965,7 @@ async def test_create_tools_with_complex_dependencies(run_sbs):
             created_tools.append("add")
             
             # Verify 'add' has no dependencies
-            add_tool = await client.get(f"{BASE_URL}/tools/add")
+            add_tool = await client.get(f"{BASE_URL}/tools/add?fields=full")
             assert add_tool.status_code == 200
             add_tool_data = add_tool.json()
             dependencies = add_tool_data.get("dependencies") or []
@@ -994,7 +994,7 @@ async def test_create_tools_with_complex_dependencies(run_sbs):
             created_tools.append("subtract")
             
             # Verify 'subtract' has no dependencies
-            subtract_tool = await client.get(f"{BASE_URL}/tools/subtract")
+            subtract_tool = await client.get(f"{BASE_URL}/tools/subtract?fields=full")
             assert subtract_tool.status_code == 200
             subtract_tool_data = subtract_tool.json()
             dependencies = subtract_tool_data.get("dependencies") or []
@@ -1026,7 +1026,7 @@ async def test_create_tools_with_complex_dependencies(run_sbs):
             created_tools.append("multiply")
             
             # Verify 'multiply' depends on 'add' and 'subtract' (by UUID)
-            multiply_tool = await client.get(f"{BASE_URL}/tools/multiply")
+            multiply_tool = await client.get(f"{BASE_URL}/tools/multiply?fields=full")
             assert multiply_tool.status_code == 200
             multiply_tool_data = multiply_tool.json()
             dependencies = multiply_tool_data.get("dependencies") or []
@@ -1057,7 +1057,7 @@ async def test_create_tools_with_complex_dependencies(run_sbs):
             created_tools.append("calc_add_subtract")
             
             # Verify 'calc_add_subtract' depends on 'add' and 'subtract' (by UUID)
-            calc_add_subtract_tool = await client.get(f"{BASE_URL}/tools/calc_add_subtract")
+            calc_add_subtract_tool = await client.get(f"{BASE_URL}/tools/calc_add_subtract?fields=full")
             assert calc_add_subtract_tool.status_code == 200
             calc_add_subtract_tool_data = calc_add_subtract_tool.json()
             dependencies = calc_add_subtract_tool_data.get("dependencies") or []
@@ -1091,7 +1091,7 @@ async def test_create_tools_with_complex_dependencies(run_sbs):
             created_tools.append("calc")
             
             # Verify 'calc' depends on 'multiply' and 'calc_add_subtract' (by UUID)
-            calc_tool = await client.get(f"{BASE_URL}/tools/calc")
+            calc_tool = await client.get(f"{BASE_URL}/tools/calc?fields=full")
             assert calc_tool.status_code == 200
             calc_tool_data = calc_tool.json()
             dependencies = calc_tool_data.get("dependencies") or []

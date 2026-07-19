@@ -140,25 +140,43 @@ def register_tools_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "get-tool", "x-mcp-tool": True},
     )
-    def get_tool(uuid_or_name: str) -> Dict[str, Any]:
+    def get_tool(
+        uuid_or_name: str,
+        fields: Optional[str] = Query(
+            "narrow",
+            description=(
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set (default). 'wide' "
+                "returns every persisted manifest field. 'full' returns "
+                "the complete object, including flag fields that "
+                "trigger bundling mechanisms. Or supply a comma-"
+                "separated allowlist of field names."
+            ),
+        ),
+    ) -> Dict[str, Any]:
         """Get metadata for a specific tool by UUID or name.
 
-        Retrieves the complete manifest/metadata for a tool identified by either
+        Retrieves the manifest/metadata for a tool identified by either
         its UUID or its unique name.
 
         Args:
             uuid_or_name: The UUID or name of the tool to retrieve.
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            dict: Tool metadata including name, uuid, description, parameters, dependencies, etc.
+            dict: Tool metadata (subset when ``fields`` narrows the
+                field selection).
 
         Raises:
-            HTTPException: 404 if tool not found, 500 for other errors.
+            HTTPException: 400 if ``fields`` is invalid, 404 if tool
+                not found, 500 for other errors.
         """
         try:
-            return service.get(uuid_or_name)
+            return service.get(uuid_or_name, fields=fields)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving tool: {str(e)}"

@@ -74,7 +74,10 @@ class StoreAPI:
         if not self.tools_service:
             return None
         try:
-            return self.tools_service.get(uuid)
+            # Plugins consume the complete tool dict (module_name,
+            # packaging_*, params, dependencies, …). Opt into ``full``
+            # since the service default is ``narrow``.
+            return self.tools_service.get(uuid, fields="full")
         except KeyError:
             return None
 
@@ -90,7 +93,7 @@ class StoreAPI:
         if not self.tools_service:
             return False
         try:
-            tool = self.tools_service.get(uuid)
+            tool = self.tools_service.get(uuid, fields="full")
         except KeyError:
             return False
         existing = set(tool.get("tags", []))
@@ -111,7 +114,7 @@ class StoreAPI:
         if not self.tools_service:
             return False
         try:
-            tool = self.tools_service.get(uuid)
+            tool = self.tools_service.get(uuid, fields="full")
         except KeyError:
             return False
         if "extra" not in tool:
@@ -157,7 +160,10 @@ class StoreAPI:
         if not self.skills_service:
             return None
         try:
-            return self.skills_service.get(uuid)
+            # Plugins consume the complete skill dict (populated tools /
+            # snippets, extra, timestamps). Opt into ``full`` since the
+            # service default is ``narrow``.
+            return self.skills_service.get(uuid, fields="full")
         except KeyError:
             return None
 
@@ -173,7 +179,7 @@ class StoreAPI:
         if not self.skills_service:
             return False
         try:
-            skill = self.skills_service.get(uuid)
+            skill = self.skills_service.get(uuid, fields="full")
         except KeyError:
             return False
         existing = set(skill.get("tags", []))
@@ -189,7 +195,7 @@ class StoreAPI:
         if not self.skills_service:
             return False
         try:
-            skill = self.skills_service.get(uuid)
+            skill = self.skills_service.get(uuid, fields="full")
         except KeyError:
             return False
         if "extra" not in skill or not isinstance(skill.get("extra"), dict):
@@ -232,7 +238,10 @@ class StoreAPI:
         if not self.snippets_service:
             return None
         try:
-            return self.snippets_service.get(uuid)
+            # Plugins consume the complete snippet dict (including
+            # ``content``). Opt into ``full`` since the service default
+            # is ``narrow``.
+            return self.snippets_service.get(uuid, fields="full")
         except KeyError:
             return None
 
@@ -253,7 +262,7 @@ class StoreAPI:
         if not self.snippets_service:
             return False
         try:
-            snippet = self.snippets_service.get(uuid)
+            snippet = self.snippets_service.get(uuid, fields="full")
         except KeyError:
             return False
         existing = set(snippet.get("tags", []))
@@ -288,7 +297,9 @@ class StoreAPI:
         if not self.vmcp_service:
             return None
         try:
-            return self.vmcp_service.get(uuid_or_name)
+            # Plugins consume ``skill_uuid`` (not in the narrow preset)
+            # plus the full runtime bundle. Opt into ``full``.
+            return self.vmcp_service.get(uuid_or_name, fields="full")
         except KeyError:
             return None
 

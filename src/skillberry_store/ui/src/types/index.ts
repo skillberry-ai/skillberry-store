@@ -36,7 +36,8 @@ export interface Skill {
   description: string;
   state?: ManifestState;
   // Slim list-view responses expose tool_uuids/snippet_uuids only.
-  // Detail (GET /skills/{uuid}) additionally populates tools/snippets.
+  // The detail endpoint (GET /skills/{uuid}) defaults to the same
+  // narrow preset; pass ?fields=full to have tools/snippets inlined.
   tool_uuids?: string[];
   snippet_uuids?: string[];
   tools?: Tool[];
@@ -53,9 +54,9 @@ export interface Snippet {
   uuid: string;
   name: string;
   description: string;
-  // `content` is absent on narrow list-view responses (?fields=narrow,
-  // the default); the detail endpoint (GET /snippets/{uuid}) still
-  // returns it, as does an explicit ?fields=wide or ?fields=full.
+  // `content` is absent on narrow responses (?fields=narrow, the
+  // default for both list and detail endpoints); include it by
+  // requesting ?fields=wide or ?fields=full.
   content?: string;
   state?: ManifestState;
   content_type?: string;

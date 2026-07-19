@@ -360,7 +360,7 @@ def placeholder():
         print("Step 3: Verifying MCP tool properties...")
         print("="*60)
         
-        verify_response = await client.get(f"{BASE_URL}/tools/{mcp_tool_name}")
+        verify_response = await client.get(f"{BASE_URL}/tools/{mcp_tool_name}?fields=full")
         assert verify_response.status_code == 200, f"Failed to get tool: {verify_response.text}"
         retrieved_tool = verify_response.json()
         

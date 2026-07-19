@@ -130,25 +130,42 @@ def register_snippets_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "get-snippet", "x-mcp-tool": True},
     )
-    def get_snippet(uuid_or_name: str):
+    def get_snippet(
+        uuid_or_name: str,
+        fields: Optional[str] = Query(
+            "narrow",
+            description=(
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set (default). 'wide' "
+                "returns every persisted manifest field (including "
+                "``content``). 'full' returns the complete object. Or "
+                "supply a comma-separated allowlist of field names."
+            ),
+        ),
+    ):
         """Get metadata for a specific snippet by UUID or name.
 
-        Retrieves the complete manifest/metadata for a snippet identified by either
-        its UUID or its unique name.
+        Retrieves the manifest/metadata for a snippet identified by
+        either its UUID or its unique name.
 
         Args:
             uuid_or_name: The UUID or name of the snippet to retrieve.
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            dict: Snippet metadata including name, uuid, description, content, etc.
+            dict: Snippet metadata (subset when ``fields`` narrows the
+                field selection).
 
         Raises:
-            HTTPException: 404 if snippet not found, 500 for other errors.
+            HTTPException: 400 if ``fields`` is invalid, 404 if snippet
+                not found, 500 for other errors.
         """
         try:
-            return service.get(uuid_or_name)
+            return service.get(uuid_or_name, fields=fields)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving snippet: {str(e)}"

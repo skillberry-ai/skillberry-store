@@ -174,23 +174,40 @@ class SnippetsService:
                 raise KeyError(f"Snippet '{label}' not found")
             raise
 
-    def get(self, uuid_or_name: str) -> Dict[str, Any]:
+    def get(
+        self,
+        uuid_or_name: str,
+        fields: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Get snippet metadata by UUID or name.
 
         Args:
             uuid_or_name: Snippet UUID or name.
+            fields: Optional field-selection spec (``None`` /
+                ``"narrow"`` / ``"wide"`` / ``"full"`` / CSV
+                allowlist). ``None`` and ``"narrow"`` both resolve to
+                the narrow preset (the default). See
+                :mod:`skillberry_store.services.field_selection`.
 
         Returns:
-            Dict[str, Any]: Snippet metadata dictionary.
+            Dict[str, Any]: Snippet metadata dictionary, field-selected
+                according to ``fields``.
 
         Raises:
             KeyError: If snippet not found.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
+
         get_snippet_counter.inc()
         try:
+            allow = parse_fields_spec(fields, "snippet")
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.read_lock(uuid):
-                return self._safe_read(uuid, uuid_or_name)
+                item = self._safe_read(uuid, uuid_or_name)
+                return select_item_fields(item, allow)
         except KeyError:
             raise
         except Exception as e:
@@ -306,7 +323,7 @@ class SnippetsService:
                 if not name:
                     continue
                 try:
-                    fetched = self.get(name)
+                    fetched = self.get(name, fields="full")
                     candidate = dict(fetched)
                     candidate["similarity_score"] = m.get("similarity_score", 0.0)
                     candidates.append(candidate)

@@ -167,7 +167,8 @@ class SkillsService:
             try:
                 tools_service = get_service("tool")
                 skill_dict["tools"] = [
-                    tools_service.get(uuid) for uuid in skill_dict["tool_uuids"]
+                    tools_service.get(uuid, fields="full")
+                    for uuid in skill_dict["tool_uuids"]
                 ]
             except Exception as e:
                 raise RuntimeError(
@@ -179,7 +180,8 @@ class SkillsService:
             try:
                 snippets_service = get_service("snippet")
                 skill_dict["snippets"] = [
-                    snippets_service.get(uuid) for uuid in skill_dict["snippet_uuids"]
+                    snippets_service.get(uuid, fields="full")
+                    for uuid in skill_dict["snippet_uuids"]
                 ]
             except Exception as e:
                 raise RuntimeError(
@@ -257,30 +259,63 @@ class SkillsService:
                 raise KeyError(f"Skill '{label}' not found")
             raise
 
-    def get(self, uuid_or_name: str) -> Dict[str, Any]:
-        """Get skill metadata by UUID or name with populated tool and snippet objects.
+    def get(
+        self,
+        uuid_or_name: str,
+        fields: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get skill metadata by UUID or name, optionally with populated
+        tool and snippet objects.
+
+        Field-selection semantics (see
+        :mod:`skillberry_store.services.field_selection`) mirror
+        :meth:`list_all`:
+
+        * ``fields`` omitted / ``"narrow"`` — the minimal set the UI
+          listing page renders. ``_populate`` is *not* tagged in narrow,
+          so no inlining runs. This is the default.
+        * ``fields="full"`` — every field is returned, and the
+          ``_populate`` mechanism runs (``tool_uuids`` /
+          ``snippet_uuids`` are resolved into inlined ``tools`` /
+          ``snippets`` full objects).
+        * ``fields="wide"`` — every persisted manifest field, but no
+          flag fields → no inlining.
+        * Explicit CSV allowlist — inlining runs iff ``"_populate"`` is
+          in the allowlist.
 
         Args:
             uuid_or_name: Skill UUID or name.
+            fields: Optional field-selection spec.
 
         Returns:
-            Dict[str, Any]: Skill metadata dictionary with 'tools' and 'snippets' populated.
+            Dict[str, Any]: Skill metadata dictionary, field-selected
+                according to ``fields``. When the resolved allowlist
+                includes ``_populate``, ``tools`` and ``snippets`` are
+                populated.
 
         Raises:
             KeyError: If skill not found.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+            should_run_mechanism,
+        )
+
         get_skill_counter.inc()
         try:
+            allow = parse_fields_spec(fields, "skill")
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.read_lock(uuid):
                 skill = self._safe_read(uuid, uuid_or_name)
-                try:
-                    return self.populate_objects(skill)
-                except RuntimeError as e:
-                    logger.warning(str(e))
-                    skill.setdefault("tools", [])
-                    skill.setdefault("snippets", [])
-                    return skill
+                if should_run_mechanism(allow, "_populate"):
+                    try:
+                        self.populate_objects(skill)
+                    except RuntimeError as e:
+                        logger.warning(str(e))
+                        skill.setdefault("tools", [])
+                        skill.setdefault("snippets", [])
+                return select_item_fields(skill, allow)
         except KeyError:
             raise
         except Exception as e:
@@ -701,7 +736,7 @@ class SkillsService:
                 tools: List[Dict[str, Any]] = []
                 tool_modules: Dict[str, str] = {}
                 for tool_uuid in skill_dict.get("tool_uuids") or []:
-                    tool_dict = tools_service.get(tool_uuid)
+                    tool_dict = tools_service.get(tool_uuid, fields="full")
                     tools.append(tool_dict)
                     tool_name = tool_dict.get("name")
                     module_name = tool_dict.get("module_name")
@@ -714,7 +749,7 @@ class SkillsService:
                             )
 
                 snippets: List[Dict[str, Any]] = [
-                    snippets_service.get(snippet_uuid)
+                    snippets_service.get(snippet_uuid, fields="full")
                     for snippet_uuid in skill_dict.get("snippet_uuids") or []
                 ]
 

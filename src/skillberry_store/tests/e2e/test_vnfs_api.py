@@ -104,7 +104,7 @@ async def test_list_vnfs_servers(run_sbs, imported_skill_uuid):
 async def test_get_vnfs_server(run_sbs, imported_skill_uuid):
     """Test getting a specific VNFS server by name."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
+        response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server?fields=full")
         assert response.status_code == 200
         vnfs = response.json()
         assert vnfs.get("name") == "test_vnfs_server"
@@ -122,7 +122,7 @@ async def test_create_duplicate_vnfs_server(run_sbs, imported_skill_uuid):
     """Test that creating a duplicate VNFS server with same UUID fails."""
     async with httpx.AsyncClient() as client:
         # First get the existing VNFS server to obtain its UUID
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server?fields=full")
         assert get_response.status_code == 200, "test_vnfs_server should exist from previous test"
         server_data = get_response.json()
         existing_uuid = server_data.get("uuid")
@@ -198,7 +198,7 @@ async def test_create_vnfs_server_same_name_different_uuid(run_sbs, imported_ski
 async def test_get_nonexistent_vnfs_server(run_sbs, imported_skill_uuid):
     """Test that getting a non-existent VNFS server fails."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/vnfs_servers/nonexistent_vnfs_server")
+        response = await client.get(f"{BASE_URL}/vnfs_servers/nonexistent_vnfs_server?fields=full")
         assert response.status_code == 404
 
 
@@ -221,7 +221,7 @@ async def test_update_vnfs_server(run_sbs, imported_skill_uuid):
         assert "port" in data
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server?fields=full")
         assert get_response.status_code == 200
         vnfs = get_response.json()
         assert vnfs.get("description") == "Updated test VNFS server description"
@@ -249,7 +249,7 @@ async def test_start_vnfs_server(run_sbs, imported_skill_uuid):
     """Test starting a VNFS server."""
     async with httpx.AsyncClient() as client:
         # First, ensure the server exists
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_vnfs_server?fields=full")
         assert get_response.status_code == 200
         
         # Try to start the server
@@ -286,7 +286,7 @@ async def test_delete_vnfs_server(run_sbs, imported_skill_uuid):
         assert "deleted successfully" in data.get("message", "")
 
         # Verify deletion by UUID (more reliable than by name)
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{server_uuid}")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{server_uuid}?fields=full")
         assert get_response.status_code == 404
 
 
@@ -325,7 +325,7 @@ async def test_vnfs_server_lifecycle(run_sbs, imported_skill_uuid):
         assert create_response.json().get("name") == vnfs_name
 
         # 2. Read
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}?fields=full")
         assert get_response.status_code == 200
         vnfs = get_response.json()
         assert vnfs.get("name") == vnfs_name
@@ -345,7 +345,7 @@ async def test_vnfs_server_lifecycle(run_sbs, imported_skill_uuid):
         assert "updated successfully" in update_response.json().get("message", "")
 
         # 4. Verify update
-        get_updated_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}")
+        get_updated_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}?fields=full")
         assert get_updated_response.status_code == 200
         updated_vnfs = get_updated_response.json()
         assert updated_vnfs.get("description") == "Updated lifecycle test VNFS server"
@@ -361,7 +361,7 @@ async def test_vnfs_server_lifecycle(run_sbs, imported_skill_uuid):
         assert "deleted successfully" in delete_response.json().get("message", "")
 
         # 7. Verify deletion
-        get_deleted_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}")
+        get_deleted_response = await client.get(f"{BASE_URL}/vnfs_servers/{vnfs_name}?fields=full")
         assert get_deleted_response.status_code == 404
 
 
@@ -486,7 +486,7 @@ async def test_create_vnfs_server_with_nfs_protocol(run_sbs, imported_skill_uuid
         assert data.get("name") == "test_nfs_protocol_server"
         
         # Verify the server was created with NFS protocol
-        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_nfs_protocol_server")
+        get_response = await client.get(f"{BASE_URL}/vnfs_servers/test_nfs_protocol_server?fields=full")
         assert get_response.status_code == 200
         vnfs = get_response.json()
         assert vnfs.get("protocol") == "nfs"
@@ -536,13 +536,13 @@ async def test_multiple_vnfs_servers_same_name_different_uuid(run_sbs, imported_
         assert returned_uuid2 == uuid2
         
         # Verify both servers exist and can be retrieved by UUID
-        get_response1 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid1}")
+        get_response1 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid1}?fields=full")
         assert get_response1.status_code == 200
         server1 = get_response1.json()
         assert server1.get("uuid") == uuid1
         assert server1.get("description") == "First server with this name"
         
-        get_response2 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid2}")
+        get_response2 = await client.get(f"{BASE_URL}/vnfs_servers/{uuid2}?fields=full")
         assert get_response2.status_code == 200
         server2 = get_response2.json()
         assert server2.get("uuid") == uuid2

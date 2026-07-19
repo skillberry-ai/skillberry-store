@@ -127,7 +127,7 @@ async def test_import_anthropic_skill_from_zip(run_sbs):
         assert result['snippets_created'] >= 1  # SKILL.md, README.md
         
         # Verify the skill was created
-        skill_response = await client.get(f"{BASE_URL}/skills/{result['skill_name']}")
+        skill_response = await client.get(f"{BASE_URL}/skills/{result['skill_name']}?fields=full")
         assert skill_response.status_code == 200
         skill = skill_response.json()
         assert skill['name'] == result['skill_name']
@@ -340,7 +340,7 @@ async def test_import_preserves_file_tags(run_sbs):
         skill_name = import_result['skill_name']
         
         # Get the skill details
-        skill_response = await client.get(f"{BASE_URL}/skills/{skill_name}")
+        skill_response = await client.get(f"{BASE_URL}/skills/{skill_name}?fields=full")
         assert skill_response.status_code == 200
         skill = skill_response.json()
         
@@ -393,7 +393,7 @@ async def test_import_treat_all_as_documents(run_sbs):
         assert result['snippets_created'] >= 4, "Expected at least 4 snippets (SKILL.md, README.md, utils.py, scripts.sh)"
         
         # Verify the skill was created
-        skill_response = await client.get(f"{BASE_URL}/skills/{result['skill_name']}")
+        skill_response = await client.get(f"{BASE_URL}/skills/{result['skill_name']}?fields=full")
         assert skill_response.status_code == 200
         skill = skill_response.json()
         

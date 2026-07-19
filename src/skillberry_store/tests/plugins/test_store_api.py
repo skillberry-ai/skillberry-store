@@ -65,7 +65,7 @@ def test_get_tool_by_uuid(mock_services):
     assert tool is not None
     assert tool["uuid"] == "test-uuid"
     assert tool["name"] == "test_tool"
-    mock_services["tools"].get.assert_called_once_with("test-uuid")
+    mock_services["tools"].get.assert_called_once_with("test-uuid", fields="full")
 
 
 def test_get_tool_not_found(mock_services):

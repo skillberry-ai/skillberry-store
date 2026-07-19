@@ -356,23 +356,40 @@ class ToolsService:
                 raise KeyError(f"Tool '{label}' not found")
             raise
 
-    def get(self, uuid_or_name: str) -> Dict[str, Any]:
+    def get(
+        self,
+        uuid_or_name: str,
+        fields: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Get tool metadata by UUID or name.
 
         Args:
             uuid_or_name: Tool UUID or name.
+            fields: Optional field-selection spec (``None`` /
+                ``"narrow"`` / ``"wide"`` / ``"full"`` / CSV
+                allowlist). ``None`` and ``"narrow"`` both resolve to
+                the narrow preset (the default). See
+                :mod:`skillberry_store.services.field_selection`.
 
         Returns:
-            Dict[str, Any]: Tool metadata dictionary.
+            Dict[str, Any]: Tool metadata dictionary, field-selected
+                according to ``fields``.
 
         Raises:
             KeyError: If tool not found.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
+
         get_tool_counter.inc()
         try:
+            allow = parse_fields_spec(fields, "tool")
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.read_lock(uuid):
-                return self._safe_read(uuid, uuid_or_name)
+                item = self._safe_read(uuid, uuid_or_name)
+                return select_item_fields(item, allow)
         except KeyError:
             raise
         except Exception as e:
@@ -532,7 +549,7 @@ class ToolsService:
                 if not tool_name:
                     continue
                 try:
-                    fetched = self.get(tool_name)
+                    fetched = self.get(tool_name, fields="full")
                     candidate = dict(fetched)
                     candidate["similarity_score"] = matched.get(
                         "similarity_score", 0.0

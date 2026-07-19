@@ -175,9 +175,9 @@ def test_list_all_populate_flag_in_csv_triggers_populate(monkeypatch):
     from skillberry_store.services import registry
 
     tools_svc = MagicMock()
-    tools_svc.get.side_effect = lambda u: {"uuid": u, "name": f"tool-{u}"}
+    tools_svc.get.side_effect = lambda u, fields=None: {"uuid": u, "name": f"tool-{u}"}
     snippets_svc = MagicMock()
-    snippets_svc.get.side_effect = lambda u: {"uuid": u, "name": f"snip-{u}"}
+    snippets_svc.get.side_effect = lambda u, fields=None: {"uuid": u, "name": f"snip-{u}"}
     monkeypatch.setattr(registry, "_initialized", True)
     monkeypatch.setattr(
         registry, "_services", {"tool": tools_svc, "snippet": snippets_svc}
@@ -268,9 +268,9 @@ def test_search_fields_full_runs_populate_and_returns_full_object(monkeypatch):
     from skillberry_store.services import registry
 
     tools_svc = MagicMock()
-    tools_svc.get.side_effect = lambda u: {"uuid": u, "name": f"tool-{u}"}
+    tools_svc.get.side_effect = lambda u, fields=None: {"uuid": u, "name": f"tool-{u}"}
     snippets_svc = MagicMock()
-    snippets_svc.get.side_effect = lambda u: {"uuid": u, "name": f"snip-{u}"}
+    snippets_svc.get.side_effect = lambda u, fields=None: {"uuid": u, "name": f"snip-{u}"}
     monkeypatch.setattr(registry, "_initialized", True)
     monkeypatch.setattr(
         registry, "_services", {"tool": tools_svc, "snippet": snippets_svc}

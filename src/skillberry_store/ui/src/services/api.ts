@@ -49,7 +49,10 @@ export const toolsApi = {
   },
 
   get: async (uuid: string): Promise<Tool> => {
-    const response = await fetch(`${API_BASE}/tools/${uuid}`);
+    // Detail pages render the complete tool manifest (params, returns,
+    // packaging_*, module_name, dependencies, …), so opt into ``full``
+    // — the endpoint default is ``narrow``.
+    const response = await fetch(`${API_BASE}/tools/${uuid}?fields=full`);
     return handleResponse<Tool>(response);
   },
 
@@ -136,7 +139,10 @@ export const skillsApi = {
   },
 
   get: async (uuid: string): Promise<Skill> => {
-    const response = await fetch(`${API_BASE}/skills/${uuid}`);
+    // Detail pages render the complete skill manifest with populated
+    // ``tools`` / ``snippets``, so opt into ``full`` — the endpoint
+    // default is ``narrow`` (no inlining).
+    const response = await fetch(`${API_BASE}/skills/${uuid}?fields=full`);
     return handleResponse<Skill>(response);
   },
 
@@ -201,7 +207,10 @@ export const snippetsApi = {
   },
 
   get: async (uuid: string): Promise<Snippet> => {
-    const response = await fetch(`${API_BASE}/snippets/${uuid}`);
+    // Detail pages render the complete snippet manifest (including
+    // ``content``), so opt into ``full`` — the endpoint default is
+    // ``narrow`` (no ``content``).
+    const response = await fetch(`${API_BASE}/snippets/${uuid}?fields=full`);
     return handleResponse<Snippet>(response);
   },
 
@@ -280,7 +289,10 @@ export const vmcpApi = {
   },
 
   get: async (uuid: string): Promise<VMCPServer> => {
-    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}`);
+    // Detail pages render the complete vMCP manifest plus runtime,
+    // so opt into ``full`` — the endpoint default is ``narrow``
+    // (skill_uuid / extra / timestamps are omitted at narrow).
+    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}?fields=full`);
     return handleResponse<VMCPServer>(response);
   },
 
@@ -371,7 +383,10 @@ export const vnfsApi = {
   },
 
   get: async (uuid: string): Promise<VNFSServer> => {
-    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}`);
+    // Detail pages render the complete vNFS manifest plus runtime,
+    // so opt into ``full`` — the endpoint default is ``narrow``
+    // (skill_uuid / extra / timestamps are omitted at narrow).
+    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}?fields=full`);
     return handleResponse<VNFSServer>(response);
   },
 

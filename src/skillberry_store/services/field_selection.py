@@ -1,8 +1,12 @@
-"""Field-selection helpers for the bulk list / search endpoints.
+"""Field-selection helpers for the list / search / get endpoints.
 
 The list endpoints (``GET /snippets/``, ``GET /skills/``, ``GET /tools/``,
-``GET /vmcp_servers/``, ``GET /vnfs_servers/``) and the matching search
-endpoints accept an optional ``?fields=`` query param:
+``GET /vmcp_servers/``, ``GET /vnfs_servers/``), the matching search
+endpoints, and the per-object get endpoints
+(``GET /snippets/{uuid_or_name}``, ``GET /skills/{uuid_or_name}``,
+``GET /tools/{uuid_or_name}``, ``GET /vmcp_servers/{uuid_or_name}``,
+``GET /vnfs_servers/{uuid_or_name}``) all accept an optional
+``?fields=`` query param:
 
 * ``"minimal"`` — return only the identifier field (``uuid``).
   Intended for search responses whose consumers already hold the
