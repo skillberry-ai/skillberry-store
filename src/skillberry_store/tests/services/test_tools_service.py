@@ -56,7 +56,37 @@ def test_list_all_sorted():
     assert len(result) == 1
 
 
-def test_list_all_default_shape_is_unchanged():
+def test_list_all_default_is_narrow():
+    """Default (no ``fields``) is the ``narrow`` preset — the heavy
+    tool fields (params/returns/deps/packaging_*) are dropped."""
+    h = _handler()
+    heavy = {
+        "type": "object",
+        "properties": {"x": {"type": "int"}},
+        "required": [],
+        "optional": [],
+    }
+    h.list_all_dicts.return_value = [
+        {
+            "uuid": "u1",
+            "name": "a",
+            "modified_at": "2024-02-01",
+            "module_name": "a.py",
+            "params": heavy,
+            "returns": {"type": "int"},
+            "dependencies": ["dep1"],
+            "packaging_params": {"foo": "bar"},
+        },
+    ]
+    svc = ToolsService(h)
+    result = svc.list_all()
+    assert result[0]["module_name"] == "a.py"
+    for k in ("params", "returns", "dependencies", "packaging_params"):
+        assert k not in result[0]
+
+
+def test_list_all_fields_full_keeps_heavy_fields():
+    """Explicit ``fields="full"`` opts into the complete tool dict."""
     h = _handler()
     heavy = {
         "type": "object",
@@ -76,7 +106,7 @@ def test_list_all_default_shape_is_unchanged():
         },
     ]
     svc = ToolsService(h)
-    result = svc.list_all()
+    result = svc.list_all(fields="full")
     assert result[0]["params"] == heavy
     assert result[0]["dependencies"] == ["dep1"]
 
@@ -178,13 +208,14 @@ def _search_handler_tools(cached_tool):
     return h
 
 
-def test_search_default_returns_full_object_with_score():
-    """Default ``fields=None`` resolves to ``full`` — the whole tool
-    dict is returned with ``similarity_score`` merged in."""
+def test_search_default_returns_narrow_object_with_score():
+    """Default ``fields=None`` resolves to ``narrow`` — a slim tool
+    dict with ``similarity_score`` merged in (no ``params``)."""
     cached = {
         "uuid": "u1",
         "name": "t1",
         "state": "approved",
+        "module_name": "t1.py",
         "params": {"type": "object"},
         "modified_at": "2024-02-01",
     }
@@ -193,6 +224,24 @@ def test_search_default_returns_full_object_with_score():
     assert len(result) == 1
     r = result[0]
     assert r["name"] == "t1"
+    assert r["module_name"] == "t1.py"
+    assert "params" not in r
+    assert r["similarity_score"] == 0.3
+
+
+def test_search_fields_full_returns_full_object_with_score():
+    """Explicit ``fields="full"`` returns the complete tool dict."""
+    cached = {
+        "uuid": "u1",
+        "name": "t1",
+        "state": "approved",
+        "params": {"type": "object"},
+        "modified_at": "2024-02-01",
+    }
+    svc = ToolsService(_search_handler_tools(cached))
+    result = svc.search("q", fields="full")
+    assert len(result) == 1
+    r = result[0]
     assert r["params"] == {"type": "object"}
     assert r["similarity_score"] == 0.3
 

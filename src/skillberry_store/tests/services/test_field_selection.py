@@ -19,23 +19,37 @@ ALL_TYPES = ["snippet", "tool", "skill", "vmcp", "vnfs"]
 # ── parse_fields_spec: default / full ────────────────────────────────
 
 
-def test_parse_none_returns_none():
-    assert parse_fields_spec(None, "snippet") is None
+def test_parse_none_returns_narrow_allowlist():
+    """The default preset is ``narrow`` — a missing ``fields_spec``
+    resolves to the narrow allowlist for the type."""
+    assert parse_fields_spec(None, "snippet") == fs._fields_with_preset(
+        "snippet", "narrow"
+    )
 
 
-def test_parse_empty_returns_none():
-    assert parse_fields_spec("", "snippet") is None
+def test_parse_empty_returns_narrow_allowlist():
+    """An empty query-string value is treated the same as omitted:
+    resolves to the narrow allowlist."""
+    assert parse_fields_spec("", "snippet") == fs._fields_with_preset(
+        "snippet", "narrow"
+    )
 
 
 def test_parse_full_returns_none():
-    """``"full"`` resolves to the no-filtering sentinel (``None``) — all
-    fields are returned and all bundling mechanisms run."""
+    """``"full"`` is the explicit opt-out — resolves to the
+    no-filtering sentinel (``None``); all fields are returned and all
+    bundling mechanisms run."""
     assert parse_fields_spec("full", "snippet") is None
 
 
 def test_parse_none_unknown_type_raises():
     with pytest.raises(ValueError, match="No field tags registered"):
         parse_fields_spec(None, "unknown")
+
+
+def test_parse_full_unknown_type_raises():
+    with pytest.raises(ValueError, match="No field tags registered"):
+        parse_fields_spec("full", "unknown")
 
 
 # ── parse_fields_spec: narrow / wide ─────────────────────────────────
@@ -87,9 +101,12 @@ def test_parse_csv_strips_whitespace_and_empty():
     assert parse_fields_spec(" uuid , name , ", "snippet") == {"uuid", "name"}
 
 
-def test_parse_csv_all_commas_falls_through_to_none():
-    """No tokens → treated as default (full)."""
-    assert parse_fields_spec(",,,", "snippet") is None
+def test_parse_csv_all_commas_falls_through_to_narrow():
+    """A CSV with no non-empty tokens is treated as an omitted spec —
+    resolves to the narrow default."""
+    assert parse_fields_spec(",,,", "snippet") == fs._fields_with_preset(
+        "snippet", "narrow"
+    )
 
 
 def test_registered_preset_name_never_falls_through_to_csv(monkeypatch):
@@ -114,7 +131,8 @@ def test_csv_can_include_flag_field():
 
 
 def test_should_run_mechanism_none_allow_runs():
-    """``None`` (full/default) triggers every mechanism."""
+    """``None`` (the ``"full"`` opt-out sentinel) triggers every
+    mechanism."""
     assert should_run_mechanism(None, "_populate") is True
     assert should_run_mechanism(None, "_enhance") is True
 

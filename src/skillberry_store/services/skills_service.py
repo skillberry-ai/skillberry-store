@@ -297,14 +297,14 @@ class SkillsService:
         Field-selection semantics (see
         :mod:`skillberry_store.services.field_selection`):
 
-        * ``fields`` omitted / ``"full"`` — every field is returned, and
-          the ``_populate`` mechanism runs (``tool_uuids`` /
+        * ``fields`` omitted / ``"narrow"`` — the minimal set the UI
+          listing page renders (uuid, name, description, state, tags,
+          version, tool_uuids, snippet_uuids). ``_populate`` is *not*
+          tagged in narrow, so no inlining runs. This is the default.
+        * ``fields="full"`` — every field is returned, and the
+          ``_populate`` mechanism runs (``tool_uuids`` /
           ``snippet_uuids`` are resolved into inlined ``tools`` /
           ``snippets`` full objects).
-        * ``fields="narrow"`` — the minimal set the UI listing page
-          renders (uuid, name, description, state, tags, version,
-          tool_uuids, snippet_uuids). ``_populate`` is *not* tagged in
-          narrow, so no inlining runs.
         * ``fields="wide"`` — every persisted manifest field, but no
           flag fields → no inlining.
         * Explicit CSV allowlist — inlining runs iff ``"_populate"`` is
@@ -377,12 +377,14 @@ class SkillsService:
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
             fields: Optional field-selection spec — same grammar as
-                :meth:`list_all` (``None`` / ``"full"`` / ``"narrow"`` /
-                ``"wide"`` / CSV allowlist). Each match is a
+                :meth:`list_all` (``None`` / ``"narrow"`` / ``"wide"``
+                / ``"full"`` / CSV allowlist). Each match is a
                 field-selected skill dict with ``similarity_score``
-                merged in. Default (``None``) is ``"full"`` — the
-                ``_populate`` mechanism runs and ``tools`` / ``snippets``
-                are inlined.
+                merged in. Default (``None``) resolves to ``"narrow"``
+                — the ``_populate`` mechanism does NOT run under
+                narrow; callers read ``tool_uuids`` / ``snippet_uuids``
+                for counts. Pass ``"full"`` to inline ``tools`` /
+                ``snippets``.
 
         Returns:
             List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.

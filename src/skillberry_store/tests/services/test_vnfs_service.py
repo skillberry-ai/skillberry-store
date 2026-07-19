@@ -62,7 +62,10 @@ def test_delete_stops_runtime_then_removes_persistent():
 # ── field selection (?fields) ──────────────────────────────────────────
 
 
-def test_list_all_fields_none_returns_full_enriched_shape():
+def test_list_all_fields_none_returns_narrow_enriched_shape():
+    """Default (no ``fields``) is ``narrow``. For vNFS, narrow includes
+    ``_enhance`` so enhancement still runs and ``running`` /
+    ``export_path`` are merged in."""
     svc = VnfsService(_handler(), _manager())
     result = svc.list_all()
     assert result[0]["running"] is True
@@ -121,9 +124,11 @@ def _search_handler_vnfs(cached_vnfs):
     return h
 
 
-def test_search_default_returns_full_enhanced_object_with_score():
-    """Default ``fields=None`` resolves to ``full`` — enhancement runs
-    and the response is the full object with ``similarity_score``."""
+def test_search_default_returns_narrow_enhanced_object_with_score():
+    """Default ``fields=None`` resolves to ``narrow``. For vNFS,
+    narrow tags ``_enhance``, so enhancement runs and the response
+    carries ``running`` / ``export_path`` alongside
+    ``similarity_score``."""
     cached = {
         "uuid": "v1",
         "name": "v1",

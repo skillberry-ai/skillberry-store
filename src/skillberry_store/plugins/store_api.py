@@ -81,7 +81,10 @@ class StoreAPI:
     def list_tools(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
         if not self.tools_service:
             return []
-        return self.tools_service.list_all(filter_criteria)
+        # Plugins consume the complete tool dict (module_name,
+        # packaging_*, params, dependencies, …). The service default is
+        # ``narrow``, so opt back into ``full`` here.
+        return self.tools_service.list_all(filter_criteria, fields="full")
 
     def update_tool_tags(self, uuid: str, tags: List[str]) -> bool:
         if not self.tools_service:
@@ -161,7 +164,10 @@ class StoreAPI:
     def list_skills(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
         if not self.skills_service:
             return []
-        return self.skills_service.list_all(filter_criteria)
+        # Plugins consume the complete skill dict (populated tools /
+        # snippets, extra, timestamps). Opt into ``full`` since the
+        # service default is ``narrow``.
+        return self.skills_service.list_all(filter_criteria, fields="full")
 
     def update_skill_tags(self, uuid: str, tags: List[str]) -> bool:
         if not self.skills_service:
@@ -233,7 +239,10 @@ class StoreAPI:
     def list_snippets(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
         if not self.snippets_service:
             return []
-        return self.snippets_service.list_all(filter_criteria)
+        # Plugins consume the complete snippet dict (including
+        # ``content``). Opt into ``full`` since the service default is
+        # ``narrow``.
+        return self.snippets_service.list_all(filter_criteria, fields="full")
 
     def create_snippet(self, snippet_data: Dict[str, Any]) -> Dict[str, Any]:
         if not self.snippets_service:
@@ -287,7 +296,9 @@ class StoreAPI:
         if not self.vmcp_service:
             return []
         # ``VmcpService.list_all()`` returns a bare list of server dicts.
-        result = self.vmcp_service.list_all()
+        # Plugins consume ``skill_uuid`` (not in the narrow preset) and
+        # the full runtime bundle, so opt into ``full``.
+        result = self.vmcp_service.list_all(fields="full")
         return list(result) if isinstance(result, list) else []
 
     def start_vmcp(self, uuid_or_name: str, env_id: str = "") -> bool:

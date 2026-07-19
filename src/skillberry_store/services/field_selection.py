@@ -14,10 +14,12 @@ endpoints accept an optional ``?fields=`` query param:
 * A comma-separated allowlist (``"uuid,name,description"``) — return
   exactly those keys.
 
-The HTTP layer applies the ``narrow`` default via the FastAPI ``Query``
-default on each endpoint; at the service layer, an omitted ``fields``
-argument (``None``) is still the "no filtering" sentinel (equivalent
-to ``full``) so internal Python callers keep their previous behavior.
+The default (``"narrow"``) is applied at :func:`parse_fields_spec`: a
+missing / empty ``fields_spec`` resolves to the narrow allowlist, so
+every caller — HTTP, plugin, direct service invocation — that doesn't
+name a preset gets narrow. Callers that need the complete object
+(populated skills, tool packaging params, vMCP runtime bundle) must
+opt in with ``fields="full"``.
 
 Presets are declared as *per-field tags* rather than per-preset field
 sets: each field of each object type carries zero or more preset labels,
@@ -199,7 +201,9 @@ def parse_fields_spec(
     """Resolve a ``fields`` query-param value to a concrete field allowlist.
 
     Args:
-        fields_spec: Raw value from the query string. ``None`` / empty /
+        fields_spec: Raw value from the query string. ``None`` / empty
+            means "use the default preset" — currently ``"narrow"``, the
+            minimal set required by the UI listing page for that type.
             ``"full"`` means "no field selection — return every field,
             including flag fields that trigger bundling mechanisms".
             ``"narrow"`` / ``"wide"`` selects the tagged fields for
@@ -210,9 +214,9 @@ def parse_fields_spec(
 
     Returns:
         The set of field names to keep, or ``None`` when no field
-        selection should be applied (default / ``"full"``). Callers use
-        the ``None`` sentinel to short-circuit both field filtering and
-        the "should the flag mechanism run" check (``None`` implies all
+        selection should be applied (``"full"``). Callers use the
+        ``None`` sentinel to short-circuit both field filtering and the
+        "should the flag mechanism run" check (``None`` implies all
         mechanisms run).
 
     Raises:
@@ -220,13 +224,15 @@ def parse_fields_spec(
             names a registered preset but no field of ``object_type``
             carries that tag.
     """
-    if not fields_spec or fields_spec == "full":
-        # Validate the type is known even in the default path so that
-        # a bogus ``object_type`` fails loudly.
-        if object_type not in _FIELD_TAGS_BY_TYPE:
-            raise ValueError(
-                f"No field tags registered for object type '{object_type}'"
-            )
+    # Validate the type is known up front so that a bogus ``object_type``
+    # fails loudly on every path.
+    if object_type not in _FIELD_TAGS_BY_TYPE:
+        raise ValueError(
+            f"No field tags registered for object type '{object_type}'"
+        )
+    if not fields_spec:
+        fields_spec = "narrow"
+    if fields_spec == "full":
         return None
     if fields_spec in _PRESET_NAMES:
         allow = _fields_with_preset(object_type, fields_spec)
@@ -236,7 +242,9 @@ def parse_fields_spec(
             )
         return allow
     allow = {f.strip() for f in fields_spec.split(",") if f.strip()}
-    return allow or None
+    if not allow:
+        allow = _fields_with_preset(object_type, "narrow")
+    return allow
 
 
 def should_run_mechanism(allow: Optional[Set[str]], flag: str) -> bool:

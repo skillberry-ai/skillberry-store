@@ -224,9 +224,10 @@ class VnfsService:
         Field-selection semantics (see
         :mod:`skillberry_store.services.field_selection`):
 
-        * ``fields`` omitted / ``"full"`` / ``"narrow"`` — the
+        * ``fields`` omitted / ``"narrow"`` / ``"full"`` — the
           ``_enhance`` mechanism runs; ``running`` and ``export_path``
-          are computed and merged into each server dict.
+          are computed and merged into each server dict. Default is
+          ``"narrow"``.
         * ``fields="wide"`` — persisted manifest fields only; enhancement
           is skipped.
         * Explicit CSV allowlist — enhancement runs iff ``"_enhance"``
@@ -309,12 +310,12 @@ class VnfsService:
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
             fields: Optional field-selection spec — same grammar as
-                :meth:`list_all` (``None`` / ``"full"`` / ``"narrow"`` /
-                ``"wide"`` / CSV allowlist). Each match is a
-                field-selected vNFS dict with ``similarity_score`` merged
-                in. Default (``None``) is ``"full"`` — the ``_enhance``
-                mechanism runs and ``running`` / ``export_path`` are
-                merged in.
+                :meth:`list_all` (``None`` / ``"narrow"`` / ``"wide"``
+                / ``"full"`` / CSV allowlist). Each match is a
+                field-selected vNFS dict with ``similarity_score``
+                merged in. Default (``None``) resolves to ``"narrow"``
+                — narrow tags ``_enhance`` for vNFS, so the mechanism
+                runs and ``running`` / ``export_path`` are merged in.
 
         Returns:
             List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.

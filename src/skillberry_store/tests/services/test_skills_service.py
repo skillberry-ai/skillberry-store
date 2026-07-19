@@ -57,21 +57,50 @@ def test_list_all_returns_sorted_and_populated():
     assert len(result) == 1
 
 
-def test_list_all_tolerates_skill_with_missing_tool():
+def test_list_all_full_tolerates_skill_with_missing_tool():
+    """``fields="full"`` triggers ``_populate`` — a missing tool UUID
+    resolves to an empty populated list rather than raising."""
     h = _handler()
     h.list_all_dicts.return_value = [
         {"name": "get_time", "modified_at": "2024-02-01", "tool_uuids": ["missing-uuid"], "snippet_uuids": []},
         {"name": "other", "modified_at": "2024-01-01", "tool_uuids": [], "snippet_uuids": []},
     ]
     svc = SkillsService(h)
-    result = svc.list_all()
+    result = svc.list_all(fields="full")
     assert len(result) == 2
     broken = next(r for r in result if r["name"] == "get_time")
     assert broken["tools"] == []
     assert broken["snippets"] == []
 
 
-def test_list_all_default_populates_but_does_not_mutate_cache_entry(monkeypatch):
+def test_list_all_default_is_narrow_skips_populate():
+    """Default (no ``fields``) is ``narrow``; the ``_populate`` mechanism
+    does NOT run — no ``tools`` / ``snippets`` inlining. Callers read
+    counts from ``tool_uuids`` / ``snippet_uuids``. This runs without a
+    registry: a bug that reaches ``populate_objects`` would raise."""
+    h = _handler()
+    original = {
+        "uuid": "sk1",
+        "name": "sk1",
+        "tool_uuids": ["t1"],
+        "snippet_uuids": ["s1"],
+        "modified_at": "2024-02-01",
+    }
+    h.list_all_dicts.return_value = [original]
+    svc = SkillsService(h)
+    result = svc.list_all()
+    assert result[0]["tool_uuids"] == ["t1"]
+    assert result[0]["snippet_uuids"] == ["s1"]
+    assert "tools" not in result[0]
+    assert "snippets" not in result[0]
+    # Regression: the cached dict must not have grown 'tools' / 'snippets'.
+    assert "tools" not in original
+    assert "snippets" not in original
+
+
+def test_list_all_fields_full_populates_but_does_not_mutate_cache_entry(monkeypatch):
+    """``fields="full"`` triggers ``_populate``: ``tools`` / ``snippets``
+    are inlined on the result but not written back to the cache."""
     import skillberry_store.services.registry as registry
     tools_svc = MagicMock()
     tools_svc.get.return_value = {"uuid": "t1", "name": "tool1"}
@@ -91,7 +120,7 @@ def test_list_all_default_populates_but_does_not_mutate_cache_entry(monkeypatch)
     }
     h.list_all_dicts.return_value = [original]
     svc = SkillsService(h)
-    result = svc.list_all()
+    result = svc.list_all(fields="full")
     assert result[0]["tools"] == [{"uuid": "t1", "name": "tool1"}]
     assert result[0]["snippets"] == [{"uuid": "s1", "name": "snip1"}]
     # Regression: the cached dict must not have grown 'tools' / 'snippets'.
@@ -207,9 +236,35 @@ def _search_handler_skills(cached_skill):
     return h
 
 
-def test_search_default_runs_populate_and_returns_full_object(monkeypatch):
-    """Default ``fields=None`` resolves to ``full`` — ``_populate`` runs
-    and the response includes inlined ``tools`` / ``snippets``."""
+def test_search_default_is_narrow_skips_populate():
+    """Default ``fields=None`` resolves to ``narrow`` — ``_populate``
+    does NOT run and the response omits the inlined ``tools`` /
+    ``snippets`` (callers use ``tool_uuids`` / ``snippet_uuids``). This
+    runs without a registry: a bug reaching ``populate_objects`` would
+    raise."""
+    cached = {
+        "uuid": "sk1",
+        "name": "sk1",
+        "state": "approved",
+        "tool_uuids": ["t1"],
+        "snippet_uuids": ["s1"],
+        "modified_at": "2024-02-01",
+    }
+    svc = SkillsService(_search_handler_skills(cached))
+    result = svc.search("q")
+    assert len(result) == 1
+    r = result[0]
+    assert r["name"] == "sk1"
+    assert r["tool_uuids"] == ["t1"]
+    assert r["snippet_uuids"] == ["s1"]
+    assert "tools" not in r
+    assert "snippets" not in r
+    assert r["similarity_score"] == 0.4
+
+
+def test_search_fields_full_runs_populate_and_returns_full_object(monkeypatch):
+    """Explicit ``fields="full"`` triggers ``_populate`` — the response
+    includes inlined ``tools`` / ``snippets``."""
     from skillberry_store.services import registry
 
     tools_svc = MagicMock()
@@ -229,7 +284,7 @@ def test_search_default_runs_populate_and_returns_full_object(monkeypatch):
         "modified_at": "2024-02-01",
     }
     svc = SkillsService(_search_handler_skills(cached))
-    result = svc.search("q")
+    result = svc.search("q", fields="full")
     assert len(result) == 1
     r = result[0]
     assert r["name"] == "sk1"

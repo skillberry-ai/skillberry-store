@@ -266,10 +266,10 @@ class VmcpService:
         Field-selection semantics (see
         :mod:`skillberry_store.services.field_selection`):
 
-        * ``fields`` omitted / ``"full"`` / ``"narrow"`` — the
+        * ``fields`` omitted / ``"narrow"`` / ``"full"`` — the
           ``_enhance`` mechanism runs; ``running`` and ``runtime`` are
           computed and merged into each server dict before field
-          selection is applied.
+          selection is applied. Default is ``"narrow"``.
         * ``fields="wide"`` — persisted manifest fields only; enhancement
           is skipped (no subprocess-manager calls).
         * Explicit CSV allowlist — enhancement runs iff ``"_enhance"``
@@ -359,12 +359,12 @@ class VmcpService:
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
             fields: Optional field-selection spec — same grammar as
-                :meth:`list_all` (``None`` / ``"full"`` / ``"narrow"`` /
-                ``"wide"`` / CSV allowlist). Each match is a
-                field-selected VMCP dict with ``similarity_score`` merged
-                in. Default (``None``) is ``"full"`` — the ``_enhance``
-                mechanism runs and ``running`` / ``runtime`` are merged
-                in.
+                :meth:`list_all` (``None`` / ``"narrow"`` / ``"wide"``
+                / ``"full"`` / CSV allowlist). Each match is a
+                field-selected VMCP dict with ``similarity_score``
+                merged in. Default (``None``) resolves to ``"narrow"``
+                — narrow tags ``_enhance`` for vMCP, so the mechanism
+                runs and ``running`` / ``runtime`` are merged in.
 
         Returns:
             List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.

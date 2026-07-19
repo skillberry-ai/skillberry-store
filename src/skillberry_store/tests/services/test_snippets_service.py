@@ -73,13 +73,27 @@ def test_list_all_returns_sorted():
     assert result[0]["name"] == "a"  # most recent first
 
 
-def test_list_all_default_shape_is_unchanged():
+def test_list_all_default_is_narrow():
+    """Default (no ``fields`` argument) is the ``narrow`` preset — heavy
+    fields like ``content`` are dropped."""
     h = _handler()
     h.list_all_dicts.return_value = [
         {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"},
     ]
     svc = SnippetsService(h)
     result = svc.list_all()
+    assert "content" not in result[0]
+    assert result[0]["uuid"] == "u1"
+
+
+def test_list_all_fields_full_keeps_content():
+    """Explicit ``fields="full"`` opts back into the complete object."""
+    h = _handler()
+    h.list_all_dicts.return_value = [
+        {"uuid": "u1", "name": "a", "content": "body", "modified_at": "2024-02-01"},
+    ]
+    svc = SnippetsService(h)
+    result = svc.list_all(fields="full")
     assert result[0].get("content") == "body"
 
 
@@ -174,14 +188,17 @@ def _search_handler(cached_snippet):
     return h
 
 
-def test_search_default_returns_full_object_with_score():
-    """Default ``fields=None`` resolves to ``full`` — each match is the
-    complete snippet dict with ``similarity_score`` merged in."""
+def test_search_default_returns_narrow_object_with_score():
+    """Default ``fields=None`` resolves to ``narrow`` — each match is a
+    slim snippet dict with ``similarity_score`` merged in (no
+    ``content``)."""
     cached = {
         "uuid": "u1",
         "name": "s1",
+        "description": "d",
         "content": "big body",
         "state": "approved",
+        "tags": ["a"],
         "modified_at": "2024-02-01",
     }
     svc = SnippetsService(_search_handler(cached))
@@ -190,6 +207,24 @@ def test_search_default_returns_full_object_with_score():
     r = result[0]
     assert r["uuid"] == "u1"
     assert r["name"] == "s1"
+    assert "content" not in r
+    assert r["similarity_score"] == 0.2
+
+
+def test_search_fields_full_returns_full_object_with_score():
+    """Explicit ``fields="full"`` returns the complete snippet dict
+    with ``similarity_score`` merged in."""
+    cached = {
+        "uuid": "u1",
+        "name": "s1",
+        "content": "big body",
+        "state": "approved",
+        "modified_at": "2024-02-01",
+    }
+    svc = SnippetsService(_search_handler(cached))
+    result = svc.search("q", fields="full")
+    assert len(result) == 1
+    r = result[0]
     assert r["content"] == "big body"
     assert r["similarity_score"] == 0.2
 

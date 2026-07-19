@@ -429,8 +429,10 @@ class ToolsService:
 
         Args:
             filters: Optional dictionary of field:value pairs to filter by.
-            fields: Optional field-selection spec (``None`` / ``"full"``
-                / ``"narrow"`` / ``"wide"`` / CSV allowlist). See
+            fields: Optional field-selection spec (``None`` /
+                ``"narrow"`` / ``"wide"`` / ``"full"`` / CSV
+                allowlist). ``None`` and ``"narrow"`` both resolve to
+                the narrow preset (the default). See
                 :mod:`skillberry_store.services.field_selection`.
 
         Returns:
@@ -485,11 +487,11 @@ class ToolsService:
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
             fields: Optional field-selection spec — same grammar as
-                :meth:`list_all` (``None`` / ``"full"`` / ``"narrow"`` /
-                ``"wide"`` / CSV allowlist). Each match is a
-                field-selected tool dict with ``similarity_score`` merged
-                in. Default (``None``) is ``"full"`` — every field is
-                returned.
+                :meth:`list_all` (``None`` / ``"narrow"`` / ``"wide"``
+                / ``"full"`` / CSV allowlist). Each match is a
+                field-selected tool dict with ``similarity_score``
+                merged in. Default (``None``) resolves to ``"narrow"``
+                — the minimal UI listing set.
 
         Returns:
             List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
