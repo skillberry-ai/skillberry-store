@@ -12,6 +12,7 @@ This script implements a 6-phase process to:
 
 Usage:
     python download_and_import_skills.py --max-skills 10
+    python download_and_import_skills.py --max-skills 10 --overwrite
 """
 
 import argparse
@@ -81,8 +82,8 @@ class SkillsImporter:
         
         # Set default for max_skills based on mode
         if args.max_skills is None:
-            if args.import_only or getattr(args, 'sitemap_only', False):
-                # import-only / sitemap-only: no limit (process all available skills)
+            if args.import_only:
+                # import-only: no limit (process all available skills)
                 self.max_skills = None
             else:
                 # clone-only or full mode: default to 10
@@ -142,49 +143,6 @@ class SkillsImporter:
                 seen.add(source)
                 sources.append(source)
         return sources
-
-    def _fetch_skills_from_sitemaps(self) -> List[Dict[str, str]]:
-        """
-        Fetch every individual skill listed in the skills.sh skill sitemaps.
-
-        skills.sh publishes up to two skill sitemaps (sitemap-skills-1.xml,
-        sitemap-skills-2.xml), each capped at 10 000 entries.  Together they
-        expose ~20 000 directly-downloadable skills with known owner/repo/slug
-        triples, which is the complete set accessible without authentication.
-
-        Returns:
-            Ordered list of dicts with keys: 'owner', 'repo', 'slug', 'source'.
-            Deduplicated; ordering matches sitemap appearance order.
-        """
-        base_url = self.args.skills_url.rstrip('/')
-        # Extract three-segment paths: owner/repo/slug
-        loc_pattern = re.compile(
-            r'<loc>https?://[^/]+/([^/<]+)/([^/<]+)/([^/<\s]+)</loc>'
-        )
-        seen: set = set()
-        skills: List[Dict[str, str]] = []
-        for n in [1, 2]:
-            sitemap_url = f"{base_url}/sitemap-skills-{n}.xml"
-            logger.info(f"  Fetching skill sitemap: {sitemap_url}")
-            try:
-                response = requests.get(sitemap_url, timeout=60)
-                response.raise_for_status()
-                logger.info(f"  Received {len(response.text)} bytes")
-            except Exception as e:
-                logger.warning(f"  Could not fetch {sitemap_url}: {e}")
-                continue
-            for m in loc_pattern.finditer(response.text):
-                owner, repo, slug = m.group(1), m.group(2), m.group(3).rstrip('/')
-                key = f"{owner}/{repo}/{slug}"
-                if key not in seen:
-                    seen.add(key)
-                    skills.append({
-                        'owner': owner,
-                        'repo': repo,
-                        'slug': slug,
-                        'source': f"{owner}/{repo}",
-                    })
-        return skills
 
     def extract_skills_metadata(self) -> List[Dict[str, Any]]:
         """
@@ -292,51 +250,69 @@ class SkillsImporter:
     def clone_repositories(self, metadata: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Phase 2: Clone repositories until we find max_skills skill subfolders
-        
-        A "skill" is defined as a subfolder in /skills/ directory containing SKILL.md
-        
+
+        A "skill" is defined as a subfolder in /skills/ directory containing SKILL.md.
+
+        By default, if a repo directory already exists it is assumed to be a previous
+        successful clone and is reused (skipped).  Pass ``--overwrite`` to remove the
+        existing directory and re-clone from scratch.
+
+        After cloning, each new repo is validated: if it contains no skills the
+        directory is removed immediately.  Failed or timed-out clones are also cleaned
+        up.  Pre-existing directories are never removed.
+
         Args:
             metadata: List of all repo metadata from skills.sh (sorted by popularity)
-            
+
         Returns:
             List of cloned repo info with skill counts
         """
+        import shutil
+
         logger.info("\n" + "=" * 60)
         logger.info("PHASE 2: Cloning repositories to find skills")
         logger.info("=" * 60)
         logger.info(f"Target: {self.max_skills} skills")
         logger.info(f"Strategy: Clone repos by popularity, count /skills/ subfolders with SKILL.md")
-        
+
+        overwrite = getattr(self.args, 'overwrite', False)
+        if overwrite:
+            logger.info("  --overwrite: existing repo directories will be removed and re-cloned")
+
         # In clone mode, max_skills is always set (never None)
         assert self.max_skills is not None, "max_skills should be set in clone mode"
-        
+
         cloned_repos = []
         skipped_repos = []
         failed_repos = []
         total_skills_found = 0
         repos_processed = 0
-        
+
         for i, repo_meta in enumerate(metadata, 1):
             # Stop if we've found enough skills
             if total_skills_found >= self.max_skills:
                 logger.info(f"\n✓ Reached target of {self.max_skills} skills!")
                 logger.info(f"  Processed {repos_processed} repositories")
                 break
-            
+
             source = repo_meta['source']
             repo_name = repo_meta['repo_name']
             repo_path = Path(repo_meta['repo_path'])
             logger.info(f"\n[Repo {i}] Processing {source}...")
             repos_processed += 1
-            
+
             try:
-                
-                # Check if already cloned
-                already_existed = repo_path.exists()
-                
-                if already_existed:
-                    logger.info(f"  Already exists: {repo_path}")
-                else:
+                pre_existed = repo_path.exists()
+
+                if pre_existed:
+                    if overwrite:
+                        logger.info(f"  --overwrite: removing existing {repo_path}")
+                        shutil.rmtree(repo_path)
+                        pre_existed = False  # treat as a fresh clone below
+                    else:
+                        logger.info(f"  Already exists (skipping clone): {repo_path}")
+
+                if not pre_existed:
                     # Clone repository
                     git_url = f"https://github.com/{source}.git"
                     cmd = [
@@ -345,7 +321,7 @@ class SkillsImporter:
                         git_url,
                         str(repo_path)
                     ]
-                    
+
                     logger.info(f"  Running: {' '.join(cmd)}")
                     result = subprocess.run(
                         cmd,
@@ -353,23 +329,31 @@ class SkillsImporter:
                         text=True,
                         timeout=120
                     )
-                    
+
                     if result.returncode != 0:
-                        logger.error(f"  ✗ Failed to clone: {result.stderr}")
+                        logger.error(f"  ✗ Failed to clone: {result.stderr.strip()}")
+                        # Clean up any partial directory left by git
+                        if repo_path.exists():
+                            shutil.rmtree(repo_path, ignore_errors=True)
+                            logger.info(f"  Cleaned up partial clone at {repo_path}")
                         failed_repos.append({
                             'source': source,
                             'repo_name': repo_name,
-                            'error': result.stderr
+                            'error': result.stderr.strip()
                         })
                         continue
-                    
+
                     logger.info(f"  ✓ Successfully cloned to {repo_path}")
-                
+
                 # Count skills in /skills/ directory
                 skill_count = self.count_skills_in_repo(repo_path)
-                
+
                 if skill_count == 0:
-                    logger.info(f"  ⊘ No /skills/ folder or no SKILL.md files found - skipping")
+                    logger.info(f"  ⊘ No /skills/ folder or no SKILL.md files found")
+                    # Remove only directories we cloned in this run (not pre-existing ones)
+                    if not pre_existed:
+                        shutil.rmtree(repo_path, ignore_errors=True)
+                        logger.info(f"  Removed (no valid skills): {repo_path}")
                     skipped_repos.append({
                         'source': source,
                         'repo_name': repo_name,
@@ -377,22 +361,25 @@ class SkillsImporter:
                         'reason': 'No skills found'
                     })
                     continue
-                
+
                 # Found skills!
                 total_skills_found += skill_count
                 logger.info(f"  ✓ Found {skill_count} skill(s) in /skills/ folder")
                 logger.info(f"  Progress: {total_skills_found}/{self.max_skills} skills found")
-                
+
                 cloned_repos.append({
                     'source': source,
                     'repo_name': repo_name,
                     'repo_path': str(repo_path),
                     'skills_count': skill_count,
-                    'already_existed': already_existed,
+                    'already_existed': pre_existed,
                 })
-                    
+
             except subprocess.TimeoutExpired:
                 logger.error(f"  ✗ Timeout cloning {source}")
+                if repo_path.exists():
+                    shutil.rmtree(repo_path, ignore_errors=True)
+                    logger.info(f"  Cleaned up partial clone at {repo_path}")
                 failed_repos.append({
                     'source': source,
                     'repo_name': repo_name,
@@ -435,124 +422,6 @@ class SkillsImporter:
         logger.info(f"  Results saved to: {results_file}")
         logger.info(f"{'='*60}")
         
-        self.cloned_repos = cloned_repos
-        return cloned_repos
-
-    # ========== PHASE 2b: Sitemap Direct Download ==========
-
-    def download_skills_from_sitemap(self) -> List[Dict[str, Any]]:
-        """
-        Alternative to clone_repositories: download skills directly from
-        the skills.sh /api/download endpoint using the skill sitemaps.
-
-        This avoids any git operations.  For each skill listed in
-        sitemap-skills-1.xml and sitemap-skills-2.xml the method calls
-            GET https://skills.sh/api/download/{owner}/{repo}/{slug}
-        which returns a JSON snapshot of the skill's files.  Those files are
-        written to disk under:
-            <skills_dir>/<owner>__<repo>/skills/<slug>/
-
-        That layout is identical to what a git clone produces, so Phase 3
-        (discover_skills) works unchanged.
-
-        Returns:
-            List of repo-info dicts (same schema as clone_repositories).
-        """
-        logger.info("\n" + "=" * 60)
-        logger.info("PHASE 2 (sitemap): Downloading skills via /api/download")
-        logger.info("=" * 60)
-
-        base_url = self.args.skills_url.rstrip('/')
-        skills_list = self._fetch_skills_from_sitemaps()
-
-        if not skills_list:
-            logger.error("No skills found in skill sitemaps")
-            return []
-
-        total_available = len(skills_list)
-        target = self.max_skills if self.max_skills is not None else total_available
-        logger.info(f"  Skills in sitemaps : {total_available}")
-        logger.info(f"  Target             : {target}")
-
-        # Apply limit up front to avoid unnecessary HTTP requests
-        if self.max_skills is not None:
-            skills_list = skills_list[:self.max_skills]
-
-        # Track which repo dirs we've written to (for the Phase-3 handoff)
-        repo_skill_counts: Dict[str, int] = {}  # repo_dir_name -> count
-
-        succeeded = 0
-        failed = 0
-
-        for i, entry in enumerate(skills_list, 1):
-            owner = entry['owner']
-            repo  = entry['repo']
-            slug  = entry['slug']
-            source = entry['source']
-
-            repo_dir_name = f"{owner}__{repo}"
-            skill_dir = self.repos_dir / repo_dir_name / 'skills' / slug
-            skill_md_path = skill_dir / 'SKILL.md'
-
-            # Skip if already downloaded (idempotent re-runs)
-            if skill_md_path.exists():
-                logger.info(f"  [{i}/{len(skills_list)}] Already exists: {source}/{slug}")
-                repo_skill_counts[repo_dir_name] = repo_skill_counts.get(repo_dir_name, 0) + 1
-                succeeded += 1
-                continue
-
-            url = f"{base_url}/api/download/{owner}/{repo}/{slug}"
-            logger.info(f"  [{i}/{len(skills_list)}] GET {url}")
-            try:
-                resp = requests.get(url, timeout=30)
-                if resp.status_code == 404:
-                    logger.warning(f"    ⊘ Not found (404) — skipping")
-                    failed += 1
-                    continue
-                resp.raise_for_status()
-                data = resp.json()
-            except Exception as e:
-                logger.error(f"    ✗ Request failed: {e}")
-                failed += 1
-                continue
-
-            files = data.get('files', [])
-            if not any(f['path'].upper() == 'SKILL.MD' for f in files):
-                logger.warning(f"    ⊘ Response has no SKILL.md — skipping")
-                failed += 1
-                continue
-
-            skill_dir.mkdir(parents=True, exist_ok=True)
-            for file_entry in files:
-                dest = skill_dir / file_entry['path']
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(file_entry['contents'], encoding='utf-8')
-
-            repo_skill_counts[repo_dir_name] = repo_skill_counts.get(repo_dir_name, 0) + 1
-            succeeded += 1
-            logger.info(f"    ✓ Written {len(files)} file(s)")
-
-        # Build the cloned_repos list expected by discover_skills / scan_existing_repos
-        cloned_repos = []
-        for repo_dir_name, count in repo_skill_counts.items():
-            parts = repo_dir_name.split('__', 1)
-            source = '/'.join(parts) if len(parts) == 2 else repo_dir_name
-            cloned_repos.append({
-                'source': source,
-                'repo_name': repo_dir_name,
-                'repo_path': str(self.repos_dir / repo_dir_name),
-                'skills_count': count,
-                'already_existed': False,
-            })
-
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Sitemap Download Summary:")
-        logger.info(f"  Skills attempted : {len(skills_list)}")
-        logger.info(f"  Skills downloaded: {succeeded}")
-        logger.info(f"  Failures/skipped : {failed}")
-        logger.info(f"  Repos with skills: {len(cloned_repos)}")
-        logger.info(f"{'='*60}")
-
         self.cloned_repos = cloned_repos
         return cloned_repos
 
@@ -1129,16 +998,9 @@ class SkillsImporter:
         
         try:
             # Check for mutually exclusive modes
-            exclusive = sum([
-                bool(self.args.clone_only),
-                bool(self.args.import_only),
-                bool(getattr(self.args, 'sitemap_only', False)),
-            ])
-            if exclusive > 1:
-                logger.error("--clone-only, --import-only, and --sitemap-only are mutually exclusive")
+            if self.args.clone_only and self.args.import_only:
+                logger.error("--clone-only and --import-only are mutually exclusive")
                 return
-
-            sitemap_only = getattr(self.args, 'sitemap_only', False)
 
             # Import-only mode: skip phases 1-2, scan existing local repos
             if self.args.import_only:
@@ -1148,16 +1010,6 @@ class SkillsImporter:
                 cloned = self.scan_existing_repos()
                 if not cloned:
                     logger.error("No existing repositories found. Aborting.")
-                    return
-
-            # Sitemap mode: download skills via /api/download (no git)
-            elif sitemap_only:
-                logger.info("\n" + "="*60)
-                logger.info("SITEMAP MODE: Downloading skills via skills.sh API")
-                logger.info("="*60)
-                cloned = self.download_skills_from_sitemap()
-                if not cloned:
-                    logger.error("No skills downloaded. Aborting.")
                     return
 
             else:
@@ -1284,13 +1136,12 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        '--sitemap-only',
+        '--overwrite',
         action='store_true',
         help=(
-            'Download skills directly from the skills.sh /api/download endpoint '
-            'using the public skill sitemaps (~20 000 skills). '
-            'No git clone required. If --max-skills is specified, stop after that '
-            'many skills; otherwise download all available skills.'
+            'When cloning, remove and re-clone a repo directory that already exists. '
+            'By default existing directories are assumed to be previous successful clones '
+            'and are skipped.'
         )
     )
 
