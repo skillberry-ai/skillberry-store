@@ -86,15 +86,18 @@ def test_list_all_fields_narrow_preset_runs_enhance():
     assert result[0]["name"] == "vm1"
 
 
-def test_list_all_fields_wide_preset_skips_enhance():
-    """``wide`` is manifest data only — enhancement does NOT run, so
-    ``running`` and ``runtime`` are absent."""
+def test_list_all_fields_wide_preset_runs_enhance():
+    """By the preset-ordering invariant, ``_enhance`` inherits from
+    narrow to wide, so wide runs enhancement and carries ``running`` /
+    ``runtime`` alongside the extra manifest fields (``skill_uuid``,
+    ``extra``, ``created_at`` …)."""
     svc = VmcpService(_handler(), _manager())
     result = svc.list_all(fields="wide")
-    assert "running" not in result[0]
-    assert "runtime" not in result[0]
+    assert result[0]["running"] is True
+    assert "runtime" in result[0]
     assert result[0]["name"] == "vm1"
-    assert result[0]["port"] is not None or "port" in result[0]
+    # wide-only manifest field is present too.
+    assert "skill_uuid" in result[0] or result[0].get("port") is not None
 
 
 def test_list_all_fields_csv_allowlist_narrows_output():

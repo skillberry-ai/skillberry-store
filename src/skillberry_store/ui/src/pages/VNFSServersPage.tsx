@@ -229,9 +229,11 @@ export function VNFSServersPage() {
     let filtered = servers;
     if (searchTerm && filtered) {
       if (searchMode === 'semantic' && searchResults) {
-        filtered = filtered.filter(s =>
-          searchResults.some(r => r.name === s.name || r.filename === s.name)
-        );
+        // Semantic search returns narrow rows plus a similarity score.
+        // The full server row is already in the loaded list, so filter
+        // by uuid (stable across renames).
+        const matchedUuids = new Set(searchResults.map(r => r.uuid));
+        filtered = filtered.filter(s => matchedUuids.has(s.uuid));
       } else if (searchMode === 'text') {
         const lower = searchTerm.toLowerCase();
         filtered = filtered.filter(s =>

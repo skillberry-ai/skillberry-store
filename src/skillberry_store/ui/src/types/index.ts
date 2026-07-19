@@ -53,8 +53,9 @@ export interface Snippet {
   uuid: string;
   name: string;
   description: string;
-  // `content` is absent on slim list-view responses (fields=list); the
-  // detail endpoint (GET /snippets/{uuid}) still returns it.
+  // `content` is absent on narrow list-view responses (?fields=narrow,
+  // the default); the detail endpoint (GET /snippets/{uuid}) still
+  // returns it, as does an explicit ?fields=wide or ?fields=full.
   content?: string;
   state?: ManifestState;
   content_type?: string;
@@ -105,8 +106,12 @@ export interface VNFSServer {
 }
 
 export interface SearchResult {
-  name?: string;
-  filename?: string;
+  // Search endpoints run with the default `?fields=narrow` preset, so
+  // each match carries the narrow listing fields plus the score. The
+  // UI cross-references by `uuid` (stable across renames). The server
+  // also supports `?fields=minimal` (uuid + score only) for callers
+  // that cross-reference against a fully-loaded list.
+  uuid: string;
   similarity_score: number;
 }
 

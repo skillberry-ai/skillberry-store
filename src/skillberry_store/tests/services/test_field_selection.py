@@ -6,6 +6,7 @@ from skillberry_store.services import field_selection as fs
 from skillberry_store.services.field_selection import (
     _FIELD_TAGS_BY_TYPE,
     _PRESET_NAMES,
+    _PRESET_ORDER,
     parse_fields_spec,
     select_item_fields,
     select_items_fields,
@@ -57,6 +58,13 @@ def test_parse_full_unknown_type_raises():
 
 
 # ── parse_fields_spec: narrow / wide ─────────────────────────────────
+
+
+def test_parse_minimal_returns_uuid_only_per_type():
+    """``minimal`` is the identifier-only preset: exactly ``{"uuid"}``
+    for every object type."""
+    for t in ALL_TYPES:
+        assert parse_fields_spec("minimal", t) == {"uuid"}
 
 
 def test_parse_narrow_returns_narrow_set_per_type():
@@ -177,15 +185,17 @@ def test_narrow_vnfs_triggers_enhance():
     assert should_run_mechanism(allow, "_enhance") is True
 
 
-def test_wide_never_triggers_bundling_mechanisms():
-    """Principle: ``wide`` is manifest data only. Flag fields are not in
-    wide, so none of the bundling mechanisms activate."""
-    for t in ALL_TYPES:
+def test_wide_inherits_narrow_flag_activation():
+    """By the preset-ordering invariant, any flag tagged ``"narrow"``
+    is also tagged ``"wide"``, so ``wide`` triggers whatever bundling
+    ``narrow`` triggers. Concretely: vMCP/vNFS enhancement runs under
+    wide; skill population does not (it's only in full for both)."""
+    for t in ("vmcp", "vnfs"):
         allow = parse_fields_spec("wide", t)
-        for flag in ("_populate", "_enhance"):
-            assert should_run_mechanism(allow, flag) is False, (
-                f"{t}.wide unexpectedly triggers {flag}"
-            )
+        assert should_run_mechanism(allow, "_enhance") is True, (
+            f"{t}.wide should trigger _enhance (inherited from narrow)"
+        )
+    assert should_run_mechanism(parse_fields_spec("wide", "skill"), "_populate") is False
 
 
 # ── select_item_fields ───────────────────────────────────────────────
@@ -239,48 +249,39 @@ def test_select_items_fields_returns_fresh_dicts():
 
 
 def test_registered_preset_names():
-    """The public preset names are exactly the three called out by the
-    spec — narrow / wide / full — plus nothing else."""
-    assert _PRESET_NAMES == {"narrow", "wide", "full"}
+    """The public preset names are exactly the four called out by the
+    spec — minimal / narrow / wide / full — plus nothing else."""
+    assert _PRESET_NAMES == {"minimal", "narrow", "wide", "full"}
 
 
-def test_every_type_has_narrow_wide_full():
+def test_preset_order():
+    """The preset order goes smallest → largest."""
+    assert _PRESET_ORDER == ["minimal", "narrow", "wide", "full"]
+
+
+def test_every_type_has_every_preset():
     """Each registered type must define at least one field tagged with
     every preset name."""
     for t in ALL_TYPES:
-        for preset in ("narrow", "wide", "full"):
+        for preset in _PRESET_ORDER:
             assert fs._fields_with_preset(t, preset), (
                 f"type '{t}' has no fields tagged '{preset}'"
             )
 
 
-def test_narrow_subset_of_full_per_type():
-    """``narrow`` must be a subset of ``full`` for every type."""
+def test_presets_are_strictly_ordered_per_type():
+    """The ordering invariant: for every type,
+    ``minimal ⊆ narrow ⊆ wide ⊆ full``. A field tagged with a smaller
+    preset must also carry every larger preset tag."""
     for t in ALL_TYPES:
-        narrow = fs._fields_with_preset(t, "narrow")
-        full = fs._fields_with_preset(t, "full")
-        assert narrow <= full, (
-            f"type '{t}' narrow={narrow} not subset of full={full}"
-        )
-
-
-def test_wide_subset_of_full_per_type():
-    for t in ALL_TYPES:
-        wide = fs._fields_with_preset(t, "wide")
-        full = fs._fields_with_preset(t, "full")
-        assert wide <= full, (
-            f"type '{t}' wide={wide} not subset of full={full}"
-        )
-
-
-def test_wide_never_contains_flag_fields():
-    """Boolean flag fields (prefix ``_``) trigger bundling mechanisms —
-    they belong to ``full`` (and to ``narrow`` when the list UI needs
-    the mechanism's output) but never to ``wide``."""
-    for t in ALL_TYPES:
-        wide = fs._fields_with_preset(t, "wide")
-        flags = {name for name in wide if name.startswith("_")}
-        assert not flags, f"type '{t}' has flag fields in wide: {flags}"
+        for smaller, larger in zip(_PRESET_ORDER, _PRESET_ORDER[1:]):
+            small_set = fs._fields_with_preset(t, smaller)
+            large_set = fs._fields_with_preset(t, larger)
+            assert small_set <= large_set, (
+                f"type '{t}': '{smaller}' ({sorted(small_set)}) is not a "
+                f"subset of '{larger}' ({sorted(large_set)}); "
+                f"missing from '{larger}': {sorted(small_set - large_set)}"
+            )
 
 
 def test_full_covers_every_declared_field():
@@ -291,6 +292,13 @@ def test_full_covers_every_declared_field():
             assert "full" in presets, (
                 f"type '{t}' field '{name}' not tagged 'full' (presets={presets})"
             )
+
+
+def test_minimal_is_uuid_only_per_type():
+    """The ``minimal`` preset is exactly ``{"uuid"}`` on every type —
+    it's the search-response identifier preset."""
+    for t in ALL_TYPES:
+        assert fs._fields_with_preset(t, "minimal") == {"uuid"}
 
 
 # ── per-type narrow shape (the UI listing-page contract) ─────────────

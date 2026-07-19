@@ -262,12 +262,11 @@ export function SnippetsPage() {
     // Apply search filtering
     if (searchTerm && filtered) {
       if (searchMode === 'semantic' && searchResults) {
-        // Semantic search: filter by backend results (handle both name and filename)
-        filtered = filtered.filter((snippet) =>
-          searchResults.some((result) =>
-            (result.name === snippet.name) || (result.filename === snippet.name)
-          )
-        );
+        // Semantic search returns narrow rows plus a similarity score.
+        // The full snippet row is already in the loaded list, so
+        // filter by uuid (stable across renames).
+        const matchedUuids = new Set(searchResults.map((r) => r.uuid));
+        filtered = filtered.filter((snippet) => matchedUuids.has(snippet.uuid));
       } else if (searchMode === 'text') {
         // Text search: filter by matching text in name or description
         const lowerSearch = searchTerm.toLowerCase();

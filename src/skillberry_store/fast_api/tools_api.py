@@ -102,12 +102,12 @@ def register_tools_api(
         fields: Optional[str] = Query(
             "narrow",
             description=(
-                "Field selection. Omit or 'narrow' for the minimal set "
-                "required by the UI listing page for this type "
-                "(default). 'wide' returns every persisted manifest "
-                "field. 'full' returns the complete object, including "
-                "flag fields that trigger bundling mechanisms. Or "
-                "supply a comma-separated allowlist of field names."
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set (default). 'wide' "
+                "returns every persisted manifest field. 'full' returns "
+                "the complete object, including flag fields that "
+                "trigger bundling mechanisms. Or supply a comma-"
+                "separated allowlist of field names."
             ),
         ),
     ) -> List[Dict[str, Any]]:
@@ -325,11 +325,13 @@ def register_tools_api(
             "narrow",
             description=(
                 "Field selection over each match. Same grammar as the "
-                "list endpoint (omit or 'narrow' for the UI listing "
-                "set — default; 'wide' for every persisted manifest "
-                "field; 'full' for the complete object; CSV allowlist). "
-                "Each match is a field-selected tool dict with "
-                "'similarity_score' merged in."
+                "list endpoint ('minimal' for uuid-only search "
+                "results that cross-reference a loaded listing; omit "
+                "or 'narrow' for the UI listing set — default; 'wide' "
+                "for every persisted manifest field; 'full' for the "
+                "complete object; CSV allowlist). Each match is a "
+                "field-selected tool dict with 'similarity_score' "
+                "merged in."
             ),
         ),
     ) -> List:

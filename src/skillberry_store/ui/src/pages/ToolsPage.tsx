@@ -230,12 +230,11 @@ export function ToolsPage() {
     // Apply search filtering
     if (searchTerm && filtered) {
       if (searchMode === 'semantic' && searchResults) {
-        // Semantic search: filter by backend results (handle both name and filename)
-        filtered = filtered.filter((tool) =>
-          searchResults.some((result) =>
-            (result.name === tool.name) || (result.filename === tool.name)
-          )
-        );
+        // Semantic search returns narrow rows plus a similarity score.
+        // The full tool row is already in the loaded list, so filter
+        // by uuid (stable across renames).
+        const matchedUuids = new Set(searchResults.map((r) => r.uuid));
+        filtered = filtered.filter((tool) => matchedUuids.has(tool.uuid));
       } else if (searchMode === 'text') {
         // Text search: filter by matching text in name or description
         const lowerSearch = searchTerm.toLowerCase();

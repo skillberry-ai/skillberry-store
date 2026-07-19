@@ -112,6 +112,12 @@ export const toolsApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
+    // Search runs with the endpoint default (?fields=narrow) so the
+    // response carries the full row for callers that render results
+    // directly (e.g. paginated views where the search hit may not be
+    // in the currently loaded page). The `?fields=minimal` preset is
+    // still supported by the server; opt into it explicitly if you
+    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -171,6 +177,12 @@ export const skillsApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
+    // Search runs with the endpoint default (?fields=narrow) so the
+    // response carries the full row for callers that render results
+    // directly (e.g. paginated views where the search hit may not be
+    // in the currently loaded page). The `?fields=minimal` preset is
+    // still supported by the server; opt into it explicitly if you
+    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -244,6 +256,12 @@ export const snippetsApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
+    // Search runs with the endpoint default (?fields=narrow) so the
+    // response carries the full row for callers that render results
+    // directly (e.g. paginated views where the search hit may not be
+    // in the currently loaded page). The `?fields=minimal` preset is
+    // still supported by the server; opt into it explicitly if you
+    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -329,6 +347,12 @@ export const vmcpApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
+    // Search runs with the endpoint default (?fields=narrow) so the
+    // response carries the full row for callers that render results
+    // directly (e.g. paginated views where the search hit may not be
+    // in the currently loaded page). The `?fields=minimal` preset is
+    // still supported by the server; opt into it explicitly if you
+    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),
@@ -405,6 +429,12 @@ export const vnfsApi = {
     maxResults = 5,
     threshold = 1
   ): Promise<SearchResult[]> => {
+    // Search runs with the endpoint default (?fields=narrow) so the
+    // response carries the full row for callers that render results
+    // directly (e.g. paginated views where the search hit may not be
+    // in the currently loaded page). The `?fields=minimal` preset is
+    // still supported by the server; opt into it explicitly if you
+    // know the caller cross-references against a fully-loaded list.
     const params = new URLSearchParams({
       search_term: searchTerm,
       max_number_of_results: maxResults.toString(),

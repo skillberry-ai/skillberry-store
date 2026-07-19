@@ -93,14 +93,15 @@ def register_vnfs_api(
         fields: Optional[str] = Query(
             "narrow",
             description=(
-                "Field selection. Omit or 'narrow' for the minimal set "
-                "required by the UI listing page — still runs "
-                "enhancement (default). 'wide' returns every persisted "
-                "manifest field only (enhancement skipped). 'full' "
-                "returns the complete object with the '_enhance' "
-                "mechanism running — 'running' and 'export_path' are "
-                "computed and merged in. Or supply a comma-separated "
-                "allowlist (include '_enhance' to trigger enhancement)."
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set — runs enhancement "
+                "(default). 'wide' returns every persisted manifest "
+                "field plus the runtime enrichment inherited from "
+                "narrow. 'full' returns the complete object with the "
+                "'_enhance' mechanism running — 'running' and "
+                "'export_path' are computed and merged in. Or supply a "
+                "comma-separated allowlist (include '_enhance' to "
+                "trigger enhancement)."
             ),
         ),
     ):
@@ -280,13 +281,15 @@ def register_vnfs_api(
             "narrow",
             description=(
                 "Field selection over each match. Same grammar as the "
-                "list endpoint. Default (omit / 'narrow') returns the "
-                "UI listing set (also runs enhancement). 'wide' "
-                "returns every persisted manifest field (enhancement "
-                "skipped). 'full' triggers '_enhance' — 'running' and "
-                "'export_path' are merged in. CSV allowlist also "
-                "supported. Each match is a field-selected vNFS dict "
-                "with 'similarity_score' merged in."
+                "list endpoint. 'minimal' for uuid-only results (cross-"
+                "reference a loaded listing). Default (omit / 'narrow') "
+                "returns the UI listing set (also runs enhancement). "
+                "'wide' returns every persisted manifest field and "
+                "also runs enhancement. 'full' returns the complete "
+                "object with enhancement. CSV allowlist also supported "
+                "(name '_enhance' to trigger the mechanism). Each "
+                "match is a field-selected vNFS dict with "
+                "'similarity_score' merged in."
             ),
         ),
     ):

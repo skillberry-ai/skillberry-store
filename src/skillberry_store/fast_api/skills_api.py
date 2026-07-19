@@ -95,8 +95,8 @@ def register_skills_api(
         fields: Optional[str] = Query(
             "narrow",
             description=(
-                "Field selection. Omit or 'narrow' for the minimal set "
-                "required by the UI listing page — no inlining; use "
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set — no inlining; use "
                 "tool_uuids/snippet_uuids (default). 'wide' returns "
                 "every persisted manifest field (no inlining). 'full' "
                 "returns the complete object with the '_populate' "
@@ -261,12 +261,13 @@ def register_skills_api(
             "narrow",
             description=(
                 "Field selection over each match. Same grammar as the "
-                "list endpoint. Default (omit / 'narrow') returns the "
-                "UI listing set (no inlining). 'wide' returns every "
-                "persisted manifest field (no inlining). 'full' "
-                "triggers '_populate' — 'tools' and 'snippets' are "
-                "inlined. CSV allowlist also supported. Each match is "
-                "a field-selected skill dict with 'similarity_score' "
+                "list endpoint. 'minimal' for uuid-only results (cross-"
+                "reference a loaded listing). Default (omit / 'narrow') "
+                "returns the UI listing set (no inlining). 'wide' "
+                "returns every persisted manifest field (no inlining). "
+                "'full' triggers '_populate' — 'tools' and 'snippets' "
+                "are inlined. CSV allowlist also supported. Each match "
+                "is a field-selected skill dict with 'similarity_score' "
                 "merged in."
             ),
         ),

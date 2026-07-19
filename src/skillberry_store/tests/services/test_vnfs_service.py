@@ -83,12 +83,14 @@ def test_list_all_fields_narrow_preset_runs_enhance():
     assert result[0]["name"] == "v1"
 
 
-def test_list_all_fields_wide_preset_skips_enhance():
-    """``wide`` is manifest data only — enhancement does NOT run."""
+def test_list_all_fields_wide_preset_runs_enhance():
+    """By the preset-ordering invariant, ``_enhance`` inherits from
+    narrow to wide, so wide runs enhancement and carries ``running`` /
+    ``export_path`` alongside the extra manifest fields."""
     svc = VnfsService(_handler(), _manager())
     result = svc.list_all(fields="wide")
-    assert "running" not in result[0]
-    assert "export_path" not in result[0]
+    assert result[0]["running"] is True
+    assert result[0]["export_path"] == "/tmp/export"
     assert result[0]["name"] == "v1"
 
 
