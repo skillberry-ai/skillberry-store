@@ -4,16 +4,20 @@ The list endpoints (``GET /snippets/``, ``GET /skills/``, ``GET /tools/``,
 ``GET /vmcp_servers/``, ``GET /vnfs_servers/``) and the matching search
 endpoints accept an optional ``?fields=`` query param:
 
-* Omitted / empty / ``"full"`` — return every field of the object,
-  including the underscore-prefixed flag fields that trigger bundling
-  mechanisms (default).
-* ``"narrow"`` — return the minimal set required by the UI listing
-  page for that type.
+* Omitted / empty / ``"narrow"`` — return the minimal set required by
+  the UI listing page for that type (default).
 * ``"wide"`` — return every persisted manifest field for that type,
   but skip the flag fields (and therefore skip the bundling mechanisms
   those flags gate).
+* ``"full"`` — return every field of the object, including the
+  underscore-prefixed flag fields that trigger bundling mechanisms.
 * A comma-separated allowlist (``"uuid,name,description"``) — return
   exactly those keys.
+
+The HTTP layer applies the ``narrow`` default via the FastAPI ``Query``
+default on each endpoint; at the service layer, an omitted ``fields``
+argument (``None``) is still the "no filtering" sentinel (equivalent
+to ``full``) so internal Python callers keep their previous behavior.
 
 Presets are declared as *per-field tags* rather than per-preset field
 sets: each field of each object type carries zero or more preset labels,

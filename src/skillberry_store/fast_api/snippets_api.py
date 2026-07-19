@@ -90,13 +90,14 @@ def register_snippets_api(
     )
     def list_snippets(
         fields: Optional[str] = Query(
-            None,
+            "narrow",
             description=(
-                "Field selection. Omit or 'full' for the complete object "
-                "(default). 'narrow' returns the minimal set required by "
-                "the UI listing page for this type. 'wide' returns every "
-                "persisted manifest field. Or supply a comma-separated "
-                "allowlist of field names."
+                "Field selection. Omit or 'narrow' for the minimal set "
+                "required by the UI listing page for this type "
+                "(default). 'wide' returns every persisted manifest "
+                "field. 'full' returns the complete object, including "
+                "flag fields that trigger bundling mechanisms. Or "
+                "supply a comma-separated allowlist of field names."
             ),
         ),
     ):
@@ -232,14 +233,14 @@ def register_snippets_api(
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
         fields: Optional[str] = Query(
-            None,
+            "narrow",
             description=(
                 "Field selection over each match. Same grammar as the "
-                "list endpoint (omit or 'full' for the complete object; "
-                "'narrow' for the UI listing set; 'wide' for every "
-                "persisted manifest field; CSV allowlist). Each match "
-                "is a field-selected snippet dict with 'similarity_score' "
-                "merged in."
+                "list endpoint (omit or 'narrow' for the UI listing "
+                "set — default; 'wide' for every persisted manifest "
+                "field; 'full' for the complete object; CSV allowlist). "
+                "Each match is a field-selected snippet dict with "
+                "'similarity_score' merged in."
             ),
         ),
     ):

@@ -50,8 +50,9 @@ def _create_snippet(client: TestClient, name: str, content: str) -> None:
     assert resp.status_code == 200, resp.text
 
 
-def test_list_snippets_default_returns_bare_array_with_content(fresh_sbs):
-    """Default listing (no fields param) preserves the current wire shape."""
+def test_list_snippets_default_is_narrow(fresh_sbs):
+    """Default listing (no fields param) is the ``narrow`` preset — the
+    minimal UI listing set, so heavy fields like ``content`` are dropped."""
     client = TestClient(fresh_sbs)
 
     _create_snippet(client, "phase1_full_a", "hello world")
@@ -61,6 +62,20 @@ def test_list_snippets_default_returns_bare_array_with_content(fresh_sbs):
     body = resp.json()
     assert isinstance(body, list)
     entry = next(s for s in body if s["name"] == "phase1_full_a")
+    assert "content" not in entry
+    assert "uuid" in entry
+
+
+def test_list_snippets_fields_full_keeps_content(fresh_sbs):
+    """Explicit ``?fields=full`` opts back into the complete object."""
+    client = TestClient(fresh_sbs)
+
+    _create_snippet(client, "phase1_full_b", "hello world")
+
+    resp = client.get("/snippets/", params={"fields": "full"})
+    assert resp.status_code == 200
+    body = resp.json()
+    entry = next(s for s in body if s["name"] == "phase1_full_b")
     assert entry["content"] == "hello world"
 
 
@@ -130,9 +145,9 @@ def _search_snippets_via_mocked_vector(client: TestClient, matched_name: str, **
         return client.get("/search/snippets", params={"search_term": "q", **params})
 
 
-def test_search_snippets_default_returns_full_with_score(fresh_sbs):
-    """Default (no ``fields``) is equivalent to ``full`` — the whole
-    snippet dict with ``similarity_score`` merged in."""
+def test_search_snippets_default_is_narrow_with_score(fresh_sbs):
+    """Default (no ``fields``) is equivalent to ``narrow`` — a slim
+    snippet dict with ``similarity_score`` merged in, no ``content``."""
     client = TestClient(fresh_sbs)
     _create_snippet(client, "phase1_search_full", "body-a")
 
@@ -142,6 +157,24 @@ def test_search_snippets_default_returns_full_with_score(fresh_sbs):
     assert isinstance(body, list) and len(body) == 1
     r = body[0]
     assert r["name"] == "phase1_search_full"
+    assert "content" not in r
+    assert r["similarity_score"] == 0.1
+
+
+def test_search_snippets_fields_full_returns_full_with_score(fresh_sbs):
+    """Explicit ``?fields=full`` opts back into the complete snippet
+    dict with ``similarity_score`` merged in."""
+    client = TestClient(fresh_sbs)
+    _create_snippet(client, "phase1_search_explicit_full", "body-a")
+
+    resp = _search_snippets_via_mocked_vector(
+        client, "phase1_search_explicit_full", fields="full"
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert isinstance(body, list) and len(body) == 1
+    r = body[0]
+    assert r["name"] == "phase1_search_explicit_full"
     assert r["content"] == "body-a"
     assert r["similarity_score"] == 0.1
 

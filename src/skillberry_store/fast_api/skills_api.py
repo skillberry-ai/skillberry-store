@@ -93,15 +93,15 @@ def register_skills_api(
     )
     def list_skills(
         fields: Optional[str] = Query(
-            None,
+            "narrow",
             description=(
-                "Field selection. Omit or 'full' for the complete object "
-                "with the '_populate' mechanism running — 'tools' and "
-                "'snippets' are inlined from tool_uuids/snippet_uuids "
-                "(default). 'narrow' returns the minimal set required "
-                "by the UI listing page (no inlining; use "
-                "tool_uuids/snippet_uuids). 'wide' returns every "
-                "persisted manifest field (no inlining). Or supply a "
+                "Field selection. Omit or 'narrow' for the minimal set "
+                "required by the UI listing page — no inlining; use "
+                "tool_uuids/snippet_uuids (default). 'wide' returns "
+                "every persisted manifest field (no inlining). 'full' "
+                "returns the complete object with the '_populate' "
+                "mechanism running — 'tools' and 'snippets' are "
+                "inlined from tool_uuids/snippet_uuids. Or supply a "
                 "comma-separated allowlist of field names (include "
                 "'_populate' to trigger inlining)."
             ),
@@ -258,14 +258,14 @@ def register_skills_api(
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
         fields: Optional[str] = Query(
-            None,
+            "narrow",
             description=(
                 "Field selection over each match. Same grammar as the "
-                "list endpoint. Default (omit / 'full') triggers "
-                "'_populate' — 'tools' and 'snippets' are inlined. "
-                "'narrow' returns the UI listing set (no inlining). "
-                "'wide' returns every persisted manifest field (no "
-                "inlining). CSV allowlist also supported. Each match is "
+                "list endpoint. Default (omit / 'narrow') returns the "
+                "UI listing set (no inlining). 'wide' returns every "
+                "persisted manifest field (no inlining). 'full' "
+                "triggers '_populate' — 'tools' and 'snippets' are "
+                "inlined. CSV allowlist also supported. Each match is "
                 "a field-selected skill dict with 'similarity_score' "
                 "merged in."
             ),

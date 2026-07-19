@@ -91,16 +91,16 @@ def register_vnfs_api(
     def list_vnfs_servers(
         skill_uuid: Optional[str] = None,
         fields: Optional[str] = Query(
-            None,
+            "narrow",
             description=(
-                "Field selection. Omit or 'full' for the complete object "
-                "with the '_enhance' mechanism running — 'running' and "
-                "'export_path' are computed and merged in (default). "
-                "'narrow' returns the minimal set required by the UI "
-                "listing page (still runs enhancement). 'wide' returns "
-                "every persisted manifest field only (enhancement "
-                "skipped). Or supply a comma-separated allowlist "
-                "(include '_enhance' to trigger enhancement)."
+                "Field selection. Omit or 'narrow' for the minimal set "
+                "required by the UI listing page — still runs "
+                "enhancement (default). 'wide' returns every persisted "
+                "manifest field only (enhancement skipped). 'full' "
+                "returns the complete object with the '_enhance' "
+                "mechanism running — 'running' and 'export_path' are "
+                "computed and merged in. Or supply a comma-separated "
+                "allowlist (include '_enhance' to trigger enhancement)."
             ),
         ),
     ):
@@ -277,14 +277,14 @@ def register_vnfs_api(
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
         fields: Optional[str] = Query(
-            None,
+            "narrow",
             description=(
                 "Field selection over each match. Same grammar as the "
-                "list endpoint. Default (omit / 'full') triggers "
-                "'_enhance' — 'running' and 'export_path' are merged "
-                "in. 'narrow' returns the UI listing set (also runs "
-                "enhancement). 'wide' returns every persisted manifest "
-                "field (enhancement skipped). CSV allowlist also "
+                "list endpoint. Default (omit / 'narrow') returns the "
+                "UI listing set (also runs enhancement). 'wide' "
+                "returns every persisted manifest field (enhancement "
+                "skipped). 'full' triggers '_enhance' — 'running' and "
+                "'export_path' are merged in. CSV allowlist also "
                 "supported. Each match is a field-selected vNFS dict "
                 "with 'similarity_score' merged in."
             ),
