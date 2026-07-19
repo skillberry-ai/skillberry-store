@@ -35,9 +35,9 @@ Convention:
 * A flag field is **never** tagged ``"wide"`` — ``"wide"`` is manifest
   data only.
 * The service consults the resolved allowlist: it triggers the
-  mechanism iff the flag is in the allowlist (or the allowlist is
-  ``None``, i.e. full/default). Sub-fields of the bundled payload that
-  are not in the allowlist are skipped where cheap to do so.
+  mechanism iff the flag is in the allowlist. Sub-fields of the
+  bundled payload that are not in the allowlist are skipped where
+  cheap to do so.
 
 The preset associations live server-side only. Clients (UI, CLI, MCP,
 SDK) only ever send the preset *name* — they never need to know which
@@ -46,7 +46,7 @@ fields it expands to.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Set
 
 # ─── field-tag tables ──────────────────────────────────────────────────
 #
@@ -196,28 +196,24 @@ def _fields_with_preset(object_type: str, preset: str) -> Set[str]:
 
 
 def parse_fields_spec(
-    fields_spec: Optional[str], object_type: str
-) -> Optional[Set[str]]:
+    fields_spec: str | None, object_type: str
+) -> Set[str]:
     """Resolve a ``fields`` query-param value to a concrete field allowlist.
 
     Args:
         fields_spec: Raw value from the query string. ``None`` / empty
             means "use the default preset" — currently ``"narrow"``, the
             minimal set required by the UI listing page for that type.
-            ``"full"`` means "no field selection — return every field,
-            including flag fields that trigger bundling mechanisms".
-            ``"narrow"`` / ``"wide"`` selects the tagged fields for
-            ``object_type``. Any other value is parsed as a
+            ``"narrow"`` / ``"wide"`` / ``"full"`` selects the tagged
+            fields for ``object_type``. Any other value is parsed as a
             comma-separated allowlist.
         object_type: Object-type key (``"snippet"``, ``"tool"``,
             ``"skill"``, ``"vmcp"``, ``"vnfs"``).
 
     Returns:
-        The set of field names to keep, or ``None`` when no field
-        selection should be applied (``"full"``). Callers use the
-        ``None`` sentinel to short-circuit both field filtering and the
-        "should the flag mechanism run" check (``None`` implies all
-        mechanisms run).
+        The set of field names to keep. Every preset  resolves through 
+        the FieldTags table for ``object_type``, so what each preset 
+        covers is controlled entirely by those declarations.
 
     Raises:
         ValueError: If ``object_type`` is unknown, or if ``fields_spec``
@@ -232,8 +228,6 @@ def parse_fields_spec(
         )
     if not fields_spec:
         fields_spec = "narrow"
-    if fields_spec == "full":
-        return None
     if fields_spec in _PRESET_NAMES:
         allow = _fields_with_preset(object_type, fields_spec)
         if not allow:
@@ -247,43 +241,36 @@ def parse_fields_spec(
     return allow
 
 
-def should_run_mechanism(allow: Optional[Set[str]], flag: str) -> bool:
+def should_run_mechanism(allow: Set[str], flag: str) -> bool:
     """Return whether the mechanism gated by ``flag`` should run.
 
     Args:
         allow: The resolved allowlist from :func:`parse_fields_spec`.
-            ``None`` means "no filtering / full preset" — every
-            mechanism runs.
         flag: The underscore-prefixed flag field name (e.g. ``"_populate"``,
             ``"_enhance"``).
 
     Returns:
-        True iff the mechanism should run: either ``allow`` is ``None``
-        (default/full) or ``flag`` is explicitly in ``allow`` (narrow
-        preset for vmcp/vnfs; explicit CSV request; etc.).
+        True iff ``flag`` is in ``allow`` — which happens when the
+        selected preset tags the flag (``"full"`` tags every flag;
+        ``"narrow"`` tags the flags whose bundled output the UI needs)
+        or when an explicit CSV allowlist names it.
     """
-    return allow is None or flag in allow
+    return flag in allow
 
 
 def select_item_fields(
-    item: Dict[str, Any], allow: Optional[Set[str]]
+    item: Dict[str, Any], allow: Set[str]
 ) -> Dict[str, Any]:
     """Return a field-selected view of ``item``.
 
-    When ``allow`` is ``None`` the input dict is returned unchanged (the
-    caller must not mutate it — cache values are shared references). When
-    ``allow`` is a set, a fresh dict is returned containing only those keys
-    that both appear in ``item`` and in ``allow`` — safe to mutate.
+    A fresh dict is returned containing only those keys that both
+    appear in ``item`` and in ``allow`` — safe to mutate.
     """
-    if allow is None:
-        return item
     return {k: item[k] for k in item.keys() & allow}
 
 
 def select_items_fields(
-    items: Iterable[Dict[str, Any]], allow: Optional[Set[str]]
+    items: Iterable[Dict[str, Any]], allow: Set[str]
 ) -> List[Dict[str, Any]]:
     """Apply :func:`select_item_fields` to each element; always returns a new list."""
-    if allow is None:
-        return list(items)
     return [select_item_fields(i, allow) for i in items]

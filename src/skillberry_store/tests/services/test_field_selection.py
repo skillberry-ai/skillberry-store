@@ -35,11 +35,15 @@ def test_parse_empty_returns_narrow_allowlist():
     )
 
 
-def test_parse_full_returns_none():
-    """``"full"`` is the explicit opt-out — resolves to the
-    no-filtering sentinel (``None``); all fields are returned and all
-    bundling mechanisms run."""
-    assert parse_fields_spec("full", "snippet") is None
+def test_parse_full_returns_full_allowlist():
+    """``"full"`` resolves through the FieldTags like any other preset:
+    the returned allowlist is exactly the fields tagged ``"full"`` for
+    that type — which by convention covers every declared field,
+    including the underscore-prefixed flag fields."""
+    result = parse_fields_spec("full", "snippet")
+    assert result == fs._fields_with_preset("snippet", "full")
+    assert "content" in result  # payload field
+    assert "modified_at" in result  # timestamp field
 
 
 def test_parse_none_unknown_type_raises():
@@ -130,13 +134,6 @@ def test_csv_can_include_flag_field():
 # ── should_run_mechanism ─────────────────────────────────────────────
 
 
-def test_should_run_mechanism_none_allow_runs():
-    """``None`` (the ``"full"`` opt-out sentinel) triggers every
-    mechanism."""
-    assert should_run_mechanism(None, "_populate") is True
-    assert should_run_mechanism(None, "_enhance") is True
-
-
 def test_should_run_mechanism_flag_in_allow():
     assert should_run_mechanism({"uuid", "_populate"}, "_populate") is True
     assert should_run_mechanism({"uuid", "_enhance"}, "_enhance") is True
@@ -145,6 +142,19 @@ def test_should_run_mechanism_flag_in_allow():
 def test_should_run_mechanism_flag_absent():
     assert should_run_mechanism({"uuid", "name"}, "_populate") is False
     assert should_run_mechanism({"uuid", "name"}, "_enhance") is False
+
+
+def test_full_preset_triggers_every_mechanism():
+    """``"full"`` tags every flag field for every type, so
+    :func:`should_run_mechanism` fires for each of them."""
+    for t in ALL_TYPES:
+        allow = parse_fields_spec("full", t)
+        tags = fs._FIELD_TAGS_BY_TYPE[t]
+        for name in tags:
+            if name.startswith("_"):
+                assert should_run_mechanism(allow, name) is True, (
+                    f"type '{t}' full does not trigger '{name}'"
+                )
 
 
 def test_narrow_skill_does_not_trigger_populate():
@@ -181,15 +191,19 @@ def test_wide_never_triggers_bundling_mechanisms():
 # ── select_item_fields ───────────────────────────────────────────────
 
 
-def test_select_item_fields_none_returns_input_ref():
-    item = {"uuid": "u1", "name": "n"}
-    assert select_item_fields(item, None) is item
-
-
 def test_select_item_fields_returns_fresh_dict_subset():
     item = {"uuid": "u1", "name": "n", "content": "big"}
     result = select_item_fields(item, {"uuid", "name"})
     assert result == {"uuid": "u1", "name": "n"}
+    assert result is not item
+
+
+def test_select_item_fields_full_allowlist_returns_fresh_copy():
+    """Even the full allowlist returns a fresh dict — callers can
+    freely mutate the result without affecting the source."""
+    item = {"uuid": "u1", "name": "n", "content": "big"}
+    result = select_item_fields(item, {"uuid", "name", "content"})
+    assert result == item
     assert result is not item
 
 
@@ -211,12 +225,14 @@ def test_select_items_fields_shape():
     assert result == [{"uuid": "a"}, {"uuid": "b"}]
 
 
-def test_select_items_fields_none_returns_new_list_with_same_refs():
+def test_select_items_fields_returns_fresh_dicts():
+    """Every returned dict is a fresh copy — mutating one must not
+    affect the source item."""
     items = [{"uuid": "a"}, {"uuid": "b"}]
-    result = select_items_fields(items, None)
+    result = select_items_fields(items, {"uuid"})
     assert result == items
-    assert result is not items
-    assert result[0] is items[0]
+    assert result[0] is not items[0]
+    assert result[1] is not items[1]
 
 
 # ── invariants on the preset registry ────────────────────────────────
