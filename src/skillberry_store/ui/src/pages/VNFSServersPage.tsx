@@ -285,10 +285,6 @@ export function VNFSServersPage() {
     setCreateError('');
   };
 
-  if (isLoading) {
-    return <PageSection><div className="loading-container"><Spinner size="xl" /></div></PageSection>;
-  }
-
   if (error) {
     return <PageSection><Alert variant="danger" title="Error loading Virtual NFS servers">{(error as Error).message}</Alert></PageSection>;
   }
@@ -343,7 +339,11 @@ export function VNFSServersPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {totalFiltered === 0 ? (
+        {isLoading ? (
+          <div className="loading-container">
+            <Spinner size="xl" />
+          </div>
+        ) : totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : ServerIcon} />
             <Title headingLevel="h4" size="lg">

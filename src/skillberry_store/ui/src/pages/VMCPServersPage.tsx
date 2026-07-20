@@ -337,16 +337,6 @@ export function VMCPServersPage() {
     columnIndex,
   });
 
-  if (isLoading) {
-    return (
-      <PageSection>
-        <div className="loading-container">
-          <Spinner size="xl" />
-        </div>
-      </PageSection>
-    );
-  }
-
   if (error) {
     return (
       <PageSection>
@@ -431,7 +421,11 @@ export function VMCPServersPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {totalFiltered === 0 ? (
+        {isLoading ? (
+          <div className="loading-container">
+            <Spinner size="xl" />
+          </div>
+        ) : totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : ServerIcon} />
             <Title headingLevel="h4" size="lg">

@@ -427,16 +427,6 @@ export function SkillsPage() {
   });
 
 
-  if (isLoading) {
-    return (
-      <PageSection>
-        <div className="loading-container">
-          <Spinner size="xl" />
-        </div>
-      </PageSection>
-    );
-  }
-
   if (error) {
     return (
       <PageSection>
@@ -563,7 +553,11 @@ export function SkillsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {totalFiltered === 0 ? (
+        {isLoading ? (
+          <div className="loading-container">
+            <Spinner size="xl" />
+          </div>
+        ) : totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : CodeIcon} />
             <Title headingLevel="h4" size="lg">
