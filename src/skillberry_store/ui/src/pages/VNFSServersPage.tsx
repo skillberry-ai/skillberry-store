@@ -105,7 +105,6 @@ export function VNFSServersPage() {
       vnfsApi.listPaged({
         limit: pageSize,
         offset,
-        fields: 'list',
         search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
         tags: selectedTags,
         sort: sortSpec,

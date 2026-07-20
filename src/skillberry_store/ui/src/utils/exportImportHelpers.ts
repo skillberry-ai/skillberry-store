@@ -15,7 +15,7 @@ export interface ImportResult {
  *
  * The input list may have been fetched with a narrow field-selection
  * preset, so the full manifest is re-fetched via ``toolsApi.get`` (which
- * always returns every field) before the module content is attached.
+ * requests ``?fields=full``) before the module content is attached.
  */
 export async function exportTools(tools: Tool[]): Promise<(Tool & { module_content?: string })[]> {
   return await Promise.all(

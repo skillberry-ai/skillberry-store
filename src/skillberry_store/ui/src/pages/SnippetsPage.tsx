@@ -109,7 +109,6 @@ export function SnippetsPage() {
       snippetsApi.listPaged({
         limit: pageSize,
         offset,
-        fields: 'list',
         search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
         tags: combinedTags,
         sort: sortSpec,

@@ -71,7 +71,7 @@ function buildListParams(opts: ListPagedOptions): URLSearchParams {
   const params = new URLSearchParams();
   params.set('limit', String(opts.limit));
   params.set('offset', String(opts.offset));
-  params.set('fields', opts.fields ?? 'list');
+  if (opts.fields) params.set('fields', opts.fields);
   if (opts.search) params.set('search', opts.search);
   if (opts.state) params.set('state', opts.state);
   if (opts.sort) params.set('sort', opts.sort);
@@ -84,7 +84,7 @@ function buildListParams(opts: ListPagedOptions): URLSearchParams {
 // Tools API
 export const toolsApi = {
   list: async (): Promise<Tool[]> => {
-    const response = await fetch(`${API_BASE}/tools/?fields=list`);
+    const response = await fetch(`${API_BASE}/tools/`);
     return handleResponse<Tool[]>(response);
   },
 
@@ -100,7 +100,11 @@ export const toolsApi = {
   },
 
   get: async (uuid: string): Promise<Tool> => {
-    const response = await fetch(`${API_BASE}/tools/${uuid}`);
+    // ?fields=full — the get endpoints default to the ``narrow`` preset
+    // (see services/field_selection.py), which is scoped to what the
+    // list page renders. Detail views and export flows need every
+    // persisted field, so we opt into ``full`` here.
+    const response = await fetch(`${API_BASE}/tools/${uuid}?fields=full`);
     return handleResponse<Tool>(response);
   },
 
@@ -192,7 +196,7 @@ export const toolsApi = {
 // Skills API
 export const skillsApi = {
   list: async (): Promise<Skill[]> => {
-    const response = await fetch(`${API_BASE}/skills/?fields=list`);
+    const response = await fetch(`${API_BASE}/skills/`);
     return handleResponse<Skill[]>(response);
   },
 
@@ -208,7 +212,10 @@ export const skillsApi = {
   },
 
   get: async (uuid: string): Promise<Skill> => {
-    const response = await fetch(`${API_BASE}/skills/${uuid}`);
+    // ?fields=full — see toolsApi.get; on skills, ``full`` is also what
+    // triggers the ``_populate`` mechanism that inlines ``tools`` /
+    // ``snippets`` on the returned object.
+    const response = await fetch(`${API_BASE}/skills/${uuid}?fields=full`);
     return handleResponse<Skill>(response);
   },
 
@@ -278,7 +285,7 @@ export const skillsApi = {
 // Snippets API
 export const snippetsApi = {
   list: async (): Promise<Snippet[]> => {
-    const response = await fetch(`${API_BASE}/snippets/?fields=list`);
+    const response = await fetch(`${API_BASE}/snippets/`);
     return handleResponse<Snippet[]>(response);
   },
 
@@ -294,7 +301,9 @@ export const snippetsApi = {
   },
 
   get: async (uuid: string): Promise<Snippet> => {
-    const response = await fetch(`${API_BASE}/snippets/${uuid}`);
+    // ?fields=full — see toolsApi.get. Without this the response omits
+    // ``content`` and the detail view / export path both break.
+    const response = await fetch(`${API_BASE}/snippets/${uuid}?fields=full`);
     return handleResponse<Snippet>(response);
   },
 
@@ -378,8 +387,7 @@ export const snippetsApi = {
 // VMCP Servers API
 export const vmcpApi = {
   list: async (): Promise<VMCPServer[]> => {
-    // Server returns a bare array under ?fields=list.
-    const response = await fetch(`${API_BASE}/vmcp_servers/?fields=list`);
+    const response = await fetch(`${API_BASE}/vmcp_servers/`);
     return handleResponse<VMCPServer[]>(response);
   },
 
@@ -395,7 +403,8 @@ export const vmcpApi = {
   },
 
   get: async (uuid: string): Promise<VMCPServer> => {
-    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}`);
+    // ?fields=full — see toolsApi.get.
+    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}?fields=full`);
     return handleResponse<VMCPServer>(response);
   },
 
@@ -491,7 +500,7 @@ export const vmcpApi = {
 // vNFS Servers API
 export const vnfsApi = {
   list: async (): Promise<VNFSServer[]> => {
-    const response = await fetch(`${API_BASE}/vnfs_servers/?fields=list`);
+    const response = await fetch(`${API_BASE}/vnfs_servers/`);
     return handleResponse<VNFSServer[]>(response);
   },
 
@@ -507,7 +516,8 @@ export const vnfsApi = {
   },
 
   get: async (uuid: string): Promise<VNFSServer> => {
-    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}`);
+    // ?fields=full — see toolsApi.get.
+    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}?fields=full`);
     return handleResponse<VNFSServer>(response);
   },
 

@@ -236,9 +236,14 @@ def parse_fields_spec(
         covers is controlled entirely by those declarations.
 
     Raises:
-        ValueError: If ``object_type`` is unknown, or if ``fields_spec``
+        ValueError: If ``object_type`` is unknown, if ``fields_spec``
             names a registered preset but no field of ``object_type``
-            carries that tag.
+            carries that tag, or if any token in a CSV allowlist is
+            not a declared field name for ``object_type``. A single
+            unrecognized token — including something that looks like a
+            preset but isn't (e.g. ``"list"``) — is treated as an
+            invalid CSV entry and rejected with an error that names the
+            valid presets and fields.
     """
     # Validate the type is known up front so that a bogus ``object_type``
     # fails loudly on every path.
@@ -257,7 +262,17 @@ def parse_fields_spec(
         return allow
     allow = {f.strip() for f in fields_spec.split(",") if f.strip()}
     if not allow:
-        allow = _fields_with_preset(object_type, "narrow")
+        return _fields_with_preset(object_type, "narrow")
+    known = set(_FIELD_TAGS_BY_TYPE[object_type].keys())
+    unknown = allow - known
+    if unknown:
+        raise ValueError(
+            f"Invalid fields spec {fields_spec!r} for object type "
+            f"'{object_type}': unrecognized name(s) {sorted(unknown)}. "
+            f"Expected one of the presets {sorted(_PRESET_NAMES)} or a "
+            f"comma-separated subset of the declared fields "
+            f"{sorted(known)}."
+        )
     return allow
 
 

@@ -132,6 +132,29 @@ def test_registered_preset_name_never_falls_through_to_csv(monkeypatch):
     assert parse_fields_spec("narrow", "snippet") == {"uuid", "detail"}
 
 
+def test_parse_unknown_preset_like_token_raises():
+    """A single token that isn't a registered preset AND isn't a
+    declared field name (e.g. ``"list"``) must be rejected — not
+    silently treated as a one-element CSV that filters every row down
+    to an empty dict."""
+    for t in ALL_TYPES:
+        with pytest.raises(ValueError, match="Invalid fields spec"):
+            parse_fields_spec("list", t)
+
+
+def test_parse_csv_with_unknown_field_raises():
+    """A CSV allowlist that contains any name not declared for the
+    object type must be rejected — silently accepting the typo would
+    strip that field from every returned row without warning."""
+    with pytest.raises(ValueError, match="nope"):
+        parse_fields_spec("uuid,name,nope", "snippet")
+
+
+def test_parse_csv_with_all_unknown_fields_raises():
+    with pytest.raises(ValueError, match="Invalid fields spec"):
+        parse_fields_spec("foo,bar", "tool")
+
+
 def test_csv_can_include_flag_field():
     """Explicit CSV allowlists may name a flag field to trigger a
     bundling mechanism."""

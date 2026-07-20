@@ -96,7 +96,6 @@ export function ToolsPage() {
       toolsApi.listPaged({
         limit: pageSize,
         offset,
-        fields: 'list',
         search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
         tags: combinedTags,
         sort: sortSpec,
