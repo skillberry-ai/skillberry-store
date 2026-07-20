@@ -180,7 +180,7 @@ export const toolsApi = {
     searchTerm: string,
     maxResults = 5,
     threshold = 1,
-    fields = 'list',
+    fields = 'narrow',
   ): Promise<Array<Tool & { similarity_score: number }>> => {
     const params = new URLSearchParams({
       search_term: searchTerm,
@@ -269,7 +269,7 @@ export const skillsApi = {
     searchTerm: string,
     maxResults = 5,
     threshold = 1,
-    fields = 'list',
+    fields = 'narrow',
   ): Promise<Array<Skill & { similarity_score: number }>> => {
     const params = new URLSearchParams({
       search_term: searchTerm,
@@ -371,7 +371,7 @@ export const snippetsApi = {
     searchTerm: string,
     maxResults = 5,
     threshold = 1,
-    fields = 'list',
+    fields = 'narrow',
   ): Promise<Array<Snippet & { similarity_score: number }>> => {
     const params = new URLSearchParams({
       search_term: searchTerm,
@@ -484,7 +484,7 @@ export const vmcpApi = {
     searchTerm: string,
     maxResults = 5,
     threshold = 1,
-    fields = 'list',
+    fields = 'narrow',
   ): Promise<Array<VMCPServer & { similarity_score: number }>> => {
     const params = new URLSearchParams({
       search_term: searchTerm,
@@ -588,7 +588,7 @@ export const vnfsApi = {
     searchTerm: string,
     maxResults = 5,
     threshold = 1,
-    fields = 'list',
+    fields = 'narrow',
   ): Promise<Array<VNFSServer & { similarity_score: number }>> => {
     const params = new URLSearchParams({
       search_term: searchTerm,
