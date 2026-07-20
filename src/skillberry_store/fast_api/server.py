@@ -1,5 +1,8 @@
+import asyncio
 import logging
 import os
+import time
+from contextlib import asynccontextmanager
 from typing import Any, List, Literal
 
 import uvicorn
@@ -56,11 +59,47 @@ class SBSettings(BaseSettings):
         return "localhost" if self.sbs_host == "0.0.0.0" else self.sbs_host
 
 
+async def _warm_semantic_encoder() -> None:
+    """Force the SentenceTransformer encoder to initialize in a worker thread.
+
+    Runs off the event loop so it does not stall concurrent request handling.
+    Logs start/finish (with elapsed time) and swallows failures — a warmup miss
+    just means the first real semantic query pays the cold-start cost, which is
+    the pre-existing behavior.
+    """
+    logger.info("Semantic encoder warmup starting (background)")
+    start = time.monotonic()
+    try:
+        loop = asyncio.get_running_loop()
+        # Imported inside the executor call so the (heavy) sentence_transformers
+        # import itself is paid on the worker thread, not the event loop.
+        def _warm_sync() -> None:
+            from skillberry_store.vdbs.vector_db_interface import text_to_vector
+
+            text_to_vector("warmup")
+
+        await loop.run_in_executor(None, _warm_sync)
+        elapsed = time.monotonic() - start
+        logger.info(f"Semantic encoder warmup finished in {elapsed:.2f}s")
+    except Exception:
+        logger.exception("Semantic encoder warmup failed")
+
+
+@asynccontextmanager
+async def _sbs_lifespan(app: FastAPI):
+    """FastAPI lifespan hook — schedules background warmups without blocking startup."""
+    # Fire-and-forget: create_task returns immediately, so lifespan yields to
+    # uvicorn straight away and the server begins accepting connections. Keep a
+    # reference on app.state so the task isn't garbage-collected mid-run.
+    app.state.encoder_warmup_task = asyncio.create_task(_warm_semantic_encoder())
+    yield
+
+
 class SBS(FastAPI):
     def __init__(self, **settings: Any):
         """Initialize the SBS server with FastAPI and custom settings."""
 
-        super().__init__()
+        super().__init__(lifespan=_sbs_lifespan)
         self.settings = SBSettings(**settings)
         self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
