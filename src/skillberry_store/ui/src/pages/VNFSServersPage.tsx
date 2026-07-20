@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
@@ -110,12 +110,16 @@ export function VNFSServersPage() {
         sort: sortSpec,
       }),
     enabled: !isSemantic,
+    // Keep the previous page/search result visible while a new query is in
+    // flight so the toolbar (and the search input's focus) never unmounts.
+    placeholderData: keepPreviousData,
   });
 
   const semanticQuery = useQuery({
     queryKey: ['vnfs-servers', 'semantic', debouncedSearch, maxResults, similarityThreshold],
     queryFn: () => vnfsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
     enabled: isSemantic,
+    placeholderData: keepPreviousData,
   });
 
   const facetsQuery = useQuery({

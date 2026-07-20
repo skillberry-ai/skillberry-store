@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
@@ -128,12 +128,16 @@ export function SkillsPage() {
         sort: sortSpec,
       }),
     enabled: !isSemantic,
+    // Keep the previous page/search result visible while a new query is in
+    // flight so the toolbar (and the search input's focus) never unmounts.
+    placeholderData: keepPreviousData,
   });
 
   const semanticQuery = useQuery({
     queryKey: ['skills', 'semantic', debouncedSearch, maxResults, similarityThreshold],
     queryFn: () => skillsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
     enabled: isSemantic,
+    placeholderData: keepPreviousData,
   });
 
   const facetsQuery = useQuery({

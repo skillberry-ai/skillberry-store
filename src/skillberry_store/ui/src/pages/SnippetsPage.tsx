@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
 import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
@@ -114,12 +114,16 @@ export function SnippetsPage() {
         sort: sortSpec,
       }),
     enabled: !isSemantic,
+    // Keep the previous page/search result visible while a new query is in
+    // flight so the toolbar (and the search input's focus) never unmounts.
+    placeholderData: keepPreviousData,
   });
 
   const semanticQuery = useQuery({
     queryKey: ['snippets', 'semantic', debouncedSearch, maxResults, similarityThreshold],
     queryFn: () => snippetsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
     enabled: isSemantic,
+    placeholderData: keepPreviousData,
   });
 
   const facetsQuery = useQuery({
