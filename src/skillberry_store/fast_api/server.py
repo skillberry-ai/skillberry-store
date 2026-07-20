@@ -71,6 +71,7 @@ async def _warm_semantic_encoder() -> None:
     start = time.monotonic()
     try:
         loop = asyncio.get_running_loop()
+
         # Imported inside the executor call so the (heavy) sentence_transformers
         # import itself is paid on the worker thread, not the event loop.
         def _warm_sync() -> None:
