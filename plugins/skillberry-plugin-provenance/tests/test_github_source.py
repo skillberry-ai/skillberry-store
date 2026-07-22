@@ -11,6 +11,13 @@ from skillberry_plugin_provenance.sources.base import (
     LICENSE_PERMISSIVE,
     license_category,
 )
+
+
+def _iso_days_ago(days: int) -> str:
+    """ISO-8601 UTC timestamp for ``now - days`` (matches GitHub's ``Z`` suffix)."""
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 from skillberry_plugin_provenance.sources.github_source import (
     GitHubSource,
     assess_confidence,
@@ -155,19 +162,14 @@ def test_confidence_medium_for_copyleft_reputable():
 
 
 def test_assess_confidence_new_anonymous_repo_is_low():
-    # Dates are computed relative to now() so the repo is always genuinely
-    # "new" (< 30 days, the medium-confidence threshold) whenever CI runs —
-    # hardcoded dates here would become "old" as wall-clock time advances.
-    now = datetime.now(timezone.utc)
-
-    def _iso(days_ago: int) -> str:
-        return (now - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
-
+    # Use relative timestamps so the "fresh repo" premise stays true as
+    # real time advances — previously the hardcoded 2026-06-10 date drifted
+    # past the >=30-day MEDIUM threshold.
     fresh = {
         "stargazers_count": 0,
         "owner": {"login": "newbie", "type": "User"},
-        "created_at": _iso(5),  # a few days old → below the 30-day threshold
-        "pushed_at": _iso(3),
+        "created_at": _iso_days_ago(5),
+        "pushed_at": _iso_days_ago(2),
     }
     bg = build_background(
         {"owner": "newbie", "repo": "z", "ref": "main", "path": ""},

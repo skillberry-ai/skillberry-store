@@ -41,6 +41,46 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+// ── Shared shape for paginated list responses ────────────────────────────
+export interface PagedResponse<T> {
+  items: T[];
+  total: number;
+  offset: number;
+  limit: number | null;
+}
+
+// ── Facets returned by GET /facets/{type} ────────────────────────────────
+export interface FacetsResponse {
+  tags: string[];
+  namespaces: string[];
+  states: string[];
+}
+
+// Options accepted by the paginated list endpoints (snippets/skills/tools).
+export interface ListPagedOptions {
+  limit: number;
+  offset: number;
+  search?: string;
+  tags?: string[];
+  state?: string;
+  sort?: string;
+  fields?: string;
+}
+
+function buildListParams(opts: ListPagedOptions): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set('limit', String(opts.limit));
+  params.set('offset', String(opts.offset));
+  if (opts.fields) params.set('fields', opts.fields);
+  if (opts.search) params.set('search', opts.search);
+  if (opts.state) params.set('state', opts.state);
+  if (opts.sort) params.set('sort', opts.sort);
+  if (opts.tags && opts.tags.length > 0) {
+    opts.tags.forEach(t => params.append('tags', t));
+  }
+  return params;
+}
+
 // Tools API
 export const toolsApi = {
   list: async (): Promise<Tool[]> => {
@@ -48,8 +88,23 @@ export const toolsApi = {
     return handleResponse<Tool[]>(response);
   },
 
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<Tool>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/tools/?${params.toString()}`);
+    return handleResponse<PagedResponse<Tool>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/tools`);
+    return handleResponse<FacetsResponse>(response);
+  },
+
   get: async (uuid: string): Promise<Tool> => {
-    const response = await fetch(`${API_BASE}/tools/${uuid}`);
+    // ?fields=full — the get endpoints default to the ``narrow`` preset
+    // (see services/field_selection.py), which is scoped to what the
+    // list page renders. Detail views and export flows need every
+    // persisted field, so we opt into ``full`` here.
+    const response = await fetch(`${API_BASE}/tools/${uuid}?fields=full`);
     return handleResponse<Tool>(response);
   },
 
@@ -120,6 +175,22 @@ export const toolsApi = {
     const response = await fetch(`${API_BASE}/search/tools?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'narrow',
+  ): Promise<Array<Tool & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/tools?${params}`);
+    return handleResponse<Array<Tool & { similarity_score: number }>>(response);
+  },
 };
 
 // Skills API
@@ -129,8 +200,22 @@ export const skillsApi = {
     return handleResponse<Skill[]>(response);
   },
 
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<Skill>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/skills/?${params.toString()}`);
+    return handleResponse<PagedResponse<Skill>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/skills`);
+    return handleResponse<FacetsResponse>(response);
+  },
+
   get: async (uuid: string): Promise<Skill> => {
-    const response = await fetch(`${API_BASE}/skills/${uuid}`);
+    // ?fields=full — see toolsApi.get; on skills, ``full`` is also what
+    // triggers the ``_populate`` mechanism that inlines ``tools`` /
+    // ``snippets`` on the returned object.
+    const response = await fetch(`${API_BASE}/skills/${uuid}?fields=full`);
     return handleResponse<Skill>(response);
   },
 
@@ -179,6 +264,22 @@ export const skillsApi = {
     const response = await fetch(`${API_BASE}/search/skills?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'narrow',
+  ): Promise<Array<Skill & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/skills?${params}`);
+    return handleResponse<Array<Skill & { similarity_score: number }>>(response);
+  },
 };
 
 // Snippets API
@@ -188,8 +289,21 @@ export const snippetsApi = {
     return handleResponse<Snippet[]>(response);
   },
 
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<Snippet>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/snippets/?${params.toString()}`);
+    return handleResponse<PagedResponse<Snippet>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/snippets`);
+    return handleResponse<FacetsResponse>(response);
+  },
+
   get: async (uuid: string): Promise<Snippet> => {
-    const response = await fetch(`${API_BASE}/snippets/${uuid}`);
+    // ?fields=full — see toolsApi.get. Without this the response omits
+    // ``content`` and the detail view / export path both break.
+    const response = await fetch(`${API_BASE}/snippets/${uuid}?fields=full`);
     return handleResponse<Snippet>(response);
   },
 
@@ -198,7 +312,7 @@ export const snippetsApi = {
     const params = new URLSearchParams({
       name: snippet.name,
       description: snippet.description,
-      content: snippet.content,
+      content: snippet.content ?? '',
       version: snippet.version || '1.0.0',
       content_type: snippet.content_type || 'text/plain',
       state: snippet.state || 'approved',
@@ -252,19 +366,45 @@ export const snippetsApi = {
     const response = await fetch(`${API_BASE}/search/snippets?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'narrow',
+  ): Promise<Array<Snippet & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/snippets?${params}`);
+    return handleResponse<Array<Snippet & { similarity_score: number }>>(response);
+  },
 };
 
 // VMCP Servers API
 export const vmcpApi = {
   list: async (): Promise<VMCPServer[]> => {
     const response = await fetch(`${API_BASE}/vmcp_servers/`);
-    const data = await handleResponse<{ virtual_mcp_servers: Record<string, VMCPServer> }>(response);
-    // Convert the object to an array
-    return Object.values(data.virtual_mcp_servers);
+    return handleResponse<VMCPServer[]>(response);
+  },
+
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<VMCPServer>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/vmcp_servers/?${params.toString()}`);
+    return handleResponse<PagedResponse<VMCPServer>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/vmcp_servers`);
+    return handleResponse<FacetsResponse>(response);
   },
 
   get: async (uuid: string): Promise<VMCPServer> => {
-    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}`);
+    // ?fields=full — see toolsApi.get.
+    const response = await fetch(`${API_BASE}/vmcp_servers/${uuid}?fields=full`);
     return handleResponse<VMCPServer>(response);
   },
 
@@ -339,18 +479,45 @@ export const vmcpApi = {
     const response = await fetch(`${API_BASE}/search/vmcp_servers?${params}`);
     return handleResponse<SearchResult[]>(response);
   },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'narrow',
+  ): Promise<Array<VMCPServer & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/vmcp_servers?${params}`);
+    return handleResponse<Array<VMCPServer & { similarity_score: number }>>(response);
+  },
 };
 
 // vNFS Servers API
 export const vnfsApi = {
   list: async (): Promise<VNFSServer[]> => {
     const response = await fetch(`${API_BASE}/vnfs_servers/`);
-    const data = await handleResponse<{ virtual_nfs_servers: Record<string, VNFSServer> }>(response);
-    return Object.values(data.virtual_nfs_servers);
+    return handleResponse<VNFSServer[]>(response);
+  },
+
+  listPaged: async (opts: ListPagedOptions): Promise<PagedResponse<VNFSServer>> => {
+    const params = buildListParams(opts);
+    const response = await fetch(`${API_BASE}/vnfs_servers/?${params.toString()}`);
+    return handleResponse<PagedResponse<VNFSServer>>(response);
+  },
+
+  facets: async (): Promise<FacetsResponse> => {
+    const response = await fetch(`${API_BASE}/facets/vnfs_servers`);
+    return handleResponse<FacetsResponse>(response);
   },
 
   get: async (uuid: string): Promise<VNFSServer> => {
-    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}`);
+    // ?fields=full — see toolsApi.get.
+    const response = await fetch(`${API_BASE}/vnfs_servers/${uuid}?fields=full`);
     return handleResponse<VNFSServer>(response);
   },
 
@@ -415,6 +582,22 @@ export const vnfsApi = {
     });
     const response = await fetch(`${API_BASE}/search/vnfs_servers?${params}`);
     return handleResponse<SearchResult[]>(response);
+  },
+
+  searchProjected: async (
+    searchTerm: string,
+    maxResults = 5,
+    threshold = 1,
+    fields = 'narrow',
+  ): Promise<Array<VNFSServer & { similarity_score: number }>> => {
+    const params = new URLSearchParams({
+      search_term: searchTerm,
+      max_number_of_results: maxResults.toString(),
+      similarity_threshold: threshold.toString(),
+      fields,
+    });
+    const response = await fetch(`${API_BASE}/search/vnfs_servers?${params}`);
+    return handleResponse<Array<VNFSServer & { similarity_score: number }>>(response);
   },
 };
 

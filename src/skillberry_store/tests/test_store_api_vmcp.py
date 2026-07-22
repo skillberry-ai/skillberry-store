@@ -7,7 +7,8 @@ def _store_with_vmcp():
     vmcp_service = MagicMock()
     vmcp_service.create.return_value = {"uuid": "v1", "port": 10001}
     vmcp_service.get.return_value = {"uuid": "v1", "port": 10001, "running": True}
-    vmcp_service.list_all.return_value = {"virtual_mcp_servers": {"v1": {"uuid": "v1"}}}
+    # Phase 3 (vmcp/vnfs): ``list_all`` now returns a bare list.
+    vmcp_service.list_all.return_value = [{"uuid": "v1"}]
     return StoreAPI({"vmcp": vmcp_service}), vmcp_service
 
 

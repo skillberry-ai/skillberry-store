@@ -5,6 +5,26 @@ from skillberry_store.modules.vmcp_server import VirtualMcpServer
 import socket
 
 
+@pytest.fixture(autouse=True)
+def _stub_object_handlers(monkeypatch):
+    """Stub ``get_object_handler`` for every test in this module.
+
+    ``VirtualMcpServer.__init__`` calls ``get_object_handler("tool")`` and
+    ``get_object_handler("snippet")`` at construction time, which require
+    the process-wide singletons to have been initialised by ``SBS()``.
+    These constructor tests mock every method that would actually use the
+    handlers (``_register_tools``/``_register_prompts``/``_start_server``),
+    so a bare ``MagicMock`` is sufficient to bypass the singleton gate and
+    keep the tests hermetic (previously they only passed by inheriting
+    initialised state from an earlier test in the pytest session).
+    """
+    from skillberry_store.modules import vmcp_server as _vmcp_mod
+
+    monkeypatch.setattr(
+        _vmcp_mod, "get_object_handler", lambda _name: MagicMock()
+    )
+
+
 @patch("skillberry_store.modules.vmcp_server.VirtualMcpServer._start_server")
 @patch("skillberry_store.modules.vmcp_server.VirtualMcpServer._register_prompts")
 @patch("skillberry_store.modules.vmcp_server.VirtualMcpServer._register_tools")

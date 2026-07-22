@@ -356,23 +356,40 @@ class ToolsService:
                 raise KeyError(f"Tool '{label}' not found")
             raise
 
-    def get(self, uuid_or_name: str) -> Dict[str, Any]:
+    def get(
+        self,
+        uuid_or_name: str,
+        fields: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Get tool metadata by UUID or name.
 
         Args:
             uuid_or_name: Tool UUID or name.
+            fields: Optional field-selection spec (``None`` /
+                ``"narrow"`` / ``"wide"`` / ``"full"`` / CSV
+                allowlist). ``None`` and ``"narrow"`` both resolve to
+                the narrow preset (the default). See
+                :mod:`skillberry_store.services.field_selection`.
 
         Returns:
-            Dict[str, Any]: Tool metadata dictionary.
+            Dict[str, Any]: Tool metadata dictionary, field-selected
+                according to ``fields``.
 
         Raises:
             KeyError: If tool not found.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
+
         get_tool_counter.inc()
         try:
+            allow = parse_fields_spec(fields, "tool")
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.read_lock(uuid):
-                return self._safe_read(uuid, uuid_or_name)
+                item = self._safe_read(uuid, uuid_or_name)
+                return select_item_fields(item, allow)
         except KeyError:
             raise
         except Exception as e:
@@ -420,15 +437,35 @@ class ToolsService:
             logger.error(f"Error retrieving module for '{uuid_or_name}': {e}")
             raise
 
-    def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """List all tools with optional filtering.
+    def list_all(
+        self,
+        filters: Optional[Dict] = None,
+        fields: Optional[str] = None,
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        state: Optional[str] = None,
+        sort: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Any:
+        """List tools with optional filter / sort / paginate / project.
 
-        Args:
-            filters: Optional dictionary of field:value pairs to filter by.
-
-        Returns:
-            List[Dict[str, Any]]: List of tool metadata dictionaries, sorted by modified_at descending.
+        See :meth:`SnippetsService.list_all` for parameter semantics.
+        Response shape follows the same convention: bare list unless
+        ``limit`` or ``offset`` is provided, in which case it becomes an
+        ``{items, total, offset, limit}`` envelope.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_items_fields,
+        )
+        from skillberry_store.services.list_query import (
+            apply_filters,
+            apply_pagination,
+            apply_sort,
+            is_paginated,
+        )
+
         list_tools_counter.inc()
         try:
             items = self.handler.list_all_dicts()
@@ -436,11 +473,28 @@ class ToolsService:
                 items = [
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
-            items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return items
+            items = apply_filters(items, search=search, tags=tags, state=state)
+            items = apply_sort(items, sort)
+            page, total = apply_pagination(items, limit, offset)
+            allow = parse_fields_spec(fields, "tool")
+            projected = select_items_fields(page, allow)
+            if not is_paginated(limit, offset):
+                return projected
+            return {
+                "items": projected,
+                "total": total,
+                "offset": offset or 0,
+                "limit": limit,
+            }
         except Exception as e:
             logger.error(f"Error listing tools: {e}\n{traceback.format_exc()}")
             raise
+
+    def facets(self) -> Dict[str, List[str]]:
+        """Return the unique tags / namespaces / states over all tools."""
+        from skillberry_store.services.facets import compute_facets
+
+        return compute_facets(self.handler.list_all_dicts())
 
     def search(
         self,
@@ -449,6 +503,7 @@ class ToolsService:
         similarity_threshold: float = 1.0,
         manifest_filter: str = ".",
         lifecycle_state: Optional["LifecycleState"] = None,
+        fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search tools by semantic similarity to a search term.
 
@@ -468,9 +523,17 @@ class ToolsService:
                 all entities.
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
+            fields: Optional field-selection spec — same grammar as
+                :meth:`list_all` (``None`` / ``"narrow"`` / ``"wide"``
+                / ``"full"`` / CSV allowlist). Each match is a
+                field-selected tool dict with ``similarity_score``
+                merged in. Default (``None``) resolves to ``"narrow"``
+                — the minimal UI listing set.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
+                Each entry is a field-selected tool dict plus a
+                ``similarity_score`` key.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -478,6 +541,10 @@ class ToolsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
 
         search_tools_counter.inc()
         try:
@@ -502,11 +569,12 @@ class ToolsService:
                 if not tool_name:
                     continue
                 try:
-                    tool_dict = self.get(tool_name)
-                    tool_dict["similarity_score"] = matched.get(
+                    fetched = self.get(tool_name, fields="full")
+                    candidate = dict(fetched)
+                    candidate["similarity_score"] = matched.get(
                         "similarity_score", 0.0
                     )
-                    candidates.append(tool_dict)
+                    candidates.append(candidate)
                 except Exception as e:
                     logger.warning(f"Could not load tool {tool_name}: {e}")
             filtered_tools = apply_search_filters(
@@ -515,9 +583,10 @@ class ToolsService:
                 lifecycle_state=lifecycle_state,
             )
             filtered_tools.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            allow = parse_fields_spec(fields, "tool")
             return [
                 {
-                    "filename": t.get("name", ""),
+                    **select_item_fields(t, allow),
                     "similarity_score": t.get("similarity_score", 0.0),
                 }
                 for t in filtered_tools

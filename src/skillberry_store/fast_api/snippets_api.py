@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Annotated
+from typing import List, Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 
 from skillberry_store.modules.lifecycle import LifecycleState
@@ -88,22 +88,73 @@ def register_snippets_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "list-snippets", "x-mcp-tool": True},
     )
-    def list_snippets():
-        """List all snippets in the store.
+    def list_snippets(
+        fields: Optional[str] = Query(
+            "narrow",
+            description=(
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set (default). 'wide' "
+                "returns every persisted manifest field. 'full' returns "
+                "the complete object, including flag fields that "
+                "trigger bundling mechanisms. Or supply a comma-"
+                "separated allowlist of field names."
+            ),
+        ),
+        search: Optional[str] = Query(
+            None,
+            description="Case-insensitive substring over name + description.",
+        ),
+        tags_filter: Optional[List[str]] = Query(
+            None,
+            alias="tags",
+            description=(
+                "Repeat to filter by multiple tags (AND semantics). Namespace "
+                "tags are ordinary tags — pass ``namespace:xyz`` to filter by "
+                "namespace."
+            ),
+        ),
+        state: Optional[str] = Query(
+            None, description="Exact-match lifecycle state filter."
+        ),
+        sort: Optional[str] = Query(
+            None,
+            description=(
+                "``field:direction`` (e.g. ``name:asc``). Defaults to "
+                "``modified_at:desc``."
+            ),
+        ),
+        limit: Optional[int] = Query(
+            None,
+            ge=0,
+            description=(
+                "Max items to return. Setting ``limit`` (or ``offset``) "
+                "switches the response to a ``{items, total, offset, limit}`` "
+                "envelope. Omit both for the legacy bare array."
+            ),
+        ),
+        offset: Optional[int] = Query(None, ge=0, description="Page offset."),
+    ):
+        """List snippets with optional filter / sort / paginate / project.
 
-        Retrieves metadata for all snippets currently stored in the system.
-
-        Args:
-            None.
-
-        Returns:
-            list: List of dictionaries, each containing snippet metadata (name, uuid, description, content, etc.).
+        See query-param descriptions for behavior. When neither ``limit``
+        nor ``offset`` is set, returns a bare list (100% back-compat).
+        Otherwise returns ``{items, total, offset, limit}``.
 
         Raises:
-            HTTPException: 500 if listing fails.
+            HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
         """
         try:
-            return service.list_all()
+            return service.list_all(
+                fields=fields,
+                search=search,
+                tags=tags_filter,
+                state=state,
+                sort=sort,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error listing snippets: {str(e)}"
@@ -114,25 +165,42 @@ def register_snippets_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "get-snippet", "x-mcp-tool": True},
     )
-    def get_snippet(uuid_or_name: str):
+    def get_snippet(
+        uuid_or_name: str,
+        fields: Optional[str] = Query(
+            "narrow",
+            description=(
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set (default). 'wide' "
+                "returns every persisted manifest field (including "
+                "``content``). 'full' returns the complete object. Or "
+                "supply a comma-separated allowlist of field names."
+            ),
+        ),
+    ):
         """Get metadata for a specific snippet by UUID or name.
 
-        Retrieves the complete manifest/metadata for a snippet identified by either
-        its UUID or its unique name.
+        Retrieves the manifest/metadata for a snippet identified by
+        either its UUID or its unique name.
 
         Args:
             uuid_or_name: The UUID or name of the snippet to retrieve.
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            dict: Snippet metadata including name, uuid, description, content, etc.
+            dict: Snippet metadata (subset when ``fields`` narrows the
+                field selection).
 
         Raises:
-            HTTPException: 404 if snippet not found, 500 for other errors.
+            HTTPException: 400 if ``fields`` is invalid, 404 if snippet
+                not found, 500 for other errors.
         """
         try:
-            return service.get(uuid_or_name)
+            return service.get(uuid_or_name, fields=fields)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving snippet: {str(e)}"
@@ -206,6 +274,27 @@ def register_snippets_api(
             )
 
     @app.get(
+        "/facets/snippets",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "snippet-facets", "x-mcp-tool": True},
+    )
+    def snippet_facets():
+        """Return the unique tags / namespaces / states over all snippets.
+
+        Powers filter-picker widgets so callers can enumerate every
+        available value without fetching every snippet.
+
+        Returns:
+            dict: ``{"tags": [...], "namespaces": [...], "states": [...]}``.
+        """
+        try:
+            return service.facets()
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error computing snippet facets: {str(e)}"
+            )
+
+    @app.get(
         "/search/snippets",
         tags=[tags],
         openapi_extra={"x-cli-name": "search-snippets", "x-mcp-tool": True},
@@ -216,6 +305,19 @@ def register_snippets_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
+        fields: Optional[str] = Query(
+            "narrow",
+            description=(
+                "Field selection over each match. Same grammar as the "
+                "list endpoint ('minimal' for uuid-only search "
+                "results that cross-reference a loaded listing; omit "
+                "or 'narrow' for the UI listing set — default; 'wide' "
+                "for every persisted manifest field; 'full' for the "
+                "complete object; CSV allowlist). Each match is a "
+                "field-selected snippet dict with 'similarity_score' "
+                "merged in."
+            ),
+        ),
     ):
         """Search for snippets using semantic similarity.
 
@@ -228,12 +330,15 @@ def register_snippets_api(
             similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
             manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            list: List of matched snippet names and similarity scores.
+            list: Field-selected snippet dicts with ``similarity_score``
+                merged in.
 
         Raises:
-            HTTPException: 503 if search is not available, 500 for other errors.
+            HTTPException: 400 if ``fields`` is invalid, 503 if search is not
+                available, 500 for other errors.
         """
         try:
             return service.search(
@@ -242,7 +347,10 @@ def register_snippets_api(
                 similarity_threshold=similarity_threshold,
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
+                fields=fields,
             )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:

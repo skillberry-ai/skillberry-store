@@ -90,7 +90,7 @@ async def test_list_snippets(run_sbs):
 async def test_get_snippet(run_sbs):
     """Test getting a specific snippet by name."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/snippets/test_another_snippet")
+        response = await client.get(f"{BASE_URL}/snippets/test_another_snippet?fields=full")
         assert response.status_code == 200
         snippet = response.json()
         assert snippet.get("name") == "test_another_snippet"
@@ -103,7 +103,7 @@ async def test_get_snippet(run_sbs):
 async def test_get_nonexistent_snippet(run_sbs):
     """Test that getting a non-existent snippet fails."""
     async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/snippets/nonexistent_snippet")
+        response = await client.get(f"{BASE_URL}/snippets/nonexistent_snippet?fields=full")
         assert response.status_code == 404
 
 
@@ -124,7 +124,7 @@ async def test_update_snippet(run_sbs):
         assert "updated successfully" in data.get("message", "")
 
         # Verify the update
-        get_response = await client.get(f"{BASE_URL}/snippets/test_another_snippet")
+        get_response = await client.get(f"{BASE_URL}/snippets/test_another_snippet?fields=full")
         assert get_response.status_code == 200
         snippet = get_response.json()
         assert snippet.get("description") == "Updated test snippet description"
@@ -157,7 +157,7 @@ async def test_delete_snippet(run_sbs):
         assert "deleted successfully" in data.get("message", "")
 
         # Verify deletion
-        get_response = await client.get(f"{BASE_URL}/snippets/test_another_snippet")
+        get_response = await client.get(f"{BASE_URL}/snippets/test_another_snippet?fields=full")
         assert get_response.status_code == 404
 
 
@@ -189,7 +189,7 @@ async def test_snippet_lifecycle(run_sbs):
         assert create_response.json().get("name") == snippet_name
 
         # 2. Read
-        get_response = await client.get(f"{BASE_URL}/snippets/{snippet_name}")
+        get_response = await client.get(f"{BASE_URL}/snippets/{snippet_name}?fields=full")
         assert get_response.status_code == 200
         snippet = get_response.json()
         assert snippet.get("name") == snippet_name
@@ -207,7 +207,7 @@ async def test_snippet_lifecycle(run_sbs):
         assert "updated successfully" in update_response.json().get("message", "")
 
         # 4. Verify update
-        get_updated_response = await client.get(f"{BASE_URL}/snippets/{snippet_name}")
+        get_updated_response = await client.get(f"{BASE_URL}/snippets/{snippet_name}?fields=full")
         assert get_updated_response.status_code == 200
         updated_snippet = get_updated_response.json()
         assert updated_snippet.get("content") == "Updated content"
@@ -219,7 +219,7 @@ async def test_snippet_lifecycle(run_sbs):
         assert "deleted successfully" in delete_response.json().get("message", "")
 
         # 6. Verify deletion
-        get_deleted_response = await client.get(f"{BASE_URL}/snippets/{snippet_name}")
+        get_deleted_response = await client.get(f"{BASE_URL}/snippets/{snippet_name}?fields=full")
         assert get_deleted_response.status_code == 404
 
 
@@ -274,9 +274,11 @@ async def test_search_snippets(run_sbs):
         results = search_response.json()
         assert len(results) > 0, "Should find at least one matching snippet"
         
-        # Verify python_logging_snippet is in results
-        filenames = [r.get("filename") for r in results]
-        assert "python_logging_snippet" in filenames, f"python_logging_snippet should be in search results, got: {filenames}"
+        # Verify python_logging_snippet is in results. Default search
+        # shape is the narrow object with ``similarity_score`` merged in —
+        # read the ``name`` field.
+        names = [r.get("name") for r in results]
+        assert "python_logging_snippet" in names, f"python_logging_snippet should be in search results, got: {names}"
         
         # Test search for "HTTP requests"
         search_response = await client.get(

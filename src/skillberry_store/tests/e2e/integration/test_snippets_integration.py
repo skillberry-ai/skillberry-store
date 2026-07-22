@@ -6,9 +6,26 @@ Run with: pytest -m integration
 """
 
 import pytest
+import requests
 from skillberry_store_sdk.models.manifest_state import ManifestState
 from skillberry_store_sdk.models.content_type import ContentType
 from skillberry_store_sdk.models.snippet_schema import SnippetSchema
+
+
+def _get_snippet_full(uuid_or_name: str) -> dict:
+    """Fetch a snippet with ``?fields=full`` so ``content`` is included.
+
+    The generated SDK doesn't yet expose the ``fields`` query param, and
+    the endpoint's default is now ``narrow`` (``content`` omitted). Use
+    a raw HTTP call for assertions that need the full manifest.
+    """
+    response = requests.get(
+        f"http://localhost:8000/snippets/{uuid_or_name}",
+        params={"fields": "full"},
+        timeout=5,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 # Shared state for tests that depend on each other
@@ -59,9 +76,9 @@ class TestSnippetsAPI:
         """Test getting a snippet by name."""
         if not test_state["snippet_name"]:
             pytest.skip("Snippet name not available from previous test")
-        
-        response = snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=test_state["snippet_name"])
-        
+
+        response = _get_snippet_full(test_state["snippet_name"])
+
         assert response is not None
         assert response.get("name") == test_state["snippet_name"]
         assert "uuid" in response
@@ -73,8 +90,9 @@ class TestSnippetsAPI:
         if not test_state["snippet_name"]:
             pytest.skip("Snippet name not available from previous test")
         
-        # Get current snippet to create updated schema
-        current_snippet = snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=test_state["snippet_name"])
+        # Get current snippet to create updated schema (need ``content``
+        # → use full preset).
+        current_snippet = _get_snippet_full(test_state["snippet_name"])
         
         updated_content = "This is updated content for integration testing."
         
@@ -97,8 +115,8 @@ class TestSnippetsAPI:
         assert response is not None
         assert "message" in response or "updated" in str(response).lower()
         
-        # Verify the update
-        snippet = snippets_api.get_snippet_snippets_uuid_or_name_get(uuid_or_name=test_state["snippet_name"])
+        # Verify the update (need ``content`` → use full preset).
+        snippet = _get_snippet_full(test_state["snippet_name"])
         assert snippet.get("content") == updated_content
 
     def test_05_search_snippets(self, snippets_api):

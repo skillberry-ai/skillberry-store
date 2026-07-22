@@ -174,38 +174,89 @@ class SnippetsService:
                 raise KeyError(f"Snippet '{label}' not found")
             raise
 
-    def get(self, uuid_or_name: str) -> Dict[str, Any]:
+    def get(
+        self,
+        uuid_or_name: str,
+        fields: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Get snippet metadata by UUID or name.
 
         Args:
             uuid_or_name: Snippet UUID or name.
+            fields: Optional field-selection spec (``None`` /
+                ``"narrow"`` / ``"wide"`` / ``"full"`` / CSV
+                allowlist). ``None`` and ``"narrow"`` both resolve to
+                the narrow preset (the default). See
+                :mod:`skillberry_store.services.field_selection`.
 
         Returns:
-            Dict[str, Any]: Snippet metadata dictionary.
+            Dict[str, Any]: Snippet metadata dictionary, field-selected
+                according to ``fields``.
 
         Raises:
             KeyError: If snippet not found.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
+
         get_snippet_counter.inc()
         try:
+            allow = parse_fields_spec(fields, "snippet")
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.read_lock(uuid):
-                return self._safe_read(uuid, uuid_or_name)
+                item = self._safe_read(uuid, uuid_or_name)
+                return select_item_fields(item, allow)
         except KeyError:
             raise
         except Exception as e:
             logger.error(f"Error retrieving snippet '{uuid_or_name}': {e}")
             raise
 
-    def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """List all snippets with optional filtering.
+    def list_all(
+        self,
+        filters: Optional[Dict] = None,
+        fields: Optional[str] = None,
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        state: Optional[str] = None,
+        sort: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Any:
+        """List snippets with optional filter / sort / paginate / project.
+
+        When neither ``limit`` nor ``offset`` is set the caller sees the
+        legacy bare list. When either is set the return is an envelope of
+        the form ``{"items", "total", "offset", "limit"}`` — ``total`` is
+        pre-slice, post-filter.
 
         Args:
-            filters: Optional dictionary of field:value pairs to filter by.
-
-        Returns:
-            List[Dict[str, Any]]: List of snippet metadata dictionaries, sorted by modified_at descending.
+            filters: Legacy exact-match filter (dict of field → value).
+            fields: Projection spec (``None`` / ``"narrow"`` / ``"wide"`` /
+                ``"full"`` / CSV allowlist). See
+                :mod:`skillberry_store.services.field_selection`.
+            search: Case-insensitive substring over ``name`` + ``description``.
+            tags: Only return snippets that carry every tag in this list.
+            state: Only return snippets with this exact lifecycle state.
+            sort: ``field:direction`` (e.g., ``"name:asc"``). Defaults to
+                ``modified_at:desc`` for wire-compatibility.
+            limit: Page size. ``None`` → no slicing.
+            offset: Page offset. ``None`` → 0. When paired with ``limit`` or
+                any non-``None`` ``offset`` the response is an envelope.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_items_fields,
+        )
+        from skillberry_store.services.list_query import (
+            apply_filters,
+            apply_pagination,
+            apply_sort,
+            is_paginated,
+        )
+
         list_snippets_counter.inc()
         try:
             items = self.handler.list_all_dicts()
@@ -213,11 +264,28 @@ class SnippetsService:
                 items = [
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
-            items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return items
+            items = apply_filters(items, search=search, tags=tags, state=state)
+            items = apply_sort(items, sort)
+            page, total = apply_pagination(items, limit, offset)
+            allow = parse_fields_spec(fields, "snippet")
+            projected = select_items_fields(page, allow)
+            if not is_paginated(limit, offset):
+                return projected
+            return {
+                "items": projected,
+                "total": total,
+                "offset": offset or 0,
+                "limit": limit,
+            }
         except Exception as e:
             logger.error(f"Error listing snippets: {e}")
             raise
+
+    def facets(self) -> Dict[str, List[str]]:
+        """Return the unique tags / namespaces / states over all snippets."""
+        from skillberry_store.services.facets import compute_facets
+
+        return compute_facets(self.handler.list_all_dicts())
 
     def search(
         self,
@@ -226,6 +294,7 @@ class SnippetsService:
         similarity_threshold: float = 1.0,
         manifest_filter: str = ".",
         lifecycle_state: Optional["LifecycleState"] = None,
+        fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search snippets by semantic similarity to a search term.
 
@@ -244,9 +313,17 @@ class SnippetsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
+            fields: Optional field-selection spec — same grammar as
+                :meth:`list_all` (``None`` / ``"narrow"`` / ``"wide"``
+                / ``"full"`` / CSV allowlist). Each match is a
+                field-selected snippet dict with ``similarity_score``
+                merged in. Default (``None``) resolves to ``"narrow"``
+                — the minimal UI listing set.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
+                Each entry is a field-selected snippet dict plus a
+                ``similarity_score`` key.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -254,6 +331,10 @@ class SnippetsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
 
         search_snippets_counter.inc()
         try:
@@ -276,9 +357,10 @@ class SnippetsService:
                 if not name:
                     continue
                 try:
-                    d = self.get(name)
-                    d["similarity_score"] = m.get("similarity_score", 0.0)
-                    candidates.append(d)
+                    fetched = self.get(name, fields="full")
+                    candidate = dict(fetched)
+                    candidate["similarity_score"] = m.get("similarity_score", 0.0)
+                    candidates.append(candidate)
                 except Exception:
                     pass
             result_snippets = apply_search_filters(
@@ -287,9 +369,10 @@ class SnippetsService:
                 lifecycle_state=lifecycle_state,
             )
             result_snippets.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            allow = parse_fields_spec(fields, "snippet")
             return [
                 {
-                    "filename": s.get("name", ""),
+                    **select_item_fields(s, allow),
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in result_snippets

@@ -111,11 +111,17 @@ export function SkillCard({ skill, isSelected, onSelect }: SkillCardProps) {
       }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <WrenchIcon />
-          {skill.tools && skill.tools.length > 0 ? `${skill.tools.length} tools` : '—'}
+          {(() => {
+            const count = skill.tool_uuids?.length ?? 0;
+            return count > 0 ? `${count} tools` : '—';
+          })()}
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <FileCodeIcon />
-          {skill.snippets && skill.snippets.length > 0 ? `${skill.snippets.length} snippets` : '—'}
+          {(() => {
+            const count = skill.snippet_uuids?.length ?? 0;
+            return count > 0 ? `${count} snippets` : '—';
+          })()}
         </span>
         {skill.version && (
           <span style={{ marginLeft: 'auto', color: '#6a6e73' }}>{skill.version}</span>

@@ -35,6 +35,11 @@ export interface Skill {
   name: string;
   description: string;
   state?: ManifestState;
+  // Slim list-view responses expose tool_uuids/snippet_uuids only.
+  // The detail endpoint (GET /skills/{uuid}) defaults to the same
+  // narrow preset; pass ?fields=full to have tools/snippets inlined.
+  tool_uuids?: string[];
+  snippet_uuids?: string[];
   tools?: Tool[];
   snippets?: Snippet[];
   tags?: string[];
@@ -49,7 +54,10 @@ export interface Snippet {
   uuid: string;
   name: string;
   description: string;
-  content: string;
+  // `content` is absent on narrow responses (?fields=narrow, the
+  // default for both list and detail endpoints); include it by
+  // requesting ?fields=wide or ?fields=full.
+  content?: string;
   state?: ManifestState;
   content_type?: string;
   tags?: string[];
@@ -99,8 +107,12 @@ export interface VNFSServer {
 }
 
 export interface SearchResult {
-  name?: string;
-  filename?: string;
+  // Search endpoints run with the default `?fields=narrow` preset, so
+  // each match carries the narrow listing fields plus the score. The
+  // UI cross-references by `uuid` (stable across renames). The server
+  // also supports `?fields=minimal` (uuid + score only) for callers
+  // that cross-reference against a fully-loaded list.
+  uuid: string;
   similarity_score: number;
 }
 

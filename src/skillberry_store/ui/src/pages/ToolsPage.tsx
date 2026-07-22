@@ -1,21 +1,23 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
-import { tagMatchesFilter } from '../utils/tagUtils';
 import { TagFilter } from '../components/TagFilter';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportTools, importTools, downloadJSON } from '../utils/exportImportHelpers';
+import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   PageSection,
   Title,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  Pagination,
   Button,
   Text,
   Label,
@@ -59,19 +61,73 @@ export function ToolsPage() {
   const [importError, setImportError] = useState('');
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
+  const { pageSize, setPageSize } = usePagination();
+  const [page, setPage] = useState<number>(1);
 
-  // Fetch tools
-  const { data: tools, isLoading, error } = useQuery({
-    queryKey: ['tools'],
-    queryFn: toolsApi.list,
+  // ── Derived query args ────────────────────────────────────────────
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const isSemantic = searchMode === 'semantic' && debouncedSearch.length > 0;
+
+  const combinedTags = useMemo(
+    () => [
+      ...selectedTags,
+      ...selectedNamespaces.map(ns => `namespace:${ns}`),
+    ],
+    [selectedTags, selectedNamespaces]
+  );
+
+  const TOOL_SORT_FIELDS = ['name', 'description', 'state', 'module_name', 'version'] as const;
+  const sortSpec = useMemo(() => {
+    if (activeSortIndex === null) return undefined;
+    const field = TOOL_SORT_FIELDS[activeSortIndex] ?? 'modified_at';
+    return `${field}:${activeSortDirection}`;
+  }, [activeSortIndex, activeSortDirection]);
+
+  const offset = (page - 1) * pageSize;
+
+  // ── Queries ────────────────────────────────────────────────────────
+  const pagedQuery = useQuery({
+    queryKey: [
+      'tools',
+      'paged',
+      { offset, limit: pageSize, search: debouncedSearch, tags: combinedTags, sort: sortSpec, mode: searchMode },
+    ],
+    queryFn: () =>
+      toolsApi.listPaged({
+        limit: pageSize,
+        offset,
+        search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
+        tags: combinedTags,
+        sort: sortSpec,
+      }),
+    enabled: !isSemantic,
+    // Keep the previous page/search result visible while a new query is in
+    // flight so the toolbar (and the search input's focus) never unmounts.
+    placeholderData: keepPreviousData,
   });
 
-  // Semantic search tools (only when in semantic mode)
-  const { data: searchResults } = useQuery({
-    queryKey: ['tools', 'search', searchTerm, maxResults, similarityThreshold],
-    queryFn: () => toolsApi.search(searchTerm, maxResults, similarityThreshold),
-    enabled: searchTerm.length > 0 && searchMode === 'semantic',
+  const semanticQuery = useQuery({
+    queryKey: ['tools', 'semantic', debouncedSearch, maxResults, similarityThreshold],
+    queryFn: () => toolsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
+    enabled: isSemantic,
+    placeholderData: keepPreviousData,
   });
+
+  const facetsQuery = useQuery({
+    queryKey: ['tools', 'facets'],
+    queryFn: toolsApi.facets,
+    staleTime: 60_000,
+  });
+
+  // ── Unified accessors ─────────────────────────────────────────────
+  const displayedTools: Tool[] = isSemantic
+    ? semanticQuery.data ?? []
+    : pagedQuery.data?.items ?? [];
+  const totalFiltered = isSemantic
+    ? displayedTools.length
+    : pagedQuery.data?.total ?? 0;
+  const isLoading = isSemantic ? semanticQuery.isLoading : pagedQuery.isLoading;
+  const error = isSemantic ? semanticQuery.error : pagedQuery.error;
 
   // Create tool mutation
   const createMutation = useMutation({
@@ -131,8 +187,9 @@ export function ToolsPage() {
   };
 
   const handleSelectAll = (isSelected: boolean) => {
+    // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedTools(
-      isSelected ? (filteredTools?.map(t => t.name) || []) : []
+      isSelected ? displayedTools.map(t => t.name) : []
     );
   };
 
@@ -141,12 +198,12 @@ export function ToolsPage() {
   };
 
   const handleExport = async () => {
-    const selectedToolObjects = tools?.filter(t => selectedTools.includes(t.name)) || [];
-    
-    // Use helper function to export tools with module content
+    // Selection can span pages — fetch each selected tool's full object.
+    const fetched = await Promise.all(
+      selectedTools.map(name => toolsApi.get(name).catch(() => null))
+    );
+    const selectedToolObjects = fetched.filter((t): t is Tool => t !== null);
     const toolsWithModules = await exportTools(selectedToolObjects);
-    
-    // Download as JSON file
     downloadJSON(toolsWithModules, `tools-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
@@ -185,107 +242,14 @@ export function ToolsPage() {
     }
   };
 
-  const getSortableRowValues = (tool: Tool): (string | number)[] => {
-    return [
-      tool.name,
-      tool.description || '',
-      tool.state || '',
-      tool.module_name || '',
-      tool.version || '',
-    ];
-  };
+  // Picker widgets read the facets endpoint so they can enumerate every
+  // tag / namespace without fetching every tool.
+  const allTags = facetsQuery.data?.tags ?? [];
+  const allNamespaces = facetsQuery.data?.namespaces ?? [];
 
-  // Get all unique tags from tools (excluding namespace tags)
-  const allTags = useMemo(() => {
-    if (!tools) return [];
-    const tagSet = new Set<string>();
-    tools.forEach(tool => {
-      tool.tags?.forEach(tag => {
-        if (!tag.startsWith('namespace:')) {
-          tagSet.add(tag);
-        }
-      });
-    });
-    return Array.from(tagSet).sort();
-  }, [tools]);
-
-  // Get all unique namespaces from tools
-  const allNamespaces = useMemo(() => {
-    if (!tools) return [];
-    const namespaceSet = new Set<string>();
-    tools.forEach(tool => {
-      tool.tags?.forEach(tag => {
-        if (tag.startsWith('namespace:')) {
-          const namespace = tag.substring('namespace:'.length);
-          namespaceSet.add(namespace);
-        }
-      });
-    });
-    return Array.from(namespaceSet).sort();
-  }, [tools]);
-
-  const filteredTools = useMemo(() => {
-    let filtered = tools;
-
-    // Apply search filtering
-    if (searchTerm && filtered) {
-      if (searchMode === 'semantic' && searchResults) {
-        // Semantic search: filter by backend results (handle both name and filename)
-        filtered = filtered.filter((tool) =>
-          searchResults.some((result) =>
-            (result.name === tool.name) || (result.filename === tool.name)
-          )
-        );
-      } else if (searchMode === 'text') {
-        // Text search: filter by matching text in name or description
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((tool) =>
-          tool.name.toLowerCase().includes(lowerSearch) ||
-          tool.description?.toLowerCase().includes(lowerSearch)
-        );
-      } else if (searchMode === 'uuid') {
-        // UUID search: filter by matching UUID (partial match)
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((tool) =>
-          tool.uuid?.toLowerCase().includes(lowerSearch)
-        );
-      }
-    }
-
-    // Apply tag filtering (excluding namespace tags)
-    if (filtered && selectedTags.length > 0) {
-      filtered = filtered.filter(tool =>
-        selectedTags.every(selectedTag =>
-          tagMatchesFilter(tool.tags ?? [], selectedTag)
-        )
-      );
-    }
-
-    // Apply namespace filtering
-    if (filtered && selectedNamespaces.length > 0) {
-      filtered = filtered.filter(tool =>
-        selectedNamespaces.every(selectedNamespace =>
-          tool.tags?.includes(`namespace:${selectedNamespace}`)
-        )
-      );
-    }
-
-    if (filtered && activeSortIndex !== null) {
-      filtered = [...filtered].sort((a, b) => {
-        const aValue = getSortableRowValues(a)[activeSortIndex];
-        const bValue = getSortableRowValues(b)[activeSortIndex];
-        
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-          const comparison = aValue.localeCompare(bValue);
-          return activeSortDirection === 'asc' ? comparison : -comparison;
-        }
-        
-        return 0;
-      });
-    }
-
-    return filtered;
-  }, [tools, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, searchMode, combinedTags, sortSpec, pageSize]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -298,16 +262,6 @@ export function ToolsPage() {
     },
     columnIndex,
   });
-
-  if (isLoading) {
-    return (
-      <PageSection>
-        <div className="loading-container">
-          <Spinner size="xl" />
-        </div>
-      </PageSection>
-    );
-  }
 
   if (error) {
     return (
@@ -400,7 +354,11 @@ export function ToolsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredTools || filteredTools.length === 0 ? (
+        {isLoading ? (
+          <div className="loading-container">
+            <Spinner size="xl" />
+          </div>
+        ) : totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : CubeIcon} />
             <Title headingLevel="h4" size="lg">
@@ -412,8 +370,8 @@ export function ToolsPage() {
                 : 'Create your first tool to get started'}
             </EmptyStateBody>
             {!searchTerm && (
-              <Button 
-                variant="primary" 
+              <Button
+                variant="primary"
                 icon={<PlusIcon />}
                 onClick={() => setIsCreateModalOpen(true)}
               >
@@ -422,13 +380,24 @@ export function ToolsPage() {
             )}
           </EmptyState>
         ) : (
+          <>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="top"
+            widgetId="tools-pagination-top"
+          />
           <Table aria-label="Tools table" variant="compact">
             <Thead>
               <Tr>
                 <Th
                   select={{
                     onSelect: (_event, isSelected) => handleSelectAll(isSelected),
-                    isSelected: selectedTools.length === filteredTools.length && filteredTools.length > 0,
+                    isSelected: selectedTools.length === totalFiltered && totalFiltered > 0,
                   }}
                 />
                 <Th sort={getSortParams(0)} width={20}>Name</Th>
@@ -440,7 +409,7 @@ export function ToolsPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {filteredTools.map((tool, index) => (
+              {displayedTools.map((tool, index) => (
                 <Tr key={tool.uuid}>
                   <Td
                     select={{
@@ -508,6 +477,17 @@ export function ToolsPage() {
               ))}
             </Tbody>
           </Table>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="bottom"
+            widgetId="tools-pagination-bottom"
+          />
+          </>
         )}
       </PageSection>
 

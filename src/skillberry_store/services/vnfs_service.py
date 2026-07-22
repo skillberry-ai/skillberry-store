@@ -214,53 +214,95 @@ class VnfsService:
             logger.error(f"Error retrieving vnfs server '{uuid_or_name}': {exc}")
             raise
 
-    def list_all(self, skill_uuid: Optional[str] = None) -> Dict[str, Any]:
-        """List all vNFS servers with runtime status.
+    def _enrich_with_runtime(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a fresh copy of ``item`` with runtime status merged in.
 
-        Args:
-            skill_uuid: When provided, restrict the result to servers whose
-                ``skill_uuid`` matches this value.
-
-        Returns:
-            Dict[str, Any]: Dictionary with 'virtual_nfs_servers' key containing server info
-                           indexed by UUID, including runtime status and export paths.
+        Never mutates the cache dict. Runtime lookup failures are swallowed —
+        the server appears as not-running.
         """
+        runtime = None
+        try:
+            runtime = self.server_manager.get_server(
+                item.get("name", ""), item.get("uuid", "")
+            )
+        except Exception:
+            pass
+        enriched = dict(item)
+        enriched["running"] = runtime is not None and runtime.running
+        enriched["export_path"] = str(runtime.export_path) if runtime else None
+        # Preserve the historical default for ``protocol`` when the on-disk
+        # dict omits it.
+        enriched.setdefault("protocol", "webdav")
+        return enriched
+
+    def facets(self) -> Dict[str, List[str]]:
+        """Return the unique tags / namespaces / states over all vNFS servers."""
+        from skillberry_store.services.facets import compute_facets
+
+        return compute_facets(self.handler.list_all_dicts())
+
+    def list_all(
+        self,
+        skill_uuid: Optional[str] = None,
+        fields: Optional[str] = None,
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        state: Optional[str] = None,
+        sort: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Any:
+        """List vNFS servers with optional filter / sort / paginate / project.
+
+        Runtime enrichment (``running`` / ``export_path``) is applied only to
+        the current page. Response shape: bare array when neither ``limit``
+        nor ``offset`` is set (breaking change vs. the pre-Phase-2 wrapped
+        shape); envelope ``{items, total, offset, limit}`` otherwise.
+        """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_items_fields,
+            should_run_mechanism,
+        )
+        from skillberry_store.services.list_query import (
+            apply_filters,
+            apply_pagination,
+            apply_sort,
+            is_paginated,
+        )
+
         list_vnfs_counter.inc()
         try:
             items = self.handler.list_all_dicts()
             if skill_uuid:
                 items = [i for i in items if i.get("skill_uuid") == skill_uuid]
-            servers = []
-            for item in items:
+            items = apply_filters(items, search=search, tags=tags, state=state)
+            items = apply_sort(items, sort)
+            page, total = apply_pagination(items, limit, offset)
+
+            allow = parse_fields_spec(fields, "vnfs")
+            enhance = should_run_mechanism(allow, "_enhance")
+            enriched: List[Dict[str, Any]] = []
+            for item in page:
                 try:
-                    runtime = None
-                    try:
-                        runtime = self.server_manager.get_server(
-                            item.get("name", ""), item.get("uuid", "")
-                        )
-                    except Exception:
-                        pass
-                    info = {
-                        "uuid": item.get("uuid"),
-                        "name": item.get("name"),
-                        "description": item.get("description"),
-                        "version": item.get("version"),
-                        "state": item.get("state"),
-                        "tags": item.get("tags", []),
-                        "port": item.get("port"),
-                        "skill_uuid": item.get("skill_uuid"),
-                        "protocol": item.get("protocol", "webdav"),
-                        "modified_at": item.get("modified_at", ""),
-                        "running": runtime is not None and runtime.running,
-                        "export_path": str(runtime.export_path) if runtime else None,
-                    }
-                    servers.append(info)
+                    enriched.append(
+                        self._enrich_with_runtime(item) if enhance else dict(item)
+                    )
                 except Exception as e:
                     logger.warning(
                         f"Error loading vnfs server '{item.get('name')}': {e}"
                     )
-            servers.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return {"virtual_nfs_servers": {s["uuid"]: s for s in servers}}
+
+            projected = select_items_fields(enriched, allow)
+
+            if not is_paginated(limit, offset):
+                return projected
+            return {
+                "items": projected,
+                "total": total,
+                "offset": offset or 0,
+                "limit": limit,
+            }
         except Exception as exc:
             logger.error(f"Error listing vnfs servers: {exc}")
             raise
@@ -272,13 +314,9 @@ class VnfsService:
         similarity_threshold: float = 1.0,
         manifest_filter: str = ".",
         lifecycle_state: Optional["LifecycleState"] = None,
+        fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search vNFS servers by semantic similarity to a search term.
-
-        Performs a vector-similarity search over vNFS server descriptions, then
-        filters by similarity threshold, manifest properties, and lifecycle state,
-        and returns matched names with similarity scores sorted by ``modified_at``
-        (most recent first).
 
         Args:
             search_term: Free-text query to match against vNFS descriptions.
@@ -286,13 +324,13 @@ class VnfsService:
                 vector index before threshold filtering.
             similarity_threshold: Maximum allowed similarity score (lower is
                 more similar).
-            manifest_filter: Manifest property filter expression
-                (e.g. ``"tags:python"``, ``"state:approved"``).
+            manifest_filter: Manifest property filter expression.
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
-
-        Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            fields: Optional projection spec. ``None`` (default) returns the
+                legacy ``{"filename", "similarity_score"}`` shape. Any other
+                value returns projected vNFS dicts with ``similarity_score``
+                merged in.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -300,6 +338,10 @@ class VnfsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+        )
 
         search_vnfs_counter.inc()
         try:
@@ -322,9 +364,10 @@ class VnfsService:
                 if not vnfs_uuid:
                     continue
                 try:
-                    d = self.handler.read_dict(vnfs_uuid)
-                    d["similarity_score"] = m.get("similarity_score", 0.0)
-                    candidates.append(d)
+                    fetched = self.handler.read_dict(vnfs_uuid)
+                    candidate = dict(fetched)
+                    candidate["similarity_score"] = m.get("similarity_score", 0.0)
+                    candidates.append(candidate)
                 except Exception as exc:
                     logger.warning(f"Could not load vnfs '{vnfs_uuid}': {exc}")
             result_items = apply_search_filters(
@@ -333,9 +376,19 @@ class VnfsService:
                 lifecycle_state=lifecycle_state,
             )
             result_items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            if fields is None:
+                return [
+                    {
+                        "filename": s.get("name", ""),
+                        "similarity_score": s.get("similarity_score", 0.0),
+                    }
+                    for s in result_items
+                    if s.get("name")
+                ]
+            allow = parse_fields_spec(fields, "vnfs")
             return [
                 {
-                    "filename": s.get("name", ""),
+                    **select_item_fields(s, allow),
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in result_items

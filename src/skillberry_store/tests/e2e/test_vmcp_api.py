@@ -66,16 +66,12 @@ async def test_list_vmcp_servers(run_sbs):
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, dict)
-        assert "virtual_mcp_servers" in data
-        vmcp_servers = data["virtual_mcp_servers"]
-        # API returns a dict of server objects keyed by UUID
-        assert isinstance(vmcp_servers, dict)
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
+        vmcp_servers = response.json()
+        assert isinstance(vmcp_servers, list)
         assert len(vmcp_servers) > 0
-        
-        # Check that our test VMCP server exists by checking server names in values
-        server_names = [server.get("name") for server in vmcp_servers.values()]
+
+        server_names = [server.get("name") for server in vmcp_servers]
         assert "test_vmcp_server" in server_names
 
 
@@ -404,11 +400,11 @@ async def test_multiple_vmcp_servers_same_name_different_uuid(run_sbs):
         # Verify both servers are in the list
         list_response = await client.get(f"{BASE_URL}/vmcp_servers/")
         assert list_response.status_code == 200
-        servers = list_response.json().get("virtual_mcp_servers", {})
-        
-        # Both servers should be accessible (they share a name but have different UUIDs)
-        # The list API returns servers keyed by UUID, so both are visible in the dict
-        same_name_servers = [s for s in servers.values() if s.get("name") == server_name]
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
+        servers = list_response.json()
+
+        # Both servers should be accessible (they share a name but have different UUIDs).
+        same_name_servers = [s for s in servers if s.get("name") == server_name]
         assert len(same_name_servers) >= 2, "Should have at least 2 servers with same name"
         
         # Both should be retrievable by UUID

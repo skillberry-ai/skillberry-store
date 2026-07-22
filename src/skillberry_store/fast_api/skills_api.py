@@ -91,22 +91,76 @@ def register_skills_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "list-skills", "x-mcp-tool": True},
     )
-    def list_skills():
-        """List all skills in the store.
+    def list_skills(
+        fields: Optional[str] = Query(
+            "narrow",
+            description=(
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set — no inlining; use "
+                "tool_uuids/snippet_uuids (default). 'wide' returns "
+                "every persisted manifest field (no inlining). 'full' "
+                "returns the complete object with the '_populate' "
+                "mechanism running — 'tools' and 'snippets' are "
+                "inlined from tool_uuids/snippet_uuids. Or supply a "
+                "comma-separated allowlist of field names (include "
+                "'_populate' to trigger inlining)."
+            ),
+        ),
+        search: Optional[str] = Query(
+            None,
+            description="Case-insensitive substring over name + description.",
+        ),
+        tags_filter: Optional[List[str]] = Query(
+            None,
+            alias="tags",
+            description=(
+                "Repeat to filter by multiple tags (AND semantics). Namespace "
+                "tags are ordinary tags — pass ``namespace:xyz`` to filter by "
+                "namespace."
+            ),
+        ),
+        state: Optional[str] = Query(
+            None, description="Exact-match lifecycle state filter."
+        ),
+        sort: Optional[str] = Query(
+            None,
+            description=(
+                "``field:direction`` (e.g. ``name:asc``). Defaults to "
+                "``modified_at:desc``."
+            ),
+        ),
+        limit: Optional[int] = Query(
+            None,
+            ge=0,
+            description=(
+                "Max items to return. Setting ``limit`` (or ``offset``) "
+                "switches the response to a ``{items, total, offset, limit}`` "
+                "envelope. Omit both for the legacy bare array."
+            ),
+        ),
+        offset: Optional[int] = Query(None, ge=0, description="Page offset."),
+    ):
+        """List skills with optional filter / sort / paginate / project.
 
-        Retrieves metadata for all skills currently stored in the system.
-
-        Args:
-            None.
-
-        Returns:
-            list: List of dictionaries, each containing skill metadata (name, uuid, description, tool_uuids, snippet_uuids, etc.).
+        See query-param descriptions for behavior. When neither ``limit``
+        nor ``offset`` is set, returns a bare list. Otherwise returns
+        ``{items, total, offset, limit}``.
 
         Raises:
-            HTTPException: 500 if listing fails.
+            HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
         """
         try:
-            return service.list_all()
+            return service.list_all(
+                fields=fields,
+                search=search,
+                tags=tags_filter,
+                state=state,
+                sort=sort,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error listing skills: {str(e)}"
@@ -117,27 +171,48 @@ def register_skills_api(
         tags=[tags],
         openapi_extra={"x-cli-name": "get-skill", "x-mcp-tool": True},
     )
-    def get_skill(uuid_or_name: str):
+    def get_skill(
+        uuid_or_name: str,
+        fields: Optional[str] = Query(
+            "narrow",
+            description=(
+                "Field selection. 'minimal' returns uuid only. Omit or "
+                "'narrow' for the UI listing set (default; tool_uuids "
+                "and snippet_uuids only, no inlining). 'wide' returns "
+                "every persisted manifest field. 'full' returns the "
+                "complete object with inlined ``tools`` / ``snippets`` "
+                "populated. Or supply a comma-separated allowlist."
+            ),
+        ),
+    ):
         """Get metadata for a specific skill by UUID or name.
 
-        Retrieves the complete manifest/metadata for a skill identified by either
+        Retrieves the manifest/metadata for a skill identified by either
         its UUID or its unique name.
 
         Args:
             uuid_or_name: The UUID or name of the skill to retrieve.
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            dict: Skill metadata including name, uuid, description, tool_uuids, snippet_uuids, etc.
+            dict: Skill metadata (subset when ``fields`` narrows the
+                field selection). When ``fields`` resolves to a preset
+                that tags ``_populate``, ``tools`` / ``snippets`` are
+                inlined.
 
         Raises:
-            HTTPException: 404 if skill not found, 505 if referenced resources are invalid, 500 for other errors.
+            HTTPException: 400 if ``fields`` is invalid, 404 if skill
+                not found, 505 if referenced resources are invalid,
+                500 for other errors.
         """
         try:
-            return service.get(uuid_or_name)
+            return service.get(uuid_or_name, fields=fields)
         except KeyError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except RuntimeError as e:
             raise HTTPException(status_code=505, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving skill: {str(e)}"
@@ -228,6 +303,24 @@ def register_skills_api(
             )
 
     @app.get(
+        "/facets/skills",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "skill-facets", "x-mcp-tool": True},
+    )
+    def skill_facets():
+        """Return the unique tags / namespaces / states over all skills.
+
+        Powers filter-picker widgets so callers can enumerate every
+        available value without fetching every skill.
+        """
+        try:
+            return service.facets()
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error computing skill facets: {str(e)}"
+            )
+
+    @app.get(
         "/search/skills",
         tags=[tags],
         openapi_extra={"x-cli-name": "search-skills", "x-mcp-tool": True},
@@ -238,6 +331,20 @@ def register_skills_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
+        fields: Optional[str] = Query(
+            "narrow",
+            description=(
+                "Field selection over each match. Same grammar as the "
+                "list endpoint. 'minimal' for uuid-only results (cross-"
+                "reference a loaded listing). Default (omit / 'narrow') "
+                "returns the UI listing set (no inlining). 'wide' "
+                "returns every persisted manifest field (no inlining). "
+                "'full' triggers '_populate' — 'tools' and 'snippets' "
+                "are inlined. CSV allowlist also supported. Each match "
+                "is a field-selected skill dict with 'similarity_score' "
+                "merged in."
+            ),
+        ),
     ):
         """Return a list of skills that are similar to the given search term.
 
@@ -249,9 +356,11 @@ def register_skills_api(
             similarity_threshold: Threshold to be used.
             manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
             lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+            fields: Optional field-selection spec (see query-param description).
 
         Returns:
-            list: A list of matched skill names and similarity scores.
+            list: Field-selected skill dicts with ``similarity_score``
+                merged in.
         """
         try:
             return service.search(
@@ -260,7 +369,10 @@ def register_skills_api(
                 similarity_threshold=similarity_threshold,
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
+                fields=fields,
             )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:

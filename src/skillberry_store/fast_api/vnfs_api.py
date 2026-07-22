@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 
@@ -84,26 +84,94 @@ def register_vnfs_api(
             )
 
     @app.get(
+        "/facets/vnfs_servers",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "vnfs-server-facets", "x-mcp-tool": True},
+    )
+    def vnfs_server_facets():
+        """Return the unique tags / namespaces / states over all vNFS servers.
+
+        Powers filter-picker widgets so callers can enumerate every
+        available value without fetching every server.
+        """
+        try:
+            return service.facets()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error computing vNFS server facets: {exc}",
+            )
+
+    @app.get(
         "/vnfs_servers/",
         tags=[tags],
         openapi_extra={"x-cli-name": "list-vnfs-servers", "x-mcp-tool": True},
     )
-    def list_vnfs_servers(skill_uuid: Optional[str] = None):
-        """List all virtual NFS servers in the store.
+    def list_vnfs_servers(
+        skill_uuid: Optional[str] = None,
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Field projection. Omit for the full enriched shape. Use "
+                "'list' for the slim list-view preset (persistent metadata "
+                "+ runtime status), 'full' for every field, or a "
+                "comma-separated allowlist."
+            ),
+        ),
+        search: Optional[str] = Query(
+            None,
+            description="Case-insensitive substring over name + description.",
+        ),
+        tags_filter: Optional[List[str]] = Query(
+            None,
+            alias="tags",
+            description=(
+                "Repeat to filter by multiple tags (AND semantics). Namespace "
+                "tags are ordinary tags — pass ``namespace:xyz`` to filter by "
+                "namespace."
+            ),
+        ),
+        state: Optional[str] = Query(
+            None, description="Exact-match lifecycle state filter."
+        ),
+        sort: Optional[str] = Query(
+            None,
+            description=(
+                "``field:direction`` (e.g. ``name:asc``). Defaults to "
+                "``modified_at:desc``."
+            ),
+        ),
+        limit: Optional[int] = Query(
+            None,
+            ge=0,
+            description=(
+                "Max items to return. Setting ``limit`` (or ``offset``) "
+                "switches the response to a ``{items, total, offset, limit}`` "
+                "envelope. Omit both for a bare array."
+            ),
+        ),
+        offset: Optional[int] = Query(None, ge=0, description="Page offset."),
+    ):
+        """List vNFS servers with optional filter / sort / paginate / project.
 
-        Retrieves metadata for all virtual NFS servers, optionally filtered by skill UUID.
-
-        Args:
-            skill_uuid: Optional skill UUID to filter servers by.
-
-        Returns:
-            dict: Dictionary containing virtual_nfs_servers with server metadata.
-
-        Raises:
-            HTTPException: 500 if listing fails.
+        Response shape: bare array when neither ``limit`` nor ``offset`` is
+        set (a breaking change vs. the pre-Phase-2 ``{virtual_nfs_servers:
+        {...}}`` wrapper); envelope ``{items, total, offset, limit}``
+        otherwise. Runtime enrichment runs only on the current page.
         """
         try:
-            return service.list_all(skill_uuid=skill_uuid)
+            return service.list_all(
+                skill_uuid=skill_uuid,
+                fields=fields,
+                search=search,
+                tags=tags_filter,
+                state=state,
+                sort=sort,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         except Exception as exc:
             raise HTTPException(
                 status_code=500, detail=f"Error listing vNFS servers: {exc}"
@@ -257,24 +325,28 @@ def register_vnfs_api(
         similarity_threshold: float = 1,
         manifest_filter: str = ".",
         lifecycle_state: LifecycleState = LifecycleState.ANY,
+        fields: Optional[str] = Query(
+            None,
+            description=(
+                "Optional projection over each matched server. Omit for the "
+                "legacy '{filename, similarity_score}' shape. Otherwise the "
+                "same grammar as list projection applies."
+            ),
+        ),
     ):
         """Search for virtual NFS servers using semantic similarity.
 
-        Returns virtual NFS servers that are semantically similar to the search
-        term and match the specified filters.
-
         Args:
             search_term: Search term to find similar virtual NFS servers.
-            max_number_of_results: Maximum number of results to return (default: 5).
-            similarity_threshold: Maximum similarity score threshold (default: 1, lower is more similar).
-            manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
-            lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
-
-        Returns:
-            list: List of matched server names and similarity scores.
+            max_number_of_results: Maximum number of results to return.
+            similarity_threshold: Maximum similarity score threshold.
+            manifest_filter: Manifest properties to filter.
+            lifecycle_state: State to filter by.
+            fields: Optional projection spec (see query-param description).
 
         Raises:
-            HTTPException: 503 if search is not available, 500 for other errors.
+            HTTPException: 400 if ``fields`` is invalid, 503 if search is not
+                available, 500 for other errors.
         """
         try:
             return service.search(
@@ -283,7 +355,10 @@ def register_vnfs_api(
                 similarity_threshold=similarity_threshold,
                 manifest_filter=manifest_filter,
                 lifecycle_state=lifecycle_state,
+                fields=fields,
             )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as exc:

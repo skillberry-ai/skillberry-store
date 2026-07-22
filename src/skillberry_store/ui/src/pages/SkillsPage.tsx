@@ -1,19 +1,21 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { TagFilter } from '../components/TagFilter';
-import { tagMatchesFilter } from '../utils/tagUtils';
 import { NamespaceFilter } from '../components/NamespaceFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportSkills, importSkills, downloadJSON } from '../utils/exportImportHelpers';
+import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   PageSection,
   Title,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  Pagination,
   Button,
   Text,
   Spinner,
@@ -76,6 +78,8 @@ export function SkillsPage() {
   const [isAnthropicImportModalOpen, setIsAnthropicImportModalOpen] = useState(false);
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
+  const { pageSize, setPageSize } = usePagination();
+  const [page, setPage] = useState<number>(1);
   const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
     const stored = localStorage.getItem('skills-view-mode');
     return stored === 'cards' || stored === 'list' ? stored : 'cards';
@@ -87,28 +91,86 @@ export function SkillsPage() {
   const [toolSearchTerm, setToolSearchTerm] = useState('');
   const [snippetSearchTerm, setSnippetSearchTerm] = useState('');
 
-  const { data: skills, isLoading, error } = useQuery({
-    queryKey: ['skills'],
-    queryFn: skillsApi.list,
+  // ── Derived query args ────────────────────────────────────────────
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const isSemantic = searchMode === 'semantic' && debouncedSearch.length > 0;
+
+  const combinedTags = useMemo(
+    () => [
+      ...selectedTags,
+      ...selectedNamespaces.map(ns => `namespace:${ns}`),
+    ],
+    [selectedTags, selectedNamespaces]
+  );
+
+  const SKILL_SORT_FIELDS = ['name', 'description', 'version'] as const;
+  const sortSpec = useMemo(() => {
+    if (activeSortIndex === null) return undefined;
+    const field = SKILL_SORT_FIELDS[activeSortIndex] ?? 'modified_at';
+    return `${field}:${activeSortDirection}`;
+  }, [activeSortIndex, activeSortDirection]);
+
+  const offset = (page - 1) * pageSize;
+
+  // ── Queries ────────────────────────────────────────────────────────
+  const pagedQuery = useQuery({
+    queryKey: [
+      'skills',
+      'paged',
+      { offset, limit: pageSize, search: debouncedSearch, tags: combinedTags, sort: sortSpec, mode: searchMode },
+    ],
+    queryFn: () =>
+      skillsApi.listPaged({
+        limit: pageSize,
+        offset,
+        search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
+        tags: combinedTags,
+        sort: sortSpec,
+      }),
+    enabled: !isSemantic,
+    // Keep the previous page/search result visible while a new query is in
+    // flight so the toolbar (and the search input's focus) never unmounts.
+    placeholderData: keepPreviousData,
   });
 
-  // Semantic search skills (only when in semantic mode)
-  const { data: searchResults } = useQuery({
-    queryKey: ['skills', 'search', searchTerm, maxResults, similarityThreshold],
-    queryFn: () => skillsApi.search(searchTerm, maxResults, similarityThreshold),
-    enabled: searchTerm.length > 0 && searchMode === 'semantic',
+  const semanticQuery = useQuery({
+    queryKey: ['skills', 'semantic', debouncedSearch, maxResults, similarityThreshold],
+    queryFn: () => skillsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
+    enabled: isSemantic,
+    placeholderData: keepPreviousData,
   });
 
-  // Fetch all tools for the dropdown
+  const facetsQuery = useQuery({
+    queryKey: ['skills', 'facets'],
+    queryFn: skillsApi.facets,
+    staleTime: 60_000,
+  });
+
+  // ── Unified accessors ─────────────────────────────────────────────
+  const displayedSkills: Skill[] = isSemantic
+    ? semanticQuery.data ?? []
+    : pagedQuery.data?.items ?? [];
+  const totalFiltered = isSemantic
+    ? displayedSkills.length
+    : pagedQuery.data?.total ?? 0;
+  const isLoading = isSemantic ? semanticQuery.isLoading : pagedQuery.isLoading;
+  const error = isSemantic ? semanticQuery.error : pagedQuery.error;
+
+  // Fetch all tools for the "Create Skill" modal dropdown.
+  // Gated on the modal being open so page-mount and background /changes
+  // invalidations don't drag the full tools list across the wire when the
+  // user only wants to browse skills.
   const { data: allTools } = useQuery({
     queryKey: ['tools'],
     queryFn: toolsApi.list,
+    enabled: isCreateModalOpen,
   });
 
-  // Fetch all snippets for the dropdown
+  // Fetch all snippets for the "Create Skill" modal dropdown. Same gating.
   const { data: allSnippets } = useQuery({
     queryKey: ['snippets'],
     queryFn: snippetsApi.list,
+    enabled: isCreateModalOpen,
   });
 
   // Create skill mutation
@@ -278,8 +340,9 @@ export function SkillsPage() {
   };
 
   const handleSelectAll = (isSelected: boolean) => {
+    // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedSkills(
-      isSelected ? (filteredSkills?.map(s => s.name) || []) : []
+      isSelected ? displayedSkills.map(s => s.name) : []
     );
   };
 
@@ -288,22 +351,22 @@ export function SkillsPage() {
   };
 
   const handleExport = async () => {
-    const selectedSkillObjects = skills?.filter(s => selectedSkills.includes(s.name)) || [];
-    
-    // Use helper function to export skills with UUIDs (matching backend format)
+    // Selection can span pages — fetch each selected skill's full object.
+    const fetched = await Promise.all(
+      selectedSkills.map(name => skillsApi.get(name).catch(() => null))
+    );
+    const selectedSkillObjects = fetched.filter((s): s is Skill => s !== null);
+
     const skillsForExport = exportSkills(selectedSkillObjects);
-    
-    // Generate filename based on selected skills
+
+
     let filename: string;
     if (selectedSkillObjects.length === 1) {
-      // Single skill: use skill name
       filename = `${selectedSkillObjects[0].name}.json`;
     } else {
-      // Multiple skills: use date-based name
       filename = `skills-export-${new Date().toISOString().split('T')[0]}.json`;
     }
-    
-    // Download as JSON file
+
     downloadJSON(skillsForExport, filename);
   };
 
@@ -342,105 +405,14 @@ export function SkillsPage() {
     }
   };
 
-  const getSortableRowValues = (skill: Skill): (string | number)[] => {
-    return [
-      skill.name,
-      skill.description || '',
-      skill.version || '',
-    ];
-  };
+  // Picker widgets read the facets endpoint so they can enumerate every
+  // tag / namespace without fetching every skill.
+  const allTags = facetsQuery.data?.tags ?? [];
+  const allNamespaces = facetsQuery.data?.namespaces ?? [];
 
-  // Get all unique tags from skills (excluding namespace tags)
-  const allTags = useMemo(() => {
-    if (!skills) return [];
-    const tagSet = new Set<string>();
-    skills.forEach(skill => {
-      skill.tags?.forEach(tag => {
-        if (!tag.startsWith('namespace:')) {
-          tagSet.add(tag);
-        }
-      });
-    });
-    return Array.from(tagSet).sort();
-  }, [skills]);
-
-  // Get all unique namespaces from skills
-  const allNamespaces = useMemo(() => {
-    if (!skills) return [];
-    const namespaceSet = new Set<string>();
-    skills.forEach(skill => {
-      skill.tags?.forEach(tag => {
-        if (tag.startsWith('namespace:')) {
-          const namespace = tag.substring('namespace:'.length);
-          namespaceSet.add(namespace);
-        }
-      });
-    });
-    return Array.from(namespaceSet).sort();
-  }, [skills]);
-
-  const filteredSkills = useMemo(() => {
-    let filtered = skills;
-
-    // Apply search filtering
-    if (searchTerm && filtered) {
-      if (searchMode === 'semantic' && searchResults) {
-        // Semantic search: filter by backend results (handle both name and filename)
-        filtered = filtered.filter((skill) =>
-          searchResults.some((result) =>
-            (result.name === skill.name) || (result.filename === skill.name)
-          )
-        );
-      } else if (searchMode === 'text') {
-        // Text search: filter by matching text in name or description
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((skill) =>
-          skill.name.toLowerCase().includes(lowerSearch) ||
-          skill.description?.toLowerCase().includes(lowerSearch)
-        );
-      } else if (searchMode === 'uuid') {
-        // UUID search: filter by matching UUID (partial match)
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((skill) =>
-          skill.uuid?.toLowerCase().includes(lowerSearch)
-        );
-      }
-    }
-
-    // Apply tag filtering (excluding namespace tags)
-    if (filtered && selectedTags.length > 0) {
-      filtered = filtered.filter(skill =>
-        selectedTags.every(selectedTag =>
-          tagMatchesFilter(skill.tags ?? [], selectedTag)
-        )
-      );
-    }
-
-    // Apply namespace filtering
-    if (filtered && selectedNamespaces.length > 0) {
-      filtered = filtered.filter(skill =>
-        selectedNamespaces.every(selectedNamespace =>
-          skill.tags?.includes(`namespace:${selectedNamespace}`)
-        )
-      );
-    }
-
-    if (filtered && activeSortIndex !== null) {
-      filtered = [...filtered].sort((a, b) => {
-        const aValue = getSortableRowValues(a)[activeSortIndex];
-        const bValue = getSortableRowValues(b)[activeSortIndex];
-        
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-          const comparison = aValue.localeCompare(bValue);
-          return activeSortDirection === 'asc' ? comparison : -comparison;
-        }
-        
-        return 0;
-      });
-    }
-
-    return filtered;
-  }, [skills, searchResults, searchTerm, searchMode, selectedTags, selectedNamespaces, activeSortIndex, activeSortDirection]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, searchMode, combinedTags, sortSpec, pageSize, viewMode]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -454,16 +426,6 @@ export function SkillsPage() {
     columnIndex,
   });
 
-
-  if (isLoading) {
-    return (
-      <PageSection>
-        <div className="loading-container">
-          <Spinner size="xl" />
-        </div>
-      </PageSection>
-    );
-  }
 
   if (error) {
     return (
@@ -591,7 +553,11 @@ export function SkillsPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredSkills || filteredSkills.length === 0 ? (
+        {isLoading ? (
+          <div className="loading-container">
+            <Spinner size="xl" />
+          </div>
+        ) : totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : CodeIcon} />
             <Title headingLevel="h4" size="lg">
@@ -612,20 +578,44 @@ export function SkillsPage() {
               </Button>
             )}
           </EmptyState>
-        ) : viewMode === 'cards' ? (
-          <SkillCardView
-            skills={filteredSkills}
-            selectedSkills={selectedSkills}
-            onSelectSkill={handleSelectSkill}
-          />
         ) : (
-          <SkillListView
-            skills={filteredSkills}
-            selectedSkills={selectedSkills}
-            onSelectSkill={handleSelectSkill}
-            onSelectAll={handleSelectAll}
-            getSortParams={getSortParams}
+          <>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="top"
+            widgetId="skills-pagination-top"
           />
+          {viewMode === 'cards' ? (
+            <SkillCardView
+              skills={displayedSkills}
+              selectedSkills={selectedSkills}
+              onSelectSkill={handleSelectSkill}
+            />
+          ) : (
+            <SkillListView
+              skills={displayedSkills}
+              selectedSkills={selectedSkills}
+              onSelectSkill={handleSelectSkill}
+              onSelectAll={handleSelectAll}
+              getSortParams={getSortParams}
+            />
+          )}
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="bottom"
+            widgetId="skills-pagination-bottom"
+          />
+          </>
         )}
       </PageSection>
 

@@ -44,7 +44,11 @@ def test_create_raises_on_duplicate():
 def test_list_includes_running_status():
     svc = VnfsService(_handler(), _manager())
     result = svc.list_all()
-    assert "virtual_nfs_servers" in result
+    # After Phase 3 (vmcp/vnfs) the wrapper was dropped — the service now
+    # returns a bare list of enriched server dicts.
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0]["running"] is True
 
 
 def test_delete_stops_runtime_then_removes_persistent():
@@ -55,3 +59,73 @@ def test_delete_stops_runtime_then_removes_persistent():
         svc.delete("v1")
     mgr.remove_server.assert_called_once()
     h.delete_object.assert_called_once()
+
+
+# ── Phase 3 (vmcp/vnfs) — pagination / facets / enrichment ──────────────
+
+
+def _multi_handler(items):
+    h = _handler()
+    h.list_all_dicts.return_value = items
+    return h
+
+
+def test_list_all_pagination_envelope():
+    items = [
+        {"uuid": f"u{i}", "name": f"v{i}", "port": 9000 + i, "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 6)
+    ]
+    svc = VnfsService(_multi_handler(items), _manager())
+    result = svc.list_all(limit=2, offset=0)
+    assert isinstance(result, dict)
+    assert result["total"] == 5
+    assert len(result["items"]) == 2
+
+
+def test_list_all_enrichment_only_runs_on_the_page():
+    items = [
+        {"uuid": f"u{i}", "name": f"v{i}", "port": 9000 + i, "modified_at": f"2024-01-{i:02d}"}
+        for i in range(1, 6)
+    ]
+    mgr = _manager()
+    svc = VnfsService(_multi_handler(items), mgr)
+    svc.list_all(limit=2, offset=0)
+    assert mgr.get_server.call_count == 2
+
+
+def test_list_all_fields_list_preset_projects_and_still_enriches():
+    items = [
+        {
+            "uuid": "u1",
+            "name": "v1",
+            "port": 9000,
+            "modified_at": "2024-02-01",
+            "extra_disk_field": {"heavy": "x"},
+        },
+    ]
+    svc = VnfsService(_multi_handler(items), _manager())
+    result = svc.list_all(fields="narrow")
+    assert result[0]["name"] == "v1"
+    assert result[0]["running"] is True
+    assert result[0]["export_path"] == "/tmp/export"
+    assert "extra_disk_field" not in result[0]
+
+
+def test_list_all_does_not_mutate_cache_entries():
+    original = {"uuid": "u1", "name": "v1", "port": 9000, "modified_at": "2024-02-01"}
+    svc = VnfsService(_multi_handler([original]), _manager())
+    svc.list_all()
+    assert "running" not in original
+    assert "export_path" not in original
+
+
+def test_facets_returns_tags_namespaces_states():
+    items = [
+        {"uuid": "u1", "tags": ["prod", "namespace:team-a"], "state": "approved"},
+        {"uuid": "u2", "tags": ["dev"], "state": "new"},
+    ]
+    svc = VnfsService(_multi_handler(items), _manager())
+    facets = svc.facets()
+    assert set(facets["tags"]) >= {"prod", "dev"}
+    assert facets["namespaces"] == ["team-a"]
+    assert set(facets["states"]) == {"approved", "new"}

@@ -74,20 +74,26 @@ class StoreAPI:
         if not self.tools_service:
             return None
         try:
-            return self.tools_service.get(uuid)
+            # Plugins consume the complete tool dict (module_name,
+            # packaging_*, params, dependencies, …). Opt into ``full``
+            # since the service default is ``narrow``.
+            return self.tools_service.get(uuid, fields="full")
         except KeyError:
             return None
 
     def list_tools(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
         if not self.tools_service:
             return []
-        return self.tools_service.list_all(filter_criteria)
+        # Plugins consume the complete tool dict (module_name,
+        # packaging_*, params, dependencies, …). The service default is
+        # ``narrow``, so opt back into ``full`` here.
+        return self.tools_service.list_all(filter_criteria, fields="full")
 
     def update_tool_tags(self, uuid: str, tags: List[str]) -> bool:
         if not self.tools_service:
             return False
         try:
-            tool = self.tools_service.get(uuid)
+            tool = self.tools_service.get(uuid, fields="full")
         except KeyError:
             return False
         existing = set(tool.get("tags", []))
@@ -108,7 +114,7 @@ class StoreAPI:
         if not self.tools_service:
             return False
         try:
-            tool = self.tools_service.get(uuid)
+            tool = self.tools_service.get(uuid, fields="full")
         except KeyError:
             return False
         if "extra" not in tool:
@@ -154,20 +160,26 @@ class StoreAPI:
         if not self.skills_service:
             return None
         try:
-            return self.skills_service.get(uuid)
+            # Plugins consume the complete skill dict (populated tools /
+            # snippets, extra, timestamps). Opt into ``full`` since the
+            # service default is ``narrow``.
+            return self.skills_service.get(uuid, fields="full")
         except KeyError:
             return None
 
     def list_skills(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
         if not self.skills_service:
             return []
-        return self.skills_service.list_all(filter_criteria)
+        # Plugins consume the complete skill dict (populated tools /
+        # snippets, extra, timestamps). Opt into ``full`` since the
+        # service default is ``narrow``.
+        return self.skills_service.list_all(filter_criteria, fields="full")
 
     def update_skill_tags(self, uuid: str, tags: List[str]) -> bool:
         if not self.skills_service:
             return False
         try:
-            skill = self.skills_service.get(uuid)
+            skill = self.skills_service.get(uuid, fields="full")
         except KeyError:
             return False
         existing = set(skill.get("tags", []))
@@ -183,7 +195,7 @@ class StoreAPI:
         if not self.skills_service:
             return False
         try:
-            skill = self.skills_service.get(uuid)
+            skill = self.skills_service.get(uuid, fields="full")
         except KeyError:
             return False
         if "extra" not in skill or not isinstance(skill.get("extra"), dict):
@@ -226,14 +238,20 @@ class StoreAPI:
         if not self.snippets_service:
             return None
         try:
-            return self.snippets_service.get(uuid)
+            # Plugins consume the complete snippet dict (including
+            # ``content``). Opt into ``full`` since the service default
+            # is ``narrow``.
+            return self.snippets_service.get(uuid, fields="full")
         except KeyError:
             return None
 
     def list_snippets(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
         if not self.snippets_service:
             return []
-        return self.snippets_service.list_all(filter_criteria)
+        # Plugins consume the complete snippet dict (including
+        # ``content``). Opt into ``full`` since the service default is
+        # ``narrow``.
+        return self.snippets_service.list_all(filter_criteria, fields="full")
 
     def create_snippet(self, snippet_data: Dict[str, Any]) -> Dict[str, Any]:
         if not self.snippets_service:
@@ -244,7 +262,7 @@ class StoreAPI:
         if not self.snippets_service:
             return False
         try:
-            snippet = self.snippets_service.get(uuid)
+            snippet = self.snippets_service.get(uuid, fields="full")
         except KeyError:
             return False
         existing = set(snippet.get("tags", []))
@@ -279,15 +297,22 @@ class StoreAPI:
         if not self.vmcp_service:
             return None
         try:
-            return self.vmcp_service.get(uuid_or_name)
+            return self.vmcp_service.get(uuid_or_name, fields="full")
         except KeyError:
             return None
 
     def list_vmcps(self) -> List[Dict[str, Any]]:
         if not self.vmcp_service:
             return []
+        # ``VmcpService.list_all()`` returns a bare list now (see Phase 3).
         result = self.vmcp_service.list_all()
-        return list(result.get("virtual_mcp_servers", {}).values())
+        if isinstance(result, list):
+            return result
+        # Envelope shape when the caller paginates. Not expected here (we
+        # pass no ``limit`` / ``offset``) but tolerate it defensively.
+        if isinstance(result, dict) and "items" in result:
+            return list(result["items"])
+        return []
 
     def start_vmcp(self, uuid_or_name: str, env_id: str = "") -> bool:
         if not self.vmcp_service:

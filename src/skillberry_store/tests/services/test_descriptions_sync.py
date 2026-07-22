@@ -42,9 +42,14 @@ def skill_handler(tmp_path):
 
 
 def _search_names(service, term: str) -> list[str]:
-    """Return the list of names returned by service.search() for *term*."""
+    """Return the list of names returned by service.search() for *term*.
+
+    ``service.search`` defaults to ``fields=full`` and returns the whole
+    projected object with ``similarity_score`` merged in — read ``name``
+    from each match.
+    """
     results = service.search(term, max_number_of_results=10, similarity_threshold=100.0)
-    return [r["filename"] for r in results]
+    return [r["name"] for r in results]
 
 
 # ---------------------------------------------------------------------------

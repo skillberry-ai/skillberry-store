@@ -78,11 +78,11 @@ async def create_vmcp_server_with_tool(client, tool_name: str, tool_code: bytes,
     print(f"List response status: {list_response.status_code}")
     server_running = False
     if list_response.status_code == 200:
-        servers = list_response.json().get("virtual_mcp_servers", {})
-        print(f"Available VMCP servers (UUIDs): {list(servers.keys())}")
-        # Find server by name in the values (dict is now keyed by UUID)
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
+        servers = list_response.json()
+        print(f"Available VMCP servers (UUIDs): {[s.get('uuid') for s in servers]}")
         server_info = None
-        for server in servers.values():
+        for server in servers:
             if server.get('name') == vmcp_server_name:
                 server_info = server
                 break
@@ -202,7 +202,7 @@ def placeholder():
         print("\n" + "="*60)
         print("Step 4a: Verifying tool is in tools list...")
         print("="*60)
-        list_response = await client.get(f"{BASE_URL}/tools/")
+        list_response = await client.get(f"{BASE_URL}/tools/?fields=full")
         assert list_response.status_code == 200, f"Failed to list tools: {list_response.text}"
         tools_list = list_response.json()
         tool_names = [t.get("name") for t in tools_list]
@@ -358,7 +358,7 @@ def placeholder():
         print("Step 3: Verifying MCP tool properties...")
         print("="*60)
         
-        verify_response = await client.get(f"{BASE_URL}/tools/{mcp_tool_name}")
+        verify_response = await client.get(f"{BASE_URL}/tools/{mcp_tool_name}?fields=full")
         assert verify_response.status_code == 200, f"Failed to get tool: {verify_response.text}"
         retrieved_tool = verify_response.json()
         
@@ -483,11 +483,10 @@ async def test_get_tool_module_with_mcp_packaging(run_sbs):
         print(f"List response status: {list_response.status_code}")
         server_running = False
         if list_response.status_code == 200:
-            servers = list_response.json().get("virtual_mcp_servers", {})
-            print(f"Available VMCP servers (UUIDs): {list(servers.keys())}")
-            # Find server by name in the values (dict is now keyed by UUID)
+            servers = list_response.json()
+            print(f"Available VMCP servers (UUIDs): {[s.get('uuid') for s in servers]}")
             server_info = None
-            for server in servers.values():
+            for server in servers:
                 if server.get('name') == vmcp_server_name:
                     server_info = server
                     break

@@ -90,17 +90,13 @@ async def test_list_vnfs_servers(run_sbs, imported_skill_uuid):
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/vnfs_servers/")
         assert response.status_code == 200
-        data = response.json()
-        assert isinstance(data, dict)
-        assert "virtual_nfs_servers" in data
-        vnfs_servers = data["virtual_nfs_servers"]
-        # API returns a dict of server objects keyed by UUID
-        assert isinstance(vnfs_servers, dict)
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
+        vnfs_servers = response.json()
+        assert isinstance(vnfs_servers, list)
         assert len(vnfs_servers) > 0
-        
-        # Check that our test VNFS server is in the dict keys
-        find_name= "test_vnfs_server"
-        matching_name_servers = [s for s in vnfs_servers.values() if s.get("name") == find_name]
+
+        find_name = "test_vnfs_server"
+        matching_name_servers = [s for s in vnfs_servers if s.get("name") == find_name]
         assert len(matching_name_servers) > 0, f"Server not found with name: {find_name}"
 
 
@@ -188,9 +184,9 @@ async def test_create_vnfs_server_same_name_different_uuid(run_sbs, imported_ski
         # Verify both servers exist
         get_response = await client.get(f"{BASE_URL}/vnfs_servers/")
         assert get_response.status_code == 200
-        response_data = get_response.json()
-        servers_dict = response_data.get("virtual_nfs_servers", {})
-        same_name_servers = [s for s in servers_dict.values() if s.get("name") == "same_name_server"]
+        # Phase 3 (vmcp/vnfs): list endpoint returns a bare array.
+        servers = get_response.json()
+        same_name_servers = [s for s in servers if s.get("name") == "same_name_server"]
         assert len(same_name_servers) >= 2, "Should have at least 2 servers with same name"
         
         # Clean up both servers

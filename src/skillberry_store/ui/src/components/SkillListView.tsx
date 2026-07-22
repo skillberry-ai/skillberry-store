@@ -87,14 +87,20 @@ export function SkillListView({
               onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >
-              {skill.tools && skill.tools.length > 0 ? skill.tools.length : '-'}
+              {(() => {
+                const count = skill.tool_uuids?.length ?? 0;
+                return count > 0 ? count : '-';
+              })()}
             </Td>
             <Td
               dataLabel="Snippets"
               onClick={() => navigate(`/skills/${skill.uuid}`)}
               style={{ cursor: 'pointer' }}
             >
-              {skill.snippets && skill.snippets.length > 0 ? skill.snippets.length : '-'}
+              {(() => {
+                const count = skill.snippet_uuids?.length ?? 0;
+                return count > 0 ? count : '-';
+              })()}
             </Td>
             <Td
               dataLabel="Version"

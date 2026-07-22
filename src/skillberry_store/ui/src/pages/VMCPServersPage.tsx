@@ -1,20 +1,22 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
-import { tagMatchesFilter } from '../utils/tagUtils';
 import { TagFilter } from '../components/TagFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportVMCPServers, importVMCPServers, downloadJSON } from '../utils/exportImportHelpers';
+import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   PageSection,
   Title,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  Pagination,
   Button,
   Text,
   Spinner,
@@ -77,24 +79,71 @@ export function VMCPServersPage() {
   const [importError, setImportError] = useState('');
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
+  const { pageSize, setPageSize } = usePagination();
+  const [page, setPage] = useState<number>(1);
 
-  const { data: servers, isLoading, error } = useQuery({
-    queryKey: ['vmcp-servers'],
-    queryFn: vmcpApi.list,
+  // ── Derived query args ────────────────────────────────────────────
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const isSemantic = searchMode === 'semantic' && debouncedSearch.length > 0;
+
+  const VMCP_SORT_FIELDS = ['name', 'description', 'state', 'port', 'version'] as const;
+  const sortSpec = useMemo(() => {
+    if (activeSortIndex === null) return undefined;
+    const field = VMCP_SORT_FIELDS[activeSortIndex] ?? 'modified_at';
+    return `${field}:${activeSortDirection}`;
+  }, [activeSortIndex, activeSortDirection]);
+
+  const offset = (page - 1) * pageSize;
+
+  // ── Queries ────────────────────────────────────────────────────────
+  const pagedQuery = useQuery({
+    queryKey: [
+      'vmcp-servers',
+      'paged',
+      { offset, limit: pageSize, search: debouncedSearch, tags: selectedTags, sort: sortSpec, mode: searchMode },
+    ],
+    queryFn: () =>
+      vmcpApi.listPaged({
+        limit: pageSize,
+        offset,
+        search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
+        tags: selectedTags,
+        sort: sortSpec,
+      }),
+    enabled: !isSemantic,
+    // Keep the previous page/search result visible while a new query is in
+    // flight so the toolbar (and the search input's focus) never unmounts.
+    placeholderData: keepPreviousData,
   });
 
-  // Fetch all skills for the dropdown
+  const semanticQuery = useQuery({
+    queryKey: ['vmcp-servers', 'semantic', debouncedSearch, maxResults, similarityThreshold],
+    queryFn: () => vmcpApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
+    enabled: isSemantic,
+    placeholderData: keepPreviousData,
+  });
+
+  const facetsQuery = useQuery({
+    queryKey: ['vmcp-servers', 'facets'],
+    queryFn: vmcpApi.facets,
+    staleTime: 60_000,
+  });
+
+  // Modal picker still needs every skill.
   const { data: allSkills } = useQuery({
     queryKey: ['skills'],
     queryFn: skillsApi.list,
   });
 
-  // Semantic search servers (only when in semantic mode)
-  const { data: searchResults } = useQuery({
-    queryKey: ['vmcp-servers', 'search', searchTerm, maxResults, similarityThreshold],
-    queryFn: () => vmcpApi.search(searchTerm, maxResults, similarityThreshold),
-    enabled: searchTerm.length > 0 && searchMode === 'semantic',
-  });
+  // ── Unified accessors ─────────────────────────────────────────────
+  const displayedServers: VMCPServer[] = isSemantic
+    ? semanticQuery.data ?? []
+    : pagedQuery.data?.items ?? [];
+  const totalFiltered = isSemantic
+    ? displayedServers.length
+    : pagedQuery.data?.total ?? 0;
+  const isLoading = isSemantic ? semanticQuery.isLoading : pagedQuery.isLoading;
+  const error = isSemantic ? semanticQuery.error : pagedQuery.error;
 
   // Create server mutation
   const createMutation = useMutation({
@@ -212,8 +261,9 @@ export function VMCPServersPage() {
   };
 
   const handleSelectAll = (isSelected: boolean) => {
+    // Standard paginated-table UX: header checkbox toggles the current page.
     setSelectedServers(
-      isSelected ? (filteredServers?.map(s => s.name) || []) : []
+      isSelected ? displayedServers.map(s => s.name) : []
     );
   };
 
@@ -221,13 +271,15 @@ export function VMCPServersPage() {
     deleteMutation.mutate(selectedServers);
   };
 
-  const handleExport = () => {
-    const selectedServerObjects = servers?.filter(s => selectedServers.includes(s.name)) || [];
-    
-    // Use helper function to export VMCP servers
+  const handleExport = async () => {
+    // Selection can span pages — fetch each selected server's full object.
+    const fetched = await Promise.all(
+      selectedServers.map(name => vmcpApi.get(name).catch(() => null))
+    );
+    const selectedServerObjects = fetched.filter(
+      (s): s is VMCPServer => s !== null
+    );
     const serversForExport = exportVMCPServers(selectedServerObjects);
-    
-    // Download as JSON file
     downloadJSON(serversForExport, `vmcp-servers-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
@@ -266,83 +318,12 @@ export function VMCPServersPage() {
     }
   };
 
-  const getSortableRowValues = (server: VMCPServer): (string | number)[] => {
-    return [
-      server.name,
-      server.description || '',
-      server.state || '',
-      server.port || 0,
-      server.version || '',
-    ];
-  };
+  // Picker widget reads the facets endpoint.
+  const allTags = facetsQuery.data?.tags ?? [];
 
-  // Get all unique tags from servers
-  const allTags = useMemo(() => {
-    if (!servers) return [];
-    const tagSet = new Set<string>();
-    servers.forEach(server => {
-      server.tags?.forEach(tag => tagSet.add(tag));
-    });
-    return Array.from(tagSet).sort();
-  }, [servers]);
-
-  const filteredServers = useMemo(() => {
-    let filtered = servers;
-
-    // Apply search filtering
-    if (searchTerm && filtered) {
-      if (searchMode === 'semantic' && searchResults) {
-        // Semantic search: filter by backend results
-        filtered = filtered.filter((server) =>
-          searchResults.some((result) =>
-            (result.name === server.name) || (result.filename === server.name)
-          )
-        );
-      } else if (searchMode === 'text') {
-        // Text search: filter by matching text in name or description
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((server) =>
-          server.name.toLowerCase().includes(lowerSearch) ||
-          server.description?.toLowerCase().includes(lowerSearch)
-        );
-      } else if (searchMode === 'uuid') {
-        // UUID search: filter by matching UUID (partial match)
-        const lowerSearch = searchTerm.toLowerCase();
-        filtered = filtered.filter((server) =>
-          server.uuid?.toLowerCase().includes(lowerSearch)
-        );
-      }
-    }
-
-    // Apply tag filtering
-    if (filtered && selectedTags.length > 0) {
-      filtered = filtered.filter(server =>
-        selectedTags.every(selectedTag =>
-          tagMatchesFilter(server.tags ?? [], selectedTag)
-        )
-      );
-    }
-
-    if (filtered && activeSortIndex !== null) {
-      filtered = [...filtered].sort((a, b) => {
-        const aValue = getSortableRowValues(a)[activeSortIndex];
-        const bValue = getSortableRowValues(b)[activeSortIndex];
-        
-        if (typeof aValue === 'string' && typeof bValue === 'string') {
-          const comparison = aValue.localeCompare(bValue);
-          return activeSortDirection === 'asc' ? comparison : -comparison;
-        }
-        
-        if (typeof aValue === 'number' && typeof bValue === 'number') {
-          return activeSortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-        }
-        
-        return 0;
-      });
-    }
-
-    return filtered;
-  }, [servers, searchResults, searchTerm, searchMode, selectedTags, activeSortIndex, activeSortDirection]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, searchMode, selectedTags, sortSpec, pageSize]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: {
@@ -355,16 +336,6 @@ export function VMCPServersPage() {
     },
     columnIndex,
   });
-
-  if (isLoading) {
-    return (
-      <PageSection>
-        <div className="loading-container">
-          <Spinner size="xl" />
-        </div>
-      </PageSection>
-    );
-  }
 
   if (error) {
     return (
@@ -450,7 +421,11 @@ export function VMCPServersPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredServers || filteredServers.length === 0 ? (
+        {isLoading ? (
+          <div className="loading-container">
+            <Spinner size="xl" />
+          </div>
+        ) : totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : ServerIcon} />
             <Title headingLevel="h4" size="lg">
@@ -472,13 +447,24 @@ export function VMCPServersPage() {
             )}
           </EmptyState>
         ) : (
+          <>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="top"
+            widgetId="vmcp-pagination-top"
+          />
           <Table aria-label="VMCP Servers table" variant="compact">
             <Thead>
               <Tr>
                 <Th
                   select={{
                     onSelect: (_event, isSelected) => handleSelectAll(isSelected),
-                    isSelected: selectedServers.length === filteredServers.length && filteredServers.length > 0,
+                    isSelected: selectedServers.length === totalFiltered && totalFiltered > 0,
                   }}
                 />
                 <Th sort={getSortParams(0)} width={15}>Name</Th>
@@ -491,7 +477,7 @@ export function VMCPServersPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {filteredServers.map((server, index) => (
+              {displayedServers.map((server, index) => (
                 <Tr key={server.uuid}>
                   <Td
                     select={{
@@ -568,6 +554,17 @@ export function VMCPServersPage() {
               ))}
             </Tbody>
           </Table>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="bottom"
+            widgetId="vmcp-pagination-bottom"
+          />
+          </>
         )}
       </PageSection>
 

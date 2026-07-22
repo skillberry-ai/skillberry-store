@@ -1,20 +1,22 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getTagColor } from '../utils/tagColors';
-import { tagMatchesFilter } from '../utils/tagUtils';
 import { TagFilter } from '../components/TagFilter';
 import { SearchBox, SearchMode } from '../components/SearchBox';
 import { exportVNFSServers, importVNFSServers, downloadJSON } from '../utils/exportImportHelpers';
+import { PAGE_SIZE_OPTIONS, usePagination } from '../contexts/PaginationContext';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import {
   PageSection,
   Title,
   Toolbar,
   ToolbarContent,
   ToolbarItem,
+  Pagination,
   Button,
   Text,
   Spinner,
@@ -76,10 +78,54 @@ export function VNFSServersPage() {
   const [importError, setImportError] = useState('');
   const [activeSortIndex, setActiveSortIndex] = useState<number | null>(null);
   const [activeSortDirection, setActiveSortDirection] = useState<'asc' | 'desc'>('asc');
+  const { pageSize, setPageSize } = usePagination();
+  const [page, setPage] = useState<number>(1);
 
-  const { data: servers, isLoading, error } = useQuery({
-    queryKey: ['vnfs-servers'],
-    queryFn: vnfsApi.list,
+  // ── Derived query args ────────────────────────────────────────────
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const isSemantic = searchMode === 'semantic' && debouncedSearch.length > 0;
+
+  const VNFS_SORT_FIELDS = ['name', 'description', 'state', 'port', 'version'] as const;
+  const sortSpec = useMemo(() => {
+    if (activeSortIndex === null) return undefined;
+    const field = VNFS_SORT_FIELDS[activeSortIndex] ?? 'modified_at';
+    return `${field}:${activeSortDirection}`;
+  }, [activeSortIndex, activeSortDirection]);
+
+  const offset = (page - 1) * pageSize;
+
+  // ── Queries ────────────────────────────────────────────────────────
+  const pagedQuery = useQuery({
+    queryKey: [
+      'vnfs-servers',
+      'paged',
+      { offset, limit: pageSize, search: debouncedSearch, tags: selectedTags, sort: sortSpec, mode: searchMode },
+    ],
+    queryFn: () =>
+      vnfsApi.listPaged({
+        limit: pageSize,
+        offset,
+        search: searchMode === 'semantic' ? undefined : debouncedSearch || undefined,
+        tags: selectedTags,
+        sort: sortSpec,
+      }),
+    enabled: !isSemantic,
+    // Keep the previous page/search result visible while a new query is in
+    // flight so the toolbar (and the search input's focus) never unmounts.
+    placeholderData: keepPreviousData,
+  });
+
+  const semanticQuery = useQuery({
+    queryKey: ['vnfs-servers', 'semantic', debouncedSearch, maxResults, similarityThreshold],
+    queryFn: () => vnfsApi.searchProjected(debouncedSearch, maxResults, similarityThreshold),
+    enabled: isSemantic,
+    placeholderData: keepPreviousData,
+  });
+
+  const facetsQuery = useQuery({
+    queryKey: ['vnfs-servers', 'facets'],
+    queryFn: vnfsApi.facets,
+    staleTime: 60_000,
   });
 
   const { data: allSkills } = useQuery({
@@ -87,11 +133,15 @@ export function VNFSServersPage() {
     queryFn: skillsApi.list,
   });
 
-  const { data: searchResults } = useQuery({
-    queryKey: ['vnfs-servers', 'search', searchTerm, maxResults, similarityThreshold],
-    queryFn: () => vnfsApi.search(searchTerm, maxResults, similarityThreshold),
-    enabled: searchTerm.length > 0 && searchMode === 'semantic',
-  });
+  // ── Unified accessors ─────────────────────────────────────────────
+  const displayedServers: VNFSServer[] = isSemantic
+    ? semanticQuery.data ?? []
+    : pagedQuery.data?.items ?? [];
+  const totalFiltered = isSemantic
+    ? displayedServers.length
+    : pagedQuery.data?.total ?? 0;
+  const isLoading = isSemantic ? semanticQuery.isLoading : pagedQuery.isLoading;
+  const error = isSemantic ? semanticQuery.error : pagedQuery.error;
 
   const createMutation = useMutation({
     mutationFn: (server: Omit<VNFSServer, 'uuid' | 'running' | 'export_path'>) =>
@@ -172,15 +222,20 @@ export function VNFSServersPage() {
   };
 
   const handleSelectAll = (isSelected: boolean) => {
-    setSelectedServers(isSelected ? (filteredServers?.map(s => s.name) || []) : []);
+    // Standard paginated-table UX: header checkbox toggles the current page.
+    setSelectedServers(isSelected ? displayedServers.map(s => s.name) : []);
   };
 
   const handleDeleteSelected = () => {
     deleteMutation.mutate(selectedServers);
   };
 
-  const handleExport = () => {
-    const selected = servers?.filter(s => selectedServers.includes(s.name)) || [];
+  const handleExport = async () => {
+    // Selection can span pages — fetch each selected server's full object.
+    const fetched = await Promise.all(
+      selectedServers.map(name => vnfsApi.get(name).catch(() => null))
+    );
+    const selected = fetched.filter((s): s is VNFSServer => s !== null);
     downloadJSON(exportVNFSServers(selected), `vnfs-servers-export-${new Date().toISOString().split('T')[0]}.json`);
   };
 
@@ -209,60 +264,12 @@ export function VNFSServersPage() {
     }
   };
 
-  const getSortableRowValues = (server: VNFSServer): (string | number)[] => [
-    server.name,
-    server.description || '',
-    server.state || '',
-    server.port || 0,
-    server.version || '',
-  ];
+  // Picker widget reads the facets endpoint.
+  const allTags = facetsQuery.data?.tags ?? [];
 
-  const allTags = useMemo(() => {
-    if (!servers) return [];
-    const tagSet = new Set<string>();
-    servers.forEach(s => s.tags?.forEach(t => tagSet.add(t)));
-    return Array.from(tagSet).sort();
-  }, [servers]);
-
-  const filteredServers = useMemo(() => {
-    let filtered = servers;
-    if (searchTerm && filtered) {
-      if (searchMode === 'semantic' && searchResults) {
-        filtered = filtered.filter(s =>
-          searchResults.some(r => r.name === s.name || r.filename === s.name)
-        );
-      } else if (searchMode === 'text') {
-        const lower = searchTerm.toLowerCase();
-        filtered = filtered.filter(s =>
-          s.name.toLowerCase().includes(lower) || s.description?.toLowerCase().includes(lower)
-        );
-      } else if (searchMode === 'uuid') {
-        // UUID search: filter by matching UUID (partial match)
-        const lower = searchTerm.toLowerCase();
-        filtered = filtered.filter(s =>
-          s.uuid?.toLowerCase().includes(lower)
-        );
-      }
-    }
-    if (filtered && selectedTags.length > 0) {
-      filtered = filtered.filter(s => selectedTags.every(t => tagMatchesFilter(s.tags ?? [], t)));
-    }
-    if (filtered && activeSortIndex !== null) {
-      filtered = [...filtered].sort((a, b) => {
-        const aVal = getSortableRowValues(a)[activeSortIndex];
-        const bVal = getSortableRowValues(b)[activeSortIndex];
-        if (typeof aVal === 'string' && typeof bVal === 'string') {
-          const cmp = aVal.localeCompare(bVal);
-          return activeSortDirection === 'asc' ? cmp : -cmp;
-        }
-        if (typeof aVal === 'number' && typeof bVal === 'number') {
-          return activeSortDirection === 'asc' ? aVal - bVal : bVal - aVal;
-        }
-        return 0;
-      });
-    }
-    return filtered;
-  }, [servers, searchResults, searchTerm, searchMode, selectedTags, activeSortIndex, activeSortDirection]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, searchMode, selectedTags, sortSpec, pageSize]);
 
   const getSortParams = (columnIndex: number): ThProps['sort'] => ({
     sortBy: { index: activeSortIndex ?? 0, direction: activeSortDirection },
@@ -277,10 +284,6 @@ export function VNFSServersPage() {
     setSkillSearchTerm('');
     setCreateError('');
   };
-
-  if (isLoading) {
-    return <PageSection><div className="loading-container"><Spinner size="xl" /></div></PageSection>;
-  }
 
   if (error) {
     return <PageSection><Alert variant="danger" title="Error loading Virtual NFS servers">{(error as Error).message}</Alert></PageSection>;
@@ -336,7 +339,11 @@ export function VNFSServersPage() {
           </ToolbarContent>
         </Toolbar>
 
-        {!filteredServers || filteredServers.length === 0 ? (
+        {isLoading ? (
+          <div className="loading-container">
+            <Spinner size="xl" />
+          </div>
+        ) : totalFiltered === 0 ? (
           <EmptyState>
             <EmptyStateIcon icon={searchTerm ? SearchIcon : ServerIcon} />
             <Title headingLevel="h4" size="lg">
@@ -352,10 +359,21 @@ export function VNFSServersPage() {
             )}
           </EmptyState>
         ) : (
+          <>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="top"
+            widgetId="vnfs-pagination-top"
+          />
           <Table aria-label="vNFS Servers table" variant="compact">
             <Thead>
               <Tr>
-                <Th select={{ onSelect: (_e, isSelected) => handleSelectAll(isSelected), isSelected: selectedServers.length === filteredServers.length && filteredServers.length > 0 }} />
+                <Th select={{ onSelect: (_e, isSelected) => handleSelectAll(isSelected), isSelected: selectedServers.length === totalFiltered && totalFiltered > 0 }} />
                 <Th sort={getSortParams(0)} width={15}>Name</Th>
                 <Th sort={getSortParams(1)} width={25} modifier="truncate">Description</Th>
                 <Th sort={getSortParams(2)} width={10}>State</Th>
@@ -367,7 +385,7 @@ export function VNFSServersPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {filteredServers.map((server, index) => (
+              {displayedServers.map((server, index) => (
                 <Tr key={server.uuid}>
                   <Td select={{ rowIndex: index, onSelect: (_e, isSelected) => handleSelectServer(server.name, isSelected), isSelected: selectedServers.includes(server.name) }} />
                   <Td dataLabel="Name" onClick={() => navigate(`/vnfs-servers/${server.uuid}`)} style={{ cursor: 'pointer' }}>{server.name}</Td>
@@ -392,6 +410,17 @@ export function VNFSServersPage() {
               ))}
             </Tbody>
           </Table>
+          <Pagination
+            itemCount={totalFiltered}
+            perPage={pageSize}
+            page={page}
+            onSetPage={(_e, newPage) => setPage(newPage)}
+            perPageOptions={PAGE_SIZE_OPTIONS.map(v => ({ title: String(v), value: v }))}
+            onPerPageSelect={(_e, newPerPage, newPage) => { setPageSize(newPerPage); setPage(newPage); }}
+            variant="bottom"
+            widgetId="vnfs-pagination-bottom"
+          />
+          </>
         )}
       </PageSection>
 

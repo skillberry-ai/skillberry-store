@@ -167,7 +167,8 @@ class SkillsService:
             try:
                 tools_service = get_service("tool")
                 skill_dict["tools"] = [
-                    tools_service.get(uuid) for uuid in skill_dict["tool_uuids"]
+                    tools_service.get(uuid, fields="full")
+                    for uuid in skill_dict["tool_uuids"]
                 ]
             except Exception as e:
                 raise RuntimeError(
@@ -179,7 +180,8 @@ class SkillsService:
             try:
                 snippets_service = get_service("snippet")
                 skill_dict["snippets"] = [
-                    snippets_service.get(uuid) for uuid in skill_dict["snippet_uuids"]
+                    snippets_service.get(uuid, fields="full")
+                    for uuid in skill_dict["snippet_uuids"]
                 ]
             except Exception as e:
                 raise RuntimeError(
@@ -257,46 +259,118 @@ class SkillsService:
                 raise KeyError(f"Skill '{label}' not found")
             raise
 
-    def get(self, uuid_or_name: str) -> Dict[str, Any]:
-        """Get skill metadata by UUID or name with populated tool and snippet objects.
+    def get(
+        self,
+        uuid_or_name: str,
+        fields: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get skill metadata by UUID or name, optionally with populated
+        tool and snippet objects.
+
+        Field-selection semantics (see
+        :mod:`skillberry_store.services.field_selection`) mirror
+        :meth:`list_all`:
+
+        * ``fields`` omitted / ``"narrow"`` — the minimal set the UI
+          listing page renders. ``_populate`` is *not* tagged in narrow,
+          so no inlining runs. This is the default.
+        * ``fields="full"`` — every field is returned, and the
+          ``_populate`` mechanism runs (``tool_uuids`` /
+          ``snippet_uuids`` are resolved into inlined ``tools`` /
+          ``snippets`` full objects).
+        * ``fields="wide"`` — every persisted manifest field, but no
+          flag fields → no inlining.
+        * Explicit CSV allowlist — inlining runs iff ``"_populate"`` is
+          in the allowlist.
 
         Args:
             uuid_or_name: Skill UUID or name.
+            fields: Optional field-selection spec.
 
         Returns:
-            Dict[str, Any]: Skill metadata dictionary with 'tools' and 'snippets' populated.
+            Dict[str, Any]: Skill metadata dictionary, field-selected
+                according to ``fields``. When the resolved allowlist
+                includes ``_populate``, ``tools`` and ``snippets`` are
+                populated.
 
         Raises:
             KeyError: If skill not found.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+            should_run_mechanism,
+        )
+
         get_skill_counter.inc()
         try:
+            allow = parse_fields_spec(fields, "skill")
             uuid = self._resolve_uuid(uuid_or_name)
             with self.handler.read_lock(uuid):
                 skill = self._safe_read(uuid, uuid_or_name)
-                try:
-                    return self.populate_objects(skill)
-                except RuntimeError as e:
-                    logger.warning(str(e))
-                    skill.setdefault("tools", [])
-                    skill.setdefault("snippets", [])
-                    return skill
+                if should_run_mechanism(allow, "_populate"):
+                    try:
+                        self.populate_objects(skill)
+                    except RuntimeError as e:
+                        logger.warning(str(e))
+                        skill.setdefault("tools", [])
+                        skill.setdefault("snippets", [])
+                return select_item_fields(skill, allow)
         except KeyError:
             raise
         except Exception as e:
             logger.error(f"Error retrieving skill '{uuid_or_name}': {e}")
             raise
 
-    def list_all(self, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
-        """List all skills with optional filtering and populated objects.
+    def list_all(
+        self,
+        filters: Optional[Dict] = None,
+        fields: Optional[str] = None,
+        search: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        state: Optional[str] = None,
+        sort: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Any:
+        """List skills with optional filter / sort / paginate / project.
 
-        Args:
-            filters: Optional dictionary of field:value pairs to filter by.
+        Field-selection semantics (see
+        :mod:`skillberry_store.services.field_selection`):
 
-        Returns:
-            List[Dict[str, Any]]: List of skill metadata dictionaries with tools and snippets populated,
-                                  sorted by modified_at descending.
+        * ``fields`` omitted / ``"narrow"`` — the minimal set the UI
+          listing page renders (uuid, name, description, state, tags,
+          version, tool_uuids, snippet_uuids). ``_populate`` is *not*
+          tagged in narrow, so no inlining runs. This is the default.
+        * ``fields="full"`` — every field is returned, and the
+          ``_populate`` mechanism runs (``tool_uuids`` /
+          ``snippet_uuids`` are resolved into inlined ``tools`` /
+          ``snippets`` full objects).
+        * ``fields="wide"`` — every persisted manifest field, but no
+          flag fields → no inlining.
+        * Explicit CSV allowlist — inlining runs iff ``"_populate"`` is
+          in the allowlist.
+
+        The filter / sort / paginate steps run on the raw skill dicts
+        BEFORE projection or populate so a caller paginating with a
+        narrow projection never has to populate the discarded pages.
+
+        Response shape mirrors the other services: bare list unless
+        ``limit`` or ``offset`` is set, in which case it becomes an
+        ``{items, total, offset, limit}`` envelope.
         """
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_items_fields,
+            should_run_mechanism,
+        )
+        from skillberry_store.services.list_query import (
+            apply_filters,
+            apply_pagination,
+            apply_sort,
+            is_paginated,
+        )
+
         list_skills_counter.inc()
         try:
             items = self.handler.list_all_dicts()
@@ -304,18 +378,41 @@ class SkillsService:
                 items = [
                     i for i in items if all(i.get(k) == v for k, v in filters.items())
                 ]
-            for item in items:
-                try:
-                    self.populate_objects(item)
-                except RuntimeError as e:
-                    logger.warning(str(e))
-                    item.setdefault("tools", [])
-                    item.setdefault("snippets", [])
-            items.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
-            return items
+            items = apply_filters(items, search=search, tags=tags, state=state)
+            items = apply_sort(items, sort)
+            page, total = apply_pagination(items, limit, offset)
+            allow = parse_fields_spec(fields, "skill")
+            if should_run_mechanism(allow, "_populate"):
+                enriched: List[Dict[str, Any]] = []
+                for item in page:
+                    fresh = dict(item)
+                    try:
+                        self.populate_objects(fresh)
+                    except RuntimeError as e:
+                        logger.warning(str(e))
+                        fresh.setdefault("tools", [])
+                        fresh.setdefault("snippets", [])
+                    enriched.append(fresh)
+                projected = enriched
+            else:
+                projected = select_items_fields(page, allow)
+            if not is_paginated(limit, offset):
+                return projected
+            return {
+                "items": projected,
+                "total": total,
+                "offset": offset or 0,
+                "limit": limit,
+            }
         except Exception as e:
             logger.error(f"Error listing skills: {e}")
             raise
+
+    def facets(self) -> Dict[str, List[str]]:
+        """Return the unique tags / namespaces / states over all skills."""
+        from skillberry_store.services.facets import compute_facets
+
+        return compute_facets(self.handler.list_all_dicts())
 
     def search(
         self,
@@ -324,6 +421,7 @@ class SkillsService:
         similarity_threshold: float = 1.0,
         manifest_filter: str = ".",
         lifecycle_state: Optional["LifecycleState"] = None,
+        fields: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Search skills by semantic similarity to a search term.
 
@@ -342,9 +440,20 @@ class SkillsService:
                 (e.g. ``"tags:python"``, ``"state:approved"``).
             lifecycle_state: Lifecycle state filter. Defaults to
                 ``LifecycleState.ANY`` when ``None`` is passed.
+            fields: Optional field-selection spec — same grammar as
+                :meth:`list_all` (``None`` / ``"narrow"`` / ``"wide"``
+                / ``"full"`` / CSV allowlist). Each match is a
+                field-selected skill dict with ``similarity_score``
+                merged in. Default (``None``) resolves to ``"narrow"``
+                — the ``_populate`` mechanism does NOT run under
+                narrow; callers read ``tool_uuids`` / ``snippet_uuids``
+                for counts. Pass ``"full"`` to inline ``tools`` /
+                ``snippets``.
 
         Returns:
-            List[Dict[str, Any]]: Matches, each ``{"filename": <name>, "similarity_score": <float>}``.
+            List[Dict[str, Any]]: Matches sorted by ``modified_at`` desc.
+                Each entry is a field-selected skill dict plus a
+                ``similarity_score`` key.
 
         Raises:
             RuntimeError: If the service was constructed without a
@@ -352,6 +461,11 @@ class SkillsService:
         """
         from skillberry_store.modules.lifecycle import LifecycleState
         from skillberry_store.fast_api.search_filters import apply_search_filters
+        from skillberry_store.services.field_selection import (
+            parse_fields_spec,
+            select_item_fields,
+            should_run_mechanism,
+        )
 
         search_skills_counter.inc()
         try:
@@ -376,11 +490,12 @@ class SkillsService:
                 if not skill_uuid:
                     continue
                 try:
-                    skill_dict = self.handler.read_dict(skill_uuid)
-                    skill_dict["similarity_score"] = matched.get(
+                    fetched = self.handler.read_dict(skill_uuid)
+                    candidate = dict(fetched)
+                    candidate["similarity_score"] = matched.get(
                         "similarity_score", 0.0
                     )
-                    candidates.append(skill_dict)
+                    candidates.append(candidate)
                 except Exception as e:
                     logger.warning(f"Could not load skill {skill_uuid}: {e}")
             filtered_skills = apply_search_filters(
@@ -389,9 +504,18 @@ class SkillsService:
                 lifecycle_state=lifecycle_state,
             )
             filtered_skills.sort(key=lambda x: x.get("modified_at", ""), reverse=True)
+            allow = parse_fields_spec(fields, "skill")
+            if should_run_mechanism(allow, "_populate"):
+                for s in filtered_skills:
+                    try:
+                        self.populate_objects(s)
+                    except RuntimeError as e:
+                        logger.warning(str(e))
+                        s.setdefault("tools", [])
+                        s.setdefault("snippets", [])
             return [
                 {
-                    "filename": s.get("name", ""),
+                    **select_item_fields(s, allow),
                     "similarity_score": s.get("similarity_score", 0.0),
                 }
                 for s in filtered_skills
@@ -641,7 +765,7 @@ class SkillsService:
                 tools: List[Dict[str, Any]] = []
                 tool_modules: Dict[str, str] = {}
                 for tool_uuid in skill_dict.get("tool_uuids") or []:
-                    tool_dict = tools_service.get(tool_uuid)
+                    tool_dict = tools_service.get(tool_uuid, fields="full")
                     tools.append(tool_dict)
                     tool_name = tool_dict.get("name")
                     module_name = tool_dict.get("module_name")
@@ -654,7 +778,7 @@ class SkillsService:
                             )
 
                 snippets: List[Dict[str, Any]] = [
-                    snippets_service.get(snippet_uuid)
+                    snippets_service.get(snippet_uuid, fields="full")
                     for snippet_uuid in skill_dict.get("snippet_uuids") or []
                 ]
 
