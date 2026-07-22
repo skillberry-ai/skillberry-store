@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI — Skillberry Store</title>
+  <meta name="description" content="The sbs command-line interface — an auto-generated CLI (built on restish) that gives you every Skillberry Store API operation from your terminal, with JSON, YAML, and table output.">
+  <link rel="canonical" href="https://skillberry-ai.github.io/skillberry-store/cli.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="CLI — Skillberry Store">
+  <meta property="og:description" content="Drive every Skillberry Store API operation from your shell with the auto-generated sbs CLI.">
+  <meta property="og:url" content="https://skillberry-ai.github.io/skillberry-store/cli.html">
+  <meta property="og:image" content="https://skillberry-ai.github.io/skillberry-store/assets/screenshots/sbs-home.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260722-2">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+      <div class="nav-links">
+        <a href="getting-started.html">Getting Started</a>
+        <a href="features.html">Features</a>
+        <a href="plugins.html">Plugins</a>
+        <a href="architecture.html" class="hide-sm">Architecture</a>
+        <a href="cli.html" class="active hide-sm">CLI</a>
+        <a href="https://github.com/skillberry-ai/skillberry-store" class="gh">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page-hero">
+    <div class="page-narrow">
+      <span class="eyebrow">CLI</span>
+      <h1>The <code>sbs</code> command</h1>
+      <p class="doc lead" style="margin-bottom:0">An auto-generated command-line interface that gives you convenient access to every API operation from your terminal — built as a wrapper around <a href="https://rest.sh/">restish</a>, which generates commands directly from the OpenAPI spec.</p>
+    </div>
+  </div>
+
+  <main class="page-narrow doc section">
+
+    <p>Because the CLI is generated from the API schema, it comes with:</p>
+    <ul>
+      <li><strong>Auto-generated commands</strong> for all API endpoints</li>
+      <li><strong>Type-safe parameters</strong> based on the OpenAPI schema</li>
+      <li><strong>Automatic documentation</strong> from API descriptions</li>
+      <li><strong>Multiple output formats</strong> — JSON, YAML, and table</li>
+    </ul>
+
+    <h2>Install</h2>
+    <p>The CLI ships with the Python SDK:</p>
+    <pre><code>pip install skillberry-store-sdk</code></pre>
+    <p>It requires <code>restish</code> to be installed. If it's missing, the CLI prints installation instructions:</p>
+    <pre><code># Option 1: with Go
+go install github.com/rest-sh/restish@latest
+
+# Option 2: download a pre-built binary from
+# https://github.com/rest-sh/restish/releases</code></pre>
+
+    <h2>Connect</h2>
+    <p>By default the CLI connects to <code>http://0.0.0.0:8000</code> and remembers your connection for future commands:</p>
+    <pre><code>sbs --help                       # Show all available commands
+sbs connect http://prod:8000     # Point at a different server
+sbs list-skills                  # List all skills</code></pre>
+
+    <h2>Command groups</h2>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Group</th><th>Commands</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Tools</strong></td><td><code>create-tool</code>, <code>list-tools</code>, <code>get-tool</code>, <code>get-tool-module</code>, <code>update-tool</code>, <code>delete-tool</code>, <code>execute-tool</code>, <code>search-tools</code>, <code>add-tool</code></td></tr>
+          <tr><td><strong>Skills</strong></td><td><code>create-skill</code>, <code>list-skills</code>, <code>get-skill</code>, <code>update-skill</code>, <code>delete-skill</code>, <code>search-skills</code>, <code>detect-anthropic-skills</code>, <code>import-anthropic-skill</code>, <code>export-anthropic-skill</code></td></tr>
+          <tr><td><strong>Snippets</strong></td><td><code>create-snippet</code>, <code>list-snippets</code>, <code>get-snippet</code>, <code>update-snippet</code>, <code>delete-snippet</code>, <code>search-snippets</code></td></tr>
+          <tr><td><strong>VMCP Servers</strong></td><td><code>create-vmcp-server</code>, <code>list-vmcp-servers</code>, <code>get-vmcp-server</code>, <code>update-vmcp-server</code>, <code>delete-vmcp-server</code>, <code>start-vmcp-server</code>, <code>search-vmcp-servers</code></td></tr>
+          <tr><td><strong>vNFS Servers</strong></td><td><code>create-vnfs-server</code>, <code>list-vnfs-servers</code>, <code>get-vnfs-server</code>, <code>update-vnfs-server</code>, <code>delete-vnfs-server</code>, <code>start-vnfs-server</code>, <code>search-vnfs-servers</code></td></tr>
+          <tr><td><strong>Admin</strong></td><td><code>metrics</code>, <code>purge-all</code>, <code>health</code>, <code>health-ready</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>A complete workflow</h2>
+    <pre><code># 1. Connect to your server
+sbs connect http://localhost:8000
+
+# 2. Add a new tool
+sbs create-tool --name calculator --description "Basic calculator"
+
+# 3. Execute it with parameters
+sbs execute-tool calculator --body='{"params":{"x":5,"y":3}}'
+
+# 4. Group tools into a skill
+sbs create-skill --name math-skill --description "Math utilities"
+
+# 5. Expose the skill as a virtual MCP server
+sbs create-vmcp-server --name my-server --skill-uuid &lt;uuid&gt;
+
+# 6. Search semantically
+sbs search-tools --search-term "calculator functions"</code></pre>
+
+    <h2>Output formats &amp; filtering</h2>
+    <pre><code>sbs list-tools                 # JSON (default)
+sbs list-tools -o yaml         # YAML
+sbs list-tools -o table        # Table
+
+sbs list-tools --filter='state=active'
+sbs list-tools --offset=20 --limit=10
+sbs list-tools -v              # Verbose request/response</code></pre>
+
+    <h2>Scripting</h2>
+    <p>The CLI slots naturally into shell scripts and pipelines:</p>
+    <pre><code># Back up all tools
+sbs list-tools -o json > tools-backup.json
+
+# Capture a tool's result as JSON
+RESULT=$(sbs execute-tool my-tool --body='{"params":{}}' -o json)</code></pre>
+
+    <div class="callout teal">
+      <p>The complete command reference, advanced flags, and troubleshooting live in the repository's <a href="https://github.com/skillberry-ai/skillberry-store/blob/main/docs/cli.md">CLI documentation</a>.</p>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    <div class="page">
+      <div class="footer-brand">
+        <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+        <p>A smart skills repository for agentic workflows. Manage, execute, and organize every tool your AI agents need.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Docs</h4>
+          <a href="getting-started.html">Getting Started</a>
+          <a href="features.html">Features</a>
+          <a href="plugins.html">Plugins</a>
+          <a href="architecture.html">Architecture</a>
+          <a href="cli.html">CLI</a>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/skillberry-ai/skillberry-store">GitHub ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/tree/main/docs">Repository docs ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/issues">Issues ↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Skillberry-AI · Apache License 2.0</span>
+      <span>An open-source project · skillberry-ai</span>
+    </div>
+  </footer>
+
+</body>
+</html>

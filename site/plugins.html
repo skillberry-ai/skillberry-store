@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plugins — Skillberry Store</title>
+  <meta name="description" content="Skillberry Store's plugin architecture extends the store with AI-powered creation, evaluation, security scanning, import, and optimization — installed individually or all at once, with no core changes.">
+  <link rel="canonical" href="https://skillberry-ai.github.io/skillberry-store/plugins.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Plugins — Skillberry Store">
+  <meta property="og:description" content="A flexible plugin architecture: creation, evaluation, security, import, and optimization plugins for your skill library.">
+  <meta property="og:url" content="https://skillberry-ai.github.io/skillberry-store/plugins.html">
+  <meta property="og:image" content="https://skillberry-ai.github.io/skillberry-store/assets/screenshots/sbs2-plugins-populated.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260722-2">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+      <div class="nav-links">
+        <a href="getting-started.html">Getting Started</a>
+        <a href="features.html">Features</a>
+        <a href="plugins.html" class="active">Plugins</a>
+        <a href="architecture.html" class="hide-sm">Architecture</a>
+        <a href="cli.html" class="hide-sm">CLI</a>
+        <a href="https://github.com/skillberry-ai/skillberry-store" class="gh">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page-hero">
+    <div class="page-narrow">
+      <span class="eyebrow">Plugins</span>
+      <h1>An extensible plugin ecosystem</h1>
+      <p class="doc lead" style="margin-bottom:0">The plugin architecture lets you extend functionality without modifying core code. Plugins add event handlers and REST routes for AI-powered generation, evaluation, security, import, and optimization — installed individually or all at once.</p>
+    </div>
+  </div>
+
+  <main class="page-narrow doc section">
+
+    <h2>Installing plugins</h2>
+    <p>Two plugins ship by default with the base install — <strong>dedupe</strong> and <strong>kagenti-approver</strong>. Add more via pip extras:</p>
+    <pre><code># Base install (includes the two default plugins)
+pip install skillberry-store
+
+# Everything
+pip install skillberry-store[plugins-all]
+
+# A single plugin
+pip install skillberry-store[plugin-creator]
+
+# Several at once
+pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-skill-optimizer]</code></pre>
+    <div class="callout">
+      <p>The store automatically discovers and loads newly installed plugins on the next restart. Both default plugins can be uninstalled individually if you don't need them.</p>
+    </div>
+
+    <div class="feature-shot" style="margin:2rem 0">
+      <img src="assets/screenshots/sbs2-plugins-populated.png" alt="The plugins view in the Skillberry Store UI" loading="lazy">
+      <p class="caption">Installed plugins in the Skillberry Store UI</p>
+    </div>
+
+    <!-- Creation -->
+    <h2>Creation &amp; generation</h2>
+    <div class="tiles cols-3" style="margin-bottom:1rem">
+      <div class="tile">
+        <span class="tile-badge">creator</span>
+        <h3>Creator</h3>
+        <p>AI-powered snippet creation from natural-language descriptions, with automatic metadata inference (language, tags). Works with multiple LLM providers via llm-switchboard.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">anthropic-skill-generator</span>
+        <h3>Anthropic Skill Generator</h3>
+        <p>Generates complete Anthropic skills (<code>SKILL.md</code>, tools, docs) from a description using Claude Code, then imports them into the store. Runs in a container by default.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">doc-generator</span>
+        <h3>Doc Generator</h3>
+        <p>Generates, enriches, and drift-checks documentation for skills, tools, and snippets.</p>
+      </div>
+    </div>
+
+    <!-- Evaluation -->
+    <h2>Evaluation &amp; quality</h2>
+    <div class="tiles cols-3" style="margin-bottom:1rem">
+      <div class="tile">
+        <span class="tile-badge">evaluator</span>
+        <h3>Evaluator</h3>
+        <p>AI-powered content evaluation and automatic tagging, with confidence scores for each suggested tag. Underpins the quality / performance / security score tags.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">dedupe · default</span>
+        <h3>Dedupe</h3>
+        <p>Detects semantically duplicate skills on create/update by comparing descriptions in a single LLM call, then tags matches with <code>duplicate:{name}</code> and records why. Runs automatically.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">kagenti-approver · default</span>
+        <h3>Kagenti Approver</h3>
+        <p>Labels skills <code>kagenti-approved</code> when their score tags meet configurable criteria (e.g. <code>security-score&gt;=9,performance-score&gt;=8</code>), and revokes the label when they no longer do. No LLM required.</p>
+      </div>
+    </div>
+
+    <!-- Security -->
+    <h2>Security &amp; provenance</h2>
+    <div class="tiles cols-3" style="margin-bottom:1rem">
+      <div class="tile">
+        <span class="tile-badge">security</span>
+        <h3>Security</h3>
+        <p>AI-powered security evaluation of skill, tool, and snippet content.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">sast</span>
+        <h3>SAST</h3>
+        <p>Static application security testing of skill/tool/snippet code.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">dast</span>
+        <h3>DAST</h3>
+        <p>Dynamic security testing: discovers entry points, exercises them with adversarial inputs, and observes effects (detect-and-report).</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">provenance</span>
+        <h3>Provenance</h3>
+        <p>Gathers provenance, authenticity, and legality background for imported skills.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">dependency-tracker</span>
+        <h3>Dependency Tracker</h3>
+        <p>Discovers external Python package dependencies (version + hash, transitive to a max depth).</p>
+      </div>
+    </div>
+
+    <!-- Import -->
+    <h2>Import</h2>
+    <div class="tiles cols-3" style="margin-bottom:1rem">
+      <div class="tile">
+        <span class="tile-badge">mcp-importer</span>
+        <h3>MCP Importer</h3>
+        <p>Imports tools from any customer MCP server over SSE — no LLM required. Each tool is created with <code>packaging_format="mcp"</code> and is immediately executable via the store's MCP path.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">skillssh-importer</span>
+        <h3>skills.sh Importer</h3>
+        <p>Searches and imports skills from the <a href="https://skills.sh">skills.sh</a> directory into the store.</p>
+      </div>
+    </div>
+
+    <!-- Optimization -->
+    <h2>Optimization &amp; agents</h2>
+    <div class="tiles cols-3" style="margin-bottom:1rem">
+      <div class="tile">
+        <span class="tile-badge">skill-optimizer</span>
+        <h3>Skill Optimizer</h3>
+        <p>Optimizes an existing skill using a RunSpace-powered Claude Code session, importing the result as a new <code>&lt;name&gt;_optimized</code> skill with full optimization metadata attached.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">ask-runspace</span>
+        <h3>Ask RunSpace</h3>
+        <p>Runs the RunSpace agent on a free-text task and returns its summary.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">simulate</span>
+        <h3>Simulate</h3>
+        <p>Stands up a simulated parallel vMCP backed by the simulation harness, and toggles real/sim per skill.</p>
+      </div>
+    </div>
+
+    <h2>Using a plugin's API</h2>
+    <p>Plugins that expose REST routes are reachable under the store's API. For example, the MCP Importer:</p>
+    <pre><code>curl -X POST http://localhost:8000/plugins/mcp-importer/import-tools \
+  -H "Content-Type: application/json" \
+  -d '{"mcp_url": "http://my-mcp-server:8080/sse"}'</code></pre>
+    <p>LLM-backed plugins are configured through environment variables via <code>llm-switchboard</code>:</p>
+    <pre><code>export LLM_PROVIDER=openai.async   # or litellm, etc.
+export LLM_MODEL=gpt-4
+export OPENAI_API_KEY=your_key</code></pre>
+
+    <h2>Build your own</h2>
+    <p>A plugin is a small Python package that subclasses <code>PluginBase</code> and optionally exposes routes:</p>
+    <pre><code>from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+
+class MyPlugin(PluginBase):
+    def __init__(self):
+        super().__init__(PluginMetadata(
+            name="my-plugin", version="0.1.0",
+            description="My custom plugin",
+            plugin_type=PluginType.GENERAL,
+        ))
+
+    def is_enabled(self) -> bool:
+        return True
+
+    def get_routes(self):
+        from fastapi import APIRouter
+        router = APIRouter()
+
+        @router.get("/hello")
+        async def hello():
+            return {"message": "Hello from my plugin"}
+
+        return router</code></pre>
+    <div class="callout teal">
+      <p>Full installation options, per-plugin configuration, API request/response shapes, and the authoring guide live in the repository's <a href="https://github.com/skillberry-ai/skillberry-store/blob/main/docs/plugins-installation.md">Plugin Installation Guide</a>.</p>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    <div class="page">
+      <div class="footer-brand">
+        <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+        <p>A smart skills repository for agentic workflows. Manage, execute, and organize every tool your AI agents need.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Docs</h4>
+          <a href="getting-started.html">Getting Started</a>
+          <a href="features.html">Features</a>
+          <a href="plugins.html">Plugins</a>
+          <a href="architecture.html">Architecture</a>
+          <a href="cli.html">CLI</a>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/skillberry-ai/skillberry-store">GitHub ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/tree/main/docs">Repository docs ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/issues">Issues ↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Skillberry-AI · Apache License 2.0</span>
+      <span>An open-source project · skillberry-ai</span>
+    </div>
+  </footer>
+
+</body>
+</html>

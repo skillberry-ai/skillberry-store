@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skillberry Store — a smart skills repository for agentic workflows</title>
+  <meta name="description" content="Skillberry Store (SBS) is a self-hostable service to manage, execute, and organize every tool, skill, and snippet your AI agents need — with semantic search, lifecycle management, virtual MCP servers, and a rich plugin ecosystem.">
+  <link rel="canonical" href="https://skillberry-ai.github.io/skillberry-store/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Skillberry Store — one service for every skill your agents need">
+  <meta property="og:description" content="Manage, execute, and organize tools, skills, and snippets for agentic workflows. Semantic search, virtual MCP servers, mountable vNFS filesystems, and a plugin ecosystem.">
+  <meta property="og:url" content="https://skillberry-ai.github.io/skillberry-store/">
+  <meta property="og:image" content="https://skillberry-ai.github.io/skillberry-store/assets/screenshots/sbs-home.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260722-2">
+</head>
+<body>
+
+  <!-- NAV (duplicated across pages) -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./">
+        <img src="assets/logo.png" alt="Skillberry logo">
+        Skillberry Store
+      </a>
+      <div class="nav-links">
+        <a href="getting-started.html">Getting Started</a>
+        <a href="features.html">Features</a>
+        <a href="plugins.html">Plugins</a>
+        <a href="architecture.html" class="hide-sm">Architecture</a>
+        <a href="cli.html" class="hide-sm">CLI</a>
+        <a href="https://github.com/skillberry-ai/skillberry-store" class="gh">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="page hero-grid">
+      <div class="hero-copy">
+        <div class="badges">
+          <span class="badge badge-accent">Open Source · Apache 2.0</span>
+          <span class="badge badge-teal">MCP-native</span>
+          <span class="badge badge-success">Live in under a minute</span>
+        </div>
+        <h1>A smart skills repository for agentic workflows</h1>
+        <p class="hero-tag">Manage · Execute · Organize · Publish</p>
+        <p class="lead">Skillberry Store is a central place to manage every tool your AI agents need. Upload once, execute anywhere, and manage everything from a single service — tools, skills, and snippets with semantic search, lifecycle management, virtual MCP servers, and a rich plugin ecosystem.</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="getting-started.html">Get started →</a>
+          <a class="btn btn-ghost" href="features.html">Explore features</a>
+        </div>
+        <pre><code>pip install skillberry-store
+make docker-run   <span style="color:#7f90ad"># UI → :8002 · API docs → :8000/docs</span></code></pre>
+      </div>
+      <div class="hero-media">
+        <video controls playsinline preload="metadata" poster="assets/screenshots/sbs-home.png">
+          <source src="assets/skillberry-highlights.mp4" type="video/mp4">
+          Your browser doesn't support embedded video.
+          <a href="assets/skillberry-highlights.mp4">Watch the highlights video</a>.
+        </video>
+        <p class="caption">Highlights: the Skillberry Store UI in ~1 minute</p>
+      </div>
+    </div>
+  </header>
+
+  <!-- STAT STRIP -->
+  <section class="section-tight section-alt">
+    <div class="page stats">
+      <div class="stat"><div class="num">3</div><div class="label">Resource types: tools, skills &amp; snippets</div></div>
+      <div class="stat"><div class="num">2</div><div class="label">Mountable frontends: virtual MCP &amp; vNFS</div></div>
+      <div class="stat"><div class="num">16</div><div class="label">Installable plugins</div></div>
+      <div class="stat"><div class="num">1</div><div class="label">Service to run it all</div></div>
+    </div>
+  </section>
+
+  <!-- WHY -->
+  <section class="section">
+    <div class="page">
+      <div class="section-head">
+        <span class="eyebrow">Why Skillberry Store</span>
+        <h2>One service for every skill your agents need</h2>
+        <p>Stop scattering tools across repos, gists, and one-off scripts. Register them once, then reach them from any MCP-compatible client — with search, versioning, and safe execution built in.</p>
+      </div>
+      <div class="tiles cols-3">
+        <div class="tile">
+          <div class="tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
+          <h3>Manage the full lifecycle</h3>
+          <p>Add, update, delete, and version tools, skills, and snippets. Control state and visibility, organize with namespaces, and find anything with semantic or classic search.</p>
+        </div>
+        <div class="tile">
+          <div class="tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+          <h3>Execute safely</h3>
+          <p>Invoke tools with parameters inside a Docker (or Podman) sandbox. Isolated execution keeps agent-generated code from touching your host.</p>
+        </div>
+        <div class="tile">
+          <div class="tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
+          <h3>Connect anywhere</h3>
+          <p>Expose tools as virtual MCP servers, mount skills as read-only filesystems over WebDAV/NFS, or route calls to external MCP backends. Works with Claude, Cursor, and any MCP client.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURE OVERVIEW -->
+  <section class="section section-cream">
+    <div class="page">
+      <div class="section-head">
+        <span class="eyebrow">What's inside</span>
+        <h2>Built for the way agents actually work</h2>
+      </div>
+      <div class="tiles cols-3">
+        <div class="tile"><h3>Semantic &amp; classic search</h3><p>Shortlist tools and skills by meaning or by keyword across every resource in the store.</p></div>
+        <div class="tile"><h3>Namespaces</h3><p>Label and organize skills, tools, and snippets for better categorization and filtering.</p></div>
+        <div class="tile"><h3>Virtual MCP servers</h3><p>Expose a single skill's tools and snippets as a standalone MCP endpoint on its own port.</p></div>
+        <div class="tile"><h3>vNFS filesystems</h3><p>Mount a skill as a read-only WebDAV or NFSv3 filesystem — readable by any tool that can mount a drive.</p></div>
+        <div class="tile"><h3>MCP frontend &amp; backend</h3><p>Serve your tools as MCP, and consume/route tools from multiple external MCP servers.</p></div>
+        <div class="tile"><h3>Control API over MCP</h3><p>Every REST operation is also an MCP tool at <code>/control_sse</code> for agentic workflows.</p></div>
+        <div class="tile"><h3>Persistence backends</h3><p>Store tools and skills in the filesystem or in GitHub repos via version-controlled hooks.</p></div>
+        <div class="tile"><h3>Observability</h3><p>Prometheus metrics and OpenTelemetry traces for operational and behavioural analysis.</p></div>
+        <div class="tile"><h3>Plugin architecture</h3><p>Extend the store with AI-powered generation, evaluation, security, import, and optimization — no core changes.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREENSHOT SHOWCASE -->
+  <section class="section">
+    <div class="page">
+      <div class="section-head">
+        <span class="eyebrow">The web UI</span>
+        <h2>A modern console for your skill library</h2>
+        <p>Built with React and PatternFly, the UI ships with the backend — manage tools, skills, snippets, VMCP and vNFS servers, and plugins visually.</p>
+      </div>
+      <div class="feature-shot">
+        <img src="assets/screenshots/sbs2-skills-populated.png" alt="Skillberry Store skills library in the web UI" loading="lazy">
+      </div>
+    </div>
+  </section>
+
+  <!-- DOC TILES -->
+  <section class="section section-alt">
+    <div class="page">
+      <div class="section-head">
+        <span class="eyebrow">Documentation</span>
+        <h2>Dive deeper</h2>
+      </div>
+      <div class="tiles cols-4">
+        <a class="tile link-tile" href="getting-started.html">
+          <span class="tile-badge">Start here</span>
+          <h3>Getting Started</h3>
+          <p>Install, run with Docker, open the UI, and import your first skills.</p>
+          <span class="more">Read →</span>
+        </a>
+        <a class="tile link-tile" href="features.html">
+          <span class="tile-badge">Capabilities</span>
+          <h3>Features</h3>
+          <p>Tools, skills, snippets, search, VMCP, vNFS, and observability.</p>
+          <span class="more">Read →</span>
+        </a>
+        <a class="tile link-tile" href="plugins.html">
+          <span class="tile-badge">Ecosystem</span>
+          <h3>Plugins</h3>
+          <p>16 installable plugins for creation, evaluation, security, and import.</p>
+          <span class="more">Read →</span>
+        </a>
+        <a class="tile link-tile" href="cli.html">
+          <span class="tile-badge">Terminal</span>
+          <h3>CLI</h3>
+          <p>The <code>sbs</code> command — every API operation from your shell.</p>
+          <span class="more">Read →</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA BAND -->
+  <section class="section">
+    <div class="page">
+      <div class="cta-band">
+        <h2>Live in under a minute</h2>
+        <p>Install with pip, start with Docker, and you have a searchable, executable, MCP-ready skill library running locally.</p>
+        <pre><code>pip install skillberry-store
+make docker-run</code></pre>
+        <div class="cta" style="justify-content:center">
+          <a class="btn btn-primary" href="getting-started.html">Get started →</a>
+          <a class="btn btn-ghost" href="https://github.com/skillberry-ai/skillberry-store">View on GitHub ↗</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER (duplicated across pages) -->
+  <footer class="footer">
+    <div class="page">
+      <div class="footer-brand">
+        <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+        <p>A smart skills repository for agentic workflows. Manage, execute, and organize every tool your AI agents need.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Docs</h4>
+          <a href="getting-started.html">Getting Started</a>
+          <a href="features.html">Features</a>
+          <a href="plugins.html">Plugins</a>
+          <a href="architecture.html">Architecture</a>
+          <a href="cli.html">CLI</a>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/skillberry-ai/skillberry-store">GitHub ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/tree/main/docs">Repository docs ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/issues">Issues ↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Skillberry-AI · Apache License 2.0</span>
+      <span>An open-source project · skillberry-ai</span>
+    </div>
+  </footer>
+
+</body>
+</html>

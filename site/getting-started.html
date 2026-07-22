@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Getting Started — Skillberry Store</title>
+  <meta name="description" content="Install Skillberry Store with pip, run it with Docker or Podman, open the web UI, and import your first skills from GitHub, a ZIP, or a local folder.">
+  <link rel="canonical" href="https://skillberry-ai.github.io/skillberry-store/getting-started.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Getting Started — Skillberry Store">
+  <meta property="og:description" content="Install with pip, start with make docker-run, and you're live in under a minute.">
+  <meta property="og:url" content="https://skillberry-ai.github.io/skillberry-store/getting-started.html">
+  <meta property="og:image" content="https://skillberry-ai.github.io/skillberry-store/assets/screenshots/sbs-home.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260722-2">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+      <div class="nav-links">
+        <a href="getting-started.html" class="active">Getting Started</a>
+        <a href="features.html">Features</a>
+        <a href="plugins.html">Plugins</a>
+        <a href="architecture.html" class="hide-sm">Architecture</a>
+        <a href="cli.html" class="hide-sm">CLI</a>
+        <a href="https://github.com/skillberry-ai/skillberry-store" class="gh">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page-hero">
+    <div class="page-narrow">
+      <span class="eyebrow">Getting Started</span>
+      <h1>Live in under a minute</h1>
+      <p class="doc lead" style="margin-bottom:0">Install with <code>pip</code>, start with Docker or Podman, open the web UI, and import your first skills. Skillberry Store runs entirely on your own machine.</p>
+    </div>
+  </div>
+
+  <main class="page-narrow doc section">
+
+    <h2>1. Prerequisites</h2>
+    <ul>
+      <li><strong>Docker or Podman</strong> installed on your machine (used to sandbox tool execution).</li>
+      <li>For local deployment: your user has Docker permissions (member of the <code>docker</code> group), and the Docker logging driver is <code>json-file</code> or <code>journald</code>.</li>
+      <li>Node.js 18+ is only needed if you run the UI from source — the Docker image bundles it.</li>
+    </ul>
+    <div class="callout">
+      <p>Prefer Podman? Alias <code>docker</code> to <code>podman</code> in your shell profile (<code>~/.zshrc</code>, <code>~/.bashrc</code>, …). On macOS, start a Podman machine first — see the README for the exact commands.</p>
+    </div>
+
+    <h2>2. Install</h2>
+    <p>Install the minimal package (core plus the two default plugins, dedupe and kagenti-approver):</p>
+    <pre><code>pip install skillberry-store</code></pre>
+    <p>Or install with the full plugin ecosystem:</p>
+    <pre><code># All plugins
+pip install skillberry-store[plugins-all]
+
+# A single plugin
+pip install skillberry-store[plugin-creator]
+
+# Several specific plugins
+pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-skill-optimizer]</code></pre>
+    <p>See the <a href="plugins.html">Plugins</a> page for the full list and per-plugin options.</p>
+
+    <h2>3. Run the service</h2>
+    <p>The simplest way to start everything (backend, UI, and observability) is Docker or Podman:</p>
+    <pre><code>make docker-run</code></pre>
+    <div class="callout teal">
+      <p>Control where SBS stores its data by setting <code>SBS_BASE_DIR</code> (defaults to the system temp directory). Run <code>make help</code> for the full list of options.</p>
+    </div>
+    <p>Prefer running from source instead of Docker?</p>
+    <pre><code>git clone git@github.com:skillberry-ai/skillberry-store.git
+cd skillberry-store
+make install-requirements   # Linux, macOS, or WSL
+make run</code></pre>
+
+    <h2>4. Open the UI &amp; API</h2>
+    <p>The modern web UI starts automatically alongside the backend:</p>
+    <div class="tiles cols-2" style="margin:1.25rem 0">
+      <div class="tile"><h3>Web UI</h3><p><a href="http://localhost:8002">http://localhost:8002</a> — the React-based console for tools, skills, snippets, VMCP &amp; vNFS servers, and plugins.</p></div>
+      <div class="tile"><h3>API docs</h3><p><a href="http://localhost:8000/docs">http://localhost:8000/docs</a> — the OpenAPI / Swagger interface for the REST API.</p></div>
+    </div>
+    <p>To run only the backend without the UI:</p>
+    <pre><code>ENABLE_UI=false make run</code></pre>
+
+    <div class="feature-shot" style="margin:2rem 0">
+      <img src="assets/screenshots/sbs-home.png" alt="Skillberry Store web UI home" loading="lazy">
+      <p class="caption">The Skillberry Store home screen</p>
+    </div>
+
+    <h2>5. Import your first skills</h2>
+    <p>Bring existing skills into the store from several sources — no need to author everything by hand:</p>
+    <ul>
+      <li><strong>GitHub</strong> — import Anthropic-format skills directly from a repository.</li>
+      <li><strong>ZIP archive</strong> — upload a packaged skill.</li>
+      <li><strong>Local folder</strong> — point the store at a directory on disk.</li>
+      <li><strong>MCP server</strong> — import tools from any MCP SSE endpoint via the MCP Importer plugin.</li>
+    </ul>
+    <div class="feature-shot" style="margin:1.5rem 0">
+      <img src="assets/screenshots/sbs-import-dialog.png" alt="The skill import dialog in the Skillberry Store UI" loading="lazy">
+      <p class="caption">Importing skills through the UI</p>
+    </div>
+    <div class="callout">
+      <p>Importing from private sources? Skill-import authentication uses a single file shaped like <code>gh</code>'s <code>hosts.yml</code> (set via <code>SBS_IMPORT_AUTH_CONFIG</code>). Public sources need no configuration — imports are anonymous by default.</p>
+    </div>
+
+    <h2>6. Connect an agent</h2>
+    <p>Point any MCP-compatible client (Claude, Cursor, LangGraph, …) at the store:</p>
+    <pre><code># Every REST operation, exposed as MCP tools
+http://127.0.0.1:8000/control_sse
+
+# A single skill as its own virtual MCP server
+curl -X POST "http://localhost:8000/vmcp_servers/?name=my-skill&skill_uuid=&lt;uuid&gt;"
+# → connect your MCP client to http://localhost:&lt;assigned-port&gt;/sse</code></pre>
+    <p>See <a href="features.html">Features</a> for VMCP and vNFS in depth, or the <a href="cli.html">CLI</a> page to drive everything from your terminal.</p>
+
+    <h2>Common configuration</h2>
+    <p>Everything except import auth is configured through environment variables. The most useful defaults:</p>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Setting</th><th>Default</th><th>Variable</th></tr></thead>
+        <tbody>
+          <tr><td>API host / port</td><td>0.0.0.0 / 8000</td><td><code>SBS_HOST</code> / <code>SBS_PORT</code></td></tr>
+          <tr><td>Web UI port</td><td>8002</td><td><code>SBS_UI_PORT</code></td></tr>
+          <tr><td>Enable UI</td><td>True</td><td><code>ENABLE_UI</code></td></tr>
+          <tr><td>Prometheus metrics port</td><td>8090</td><td><code>PROMETHEUS_METRICS_PORT</code></td></tr>
+          <tr><td>Observability</td><td>True</td><td><code>OBSERVABILITY</code></td></tr>
+          <tr><td>Storage base directory</td><td>{temp}/skillberry-store</td><td><code>SBS_BASE_DIR</code></td></tr>
+          <tr><td>Vector database</td><td>faiss</td><td><code>SBS_VDB</code></td></tr>
+          <tr><td>Execute Python locally</td><td>False (uses Docker)</td><td><code>EXECUTE_PYTHON_LOCALLY</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:1rem">The full reference lives in the repository's <a href="https://github.com/skillberry-ai/skillberry-store/blob/main/docs/config-env-vars.md">configuration guide</a>.</p>
+
+    <div class="callout teal">
+      <p><strong>Next:</strong> explore the <a href="features.html">Features</a>, browse the <a href="plugins.html">Plugin ecosystem</a>, or learn the <a href="cli.html"><code>sbs</code> CLI</a>.</p>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    <div class="page">
+      <div class="footer-brand">
+        <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+        <p>A smart skills repository for agentic workflows. Manage, execute, and organize every tool your AI agents need.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Docs</h4>
+          <a href="getting-started.html">Getting Started</a>
+          <a href="features.html">Features</a>
+          <a href="plugins.html">Plugins</a>
+          <a href="architecture.html">Architecture</a>
+          <a href="cli.html">CLI</a>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/skillberry-ai/skillberry-store">GitHub ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/tree/main/docs">Repository docs ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/issues">Issues ↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Skillberry-AI · Apache License 2.0</span>
+      <span>An open-source project · skillberry-ai</span>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Features — Skillberry Store</title>
+  <meta name="description" content="Tools, skills, and snippets with semantic search and lifecycle management; sandboxed execution; virtual MCP servers; mountable vNFS filesystems; MCP frontend/backend; a control API; and observability.">
+  <link rel="canonical" href="https://skillberry-ai.github.io/skillberry-store/features.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Features — Skillberry Store">
+  <meta property="og:description" content="Everything Skillberry Store does: manage, search, execute, and expose tools, skills, and snippets for agentic workflows.">
+  <meta property="og:url" content="https://skillberry-ai.github.io/skillberry-store/features.html">
+  <meta property="og:image" content="https://skillberry-ai.github.io/skillberry-store/assets/screenshots/sbs2-tools-populated.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260722-2">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+      <div class="nav-links">
+        <a href="getting-started.html">Getting Started</a>
+        <a href="features.html" class="active">Features</a>
+        <a href="plugins.html">Plugins</a>
+        <a href="architecture.html" class="hide-sm">Architecture</a>
+        <a href="cli.html" class="hide-sm">CLI</a>
+        <a href="https://github.com/skillberry-ai/skillberry-store" class="gh">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page-hero">
+    <div class="page-narrow">
+      <span class="eyebrow">Features</span>
+      <h1>Everything your agents need, in one service</h1>
+      <p class="doc lead" style="margin-bottom:0">Skillberry Store manages three resource types — tools, skills, and snippets — and exposes them through the interfaces agents actually use: REST, MCP, and mountable filesystems.</p>
+    </div>
+  </div>
+
+  <!-- Three resource types -->
+  <section class="section">
+    <div class="page">
+      <div class="section-head left">
+        <span class="eyebrow">The building blocks</span>
+        <h2>Tools, skills &amp; snippets</h2>
+      </div>
+      <div class="tiles cols-3">
+        <div class="tile">
+          <div class="tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6L3 18v3h3l6.1-6.1a4 4 0 0 0 5.6-5.6l-2.9 2.9-2-2 2.9-2.9z"/></svg></div>
+          <h3>Tools</h3>
+          <p>Executable units for agentic workloads — a Python module or an MCP-backed tool. Each has state, visibility, tags, a version, and a packaging format, and runs with parameters inside a sandbox.</p>
+        </div>
+        <div class="tile">
+          <div class="tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+          <h3>Skills</h3>
+          <p>Reusable groupings of tools and snippets, compatible with the Anthropic skill format (<code>SKILL.md</code> + tools + docs). Import, export, and detect Anthropic skills directly.</p>
+        </div>
+        <div class="tile">
+          <div class="tile-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+          <h3>Snippets</h3>
+          <p>Code fragments and documentation stored with syntax highlighting and searchable by content or tags — reference material and shared utilities your tools depend on.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature rows -->
+  <section class="section section-cream">
+    <div class="page">
+
+      <div class="feature-row">
+        <div class="feature-text">
+          <span class="eyebrow">Discover</span>
+          <h3>Semantic &amp; classic search</h3>
+          <p>Shortlist tools, skills, and snippets by meaning or by keyword. Every resource is embedded (faiss by default, 384 dimensions) so agents and humans find the right capability fast.</p>
+          <ul>
+            <li>Search across tools, skills, snippets, VMCP and vNFS servers</li>
+            <li>Filter and label with <strong>namespaces</strong> for categorization</li>
+            <li>Lifecycle controls for state and visibility</li>
+          </ul>
+        </div>
+        <div class="feature-shot">
+          <img src="assets/screenshots/sbs2-tools-populated.png" alt="Tools registry with search in the Skillberry Store UI" loading="lazy">
+        </div>
+      </div>
+
+      <div class="feature-row flip">
+        <div class="feature-text">
+          <span class="eyebrow">Run safely</span>
+          <h3>Sandboxed execution</h3>
+          <p>Invoke tools with parameters inside a Docker (or Podman) sandbox, so agent-generated code never touches your host. Dependencies can be auto-detected, and execution is available from the UI, the REST API, the CLI, and over MCP.</p>
+          <ul>
+            <li>Isolated, parameterized tool execution</li>
+            <li>Automatic tool dependency detection</li>
+            <li>Optional local execution mode for development</li>
+          </ul>
+        </div>
+        <div class="feature-shot">
+          <img src="assets/screenshots/sbs3-tool-execute-dialog.png" alt="Tool execution dialog in the Skillberry Store UI" loading="lazy">
+        </div>
+      </div>
+
+      <div class="feature-row">
+        <div class="feature-text">
+          <span class="eyebrow">Expose · MCP</span>
+          <h3>Virtual MCP servers (VMCP)</h3>
+          <p>A VMCP server exposes a single skill's tools and snippets as a standalone MCP endpoint on its own port. Point Claude, Cursor, or any MCP client at it — or expose every REST operation as MCP tools through the control API at <code>/control_sse</code>.</p>
+          <ul>
+            <li>One skill → one standalone MCP endpoint</li>
+            <li>MCP frontend: serve your tools to any agent framework</li>
+            <li>MCP backend: consume and route tools from external MCP servers</li>
+          </ul>
+        </div>
+        <div class="feature-shot">
+          <img src="assets/screenshots/sbs-vmcp.png" alt="Virtual MCP servers in the Skillberry Store UI" loading="lazy">
+        </div>
+      </div>
+
+      <div class="feature-row flip">
+        <div class="feature-text">
+          <span class="eyebrow">Expose · Filesystem</span>
+          <h3>Mountable vNFS filesystems</h3>
+          <p>A vNFS server exposes a single skill as a <strong>read-only filesystem</strong> over WebDAV or NFSv3. Any tool that can mount a network drive — including Claude Code — reads skill files directly via <code>mount</code> or <code>rclone</code>, no REST API required.</p>
+          <ul>
+            <li>WebDAV (default) or NFSv3 protocols</li>
+            <li>Mount with <code>rclone</code>, <code>davfs2</code>, or native NFS</li>
+            <li>The UI shows pre-filled mount commands per server</li>
+          </ul>
+        </div>
+        <div class="feature-shot">
+          <img src="assets/screenshots/sbs-vnfs.png" alt="Virtual NFS servers in the Skillberry Store UI" loading="lazy">
+        </div>
+      </div>
+
+      <div class="feature-row">
+        <div class="feature-text">
+          <span class="eyebrow">Operate</span>
+          <h3>Observability &amp; persistence</h3>
+          <p>Understand how your tools are used and where your data lives. SBS emits Prometheus metrics and OpenTelemetry traces, and persists resources to the filesystem or to GitHub repositories via version-controlled hooks.</p>
+          <ul>
+            <li>Prometheus metrics (prefixed <code>SBS_</code>) and Jaeger-compatible traces</li>
+            <li>Filesystem or GitHub-backed persistence</li>
+            <li>Pluggable vector DB backends: faiss, Chroma, LanceDB</li>
+          </ul>
+        </div>
+        <div class="feature-shot">
+          <img src="assets/screenshots/sbs-observability.png" alt="Observability view in the Skillberry Store UI" loading="lazy">
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Interfaces table -->
+  <section class="section">
+    <div class="page-narrow">
+      <div class="section-head left">
+        <span class="eyebrow">Interfaces</span>
+        <h2>Reach the store however you work</h2>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Interface</th><th>What it's for</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Web UI</strong></td><td>Visual management of tools, skills, snippets, VMCP &amp; vNFS servers, and plugins. React + PatternFly, with real-time updates.</td></tr>
+            <tr><td><strong>REST / OpenAPI</strong></td><td>FastAPI endpoints with Swagger docs at <code>/docs</code>, using tools-manifest artifacts.</td></tr>
+            <tr><td><strong>CLI</strong></td><td>The <code>sbs</code> command — every API operation from your terminal. <a href="cli.html">See the CLI guide →</a></td></tr>
+            <tr><td><strong>MCP control API</strong></td><td>Each REST operation exposed as an MCP tool at <code>/control_sse</code> for agentic workflows.</td></tr>
+            <tr><td><strong>VMCP</strong></td><td>Per-skill virtual MCP servers on dedicated ports.</td></tr>
+            <tr><td><strong>vNFS</strong></td><td>Per-skill mountable WebDAV / NFSv3 filesystems.</td></tr>
+            <tr><td><strong>Python SDK</strong></td><td>Consume the service programmatically via the skillberry-store SDK (also ships the CLI).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout teal" style="margin-top:2rem">
+        <p><strong>Want to extend it?</strong> The <a href="plugins.html">plugin ecosystem</a> adds AI-powered creation, evaluation, security scanning, import, and optimization — without touching core code.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="page">
+      <div class="footer-brand">
+        <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+        <p>A smart skills repository for agentic workflows. Manage, execute, and organize every tool your AI agents need.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Docs</h4>
+          <a href="getting-started.html">Getting Started</a>
+          <a href="features.html">Features</a>
+          <a href="plugins.html">Plugins</a>
+          <a href="architecture.html">Architecture</a>
+          <a href="cli.html">CLI</a>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/skillberry-ai/skillberry-store">GitHub ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/tree/main/docs">Repository docs ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/issues">Issues ↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Skillberry-AI · Apache License 2.0</span>
+      <span>An open-source project · skillberry-ai</span>
+    </div>
+  </footer>
+
+</body>
+</html>
