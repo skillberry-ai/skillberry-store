@@ -32,11 +32,14 @@ def test_dream_preset_versions_skills_immutably():
     by_id = {p["id"]: p for p in PRESETS}
     assert "dream" in by_id
     dream = by_id["dream"]
-    # Immutable, git-like versioning: new version under the same name, no invented names.
-    assert "IMMUTABLE" in dream["prompt"]
-    assert "NEW VERSION" in dream["prompt"]
-    assert "same name" in dream["prompt"]
-    assert "_optimized" in dream["prompt"]  # explicitly forbids inventing a new name
+    # Git-like versioning framing: never in-place, name resolves to latest, new
+    # UUID under the same name, no invented names.
+    prompt = dream["prompt"]
+    assert "in-place" in prompt
+    assert "latest version" in prompt
+    assert "new UUID" in prompt
+    assert "SAME name" in prompt
+    assert "_optimized" in prompt  # explicitly forbids inventing a new name
     assert dream["env"] == {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}
 
 
