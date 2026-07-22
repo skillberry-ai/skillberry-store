@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from skillberry_store.services.admin_service import AdminService
@@ -162,7 +162,7 @@ def register_admin_api(
         return {"count": get_count()}
 
     @app.get("/health/ready", tags=[tags], openapi_extra={"x-cli-name": "health-ready"})
-    def readiness_check():
+    def readiness_check(request: Request):
         """Readiness check endpoint - verifies all description stores are initialized.
 
         Returns:
@@ -171,4 +171,18 @@ def register_admin_api(
         Raises:
             HTTPException: 500 status when still initializing.
         """
-        return service.readiness_check()
+        result = service.readiness_check()
+
+        # Gate readiness on semantic encoder warmup too. Without this, the first
+        # request that triggers an embedding races the background warmup and both
+        # concurrently instantiate SentenceTransformer — one path ends up with
+        # meta tensors and errors with "Cannot copy out of meta tensor".
+        warmup_task = getattr(request.app.state, "encoder_warmup_task", None)
+        warmup_done = warmup_task is None or warmup_task.done()
+        result.setdefault("checks", {})["encoder_warmup"] = warmup_done
+        if not warmup_done:
+            raise HTTPException(
+                status_code=500,
+                detail={"status": "initializing", "checks": result["checks"]},
+            )
+        return result
