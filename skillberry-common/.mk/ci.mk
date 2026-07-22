@@ -18,9 +18,9 @@ ci-pull-request: ## Executed upon ci pull_request event
 
 .PHONY: ci-push
 ci-push: ci-pull-request ## Executed upon ci push event
-	@echo "|||====> Executing make docker-push (and build)"
-	VERSION=$(VERSION) make docker-push
-	@echo "|||====> docker-push Done."
+	@echo "|||====> Executing make docker-build (buildx multi-platform - also push)"
+	VERSION=$(VERSION) DBT=registry make docker-build
+	@echo "|||====> docker-build Done."
 	@echo ""
 	@echo "|||====> Executing make update-sdk"
 	VERSION=$(VERSION) make update-sdk
