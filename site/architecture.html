@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture — Skillberry Store</title>
+  <meta name="description" content="How Skillberry Store is built: a FastAPI backend, a React + PatternFly UI, a CLI and Python SDK, a plugin system, pluggable vector databases, Docker-sandboxed execution, and MCP frontend/backend routing.">
+  <link rel="canonical" href="https://skillberry-ai.github.io/skillberry-store/architecture.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Architecture — Skillberry Store">
+  <meta property="og:description" content="A FastAPI service + React UI + CLI + plugin ecosystem for managing and executing agent tools, skills, and snippets.">
+  <meta property="og:url" content="https://skillberry-ai.github.io/skillberry-store/architecture.html">
+  <meta property="og:image" content="https://skillberry-ai.github.io/skillberry-store/assets/screenshots/sbs-home.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260722-2">
+</head>
+<body>
+
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+      <div class="nav-links">
+        <a href="getting-started.html">Getting Started</a>
+        <a href="features.html">Features</a>
+        <a href="plugins.html">Plugins</a>
+        <a href="architecture.html" class="active hide-sm">Architecture</a>
+        <a href="cli.html" class="hide-sm">CLI</a>
+        <a href="https://github.com/skillberry-ai/skillberry-store" class="gh">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page-hero">
+    <div class="page-narrow">
+      <span class="eyebrow">Architecture</span>
+      <h1>A single service, layered for extension</h1>
+      <p class="doc lead" style="margin-bottom:0">Skillberry Store is a Python service with a FastAPI backend, a React + PatternFly web UI, a CLI and Python SDK, and a plugin system — backed by pluggable vector search and Docker-sandboxed execution.</p>
+    </div>
+  </div>
+
+  <main class="page-narrow doc section">
+
+    <h2>The stack</h2>
+    <div class="tiles cols-2" style="margin-bottom:1rem">
+      <div class="tile">
+        <span class="tile-badge">Backend</span>
+        <h3>FastAPI service</h3>
+        <p>A FastAPI + Uvicorn application (Python ≥ 3.11) exposing REST endpoints, an OpenAPI/Swagger UI, and an MCP control surface. Uses <code>fastapi-mcp</code> and <code>fastapi-versioning</code>.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">Frontend</span>
+        <h3>React + PatternFly UI</h3>
+        <p>React 18 + TypeScript, built with Vite, using PatternFly (IBM's design system), TanStack Query for data fetching, and React Router for navigation.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">Interfaces</span>
+        <h3>CLI &amp; Python SDK</h3>
+        <p>The <code>sbs</code> CLI wraps <a href="https://rest.sh/">restish</a> to auto-generate commands from the OpenAPI spec; the Python SDK lets you consume the service programmatically.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">Search</span>
+        <h3>Pluggable vector DBs</h3>
+        <p>Semantic search over embeddings (384-dim by default) with faiss as the default backend, plus Chroma and LanceDB options.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">Execution</span>
+        <h3>Docker sandbox</h3>
+        <p>Tools run with parameters inside a Docker or Podman container, isolating agent-generated code from the host. A local execution mode is available for development.</p>
+      </div>
+      <div class="tile">
+        <span class="tile-badge">Extensibility</span>
+        <h3>Plugin system</h3>
+        <p>Plugins subclass <code>PluginBase</code> and contribute event handlers and REST routes — discovered and loaded automatically. See <a href="plugins.html">Plugins</a>.</p>
+      </div>
+    </div>
+
+    <h2>MCP frontend vs. backend</h2>
+    <p>Skillberry Store sits on both sides of the Model Context Protocol:</p>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th></th><th>MCP Frontend</th><th>MCP Backend</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Direction</strong></td><td>SBS serves tools to agents</td><td>SBS consumes tools from other servers</td></tr>
+          <tr><td><strong>How</strong></td><td>Virtual MCP servers (VMCP) per skill, plus the control API at <code>/control_sse</code></td><td>Register a backend with <code>packaging_format="mcp"</code> and route calls to it</td></tr>
+          <tr><td><strong>Use it to</strong></td><td>Connect Claude, Cursor, LangGraph, or any MCP client to your library</td><td>Import and route tools from multiple external MCP servers</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Storage &amp; persistence</h2>
+    <p>All resources persist under a single base directory (<code>SBS_BASE_DIR</code>, defaulting to the system temp directory), with separate folders for tools, skills, snippets, metadata, VMCP definitions, and their embeddings. Persistence backends include the local filesystem and GitHub repositories via version-controlled shell hooks.</p>
+    <div class="callout">
+      <p>Every directory is individually overridable through environment variables — see the repository's <a href="https://github.com/skillberry-ai/skillberry-store/blob/main/docs/config-env-vars.md">configuration guide</a> for the full list.</p>
+    </div>
+
+    <h2>Observability</h2>
+    <p>The service emits Prometheus metrics (prefixed <code>SBS_</code>, on port 8090 by default) and OpenTelemetry traces (via the OTLP exporter, with FastAPI and requests instrumentation). Point Prometheus and a Jaeger all-in-one instance at the service to watch usage in real time. Observability can be disabled entirely by setting <code>OBSERVABILITY=False</code>.</p>
+
+    <h2>Source layout</h2>
+    <p>The backend lives under <code>src/skillberry_store/</code>:</p>
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Module</th><th>Responsibility</th></tr></thead>
+        <tbody>
+          <tr><td><code>fast_api/</code></td><td>REST API layer</td></tr>
+          <tr><td><code>services/</code></td><td>Service / logic layer</td></tr>
+          <tr><td><code>modules/</code></td><td>Core domain logic</td></tr>
+          <tr><td><code>schemas/</code></td><td>Pydantic models</td></tr>
+          <tr><td><code>plugins/</code></td><td>Plugin base classes (<code>PluginBase</code>, <code>PluginMetadata</code>, <code>PluginType</code>)</td></tr>
+          <tr><td><code>vdbs/</code></td><td>Vector database backends</td></tr>
+          <tr><td><code>tools/</code></td><td>Tool handling, including the Anthropic skill format</td></tr>
+          <tr><td><code>ui/</code></td><td>The React web UI</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout teal" style="margin-top:2rem">
+      <p>Ready to run it? Head to <a href="getting-started.html">Getting Started</a>, or drive the service from your shell with the <a href="cli.html"><code>sbs</code> CLI</a>.</p>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    <div class="page">
+      <div class="footer-brand">
+        <a class="nav-brand" href="./"><img src="assets/logo.png" alt="Skillberry logo"> Skillberry Store</a>
+        <p>A smart skills repository for agentic workflows. Manage, execute, and organize every tool your AI agents need.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Docs</h4>
+          <a href="getting-started.html">Getting Started</a>
+          <a href="features.html">Features</a>
+          <a href="plugins.html">Plugins</a>
+          <a href="architecture.html">Architecture</a>
+          <a href="cli.html">CLI</a>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <a href="https://github.com/skillberry-ai/skillberry-store">GitHub ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/tree/main/docs">Repository docs ↗</a>
+          <a href="https://github.com/skillberry-ai/skillberry-store/issues">Issues ↗</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Skillberry-AI · Apache License 2.0</span>
+      <span>An open-source project · skillberry-ai</span>
+    </div>
+  </footer>
+
+</body>
+</html>
