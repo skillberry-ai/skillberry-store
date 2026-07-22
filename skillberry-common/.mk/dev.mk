@@ -35,13 +35,12 @@ CODE_FILES := $(CODE_FILES) pyproject.toml Makefile Dockerfile
 .stamps/code-scan: $(CODE_FILES)
 	@echo "Detected code changed in: $(CODE_SUBTREES)"
 	@if [ -f .stamps/code-scan ]; then \
-		for file in $(CODE_FILES); do \
-			if [ "$$file" -nt .stamps/code-scan ]; then \
-				echo "$$file"; \
-			fi; \
+		find $(CODE_SUBTREES) -type f $(CODE_FILTER) -newer .stamps/code-scan -print; \
+		for f in pyproject.toml Makefile Dockerfile; do \
+			[ -e "$$f" ] && [ "$$f" -nt .stamps/code-scan ] && echo "$$f"; \
 		done; \
 	fi
-	@touch .stamps/code-scan
+	@mkdir -p .stamps && touch .stamps/code-scan
 
 git-hooks-setup:
 	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
