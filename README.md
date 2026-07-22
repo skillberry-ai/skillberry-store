@@ -1,5 +1,15 @@
 # Skillberry-store service (a.k.a., SBS)
 
+<p>
+  <a href="https://skillberry-ai.github.io/skillberry-store/"><img src="https://img.shields.io/badge/site-live-0066CC" alt="site"></a>
+  <a href="https://github.com/skillberry-ai/skillberry-store/actions/workflows/push.yml"><img src="https://github.com/skillberry-ai/skillberry-store/actions/workflows/push.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/skillberry-ai/skillberry-store/stargazers"><img src="https://img.shields.io/github/stars/skillberry-ai/skillberry-store?style=flat&label=stars&color=0066CC" alt="GitHub stars"></a>
+  <img src="https://img.shields.io/badge/status-beta%20(0.x)-orange" alt="status">
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="python">
+  <img src="https://img.shields.io/badge/license-Apache--2.0-informational" alt="license">
+  <a href="docs/plugins-installation.md"><img src="https://img.shields.io/badge/plugins-16-0066CC" alt="plugins"></a>
+</p>
+
 This service implements a smart skills repository for agentic workflows. Manage, execute, and organize your skills, tools and snippets with powerful search and lifecycle management.
 
 ![Skillberry Store demo](https://i.imgur.com/hpsGpnc.gif)
