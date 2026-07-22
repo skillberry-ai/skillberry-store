@@ -20,12 +20,27 @@ def test_preset_skills_prefilled():
 
 def test_optimize_preset_enables_agent_teams():
     # Every preset carries an env block so the x-prefill always seeds agent_env;
-    # only the optimize preset turns on the experimental agent-teams flag.
+    # the optimize and dream presets turn on the experimental agent-teams flag.
     by_id = {p["id"]: p for p in PRESETS}
     for p in PRESETS:
         assert isinstance(p["env"], dict)
     assert by_id["optimize"]["env"] == {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}
     assert by_id["custom"]["env"] == {}
+
+
+def test_dream_preset_versions_skills_immutably():
+    by_id = {p["id"]: p for p in PRESETS}
+    assert "dream" in by_id
+    dream = by_id["dream"]
+    # Git-like versioning framing: never in-place, name resolves to latest, new
+    # UUID under the same name, no invented names.
+    prompt = dream["prompt"]
+    assert "in-place" in prompt
+    assert "latest version" in prompt
+    assert "new UUID" in prompt
+    assert "SAME name" in prompt
+    assert "_optimized" in prompt  # explicitly forbids inventing a new name
+    assert dream["env"] == {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"}
 
 
 def test_generic_custom_preset_is_empty():
