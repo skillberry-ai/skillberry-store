@@ -2,9 +2,23 @@
 
 # import apis into api package
 from skillberry_store_sdk.api.admin_api import AdminApi
+from skillberry_store_sdk.api.anthropic_skill_generator_api import AnthropicSkillGeneratorApi
+from skillberry_store_sdk.api.ask_runspace_api import AskRunspaceApi
+from skillberry_store_sdk.api.creator_api import CreatorApi
+from skillberry_store_sdk.api.dast_api import DastApi
+from skillberry_store_sdk.api.dedupe_api import DedupeApi
+from skillberry_store_sdk.api.dependency_tracker_api import DependencyTrackerApi
+from skillberry_store_sdk.api.doc_generator_api import DocGeneratorApi
+from skillberry_store_sdk.api.evaluator_api import EvaluatorApi
 from skillberry_store_sdk.api.mcp_importer_api import McpImporterApi
 from skillberry_store_sdk.api.plugins_api import PluginsApi
+from skillberry_store_sdk.api.provenance_api import ProvenanceApi
+from skillberry_store_sdk.api.sast_api import SastApi
+from skillberry_store_sdk.api.security_api import SecurityApi
+from skillberry_store_sdk.api.simulate_api import SimulateApi
+from skillberry_store_sdk.api.skill_optimizer_api import SkillOptimizerApi
 from skillberry_store_sdk.api.skills_api import SkillsApi
+from skillberry_store_sdk.api.skillssh_importer_api import SkillsshImporterApi
 from skillberry_store_sdk.api.snippets_api import SnippetsApi
 from skillberry_store_sdk.api.tools_api import ToolsApi
 from skillberry_store_sdk.api.vmcp_servers_api import VmcpServersApi

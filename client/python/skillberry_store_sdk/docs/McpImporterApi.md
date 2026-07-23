@@ -4,11 +4,11 @@ All URIs are relative to *http://localhost*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
-[**import_tools_plugins_mcp_importer_import_tools_post**](McpImporterApi.md#import_tools_plugins_mcp_importer_import_tools_post) | **POST** /plugins/mcp-importer/import-tools | Import Tools
+[**mcp_importer_import_tools**](McpImporterApi.md#mcp_importer_import_tools) | **POST** /plugins/mcp-importer/import-tools | Import Tools
 
 
-# **import_tools_plugins_mcp_importer_import_tools_post**
-> object import_tools_plugins_mcp_importer_import_tools_post(import_request)
+# **mcp_importer_import_tools**
+> object mcp_importer_import_tools(skillberry_plugin_mcp_importer_plugin_skillberry_plugin_mcp_importer_get_router_locals_import_request)
 
 Import Tools
 
@@ -19,7 +19,7 @@ Import all tools from the given MCP SSE server into the store.
 
 ```python
 import skillberry_store_sdk
-from skillberry_store_sdk.models.import_request import ImportRequest
+from skillberry_store_sdk.models.skillberry_plugin_mcp_importer_plugin_skillberry_plugin_mcp_importer_get_router_locals_import_request import SkillberryPluginMcpImporterPluginSkillberryPluginMcpImporterGetRouterLocalsImportRequest
 from skillberry_store_sdk.rest import ApiException
 from pprint import pprint
 
@@ -34,15 +34,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.McpImporterApi(api_client)
-    import_request = skillberry_store_sdk.ImportRequest() # ImportRequest | 
+    skillberry_plugin_mcp_importer_plugin_skillberry_plugin_mcp_importer_get_router_locals_import_request = skillberry_store_sdk.SkillberryPluginMcpImporterPluginSkillberryPluginMcpImporterGetRouterLocalsImportRequest() # SkillberryPluginMcpImporterPluginSkillberryPluginMcpImporterGetRouterLocalsImportRequest | 
 
     try:
         # Import Tools
-        api_response = api_instance.import_tools_plugins_mcp_importer_import_tools_post(import_request)
-        print("The response of McpImporterApi->import_tools_plugins_mcp_importer_import_tools_post:\n")
+        api_response = api_instance.mcp_importer_import_tools(skillberry_plugin_mcp_importer_plugin_skillberry_plugin_mcp_importer_get_router_locals_import_request)
+        print("The response of McpImporterApi->mcp_importer_import_tools:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling McpImporterApi->import_tools_plugins_mcp_importer_import_tools_post: %s\n" % e)
+        print("Exception when calling McpImporterApi->mcp_importer_import_tools: %s\n" % e)
 ```
 
 
@@ -52,7 +52,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **import_request** | [**ImportRequest**](ImportRequest.md)|  | 
+ **skillberry_plugin_mcp_importer_plugin_skillberry_plugin_mcp_importer_get_router_locals_import_request** | [**SkillberryPluginMcpImporterPluginSkillberryPluginMcpImporterGetRouterLocalsImportRequest**](SkillberryPluginMcpImporterPluginSkillberryPluginMcpImporterGetRouterLocalsImportRequest.md)|  | 
 
 ### Return type
 
