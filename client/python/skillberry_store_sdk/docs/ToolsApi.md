@@ -4,19 +4,108 @@ All URIs are relative to *http://localhost*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
-[**add_tool_from_python_tools_add_post**](ToolsApi.md#add_tool_from_python_tools_add_post) | **POST** /tools/add | Add Tool From Python
-[**create_tool_tools_post**](ToolsApi.md#create_tool_tools_post) | **POST** /tools/ | Create Tool
-[**delete_tool_tools_uuid_or_name_delete**](ToolsApi.md#delete_tool_tools_uuid_or_name_delete) | **DELETE** /tools/{uuid_or_name} | Delete Tool
-[**execute_tool_tools_uuid_or_name_execute_post**](ToolsApi.md#execute_tool_tools_uuid_or_name_execute_post) | **POST** /tools/{uuid_or_name}/execute | Execute Tool
-[**get_tool_module_tools_uuid_or_name_module_get**](ToolsApi.md#get_tool_module_tools_uuid_or_name_module_get) | **GET** /tools/{uuid_or_name}/module | Get Tool Module
-[**get_tool_tools_uuid_or_name_get**](ToolsApi.md#get_tool_tools_uuid_or_name_get) | **GET** /tools/{uuid_or_name} | Get Tool
-[**list_tools_tools_get**](ToolsApi.md#list_tools_tools_get) | **GET** /tools/ | List Tools
-[**search_tools_search_tools_get**](ToolsApi.md#search_tools_search_tools_get) | **GET** /search/tools | Search Tools
-[**update_tool_tools_uuid_or_name_put**](ToolsApi.md#update_tool_tools_uuid_or_name_put) | **PUT** /tools/{uuid_or_name} | Update Tool
+[**add_tool_from_code**](ToolsApi.md#add_tool_from_code) | **POST** /tools/add_code | Add Tool From Code
+[**add_tool_from_python**](ToolsApi.md#add_tool_from_python) | **POST** /tools/add | Add Tool From Python
+[**create_tool**](ToolsApi.md#create_tool) | **POST** /tools/ | Create Tool
+[**delete_tool**](ToolsApi.md#delete_tool) | **DELETE** /tools/{uuid_or_name} | Delete Tool
+[**execute_tool**](ToolsApi.md#execute_tool) | **POST** /tools/{uuid_or_name}/execute | Execute Tool
+[**get_tool**](ToolsApi.md#get_tool) | **GET** /tools/{uuid_or_name} | Get Tool
+[**get_tool_module**](ToolsApi.md#get_tool_module) | **GET** /tools/{uuid_or_name}/module | Get Tool Module
+[**list_tools**](ToolsApi.md#list_tools) | **GET** /tools/ | List Tools
+[**search_tools**](ToolsApi.md#search_tools) | **GET** /search/tools | Search Tools
+[**tool_facets**](ToolsApi.md#tool_facets) | **GET** /facets/tools | Tool Facets
+[**update_tool**](ToolsApi.md#update_tool) | **PUT** /tools/{uuid_or_name} | Update Tool
 
 
-# **add_tool_from_python_tools_add_post**
-> Dict[str, object] add_tool_from_python_tools_add_post(tool, selected_func=selected_func, update=update)
+# **add_tool_from_code**
+> Dict[str, object] add_tool_from_code(add_tool_from_code_request)
+
+Add Tool From Code
+
+Add a tool from Python source passed as a string (MCP-friendly).
+
+Same behavior as ``POST /tools/add`` (auto-extracts the manifest from the
+function docstring) but takes the source as a normal JSON ``code`` field
+instead of a file upload — so it works over the MCP bridge, which cannot
+transmit ``multipart``/octet-stream file bodies.
+
+Args:
+    req: ``code`` (the Python source), optional ``selected_func`` (which
+        function to extract; defaults to the first), ``update`` (update an
+        existing tool of the same name), and ``module_name`` (stored file
+        name; defaults to ``tool.py``).
+
+Returns:
+    dict: Success message with the tool name, uuid, and module_name.
+
+Raises:
+    HTTPException: tool already exists (409), parse/validation error
+        (400), or any other error (500).
+
+### Example
+
+
+```python
+import skillberry_store_sdk
+from skillberry_store_sdk.models.add_tool_from_code_request import AddToolFromCodeRequest
+from skillberry_store_sdk.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = skillberry_store_sdk.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with skillberry_store_sdk.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = skillberry_store_sdk.ToolsApi(api_client)
+    add_tool_from_code_request = skillberry_store_sdk.AddToolFromCodeRequest() # AddToolFromCodeRequest | 
+
+    try:
+        # Add Tool From Code
+        api_response = api_instance.add_tool_from_code(add_tool_from_code_request)
+        print("The response of ToolsApi->add_tool_from_code:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling ToolsApi->add_tool_from_code: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **add_tool_from_code_request** | [**AddToolFromCodeRequest**](AddToolFromCodeRequest.md)|  | 
+
+### Return type
+
+**Dict[str, object]**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Successful Response |  -  |
+**422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **add_tool_from_python**
+> Dict[str, object] add_tool_from_python(tool, selected_func=selected_func, update=update)
 
 Add Tool From Python
 
@@ -64,11 +153,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Add Tool From Python
-        api_response = api_instance.add_tool_from_python_tools_add_post(tool, selected_func=selected_func, update=update)
-        print("The response of ToolsApi->add_tool_from_python_tools_add_post:\n")
+        api_response = api_instance.add_tool_from_python(tool, selected_func=selected_func, update=update)
+        print("The response of ToolsApi->add_tool_from_python:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling ToolsApi->add_tool_from_python_tools_add_post: %s\n" % e)
+        print("Exception when calling ToolsApi->add_tool_from_python: %s\n" % e)
 ```
 
 
@@ -104,10 +193,25 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **create_tool_tools_post**
-> Dict[str, object] create_tool_tools_post(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, packaging_params=packaging_params, params=params, returns=returns, dependencies=dependencies)
+# **create_tool**
+> Dict[str, object] create_tool(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, packaging_params=packaging_params, params=params, returns=returns, dependencies=dependencies)
 
 Create Tool
+
+Create a new tool with its module file.
+
+Creates a new tool entry in the store along with its associated Python module file.
+The tool metadata is validated against the ToolSchema and stored as a manifest.
+
+Args:
+    tool: Tool metadata conforming to ToolSchema (name, description, params, etc.).
+    module: Python module file to upload for the tool.
+
+Returns:
+    dict: Contains success message, tool name, UUID, and module_name.
+
+Raises:
+    HTTPException: 409 if tool already exists, 500 for other errors.
 
 ### Example
 
@@ -149,11 +253,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Create Tool
-        api_response = api_instance.create_tool_tools_post(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, packaging_params=packaging_params, params=params, returns=returns, dependencies=dependencies)
-        print("The response of ToolsApi->create_tool_tools_post:\n")
+        api_response = api_instance.create_tool(module, name=name, uuid=uuid, version=version, description=description, state=state, tags=tags, extra=extra, parent=parent, created_at=created_at, modified_at=modified_at, module_name=module_name, programming_language=programming_language, packaging_format=packaging_format, packaging_params=packaging_params, params=params, returns=returns, dependencies=dependencies)
+        print("The response of ToolsApi->create_tool:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling ToolsApi->create_tool_tools_post: %s\n" % e)
+        print("Exception when calling ToolsApi->create_tool: %s\n" % e)
 ```
 
 
@@ -204,10 +308,24 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **delete_tool_tools_uuid_or_name_delete**
-> Dict[str, object] delete_tool_tools_uuid_or_name_delete(uuid_or_name)
+# **delete_tool**
+> Dict[str, object] delete_tool(uuid_or_name)
 
 Delete Tool
+
+Delete a tool from the store.
+
+Removes a tool and its associated files from the store. This operation
+also triggers a content deletion event for plugin processing.
+
+Args:
+    uuid_or_name: The UUID or name of the tool to delete.
+
+Returns:
+    dict: Success message confirming deletion.
+
+Raises:
+    HTTPException: 404 if tool not found, 500 for other errors.
 
 ### Example
 
@@ -232,11 +350,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Delete Tool
-        api_response = api_instance.delete_tool_tools_uuid_or_name_delete(uuid_or_name)
-        print("The response of ToolsApi->delete_tool_tools_uuid_or_name_delete:\n")
+        api_response = api_instance.delete_tool(uuid_or_name)
+        print("The response of ToolsApi->delete_tool:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling ToolsApi->delete_tool_tools_uuid_or_name_delete: %s\n" % e)
+        print("Exception when calling ToolsApi->delete_tool: %s\n" % e)
 ```
 
 
@@ -270,8 +388,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **execute_tool_tools_uuid_or_name_execute_post**
-> Dict[str, object] execute_tool_tools_uuid_or_name_execute_post(uuid_or_name, request_body=request_body)
+# **execute_tool**
+> Dict[str, object] execute_tool(uuid_or_name, request_body=request_body)
 
 Execute Tool
 
@@ -315,11 +433,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Execute Tool
-        api_response = api_instance.execute_tool_tools_uuid_or_name_execute_post(uuid_or_name, request_body=request_body)
-        print("The response of ToolsApi->execute_tool_tools_uuid_or_name_execute_post:\n")
+        api_response = api_instance.execute_tool(uuid_or_name, request_body=request_body)
+        print("The response of ToolsApi->execute_tool:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling ToolsApi->execute_tool_tools_uuid_or_name_execute_post: %s\n" % e)
+        print("Exception when calling ToolsApi->execute_tool: %s\n" % e)
 ```
 
 
@@ -354,10 +472,110 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **get_tool_module_tools_uuid_or_name_module_get**
-> str get_tool_module_tools_uuid_or_name_module_get(uuid_or_name)
+# **get_tool**
+> Dict[str, object] get_tool(uuid_or_name, fields=fields)
+
+Get Tool
+
+Get metadata for a specific tool by UUID or name.
+
+Retrieves the manifest/metadata for a tool identified by either
+its UUID or its unique name.
+
+Args:
+    uuid_or_name: The UUID or name of the tool to retrieve.
+    fields: Optional field-selection spec (see query-param description).
+
+Returns:
+    dict: Tool metadata (subset when ``fields`` narrows the
+        field selection).
+
+Raises:
+    HTTPException: 400 if ``fields`` is invalid, 404 if tool
+        not found, 500 for other errors.
+
+### Example
+
+
+```python
+import skillberry_store_sdk
+from skillberry_store_sdk.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = skillberry_store_sdk.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with skillberry_store_sdk.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = skillberry_store_sdk.ToolsApi(api_client)
+    uuid_or_name = 'uuid_or_name_example' # str | 
+    fields = 'fields_example' # str | Field selection. 'minimal' returns uuid only. Omit or 'narrow' for the UI listing set (default). 'wide' returns every persisted manifest field. 'full' returns the complete object, including flag fields that trigger bundling mechanisms. Or supply a comma-separated allowlist of field names. (optional)
+
+    try:
+        # Get Tool
+        api_response = api_instance.get_tool(uuid_or_name, fields=fields)
+        print("The response of ToolsApi->get_tool:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling ToolsApi->get_tool: %s\n" % e)
+```
+
+
+
+### Parameters
+
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **uuid_or_name** | **str**|  | 
+ **fields** | **str**| Field selection. &#39;minimal&#39; returns uuid only. Omit or &#39;narrow&#39; for the UI listing set (default). &#39;wide&#39; returns every persisted manifest field. &#39;full&#39; returns the complete object, including flag fields that trigger bundling mechanisms. Or supply a comma-separated allowlist of field names. | [optional] 
+
+### Return type
+
+**Dict[str, object]**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Successful Response |  -  |
+**422** | Validation Error |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **get_tool_module**
+> str get_tool_module(uuid_or_name)
 
 Get Tool Module
+
+Get the module file content for a specific tool.
+
+Retrieves the Python source code or MCP content for a tool. For MCP-packaged
+tools, returns the MCP manifest stub. For code-packaged tools, returns
+the Python module source.
+
+Args:
+    uuid_or_name: The UUID or name of the tool whose module to retrieve.
+
+Returns:
+    PlainTextResponse: The module file content as plain text.
+
+Raises:
+    HTTPException: 404 if tool not found, 500 for other errors.
 
 ### Example
 
@@ -382,11 +600,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Get Tool Module
-        api_response = api_instance.get_tool_module_tools_uuid_or_name_module_get(uuid_or_name)
-        print("The response of ToolsApi->get_tool_module_tools_uuid_or_name_module_get:\n")
+        api_response = api_instance.get_tool_module(uuid_or_name)
+        print("The response of ToolsApi->get_tool_module:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling ToolsApi->get_tool_module_tools_uuid_or_name_module_get: %s\n" % e)
+        print("Exception when calling ToolsApi->get_tool_module: %s\n" % e)
 ```
 
 
@@ -420,10 +638,19 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **get_tool_tools_uuid_or_name_get**
-> Dict[str, object] get_tool_tools_uuid_or_name_get(uuid_or_name)
+# **list_tools**
+> object list_tools(fields=fields, search=search, tags=tags, state=state, sort=sort, limit=limit, offset=offset)
 
-Get Tool
+List Tools
+
+List tools with optional filter / sort / paginate / project.
+
+See query-param descriptions for behavior. When neither ``limit``
+nor ``offset`` is set, returns a bare list. Otherwise returns
+``{items, total, offset, limit}``.
+
+Raises:
+    HTTPException: 400 if ``fields`` is invalid, 500 if listing fails.
 
 ### Example
 
@@ -444,15 +671,21 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.ToolsApi(api_client)
-    uuid_or_name = 'uuid_or_name_example' # str | 
+    fields = 'fields_example' # str | Field selection. 'minimal' returns uuid only. Omit or 'narrow' for the UI listing set (default). 'wide' returns every persisted manifest field. 'full' returns the complete object, including flag fields that trigger bundling mechanisms. Or supply a comma-separated allowlist of field names. (optional)
+    search = 'search_example' # str | Case-insensitive substring over name + description. (optional)
+    tags = ['tags_example'] # List[str] | Repeat to filter by multiple tags (AND semantics). Namespace tags are ordinary tags — pass ``namespace:xyz`` to filter by namespace. (optional)
+    state = 'state_example' # str | Exact-match lifecycle state filter. (optional)
+    sort = 'sort_example' # str | ``field:direction`` (e.g. ``name:asc``). Defaults to ``modified_at:desc``. (optional)
+    limit = 56 # int | Max items to return. Setting ``limit`` (or ``offset``) switches the response to a ``{items, total, offset, limit}`` envelope. Omit both for the legacy bare array. (optional)
+    offset = 56 # int | Page offset. (optional)
 
     try:
-        # Get Tool
-        api_response = api_instance.get_tool_tools_uuid_or_name_get(uuid_or_name)
-        print("The response of ToolsApi->get_tool_tools_uuid_or_name_get:\n")
+        # List Tools
+        api_response = api_instance.list_tools(fields=fields, search=search, tags=tags, state=state, sort=sort, limit=limit, offset=offset)
+        print("The response of ToolsApi->list_tools:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling ToolsApi->get_tool_tools_uuid_or_name_get: %s\n" % e)
+        print("Exception when calling ToolsApi->list_tools: %s\n" % e)
 ```
 
 
@@ -462,11 +695,17 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **uuid_or_name** | **str**|  | 
+ **fields** | **str**| Field selection. &#39;minimal&#39; returns uuid only. Omit or &#39;narrow&#39; for the UI listing set (default). &#39;wide&#39; returns every persisted manifest field. &#39;full&#39; returns the complete object, including flag fields that trigger bundling mechanisms. Or supply a comma-separated allowlist of field names. | [optional] 
+ **search** | **str**| Case-insensitive substring over name + description. | [optional] 
+ **tags** | [**List[str]**](str.md)| Repeat to filter by multiple tags (AND semantics). Namespace tags are ordinary tags — pass &#x60;&#x60;namespace:xyz&#x60;&#x60; to filter by namespace. | [optional] 
+ **state** | **str**| Exact-match lifecycle state filter. | [optional] 
+ **sort** | **str**| &#x60;&#x60;field:direction&#x60;&#x60; (e.g. &#x60;&#x60;name:asc&#x60;&#x60;). Defaults to &#x60;&#x60;modified_at:desc&#x60;&#x60;. | [optional] 
+ **limit** | **int**| Max items to return. Setting &#x60;&#x60;limit&#x60;&#x60; (or &#x60;&#x60;offset&#x60;&#x60;) switches the response to a &#x60;&#x60;{items, total, offset, limit}&#x60;&#x60; envelope. Omit both for the legacy bare array. | [optional] 
+ **offset** | **int**| Page offset. | [optional] 
 
 ### Return type
 
-**Dict[str, object]**
+**object**
 
 ### Authorization
 
@@ -486,69 +725,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **list_tools_tools_get**
-> List[Dict[str, object]] list_tools_tools_get()
-
-List Tools
-
-### Example
-
-
-```python
-import skillberry_store_sdk
-from skillberry_store_sdk.rest import ApiException
-from pprint import pprint
-
-# Defining the host is optional and defaults to http://localhost
-# See configuration.py for a list of all supported configuration parameters.
-configuration = skillberry_store_sdk.Configuration(
-    host = "http://localhost"
-)
-
-
-# Enter a context with an instance of the API client
-with skillberry_store_sdk.ApiClient(configuration) as api_client:
-    # Create an instance of the API class
-    api_instance = skillberry_store_sdk.ToolsApi(api_client)
-
-    try:
-        # List Tools
-        api_response = api_instance.list_tools_tools_get()
-        print("The response of ToolsApi->list_tools_tools_get:\n")
-        pprint(api_response)
-    except Exception as e:
-        print("Exception when calling ToolsApi->list_tools_tools_get: %s\n" % e)
-```
-
-
-
-### Parameters
-
-This endpoint does not need any parameter.
-
-### Return type
-
-**List[Dict[str, object]]**
-
-### Authorization
-
-No authorization required
-
-### HTTP request headers
-
- - **Content-Type**: Not defined
- - **Accept**: application/json
-
-### HTTP response details
-
-| Status code | Description | Response headers |
-|-------------|-------------|------------------|
-**200** | Successful Response |  -  |
-
-[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
-
-# **search_tools_search_tools_get**
-> List[object] search_tools_search_tools_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
+# **search_tools**
+> List[object] search_tools(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state, fields=fields)
 
 Search Tools
 
@@ -562,9 +740,11 @@ Args:
     similarity_threshold: Threshold to be used.
     manifest_filter: Manifest properties to filter (e.g., "tags:python", "state:approved").
     lifecycle_state: State to filter by (e.g., LifecycleState.APPROVED).
+    fields: Optional field-selection spec (see query-param description).
 
 Returns:
-    list: A list of matched tool names and similarity scores.
+    list: Field-selected tool dicts with ``similarity_score``
+        merged in.
 
 ### Example
 
@@ -590,14 +770,15 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
     similarity_threshold = 1 # float |  (optional) (default to 1)
     manifest_filter = '.' # str |  (optional) (default to '.')
     lifecycle_state = skillberry_store_sdk.LifecycleState() # LifecycleState |  (optional)
+    fields = 'fields_example' # str | Field selection over each match. Same grammar as the list endpoint ('minimal' for uuid-only search results that cross-reference a loaded listing; omit or 'narrow' for the UI listing set — default; 'wide' for every persisted manifest field; 'full' for the complete object; CSV allowlist). Each match is a field-selected tool dict with 'similarity_score' merged in. (optional)
 
     try:
         # Search Tools
-        api_response = api_instance.search_tools_search_tools_get(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state)
-        print("The response of ToolsApi->search_tools_search_tools_get:\n")
+        api_response = api_instance.search_tools(search_term, max_number_of_results=max_number_of_results, similarity_threshold=similarity_threshold, manifest_filter=manifest_filter, lifecycle_state=lifecycle_state, fields=fields)
+        print("The response of ToolsApi->search_tools:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling ToolsApi->search_tools_search_tools_get: %s\n" % e)
+        print("Exception when calling ToolsApi->search_tools: %s\n" % e)
 ```
 
 
@@ -612,6 +793,7 @@ Name | Type | Description  | Notes
  **similarity_threshold** | **float**|  | [optional] [default to 1]
  **manifest_filter** | **str**|  | [optional] [default to &#39;.&#39;]
  **lifecycle_state** | [**LifecycleState**](.md)|  | [optional] 
+ **fields** | **str**| Field selection over each match. Same grammar as the list endpoint (&#39;minimal&#39; for uuid-only search results that cross-reference a loaded listing; omit or &#39;narrow&#39; for the UI listing set — default; &#39;wide&#39; for every persisted manifest field; &#39;full&#39; for the complete object; CSV allowlist). Each match is a field-selected tool dict with &#39;similarity_score&#39; merged in. | [optional] 
 
 ### Return type
 
@@ -635,10 +817,92 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **update_tool_tools_uuid_or_name_put**
-> Dict[str, object] update_tool_tools_uuid_or_name_put(uuid_or_name, tool_schema)
+# **tool_facets**
+> object tool_facets()
+
+Tool Facets
+
+Return the unique tags / namespaces / states over all tools.
+
+Powers filter-picker widgets so callers can enumerate every
+available value without fetching every tool.
+
+### Example
+
+
+```python
+import skillberry_store_sdk
+from skillberry_store_sdk.rest import ApiException
+from pprint import pprint
+
+# Defining the host is optional and defaults to http://localhost
+# See configuration.py for a list of all supported configuration parameters.
+configuration = skillberry_store_sdk.Configuration(
+    host = "http://localhost"
+)
+
+
+# Enter a context with an instance of the API client
+with skillberry_store_sdk.ApiClient(configuration) as api_client:
+    # Create an instance of the API class
+    api_instance = skillberry_store_sdk.ToolsApi(api_client)
+
+    try:
+        # Tool Facets
+        api_response = api_instance.tool_facets()
+        print("The response of ToolsApi->tool_facets:\n")
+        pprint(api_response)
+    except Exception as e:
+        print("Exception when calling ToolsApi->tool_facets: %s\n" % e)
+```
+
+
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+**object**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+**200** | Successful Response |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **update_tool**
+> Dict[str, object] update_tool(uuid_or_name, tool_schema)
 
 Update Tool
+
+Update an existing tool's metadata.
+
+Updates the manifest/metadata for an existing tool. The module file is not
+updated by this endpoint. This operation triggers a content update event
+for plugin processing.
+
+Args:
+    uuid_or_name: The UUID or name of the tool to update.
+    tool: Updated tool metadata conforming to ToolSchema.
+
+Returns:
+    dict: Success message confirming update.
+
+Raises:
+    HTTPException: 404 if tool not found, 500 for other errors.
 
 ### Example
 
@@ -665,11 +929,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Update Tool
-        api_response = api_instance.update_tool_tools_uuid_or_name_put(uuid_or_name, tool_schema)
-        print("The response of ToolsApi->update_tool_tools_uuid_or_name_put:\n")
+        api_response = api_instance.update_tool(uuid_or_name, tool_schema)
+        print("The response of ToolsApi->update_tool:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling ToolsApi->update_tool_tools_uuid_or_name_put: %s\n" % e)
+        print("Exception when calling ToolsApi->update_tool: %s\n" % e)
 ```
 
 
