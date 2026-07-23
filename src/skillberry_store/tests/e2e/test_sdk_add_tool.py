@@ -76,7 +76,7 @@ async def test_sdk_add_tool(run_sbs, sdk_client):
     
     try:
         # Add the tool using SDK - pass the file path
-        result = sdk_client.add_tool_from_python_tools_add_post(
+        result = sdk_client.add_tool_from_python(
             tool=temp_path
         )
         
@@ -93,17 +93,17 @@ async def test_sdk_add_tool(run_sbs, sdk_client):
         assert module_name is not None and module_name == os.path.basename(temp_path)
         
         # Verify the tool was actually created by retrieving it
-        tool = sdk_client.get_tool_tools_uuid_or_name_get(uuid_or_name="calculate_sum")
+        tool = sdk_client.get_tool(uuid_or_name="calculate_sum")
         assert tool is not None
         assert tool.get("name") == "calculate_sum"
         
         # Cleanup
-        sdk_client.delete_tool_tools_uuid_or_name_delete(uuid_or_name="calculate_sum")
+        sdk_client.delete_tool(uuid_or_name="calculate_sum")
         
     except Exception as e:
         # If test fails, try to cleanup anyway
         try:
-            sdk_client.delete_tool_tools_uuid_or_name_delete(uuid_or_name="calculate_sum")
+            sdk_client.delete_tool(uuid_or_name="calculate_sum")
         except:
             pass
         raise e

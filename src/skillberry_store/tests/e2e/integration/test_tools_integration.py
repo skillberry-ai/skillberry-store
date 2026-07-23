@@ -24,7 +24,7 @@ class TestToolsAPI:
         # SDK expects tuple of (filename, bytes)
         tool_file = ("test_add_numbers.py", test_tool_file)
         
-        response = tools_api.add_tool_from_python_tools_add_post(
+        response = tools_api.add_tool_from_python(
             tool=tool_file,
             selected_func="add_numbers"
         )
@@ -43,7 +43,7 @@ class TestToolsAPI:
 
     def test_02_list_tools(self, tools_api):
         """Test listing all tools."""
-        response = tools_api.list_tools_tools_get()
+        response = tools_api.list_tools()
         
         assert response is not None
         assert isinstance(response, list)
@@ -58,7 +58,7 @@ class TestToolsAPI:
         if not test_state["tool_name"]:
             pytest.skip("Tool name not available from previous test")
         
-        response = tools_api.get_tool_tools_uuid_or_name_get(uuid_or_name=test_state["tool_name"])
+        response = tools_api.get_tool(uuid_or_name=test_state["tool_name"])
         
         assert response is not None
         assert response.get("name") == test_state["tool_name"]
@@ -70,7 +70,7 @@ class TestToolsAPI:
         if not test_state["tool_name"]:
             pytest.skip("Tool name not available from previous test")
         
-        response = tools_api.get_tool_module_tools_uuid_or_name_module_get(uuid_or_name=test_state["tool_name"])
+        response = tools_api.get_tool_module(uuid_or_name=test_state["tool_name"])
         
         assert response is not None
         assert isinstance(response, str)
@@ -84,7 +84,7 @@ class TestToolsAPI:
             pytest.skip("Tool name not available from previous test")
         
         # Execute the add_numbers tool
-        response = tools_api.execute_tool_tools_uuid_or_name_execute_post(
+        response = tools_api.execute_tool(
             uuid_or_name=test_state["tool_name"],
             request_body={"a": 5, "b": 3}
         )
@@ -104,7 +104,7 @@ class TestToolsAPI:
         # Update with the same file but with update flag
         tool_file = ("test_add_numbers.py", test_tool_file)
         
-        response = tools_api.add_tool_from_python_tools_add_post(
+        response = tools_api.add_tool_from_python(
             tool=tool_file,
             selected_func="add_numbers",
             update=True
@@ -122,7 +122,7 @@ class TestToolsAPI:
             pytest.skip("Tool name not available from previous test")
         
         # Search for tools with "add" in the name
-        response = tools_api.search_tools_search_tools_get(search_term="add")
+        response = tools_api.search_tools(search_term="add")
         
         assert response is not None
         assert isinstance(response, (list, dict))
@@ -132,14 +132,14 @@ class TestToolsAPI:
         if not test_state["tool_name"]:
             pytest.skip("Tool name not available from previous test")
         
-        response = tools_api.delete_tool_tools_uuid_or_name_delete(uuid_or_name=test_state["tool_name"])
+        response = tools_api.delete_tool(uuid_or_name=test_state["tool_name"])
         
         assert response is not None
         assert "message" in response or "deleted" in str(response).lower()
         
         # Verify tool is deleted by trying to get it (should fail or return None)
         try:
-            tools_api.get_tool_tools_uuid_or_name_get(uuid_or_name=test_state["tool_name"])
+            tools_api.get_tool(uuid_or_name=test_state["tool_name"])
             # If we get here, the tool still exists (might be expected in some cases)
         except Exception:
             # Expected - tool should not be found
@@ -168,7 +168,7 @@ def test_create_tool_with_manifest(tools_api):
     tool_file = ("multiply.py", tool_content)
     
     try:
-        response = tools_api.create_tool_tools_post(
+        response = tools_api.create_tool(
             name="test_multiply",
             description="A test multiplication tool",
             programming_language="python",
@@ -181,7 +181,7 @@ def test_create_tool_with_manifest(tools_api):
         
         # Clean up
         if "name" in response:
-            tools_api.delete_tool_tools_uuid_or_name_delete(uuid_or_name=response["name"])
+            tools_api.delete_tool(uuid_or_name=response["name"])
     except Exception as e:
         # Some parameters might not match the actual API signature
         pytest.skip(f"Tool creation with manifest not fully supported: {e}")
