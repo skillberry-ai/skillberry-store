@@ -4,17 +4,17 @@ All URIs are relative to *http://localhost*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
-[**backup_all_data_admin_backup_get**](AdminApi.md#backup_all_data_admin_backup_get) | **GET** /admin/backup | Backup All Data
-[**get_changes_count_changes_get**](AdminApi.md#get_changes_count_changes_get) | **GET** /changes | Get Changes Count
-[**get_metrics_admin_metrics_get**](AdminApi.md#get_metrics_admin_metrics_get) | **GET** /admin/metrics | Get Metrics
-[**health_check_health_get**](AdminApi.md#health_check_health_get) | **GET** /health | Health Check
-[**purge_all_data_admin_purge_all_delete**](AdminApi.md#purge_all_data_admin_purge_all_delete) | **DELETE** /admin/purge-all | Purge All Data
-[**readiness_check_health_ready_get**](AdminApi.md#readiness_check_health_ready_get) | **GET** /health/ready | Readiness Check
-[**restore_all_data_admin_restore_post**](AdminApi.md#restore_all_data_admin_restore_post) | **POST** /admin/restore | Restore All Data
+[**backup_all_data**](AdminApi.md#backup_all_data) | **GET** /admin/backup | Backup All Data
+[**get_changes_count**](AdminApi.md#get_changes_count) | **GET** /changes | Get Changes Count
+[**get_metrics**](AdminApi.md#get_metrics) | **GET** /admin/metrics | Get Metrics
+[**health_check**](AdminApi.md#health_check) | **GET** /health | Health Check
+[**purge_all_data**](AdminApi.md#purge_all_data) | **DELETE** /admin/purge-all | Purge All Data
+[**readiness_check**](AdminApi.md#readiness_check) | **GET** /health/ready | Readiness Check
+[**restore_all_data**](AdminApi.md#restore_all_data) | **POST** /admin/restore | Restore All Data
 
 
-# **backup_all_data_admin_backup_get**
-> backup_all_data_admin_backup_get()
+# **backup_all_data**
+> backup_all_data()
 
 Backup All Data
 
@@ -51,9 +51,9 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Backup All Data
-        api_instance.backup_all_data_admin_backup_get()
+        api_instance.backup_all_data()
     except Exception as e:
-        print("Exception when calling AdminApi->backup_all_data_admin_backup_get: %s\n" % e)
+        print("Exception when calling AdminApi->backup_all_data: %s\n" % e)
 ```
 
 
@@ -83,12 +83,21 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **get_changes_count_changes_get**
-> object get_changes_count_changes_get()
+# **get_changes_count**
+> object get_changes_count()
 
 Get Changes Count
 
-Return the global mutation counter. Used by the UI to detect data changes.
+Get the global mutation counter for detecting data changes.
+
+Returns a counter that increments whenever data is modified (create, update, delete).
+The UI uses this to detect when to refresh data without polling individual endpoints.
+
+Args:
+    None.
+
+Returns:
+    dict: Contains 'count' key with the current mutation counter value.
 
 ### Example
 
@@ -112,11 +121,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Get Changes Count
-        api_response = api_instance.get_changes_count_changes_get()
-        print("The response of AdminApi->get_changes_count_changes_get:\n")
+        api_response = api_instance.get_changes_count()
+        print("The response of AdminApi->get_changes_count:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling AdminApi->get_changes_count_changes_get: %s\n" % e)
+        print("Exception when calling AdminApi->get_changes_count: %s\n" % e)
 ```
 
 
@@ -146,8 +155,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **get_metrics_admin_metrics_get**
-> str get_metrics_admin_metrics_get()
+# **get_metrics**
+> str get_metrics()
 
 Get Metrics
 
@@ -184,11 +193,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Get Metrics
-        api_response = api_instance.get_metrics_admin_metrics_get()
-        print("The response of AdminApi->get_metrics_admin_metrics_get:\n")
+        api_response = api_instance.get_metrics()
+        print("The response of AdminApi->get_metrics:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling AdminApi->get_metrics_admin_metrics_get: %s\n" % e)
+        print("Exception when calling AdminApi->get_metrics: %s\n" % e)
 ```
 
 
@@ -218,8 +227,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **health_check_health_get**
-> object health_check_health_get()
+# **health_check**
+> object health_check()
 
 Health Check
 
@@ -250,11 +259,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Health Check
-        api_response = api_instance.health_check_health_get()
-        print("The response of AdminApi->health_check_health_get:\n")
+        api_response = api_instance.health_check()
+        print("The response of AdminApi->health_check:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling AdminApi->health_check_health_get: %s\n" % e)
+        print("Exception when calling AdminApi->health_check: %s\n" % e)
 ```
 
 
@@ -284,8 +293,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **purge_all_data_admin_purge_all_delete**
-> object purge_all_data_admin_purge_all_delete()
+# **purge_all_data**
+> object purge_all_data()
 
 Purge All Data
 
@@ -328,11 +337,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Purge All Data
-        api_response = api_instance.purge_all_data_admin_purge_all_delete()
-        print("The response of AdminApi->purge_all_data_admin_purge_all_delete:\n")
+        api_response = api_instance.purge_all_data()
+        print("The response of AdminApi->purge_all_data:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling AdminApi->purge_all_data_admin_purge_all_delete: %s\n" % e)
+        print("Exception when calling AdminApi->purge_all_data: %s\n" % e)
 ```
 
 
@@ -362,15 +371,15 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **readiness_check_health_ready_get**
-> object readiness_check_health_ready_get()
+# **readiness_check**
+> object readiness_check()
 
 Readiness Check
 
-Readiness check endpoint - verifies all description directories are initialized.
+Readiness check endpoint - verifies all description stores are initialized.
 
 Returns:
-    dict: Readiness status with details about each directory (HTTP 200 when ready).
+    dict: Readiness status with details about each object type (HTTP 200 when ready).
 
 Raises:
     HTTPException: 500 status when still initializing.
@@ -397,11 +406,11 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
     try:
         # Readiness Check
-        api_response = api_instance.readiness_check_health_ready_get()
-        print("The response of AdminApi->readiness_check_health_ready_get:\n")
+        api_response = api_instance.readiness_check()
+        print("The response of AdminApi->readiness_check:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling AdminApi->readiness_check_health_ready_get: %s\n" % e)
+        print("Exception when calling AdminApi->readiness_check: %s\n" % e)
 ```
 
 
@@ -431,8 +440,8 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **restore_all_data_admin_restore_post**
-> object restore_all_data_admin_restore_post(backup_file)
+# **restore_all_data**
+> object restore_all_data(backup_file)
 
 Restore All Data
 
@@ -473,15 +482,15 @@ configuration = skillberry_store_sdk.Configuration(
 with skillberry_store_sdk.ApiClient(configuration) as api_client:
     # Create an instance of the API class
     api_instance = skillberry_store_sdk.AdminApi(api_client)
-    backup_file = 'backup_file_example' # str | 
+    backup_file = None # bytearray | 
 
     try:
         # Restore All Data
-        api_response = api_instance.restore_all_data_admin_restore_post(backup_file)
-        print("The response of AdminApi->restore_all_data_admin_restore_post:\n")
+        api_response = api_instance.restore_all_data(backup_file)
+        print("The response of AdminApi->restore_all_data:\n")
         pprint(api_response)
     except Exception as e:
-        print("Exception when calling AdminApi->restore_all_data_admin_restore_post: %s\n" % e)
+        print("Exception when calling AdminApi->restore_all_data: %s\n" % e)
 ```
 
 
@@ -491,7 +500,7 @@ with skillberry_store_sdk.ApiClient(configuration) as api_client:
 
 Name | Type | Description  | Notes
 ------------- | ------------- | ------------- | -------------
- **backup_file** | **str**|  | 
+ **backup_file** | **bytearray**|  | 
 
 ### Return type
 

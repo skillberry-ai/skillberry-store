@@ -16,6 +16,7 @@ from fastapi.openapi.utils import get_openapi
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from fastapi_mcp import FastApiMCP
 
+from skillberry_store.fast_api.openapi_ids import custom_generate_unique_id
 from skillberry_store.fast_api.skills_api import register_skills_api
 from skillberry_store.fast_api.snippets_api import register_snippets_api
 from skillberry_store.fast_api.tools_api import register_tools_api
@@ -100,7 +101,10 @@ class SBS(FastAPI):
     def __init__(self, **settings: Any):
         """Initialize the SBS server with FastAPI and custom settings."""
 
-        super().__init__(lifespan=_sbs_lifespan)
+        super().__init__(
+            lifespan=_sbs_lifespan,
+            generate_unique_id_function=custom_generate_unique_id,
+        )
         self.settings = SBSettings(**settings)
         self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
@@ -320,12 +324,16 @@ def custom_openapi(app: FastAPI, openapi_tags):
     if "components" in openapi_schema and "schemas" in openapi_schema["components"]:
         schemas = openapi_schema["components"]["schemas"]
 
-        # Define all file upload endpoints and their file parameter names
+        # Define all file upload endpoints and their file parameter names.
+        # Body-schema names track the route ``operationId`` — with
+        # ``custom_generate_unique_id`` in effect the ID is the route function
+        # name, so these are ``Body_<function_name>``.
         file_upload_fixes = [
-            ("Body_add_tool_from_python_tools_add_post", "tool"),
-            ("Body_create_tool_tools__post", "module"),
-            ("Body_create_snippet_snippets__post", "file"),
-            ("Body_import_anthropic_skill_skills_import_anthropic_post", "zip_file"),
+            ("Body_add_tool_from_python", "tool"),
+            ("Body_create_tool", "module"),
+            ("Body_create_snippet", "file"),
+            ("Body_import_anthropic_skill", "zip_file"),
+            ("Body_restore_all_data", "backup_file"),
         ]
 
         # Apply fix to all file upload schemas

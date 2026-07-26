@@ -84,7 +84,7 @@ async def test_multiple_vmcp_servers_sse_connections_sdk(
     
     try:
         # Create skill using SDK
-        skill_result = skills_sdk_client.create_skill_skills_post(
+        skill_result = skills_sdk_client.create_skill(
             name=skill_name,
             description="Test skill for SSE bug reproduction",
             uuid=skill_uuid,
@@ -101,7 +101,7 @@ async def test_multiple_vmcp_servers_sse_connections_sdk(
         
         # Create first VMCP server
         print(f"\nCreating first VMCP server...")
-        server1_result = vmcp_sdk_client.create_vmcp_server_vmcp_servers_post(
+        server1_result = vmcp_sdk_client.create_vmcp_server(
             name=f"sse_test_server_1_{server1_uuid[:8]}",
             description="First VMCP server for SSE testing",
             port=10100,
@@ -116,7 +116,7 @@ async def test_multiple_vmcp_servers_sse_connections_sdk(
         
         # Create second VMCP server
         print(f"\nCreating second VMCP server...")
-        server2_result = vmcp_sdk_client.create_vmcp_server_vmcp_servers_post(
+        server2_result = vmcp_sdk_client.create_vmcp_server(
             name=f"sse_test_server_2_{server2_uuid[:8]}",
             description="Second VMCP server for SSE testing",
             port=10101,
@@ -217,7 +217,7 @@ async def test_multiple_vmcp_servers_sse_connections_sdk(
         # Cleanup: delete VMCP servers and skill
         print(f"\nCleaning up...")
         try:
-            vmcp_sdk_client.delete_vmcp_server_vmcp_servers_uuid_or_name_delete(
+            vmcp_sdk_client.delete_vmcp_server(
                 uuid_or_name=server1_uuid
             )
             print(f"Deleted server 1")
@@ -225,7 +225,7 @@ async def test_multiple_vmcp_servers_sse_connections_sdk(
             print(f"Failed to delete server 1: {e}")
         
         try:
-            vmcp_sdk_client.delete_vmcp_server_vmcp_servers_uuid_or_name_delete(
+            vmcp_sdk_client.delete_vmcp_server(
                 uuid_or_name=server2_uuid
             )
             print(f"Deleted server 2")
@@ -233,7 +233,7 @@ async def test_multiple_vmcp_servers_sse_connections_sdk(
             print(f"Failed to delete server 2: {e}")
         
         try:
-            skills_sdk_client.delete_skill_skills_uuid_or_name_delete(
+            skills_sdk_client.delete_skill(
                 uuid_or_name=skill_uuid
             )
             print(f"Deleted skill")
@@ -256,7 +256,7 @@ async def test_sequential_vmcp_server_creation_sdk(
     skill_name = f"sequential_test_skill_{skill_uuid[:8]}"
     
     try:
-        skill_result = skills_sdk_client.create_skill_skills_post(
+        skill_result = skills_sdk_client.create_skill(
             name=skill_name,
             description="Test skill for sequential server creation",
             uuid=skill_uuid,
@@ -274,7 +274,7 @@ async def test_sequential_vmcp_server_creation_sdk(
             server_uuids.append(server_uuid)
             
             print(f"\nCreating VMCP server {i+1}/{num_servers}...")
-            result = vmcp_sdk_client.create_vmcp_server_vmcp_servers_post(
+            result = vmcp_sdk_client.create_vmcp_server(
                 name=f"sequential_server_{i}_{server_uuid[:8]}",
                 description=f"Sequential test server {i}",
                 port=10200 + i,
@@ -304,14 +304,14 @@ async def test_sequential_vmcp_server_creation_sdk(
         print(f"\nCleaning up...")
         for server_uuid in server_uuids:
             try:
-                vmcp_sdk_client.delete_vmcp_server_vmcp_servers_uuid_or_name_delete(
+                vmcp_sdk_client.delete_vmcp_server(
                     uuid_or_name=server_uuid
                 )
             except Exception as e:
                 print(f"Failed to delete server {server_uuid}: {e}")
         
         try:
-            skills_sdk_client.delete_skill_skills_uuid_or_name_delete(
+            skills_sdk_client.delete_skill(
                 uuid_or_name=skill_uuid
             )
         except Exception as e:

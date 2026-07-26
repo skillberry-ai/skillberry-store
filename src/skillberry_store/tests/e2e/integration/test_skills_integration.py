@@ -26,7 +26,7 @@ class TestSkillsAPI:
         """Test creating a new skill."""
         skill_name = "test_integration_skill"
         
-        response = skills_api.create_skill_skills_post(
+        response = skills_api.create_skill(
             name=skill_name,
             description="A test skill for integration testing",
             state=ManifestState.APPROVED,
@@ -45,7 +45,7 @@ class TestSkillsAPI:
 
     def test_02_list_skills(self, skills_api):
         """Test listing all skills."""
-        response = skills_api.list_skills_skills_get()
+        response = skills_api.list_skills()
         
         assert response is not None
         assert isinstance(response, list)
@@ -60,7 +60,7 @@ class TestSkillsAPI:
         if not test_state["skill_name"]:
             pytest.skip("Skill name not available from previous test")
         
-        response = skills_api.get_skill_skills_uuid_or_name_get(uuid_or_name=test_state["skill_name"])
+        response = skills_api.get_skill(uuid_or_name=test_state["skill_name"])
         
         assert response is not None
         assert response.get("name") == test_state["skill_name"]
@@ -73,7 +73,7 @@ class TestSkillsAPI:
             pytest.skip("Skill name not available from previous test")
         
         # Get current skill to create updated schema
-        current_skill = skills_api.get_skill_skills_uuid_or_name_get(uuid_or_name=test_state["skill_name"])
+        current_skill = skills_api.get_skill(uuid_or_name=test_state["skill_name"])
         
         # Create updated skill schema
         updated_skill = SkillSchema(
@@ -86,7 +86,7 @@ class TestSkillsAPI:
             snippet_uuids=current_skill.get("snippet_uuids", [])
         )
         
-        response = skills_api.update_skill_skills_uuid_or_name_put(
+        response = skills_api.update_skill(
             uuid_or_name=test_state["skill_name"],
             skill_schema=updated_skill
         )
@@ -100,7 +100,7 @@ class TestSkillsAPI:
             pytest.skip("Skill name not available from previous test")
         
         # Search for skills with "integration" in the description
-        response = skills_api.search_skills_search_skills_get(search_term="integration")
+        response = skills_api.search_skills(search_term="integration")
         
         assert response is not None
         assert isinstance(response, (list, dict))
@@ -110,14 +110,14 @@ class TestSkillsAPI:
         if not test_state["skill_name"]:
             pytest.skip("Skill name not available from previous test")
         
-        response = skills_api.delete_skill_skills_uuid_or_name_delete(uuid_or_name=test_state["skill_name"])
+        response = skills_api.delete_skill(uuid_or_name=test_state["skill_name"])
         
         assert response is not None
         assert "message" in response or "deleted" in str(response).lower()
         
         # Verify skill is deleted
         try:
-            skills_api.get_skill_skills_uuid_or_name_get(uuid_or_name=test_state["skill_name"])
+            skills_api.get_skill(uuid_or_name=test_state["skill_name"])
             # If we get here, the skill still exists (might be expected in some cases)
         except Exception:
             # Expected - skill should not be found
@@ -131,7 +131,7 @@ def test_create_skill_with_tools(skills_api, tools_api, test_tool_file):
     tool_file = ("skill_test_tool.py", test_tool_file)
     
     try:
-        tool_response = tools_api.add_tool_from_python_tools_add_post(
+        tool_response = tools_api.add_tool_from_python(
             tool=tool_file,
             selected_func="add_numbers"
         )
@@ -140,7 +140,7 @@ def test_create_skill_with_tools(skills_api, tools_api, test_tool_file):
         
         if tool_uuid:
             # Now create a skill with this tool
-            skill_response = skills_api.create_skill_skills_post(
+            skill_response = skills_api.create_skill(
                 name="test_skill_with_tools",
                 description="A skill that includes tools",
                 state=ManifestState.APPROVED,
@@ -152,10 +152,10 @@ def test_create_skill_with_tools(skills_api, tools_api, test_tool_file):
             
             # Clean up
             if "name" in skill_response:
-                skills_api.delete_skill_skills_uuid_or_name_delete(uuid_or_name=skill_response["name"])
+                skills_api.delete_skill(uuid_or_name=skill_response["name"])
             
             if tool_uuid:
-                tools_api.delete_tool_tools_uuid_or_name_delete(uuid_or_name=tool_uuid)
+                tools_api.delete_tool(uuid_or_name=tool_uuid)
         else:
             pytest.skip("Could not create tool for skill test")
             
@@ -170,7 +170,7 @@ def test_skill_lifecycle_states(skills_api):
     
     try:
         # Create skill in draft state
-        response = skills_api.create_skill_skills_post(
+        response = skills_api.create_skill(
             name=skill_name,
             description="Testing lifecycle states",
             state=ManifestState.NEW
@@ -179,7 +179,7 @@ def test_skill_lifecycle_states(skills_api):
         assert response is not None
         
         # Update to approved state
-        update_response = skills_api.update_skill_skills_uuid_or_name_put(
+        update_response = skills_api.update_skill(
             uuid_or_name=skill_name,
             state=ManifestState.APPROVED
         )
@@ -187,16 +187,16 @@ def test_skill_lifecycle_states(skills_api):
         assert update_response is not None
         
         # Verify state change
-        skill = skills_api.get_skill_skills_uuid_or_name_get(uuid_or_name=skill_name)
+        skill = skills_api.get_skill(uuid_or_name=skill_name)
         assert skill.get("state") == ManifestState.APPROVED or skill.get("state") == "approved"
         
         # Clean up
-        skills_api.delete_skill_skills_uuid_or_name_delete(uuid_or_name=skill_name)
+        skills_api.delete_skill(uuid_or_name=skill_name)
         
     except Exception as e:
         # Clean up on error
         try:
-            skills_api.delete_skill_skills_uuid_or_name_delete(uuid_or_name=skill_name)
+            skills_api.delete_skill(uuid_or_name=skill_name)
         except:
             pass
         pytest.skip(f"Lifecycle state test not fully supported: {e}")
