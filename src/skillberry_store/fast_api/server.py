@@ -236,9 +236,7 @@ class SBS(FastAPI):
             )
         else:
             # Should have been rejected at config load; belt and braces.
-            raise RuntimeError(
-                f"Unsupported access-control mode: {acl_cfg.mode!r}"
-            )
+            raise RuntimeError(f"Unsupported access-control mode: {acl_cfg.mode!r}")
         # Silence lint about the unused DisabledIdentityProvider import.
         _ = DisabledIdentityProvider
 

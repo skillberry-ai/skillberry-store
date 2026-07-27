@@ -59,9 +59,7 @@ def register_auth_api(
         if user is None:
             # Perform a dummy bcrypt to keep response time similar to the
             # good-user path (mitigates trivial user-enumeration timing).
-            dummy_hash = (
-                b"$2b$12$CBWfQZ3zX0Iu9d5R0v6ekOx3Xk9nu1qXKZM7YtM/y8bkuJHkE8DKa"
-            )
+            dummy_hash = b"$2b$12$CBWfQZ3zX0Iu9d5R0v6ekOx3Xk9nu1qXKZM7YtM/y8bkuJHkE8DKa"
             try:
                 await asyncio.to_thread(bcrypt.checkpw, password_bytes, dummy_hash)
             except Exception:  # noqa: BLE001
