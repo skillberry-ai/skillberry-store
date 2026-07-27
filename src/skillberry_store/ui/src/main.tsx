@@ -8,6 +8,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import App from './App';
 import { PaginationProvider } from './contexts/PaginationContext';
+import { AuthProvider } from './contexts/AuthContext';
 
 // PatternFly styles
 import '@patternfly/react-core/dist/styles/base.css';
@@ -28,7 +29,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <PaginationProvider>
         <BrowserRouter>
-          <App />
+          <AuthProvider>
+            <App />
+          </AuthProvider>
         </BrowserRouter>
       </PaginationProvider>
     </QueryClientProvider>

@@ -1,8 +1,10 @@
 // Copyright 2025 IBM Corp.
 // Licensed under the Apache License, Version 2.0
 
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { AppLayout } from './components/AppLayout';
+import { AuthGate } from './components/AuthGate';
+import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ToolsPage } from './pages/ToolsPage';
 import { ToolDetailPage } from './pages/ToolDetailPage';
@@ -22,8 +24,20 @@ import { useChangesMonitor } from './hooks/useChangesMonitor';
 
 function App() {
   useChangesMonitor();
+  const location = useLocation();
+
+  // The login page renders standalone (no AppLayout chrome), and it's the
+  // only route that must remain reachable when the AuthGate is redirecting.
+  if (location.pathname === '/login') {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+      </Routes>
+    );
+  }
 
   return (
+    <AuthGate>
     <AppLayout>
       <Routes>
         <Route path="/" element={<HomePage />} />
@@ -61,6 +75,7 @@ function App() {
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </AppLayout>
+    </AuthGate>
   );
 }
 
