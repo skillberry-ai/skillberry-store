@@ -1,22 +1,23 @@
-"""Auth endpoints: /auth/login, /auth/logout, /auth/whoami.
+"""FastAPI wrapper for /auth/login, /auth/logout, /auth/whoami.
+
+Wire-level concerns only — request/response translation. All business
+logic (bcrypt verify, session mint, token resolution, roles computation)
+lives in :mod:`skillberry_store.services.auth_service`.
 
 See §7.2 and §10.4 of docs/design/access-control.md.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import datetime, timezone
 from typing import List, Optional
 
-import bcrypt
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 
 from skillberry_store.access_control.config import AccessControlConfig
-from skillberry_store.access_control.pdp import Subject
 from skillberry_store.access_control.sessions import SessionStore
+from skillberry_store.services.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +44,22 @@ def register_auth_api(
     cfg: AccessControlConfig,
     sessions: SessionStore,
     tags: str = "auth",
+    service: Optional[AuthService] = None,
 ) -> None:
-    """Register the /auth/* endpoints on ``app``."""
+    """Register the /auth/* endpoints on ``app``.
+
+    Args:
+        app: The FastAPI application.
+        cfg: Access-control config, used by the service.
+        sessions: Session store, used by the service.
+        tags: FastAPI tag applied to the endpoints.
+        service: Optional pre-built ``AuthService``. When ``None``, a new
+            one is created from ``cfg`` + ``sessions`` — mirroring how the
+            other ``register_*_api`` factories construct their default
+            services.
+    """
+    if service is None:
+        service = AuthService(cfg=cfg, sessions=sessions)
 
     @app.post(
         "/auth/login",
@@ -53,38 +68,8 @@ def register_auth_api(
         openapi_extra={"x-cli-name": "login"},
     )
     async def login(payload: LoginRequest) -> LoginResponse:
-        user = cfg.user(payload.username)
-        # Constant-time bcrypt check must run off the event loop.
-        password_bytes = payload.password.encode("utf-8")
-        if user is None:
-            # Perform a dummy bcrypt to keep response time similar to the
-            # good-user path (mitigates trivial user-enumeration timing).
-            dummy_hash = b"$2b$12$CBWfQZ3zX0Iu9d5R0v6ekOx3Xk9nu1qXKZM7YtM/y8bkuJHkE8DKa"
-            try:
-                await asyncio.to_thread(bcrypt.checkpw, password_bytes, dummy_hash)
-            except Exception:  # noqa: BLE001
-                pass
-            raise HTTPException(status_code=401, detail="invalid_credentials")
-        try:
-            ok = await asyncio.to_thread(
-                bcrypt.checkpw, password_bytes, user.password_hash.encode("utf-8")
-            )
-        except ValueError:
-            # Malformed stored hash; treat as invalid.
-            ok = False
-        if not ok:
-            raise HTTPException(status_code=401, detail="invalid_credentials")
-
-        token, expires_at = sessions.mint(
-            tenant_id=user.tenant_id,
-            groups=list(user.groups or []),
-            ttl_seconds=cfg.session_ttl_seconds,
-        )
-        return LoginResponse(
-            token=token,
-            expires_at=datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat(),
-            tenant_id=user.tenant_id,
-        )
+        result = await service.login(payload.username, payload.password)
+        return LoginResponse(**result)
 
     @app.post(
         "/auth/logout",
@@ -92,11 +77,7 @@ def register_auth_api(
         openapi_extra={"x-cli-name": "logout"},
     )
     async def logout(request: Request) -> dict:
-        header = request.headers.get("authorization") or ""
-        parts = header.split()
-        if len(parts) == 2 and parts[0].lower() == "bearer":
-            sessions.revoke(parts[1])
-        return {"status": "ok"}
+        return service.logout(request.headers.get("authorization"))
 
     @app.get(
         "/auth/whoami",
@@ -105,22 +86,5 @@ def register_auth_api(
         openapi_extra={"x-cli-name": "whoami"},
     )
     async def whoami(request: Request) -> WhoAmIResponse:
-        # In 'disabled' mode there is no identity to report.
-        if cfg.mode == "disabled":
-            return WhoAmIResponse(tenant_id=None, groups=[], roles=[])
-        # /auth/whoami is unauth-listed (so it never returns 403); resolve the
-        # bearer ourselves so any signed-in user can call it.
-        header = request.headers.get("authorization") or ""
-        parts = header.split()
-        if len(parts) != 2 or parts[0].lower() != "bearer":
-            raise HTTPException(status_code=401, detail="missing_authorization")
-        session = sessions.resolve(parts[1])
-        if session is None:
-            raise HTTPException(status_code=401, detail="invalid_or_expired_token")
-        subject = Subject(tenant_id=session.tenant_id, groups=list(session.groups))
-        roles = cfg.roles_for(subject)
-        return WhoAmIResponse(
-            tenant_id=subject.tenant_id,
-            groups=list(subject.groups or []),
-            roles=roles,
-        )
+        result = service.whoami(request.headers.get("authorization"))
+        return WhoAmIResponse(**result)
