@@ -24,6 +24,14 @@ from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.fast_api.vnfs_api import register_vnfs_api
 from skillberry_store.fast_api.plugins_api import register_plugins_api
+from skillberry_store.fast_api.auth_api import register_auth_api
+from skillberry_store.access_control.config import get_config as get_acl_config
+from skillberry_store.access_control.idp import (
+    DisabledIdentityProvider,
+    StandaloneIdentityProvider,
+)
+from skillberry_store.access_control.middleware import AccessControlMiddleware
+from skillberry_store.access_control.sessions import SessionStore
 from skillberry_store.tools.configure import (
     configure_logging,
 )
@@ -200,6 +208,39 @@ class SBS(FastAPI):
         register_admin_api(self, tags="admin", service=admin_service)
 
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
+
+        # ------------------------------------------------------------------
+        # Access control (see docs/design/access-control.md).
+        # Load config, register /auth/* endpoints, and — in any mode other
+        # than 'disabled' — install the PEP middleware.
+        # ------------------------------------------------------------------
+        acl_cfg = get_acl_config()
+        self.state.acl_cfg = acl_cfg
+        sessions = SessionStore()
+        self.state.acl_sessions = sessions
+        register_auth_api(self, cfg=acl_cfg, sessions=sessions, tags="auth")
+        if acl_cfg.mode == "disabled":
+            logger.info("Access control mode=disabled — PEP middleware not installed")
+        elif acl_cfg.mode == "standalone":
+            self.add_middleware(
+                AccessControlMiddleware,
+                cfg=acl_cfg,
+                idp=StandaloneIdentityProvider(sessions),
+            )
+            logger.info(
+                "Access control mode=standalone — PEP middleware installed "
+                "(%d users, %d roles, %d bindings)",
+                len(acl_cfg.users),
+                len(acl_cfg.roles),
+                len(acl_cfg.bindings),
+            )
+        else:
+            # Should have been rejected at config load; belt and braces.
+            raise RuntimeError(
+                f"Unsupported access-control mode: {acl_cfg.mode!r}"
+            )
+        # Silence lint about the unused DisabledIdentityProvider import.
+        _ = DisabledIdentityProvider
 
         # Mount plugin routers
         plugin_loader.mount_routers(self)
