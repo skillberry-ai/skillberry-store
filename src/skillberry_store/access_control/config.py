@@ -178,10 +178,12 @@ _DEFAULT_UNAUTH_PATHS = [
     "GET /docs",
     "GET /openapi.json",
     "GET /redoc",
-    "GET /control_sse",
-    "GET /control_sse/",
-    "POST /control_sse/messages",
-    "POST /control_sse/messages/",
+    # Every /control_sse* path is a Control MCP transport (SSE handshake +
+    # JSON-RPC messages), including per-tenant mount points like
+    # /control_sse/<username>. The tool invocations that the transport
+    # forwards ARE gated by the middleware; the transport itself is not.
+    "GET /control_sse*",
+    "POST /control_sse*",
 ]
 
 

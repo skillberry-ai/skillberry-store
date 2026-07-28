@@ -48,11 +48,20 @@ def resource_for(route: APIRoute) -> str:
 
 
 def verb_for(request: Request, route: APIRoute) -> str:
+    return verb_for_method_path(request.method, request.url.path, route)
+
+
+def verb_for_method_path(method: str, path: str, route: APIRoute) -> str:
+    """Resolve the RBAC verb without a live Request.
+
+    Used both by the middleware (via ``verb_for``) and by startup-time
+    planners that need to know the ``(resource, verb)`` of a route before
+    any request has arrived — e.g. computing the per-tenant MCP surface.
+    """
     extra = route.openapi_extra or {}
     if "x-rbac-verb" in extra:
         return str(extra["x-rbac-verb"])
-    method = request.method.upper()
-    path = request.url.path
+    method = method.upper()
     tags = set(route.tags or [])
 
     if "admin" in tags:

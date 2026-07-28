@@ -259,8 +259,36 @@ class SBS(FastAPI):
             len(mcp_included_operations),
             ", ".join(sorted(mcp_included_operations)),
         )
-        mcp_server = FastApiMCP(self, include_operations=mcp_included_operations)
-        mcp_server.mount_sse(mount_path="/control_sse")
+
+        # In `disabled` mode there is no notion of a tenant, so we mount a
+        # single MCP at /control_sse with the full curated surface — same
+        # as before. In `standalone` mode we additionally mount one MCP
+        # per configured user at /control_sse/<username>, each with its
+        # ``include_operations`` restricted to what that user is
+        # authorized to invoke under RBAC. Middleware still enforces on
+        # each tool call — the per-user surface just prevents denied
+        # tools from appearing in the client's tool list.
+        if acl_cfg.mode == "disabled":
+            mcp_server = FastApiMCP(self, include_operations=mcp_included_operations)
+            mcp_server.mount_sse(mount_path="/control_sse")
+        else:
+            from skillberry_store.access_control.mcp_plan import operations_for_user
+
+            self._mcp_per_user_mounts: List[str] = []
+            for user in acl_cfg.users:
+                allowed_full = set(operations_for_user(self, user, acl_cfg))
+                allowed = sorted(allowed_full & set(mcp_included_operations))
+                mount_path = f"/control_sse/{user.username}"
+                user_mcp = FastApiMCP(self, include_operations=allowed)
+                user_mcp.mount_sse(mount_path=mount_path)
+                self._mcp_per_user_mounts.append(mount_path)
+                logger.info(
+                    "Mounted per-tenant MCP for '%s' at %s exposing %d ops: %s",
+                    user.username,
+                    mount_path,
+                    len(allowed),
+                    ", ".join(allowed) if allowed else "(none)",
+                )
 
     def _mcp_included_operations(self) -> List[str]:
         """Operation ids opted in to the Control MCP via ``x-mcp-tool``.

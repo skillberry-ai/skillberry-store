@@ -17,8 +17,8 @@ unauthenticated_paths:
   - GET /docs
   - GET /openapi.json
   - GET /redoc
-  - GET /control_sse
-  - POST /control_sse/messages
+  - GET /control_sse*
+  - POST /control_sse*
 
 # --- Mode-specific: standalone only -------------------------------------
 standalone:
