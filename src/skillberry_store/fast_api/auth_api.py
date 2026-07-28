@@ -134,8 +134,9 @@ def register_auth_api(
         at login, so a config reload takes effect without invalidating
         minted sessions (see the ``Subject`` vs ``whoami`` note in §7 of
         docs/design/access-control.md).
-        In ``disabled`` mode there is no identity to report; returns an
-        empty payload so client code works uniformly across modes.
+        In ``disabled`` mode there is no auth layer; the endpoint
+        returns 503 ``auth_disabled`` and any bearer on the request is
+        ignored.
 
         Args:
             request: The incoming request; ``Authorization: Bearer`` is

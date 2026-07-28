@@ -121,7 +121,27 @@ def test_whoami_malformed_header_raises_401():
     assert ei.value.status_code == 401
 
 
-def test_whoami_disabled_mode_returns_empty_payload():
+def test_login_in_disabled_mode_returns_503():
     svc = _svc(mode="disabled")
-    result = svc.whoami(None)
-    assert result == {"tenant_id": None, "groups": [], "roles": []}
+    with pytest.raises(HTTPException) as ei:
+        asyncio.run(svc.login("alice", "alice-pw"))
+    assert ei.value.status_code == 503
+    assert ei.value.detail == "auth_disabled"
+
+
+def test_logout_in_disabled_mode_returns_503_even_with_bearer():
+    svc = _svc(mode="disabled")
+    with pytest.raises(HTTPException) as ei:
+        svc.logout("Bearer whatever")
+    assert ei.value.status_code == 503
+    assert ei.value.detail == "auth_disabled"
+
+
+def test_whoami_in_disabled_mode_returns_503_even_with_bearer():
+    svc = _svc(mode="disabled")
+    # A bearer token on the request must be ignored — no session lookup,
+    # no leak of session state; the endpoint short-circuits to 503.
+    with pytest.raises(HTTPException) as ei:
+        svc.whoami("Bearer whatever")
+    assert ei.value.status_code == 503
+    assert ei.value.detail == "auth_disabled"

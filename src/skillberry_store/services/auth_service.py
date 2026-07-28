@@ -28,6 +28,20 @@ logger = logging.getLogger(__name__)
 _DUMMY_HASH = b"$2b$12$CBWfQZ3zX0Iu9d5R0v6ekOx3Xk9nu1qXKZM7YtM/y8bkuJHkE8DKa"
 
 
+def _reject_when_disabled(cfg: AccessControlConfig) -> None:
+    """Raise 503 auth_disabled if this deployment has no auth layer.
+
+    In ``disabled`` mode there is no session store to consult and no user
+    to identify — clients calling ``/auth/*`` are asking a question that
+    has no answer here. We surface that explicitly rather than pretending
+    the credentials were bad. Any bearer token on the request is
+    unconditionally ignored: this branch fires before the Authorization
+    header is inspected.
+    """
+    if cfg.mode == "disabled":
+        raise HTTPException(status_code=503, detail="auth_disabled")
+
+
 def _bearer(header: Optional[str]) -> Optional[str]:
     """Extract the token from an ``Authorization: Bearer <token>`` header."""
     if not header:
@@ -71,10 +85,13 @@ class AuthService:
             ``tenant_id``.
 
         Raises:
-            HTTPException: 401 ``invalid_credentials`` when the user is
-                unknown or the password does not match. Both branches use
-                the same detail string (no user enumeration).
+            HTTPException: 503 ``auth_disabled`` when the deployment runs
+                with ``mode: disabled`` (no auth layer). 401
+                ``invalid_credentials`` when the user is unknown or the
+                password does not match — both branches use the same
+                detail string (no user enumeration).
         """
+        _reject_when_disabled(self.cfg)
         user = self.cfg.user(username)
         password_bytes = password.encode("utf-8")
 
@@ -118,7 +135,13 @@ class AuthService:
     # ------------------------------------------------------------------ #
 
     def logout(self, authorization_header: Optional[str]) -> Dict[str, str]:
-        """Revoke the bearer token on the request. Idempotent."""
+        """Revoke the bearer token on the request. Idempotent.
+
+        Raises:
+            HTTPException: 503 ``auth_disabled`` in disabled mode. Any
+                bearer token on the request is ignored.
+        """
+        _reject_when_disabled(self.cfg)
         token = _bearer(authorization_header)
         if token:
             self.sessions.revoke(token)
@@ -131,9 +154,6 @@ class AuthService:
     def whoami(self, authorization_header: Optional[str]) -> Dict[str, Any]:
         """Resolve the caller's identity and effective roles.
 
-        In ``disabled`` mode there is no identity to report; returns an
-        empty payload so the same client code works in either mode.
-
         Args:
             authorization_header: Raw ``Authorization`` header, if any.
 
@@ -141,12 +161,13 @@ class AuthService:
             ``{"tenant_id": str|None, "groups": [...], "roles": [...]}``.
 
         Raises:
-            HTTPException: 401 in standalone mode when the header is
+            HTTPException: 503 ``auth_disabled`` when the deployment runs
+                with ``mode: disabled`` (any bearer token on the request
+                is ignored). 401 in standalone mode when the header is
                 missing / malformed / points at an expired or unknown
                 session.
         """
-        if self.cfg.mode == "disabled":
-            return {"tenant_id": None, "groups": [], "roles": []}
+        _reject_when_disabled(self.cfg)
 
         token = _bearer(authorization_header)
         if not token:

@@ -122,6 +122,45 @@ def test_disabled_mode_all_endpoints_open(fresh_sbs_factory):
     assert r.status_code == 200
 
 
+def test_disabled_mode_auth_endpoints_return_503(fresh_sbs_factory):
+    client = fresh_sbs_factory("mode: disabled\n")
+    login = client.post(
+        "/auth/login", json={"username": "alice", "password": "x"}
+    )
+    assert login.status_code == 503
+    assert login.json()["detail"] == "auth_disabled"
+
+    logout = client.post("/auth/logout")
+    assert logout.status_code == 503
+    assert logout.json()["detail"] == "auth_disabled"
+
+    whoami = client.get("/auth/whoami")
+    assert whoami.status_code == 503
+    assert whoami.json()["detail"] == "auth_disabled"
+
+
+def test_disabled_mode_ignores_bearer_on_auth_endpoints(fresh_sbs_factory):
+    """A bearer token on any /auth/* call must be ignored — the endpoint
+    short-circuits to 503 without touching the header."""
+    client = fresh_sbs_factory("mode: disabled\n")
+    h = {"Authorization": "Bearer any-token-shape"}
+    assert client.post("/auth/logout", headers=h).status_code == 503
+    assert client.get("/auth/whoami", headers=h).status_code == 503
+
+
+def test_disabled_mode_ignores_bearer_on_normal_endpoints(fresh_sbs_factory):
+    """A bearer token on a regular endpoint must also be ignored — the
+    middleware isn't installed in disabled mode, so the request behaves
+    identically whether or not an Authorization header is sent."""
+    client = fresh_sbs_factory("mode: disabled\n")
+    no_auth = client.get("/skills/")
+    with_auth = client.get(
+        "/skills/", headers={"Authorization": "Bearer whatever"}
+    )
+    assert no_auth.status_code == 200
+    assert with_auth.status_code == 200
+
+
 # ------------------ standalone: identity & allow-list -------------------- #
 
 def test_standalone_missing_auth_returns_401(fresh_sbs_factory):
