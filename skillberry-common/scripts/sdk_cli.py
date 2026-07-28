@@ -1,16 +1,32 @@
-"""CLI module for {{API_NAME}} SDK using restish."""
+"""CLI module for {{API_NAME}} SDK using restish.
+
+Thin shim over the `restish` CLI (https://rest.sh). This file is the
+generation template; ``make generate-sdk`` substitutes ``{{API_NAME}}``
+(lowercase acronym, e.g. ``sbs``) and ``{{API_URL}}`` (compiled-in base
+URL) before it lands in the generated SDK. See
+docs/design/access-control.md §10.1 for the CLI/auth story.
+"""
+import getpass
 import json
 import os
+import re
+import stat
 import subprocess
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, Optional
 
 
 API_NAME = "{{API_NAME}}"
 API_URL = "{{API_URL}}"
+
+# Env override for CI / scripting. Named uppercase to match the design
+# doc (`SBS_TOKEN`, `GH_TOKEN`-style). When set, restish reads it via a
+# durable ``env-token`` profile so the token never appears on argv.
+API_TOKEN_ENV = f"{API_NAME.upper()}_TOKEN"
+ENV_PROFILE = "env-token"
 
 
 def check_restish_installed() -> bool:
@@ -20,7 +36,7 @@ def check_restish_installed() -> bool:
             ["restish", "--version"],
             capture_output=True,
             check=True,
-            text=True
+            text=True,
         )
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -39,64 +55,89 @@ def abort_with_install_instructions() -> NoReturn:
     sys.exit(1)
 
 
-def get_restish_config_path() -> Path:
-    """Get the path to restish config file."""
-    config_dir = Path.home() / ".config" / "restish"
-    return config_dir / "apis.json"
+# Strip JSONC comments outside of strings. Restish writes `//` line
+# comments (migration header) into ``restish.json`` which trip json.load.
+_JSONC_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|/\*.*?\*/|//[^\n]*', re.DOTALL)
 
 
-def ensure_api_configured(api_name: str, api_url: str, force_update: bool = False) -> str:
-    """Ensure the API is configured in restish with correct URL."""
-    config_path = get_restish_config_path()
-    
-    # Create config directory if it doesn't exist
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Load existing config or create new one
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            try:
-                config = json.load(f)
-            except json.JSONDecodeError:
-                config = {}
-    else:
-        config = {}
-    
-    # Check if API is configured with correct URL
-    needs_update = False
-    if force_update or api_name not in config or "base" not in config[api_name]:
-        needs_update = True
-    # elif config[API_NAME].get("base") != API_URL:
-    #     needs_update = True
-    
-    if not needs_update:
-        return config[api_name]["base"]
+def _strip_jsonc(text: str) -> str:
+    return _JSONC_TOKEN.sub(lambda m: m.group(0) if m.group(0).startswith('"') else "", text)
 
-    # To avoid conflicts, remove any existing API configuration with the same base URL
-    for name, api_config in list(config.items()):
-        if isinstance(api_config, dict) and ("base" in api_config) and api_config["base"] == api_url:
-            del config[name]
-            print(f"Removed conflicting API configuration: {name}", file=sys.stderr)
 
-    # Configure the API
-    config[api_name] = {
-        "base": api_url,
-        "spec_files": [f"{api_url}/openapi.json"]
-    }
-    
-    # Write updated config
-    with open(config_path, 'w') as f:
-        json.dump(config, f, indent=2)
-    
-    # Sync the API spec
+def _config_path() -> Path:
+    """Path to the restish v2 config file (``restish config path``)."""
     try:
-        subprocess.run(
-            ["restish", "api", "sync", api_name],
+        proc = subprocess.run(
+            ["restish", "config", "path"],
+            capture_output=True,
+            text=True,
             check=True,
-            capture_output=True
         )
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: Failed to sync API spec: {e}", file=sys.stderr)
+        candidate = proc.stdout.strip()
+        if candidate:
+            return Path(candidate)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return Path.home() / ".config" / "restish" / "restish.json"
+
+
+def _load_config() -> tuple[dict, Path]:
+    """Return (config, path). Missing/unreadable file => empty dict."""
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        return {}, path
+    try:
+        with open(path, "r") as fh:
+            return json.loads(_strip_jsonc(fh.read())) or {}, path
+    except (json.JSONDecodeError, OSError):
+        return {}, path
+
+
+def _write_config(config: dict, path: Path) -> None:
+    with open(path, "w") as fh:
+        json.dump(config, fh, indent=2)
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)  # 0600
+    except OSError:
+        pass
+
+
+def _registered_base(api_name: str) -> Optional[str]:
+    """Return the base_url currently registered for ``api_name``, or None.
+
+    Uses ``restish api list -o json`` so we consume restish's own
+    parser rather than reimplementing JSONC handling here.
+    """
+    try:
+        proc = subprocess.run(
+            ["restish", "api", "list", "-o", "json"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        entries = json.loads(proc.stdout) or []
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+        return None
+    for entry in entries:
+        if entry.get("name") == api_name:
+            return entry.get("base_url")
+    return None
+
+
+def _restish_connect(api_name: str, api_url: str, replace: bool = False) -> None:
+    """Register/refresh the API with restish. Errors surface to stderr and exit."""
+    cmd = [
+        "restish", "api", "connect", api_name, api_url,
+        "--spec", f"{api_url.rstrip('/')}/openapi.json",
+        "--yes",
+    ]
+    if replace:
+        cmd.append("--replace")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        msg = (proc.stderr or proc.stdout or "").strip() or "unknown error"
+        print(f"Failed to connect to {api_url}: {msg}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -268,74 +309,41 @@ def _do_connect(api_name: str, url: str) -> int:
 
 def cli() -> None:
     """Main CLI entry point."""
-    # Check if restish is installed
+    # All paths need restish on PATH.
     if not check_restish_installed():
         abort_with_install_instructions()
-    
-    # Check for "connect <URL>" command
-    if len(sys.argv) == 3 and sys.argv[1] == "connect":
-        # Extract URL from "connect <URL>" format
-        url = sys.argv[2]
-        if url:
-            ensure_api_configured(API_NAME, url, True)
-            print(f"Connected to {url}")
-            sys.exit(0)
-        else:
-            print("Error: Invalid connect command. Usage: connect <URL>", file=sys.stderr)
-            sys.exit(1)
-    
-    # Ensure API is configured
-    api_url = ensure_api_configured(API_NAME, API_URL)
-    
-    # Delegate to restish, passing all arguments and filtering output
+
+    # Intercept subcommands that need local-side work (config writes,
+    # interactive prompts) before falling through to plain delegation.
+    if len(sys.argv) >= 2:
+        first = sys.argv[1]
+        if first == "login":
+            sys.exit(_do_login(API_NAME, API_URL))
+        if first == "logout":
+            sys.exit(_do_logout(API_NAME))
+        if first == "connect":
+            if len(sys.argv) != 3 or not sys.argv[2]:
+                print("Error: usage: connect <URL>", file=sys.stderr)
+                sys.exit(1)
+            sys.exit(_do_connect(API_NAME, sys.argv[2]))
+
+    # Everything else — including `whoami` — is a plain generated
+    # OpenAPI operation. Register the API on first use, then hand off
+    # to restish so it owns the TTY: color, streaming, interactive
+    # auth flows, and per-command help all work as documented.
+    _ensure_connected(API_NAME, API_URL)
+
+    cmd = ["restish"]
+    # If API_TOKEN_ENV is set, run under the env-token profile so the
+    # token stays in the process environment and never lands on argv.
+    if os.environ.get(API_TOKEN_ENV):
+        cmd += ["-p", ENV_PROFILE]
+    cmd += [API_NAME] + sys.argv[1:]
+
     try:
-        # Build the command
-        cmd = ["restish", API_NAME] + sys.argv[1:]
-        
-        # Run restish and capture output
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True
-        )
-        
-        # Filter out "Global Flags:" section from output
-        output_lines = result.stdout.split('\n')
-        filtered_lines = []
-        skip_section = False
-        found_global_flags = False
-        
-        for line in output_lines:
-            if line.strip().startswith('Global Flags:'):
-                skip_section = True
-                found_global_flags = True
-            elif skip_section and line and not line[0].isspace():
-                # End of Global Flags section
-                skip_section = False
-            
-            if not skip_section:
-                line  = line.replace("restish ", "")
-                filtered_lines.append(line)
-        
-        # If we found and skipped Global Flags section, append custom text
-        if found_global_flags:
-            filtered_lines.append(f"Connected to URL: {api_url}\n")
-            filtered_lines.append("General commands:")
-            filtered_lines.append(f"  connect <URL>\t\t\tconnect to an alternate {API_NAME} URL\n")
-        
-        # Print filtered output
-        print('\n'.join(filtered_lines), end='')
-        
-        # Print stderr if any
-        if result.stderr:
-            print(result.stderr, file=sys.stderr, end='')
-        
-        # Exit with same code as restish
-        sys.exit(result.returncode)
-        
-    except Exception as e:
-        print(f"Error executing restish: {e}", file=sys.stderr)
-        sys.exit(1)
+        os.execvp(cmd[0], cmd)
+    except FileNotFoundError:
+        abort_with_install_instructions()
 
 
 if __name__ == "__main__":
