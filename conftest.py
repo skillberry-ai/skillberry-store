@@ -142,6 +142,29 @@ def capture_server_logs(request):
 
 
 @pytest.fixture(scope="session", autouse=True)
+def isolate_access_control_config(tmp_path_factory):
+    """Prevent tests from consuming the operator's access_control_config.yaml.
+
+    Without this shield the loader falls back to
+    ``./access_control_config.yaml`` (repo root), which is a user-managed
+    file. If an operator flips it to ``mode: standalone`` locally, every
+    e2e/integration test that constructs ``SBS()`` would silently install
+    the RBAC middleware and start returning 401 to unauthenticated
+    requests. Point the env var at a non-existent path so the loader
+    returns its built-in ``mode: disabled`` defaults for all tests that
+    do not explicitly override it via monkeypatch.
+    """
+    from skillberry_store.access_control import config as acl_config
+
+    sentinel = tmp_path_factory.mktemp("acl") / "does-not-exist.yaml"
+    os.environ["SBS_ACCESS_CONTROL_CONFIG"] = str(sentinel)
+    acl_config.reset_config_cache()
+    yield
+    os.environ.pop("SBS_ACCESS_CONTROL_CONFIG", None)
+    acl_config.reset_config_cache()
+
+
+@pytest.fixture(scope="session", autouse=True)
 def configure_httpx_defaults():
     """Apply a 120s default timeout to all httpx.AsyncClient instances."""
     import httpx

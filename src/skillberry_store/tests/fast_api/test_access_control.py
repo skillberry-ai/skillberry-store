@@ -148,6 +148,51 @@ def test_disabled_mode_ignores_bearer_on_auth_endpoints(fresh_sbs_factory):
     assert client.get("/auth/whoami", headers=h).status_code == 503
 
 
+def test_repo_root_config_yaml_does_not_leak_into_tests(tmp_path, monkeypatch):
+    """The user-managed access_control_config.yaml at the repo root must
+    never be consumed by the test suite. Simulate a locally-flipped file
+    (mode: standalone with real users) and prove that the session-level
+    isolation fixture in conftest.py shields tests from it — a fresh
+    ``SBS()`` still comes up in disabled mode.
+
+    Two things are being verified together:
+      * the env-var default is a non-existent path (loader → defaults);
+      * ``load_config`` on a missing file returns ``mode: disabled``.
+    """
+    import os
+
+    from skillberry_store.access_control import config as acl_config
+    from skillberry_store.fast_api.server import SBS
+    from skillberry_store.modules import object_handler
+    from skillberry_store.services import registry
+    from skillberry_store.tests.utils import clean_test_tmp_dir
+
+    # Sanity: the session-autouse fixture must have pointed us at a
+    # non-existent path (not the repo-root file).
+    pinned = os.environ.get("SBS_ACCESS_CONTROL_CONFIG")
+    assert pinned is not None
+    assert not os.path.isfile(pinned)
+
+    # Now write a "malicious" repo-root-style YAML at some real path and
+    # verify that just having such a file on disk does NOT cause the
+    # loader to pick it up — the env var is what matters.
+    (tmp_path / "leak.yaml").write_text(
+        "mode: standalone\n"
+        "standalone:\n"
+        "  users:\n"
+        "    - username: attacker\n"
+        "      password_hash: '$2b$12$x'\n"
+    )
+    clean_test_tmp_dir()
+    object_handler.clear_object_handlers()
+    registry.clear_services()
+    acl_config.reset_config_cache()
+    app = SBS()
+    assert app.state.acl_cfg.mode == "disabled"
+    object_handler.clear_object_handlers()
+    registry.clear_services()
+
+
 def test_disabled_mode_ignores_bearer_on_normal_endpoints(fresh_sbs_factory):
     """A bearer token on a regular endpoint must also be ignored — the
     middleware isn't installed in disabled mode, so the request behaves
