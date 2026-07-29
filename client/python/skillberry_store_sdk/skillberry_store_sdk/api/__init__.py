@@ -4,6 +4,7 @@
 from skillberry_store_sdk.api.admin_api import AdminApi
 from skillberry_store_sdk.api.anthropic_skill_generator_api import AnthropicSkillGeneratorApi
 from skillberry_store_sdk.api.ask_runspace_api import AskRunspaceApi
+from skillberry_store_sdk.api.auth_api import AuthApi
 from skillberry_store_sdk.api.creator_api import CreatorApi
 from skillberry_store_sdk.api.dast_api import DastApi
 from skillberry_store_sdk.api.dedupe_api import DedupeApi

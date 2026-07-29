@@ -7,6 +7,7 @@ docs/AddToolFromCodeRequest.md
 docs/AdminApi.md
 docs/AnthropicSkillGeneratorApi.md
 docs/AskRunspaceApi.md
+docs/AuthApi.md
 docs/CheckRequest.md
 docs/ContentType.md
 docs/CreateSnippetRequest.md
@@ -23,6 +24,8 @@ docs/GenerateSkillRequest.md
 docs/HTTPValidationError.md
 docs/LifecycleState.md
 docs/LocationInner.md
+docs/LoginRequest.md
+docs/LoginResponse.md
 docs/ManifestState.md
 docs/McpImporterApi.md
 docs/OptimizeSkillRequest.md
@@ -56,6 +59,7 @@ docs/ToolsApi.md
 docs/ValidationError.md
 docs/VmcpServersApi.md
 docs/VnfsServersApi.md
+docs/WhoAmIResponse.md
 git_push.sh
 pyproject.toml
 requirements.txt
@@ -66,6 +70,7 @@ skillberry_store_sdk/api/__init__.py
 skillberry_store_sdk/api/admin_api.py
 skillberry_store_sdk/api/anthropic_skill_generator_api.py
 skillberry_store_sdk/api/ask_runspace_api.py
+skillberry_store_sdk/api/auth_api.py
 skillberry_store_sdk/api/creator_api.py
 skillberry_store_sdk/api/dast_api.py
 skillberry_store_sdk/api/dedupe_api.py
@@ -101,6 +106,8 @@ skillberry_store_sdk/models/generate_skill_request.py
 skillberry_store_sdk/models/http_validation_error.py
 skillberry_store_sdk/models/lifecycle_state.py
 skillberry_store_sdk/models/location_inner.py
+skillberry_store_sdk/models/login_request.py
+skillberry_store_sdk/models/login_response.py
 skillberry_store_sdk/models/manifest_state.py
 skillberry_store_sdk/models/optimize_skill_request.py
 skillberry_store_sdk/models/plugin_enabled_update.py
@@ -121,6 +128,7 @@ skillberry_store_sdk/models/tool_params_schema.py
 skillberry_store_sdk/models/tool_returns_schema.py
 skillberry_store_sdk/models/tool_schema.py
 skillberry_store_sdk/models/validation_error.py
+skillberry_store_sdk/models/who_am_i_response.py
 skillberry_store_sdk/py.typed
 skillberry_store_sdk/rest.py
 test-requirements.txt
@@ -129,6 +137,7 @@ test/test_add_tool_from_code_request.py
 test/test_admin_api.py
 test/test_anthropic_skill_generator_api.py
 test/test_ask_runspace_api.py
+test/test_auth_api.py
 test/test_check_request.py
 test/test_content_type.py
 test/test_create_snippet_request.py
@@ -145,6 +154,8 @@ test/test_generate_skill_request.py
 test/test_http_validation_error.py
 test/test_lifecycle_state.py
 test/test_location_inner.py
+test/test_login_request.py
+test/test_login_response.py
 test/test_manifest_state.py
 test/test_mcp_importer_api.py
 test/test_optimize_skill_request.py
@@ -178,4 +189,5 @@ test/test_tools_api.py
 test/test_validation_error.py
 test/test_vmcp_servers_api.py
 test/test_vnfs_servers_api.py
+test/test_who_am_i_response.py
 tox.ini

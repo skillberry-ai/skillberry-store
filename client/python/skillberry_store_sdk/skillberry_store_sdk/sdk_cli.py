@@ -1,7 +1,15 @@
-"""CLI module for sbs SDK using restish."""
+"""CLI module for sbs SDK using restish.
+
+Thin shim over the `restish` CLI (https://rest.sh). This file is the
+generation template; ``make generate-sdk`` substitutes ``sbs``
+(lowercase acronym, e.g. ``sbs``) and ``http://0.0.0.0:8000`` (compiled-in base
+URL) before it lands in the generated SDK. See
+docs/design/access-control.md §10.1 for the CLI/auth story.
+"""
 import getpass
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -14,9 +22,23 @@ from typing import NoReturn, Optional
 API_NAME = "sbs"
 API_URL = "http://0.0.0.0:8000"
 
-# See docs/design/access-control.md §10.1 for the CLI/auth story.
-# Env override for CI / scripting; if set, used as-is (and never written).
-SBS_TOKEN_ENV = "SBS_TOKEN"
+# Env override for CI / scripting. Named uppercase to match the design
+# doc (`SBS_TOKEN`, `GH_TOKEN`-style). When set, restish reads it via a
+# durable ``env-token`` profile so the token never appears on argv.
+API_TOKEN_ENV = f"{API_NAME.upper()}_TOKEN"
+ENV_PROFILE = "env-token"
+
+
+def _retry_args() -> list[str]:
+    """Default retries to 0 unless the caller set ``RSH_RETRY``.
+
+    Restish retries transient statuses (default: 2) — including 503
+    ``auth_disabled`` from the server in ``mode: disabled``, which turns
+    a single ``sbs whoami`` into three requests. Emit ``--rsh-retry 0``
+    when the user hasn't opted into their own retry count; when
+    ``RSH_RETRY`` is set (any value), leave the choice to restish.
+    """
+    return [] if "RSH_RETRY" in os.environ else ["--rsh-retry", "0"]
 
 
 def check_restish_installed() -> bool:
@@ -26,7 +48,7 @@ def check_restish_installed() -> bool:
             ["restish", "--version"],
             capture_output=True,
             check=True,
-            text=True
+            text=True,
         )
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -45,80 +67,43 @@ def abort_with_install_instructions() -> NoReturn:
     sys.exit(1)
 
 
-def get_restish_config_path() -> Path:
-    """Get the path to restish config file."""
-    config_dir = Path.home() / ".config" / "restish"
-    return config_dir / "apis.json"
+# Strip JSONC comments outside of strings. Restish writes `//` line
+# comments (migration header) into ``restish.json`` which trip json.load.
+_JSONC_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|/\*.*?\*/|//[^\n]*', re.DOTALL)
 
 
-def ensure_api_configured(api_name: str, api_url: str, force_update: bool = False) -> str:
-    """Ensure the API is configured in restish with correct URL."""
-    config_path = get_restish_config_path()
-    
-    # Create config directory if it doesn't exist
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Load existing config or create new one
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            try:
-                config = json.load(f)
-            except json.JSONDecodeError:
-                config = {}
-    else:
-        config = {}
-    
-    # Check if API is configured with correct URL
-    needs_update = False
-    if force_update or api_name not in config or "base" not in config[api_name]:
-        needs_update = True
-    # elif config[API_NAME].get("base") != API_URL:
-    #     needs_update = True
-    
-    if not needs_update:
-        return config[api_name]["base"]
+def _strip_jsonc(text: str) -> str:
+    return _JSONC_TOKEN.sub(lambda m: m.group(0) if m.group(0).startswith('"') else "", text)
 
-    # To avoid conflicts, remove any existing API configuration with the same base URL
-    for name, api_config in list(config.items()):
-        if isinstance(api_config, dict) and ("base" in api_config) and api_config["base"] == api_url:
-            del config[name]
-            print(f"Removed conflicting API configuration: {name}", file=sys.stderr)
 
-    # Configure the API
-    config[api_name] = {
-        "base": api_url,
-        "spec_files": [f"{api_url}/openapi.json"]
-    }
-    
-    # Write updated config
-    with open(config_path, 'w') as f:
-        json.dump(config, f, indent=2)
-    
-    # Sync the API spec
+def _config_path() -> Path:
+    """Path to the restish v2 config file (``restish config path``)."""
     try:
-        subprocess.run(
-            ["restish", "api", "sync", api_name],
+        proc = subprocess.run(
+            ["restish", "config", "path"],
+            capture_output=True,
+            text=True,
             check=True,
-            capture_output=True
         )
-    except subprocess.CalledProcessError as e:
-        print(f"Warning: Failed to sync API spec: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    return api_url
+        candidate = proc.stdout.strip()
+        if candidate:
+            return Path(candidate)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return Path.home() / ".config" / "restish" / "restish.json"
 
 
 def _load_config() -> tuple[dict, Path]:
-    """Return (config, path). Missing file => empty dict."""
-    config_path = get_restish_config_path()
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    if not config_path.exists():
-        return {}, config_path
+    """Return (config, path). Missing/unreadable file => empty dict."""
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        return {}, path
     try:
-        with open(config_path, "r") as fh:
-            return json.load(fh) or {}, config_path
-    except json.JSONDecodeError:
-        return {}, config_path
+        with open(path, "r") as fh:
+            return json.loads(_strip_jsonc(fh.read())) or {}, path
+    except (json.JSONDecodeError, OSError):
+        return {}, path
 
 
 def _write_config(config: dict, path: Path) -> None:
@@ -130,233 +115,248 @@ def _write_config(config: dict, path: Path) -> None:
         pass
 
 
-def _api_base_url(api_name: str, default: str) -> str:
-    config, _ = _load_config()
-    entry = config.get(api_name) or {}
-    return entry.get("base") or default
+def _registered_base(api_name: str) -> Optional[str]:
+    """Return the base_url currently registered for ``api_name``, or None.
+
+    Uses ``restish api list -o json`` so we consume restish's own
+    parser rather than reimplementing JSONC handling here.
+    """
+    try:
+        proc = subprocess.run(
+            ["restish", "api", "list", "-o", "json"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        entries = json.loads(proc.stdout) or []
+    except (subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+        return None
+    for entry in entries:
+        if entry.get("name") == api_name:
+            return entry.get("base_url")
+    return None
+
+
+def _restish_connect(api_name: str, api_url: str, replace: bool = False) -> None:
+    """Register/refresh the API with restish. Errors surface to stderr and exit."""
+    cmd = [
+        "restish", *_retry_args(),
+        "api", "connect", api_name, api_url,
+        "--spec", f"{api_url.rstrip('/')}/openapi.json",
+        "--yes",
+    ]
+    if replace:
+        cmd.append("--replace")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        msg = (proc.stderr or proc.stdout or "").strip() or "unknown error"
+        print(f"Failed to connect to {api_url}: {msg}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _ensure_env_profile(api_name: str) -> None:
+    """Idempotently create the env-token profile.
+
+    Only literal text ``env:<VAR>`` is passed on argv here — no secrets.
+    Restish resolves ``env:<VAR>`` at request time.
+    """
+    subprocess.run(
+        [
+            "restish", "api", "set", api_name,
+            f"profiles.{ENV_PROFILE}.auth: "
+            f"{{type: bearer, params: {{token: env:{API_TOKEN_ENV}}}}}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _ensure_connected(api_name: str, default_url: str) -> str:
+    """Ensure the API is registered. Preserve any user-set base_url override.
+
+    Returns the effective base_url in use.
+    """
+    existing = _registered_base(api_name)
+    if existing:
+        target_url = existing
+    else:
+        target_url = default_url
+        _restish_connect(api_name, target_url, replace=False)
+    _ensure_env_profile(api_name)
+    return target_url
+
+
+def _store_bearer(api_name: str, token: str) -> None:
+    """Persist a bearer token in restish's v2 config, off argv.
+
+    Writes ``apis.<name>.profiles.default.auth = {type: bearer, params: {token: <t>}}``
+    directly — restish's own ``api set`` would echo the token on argv.
+    """
+    config, path = _load_config()
+    apis = config.setdefault("apis", {})
+    entry = apis.setdefault(api_name, {})
+    profiles = entry.setdefault("profiles", {})
+    default = profiles.setdefault("default", {})
+    default["auth"] = {"type": "bearer", "params": {"token": token}}
+    _write_config(config, path)
+
+
+def _auth_disabled(api_url: str) -> bool:
+    """Return True only when the server explicitly reports auth is disabled.
+
+    Preflight probe against ``GET /auth/whoami``: in ``disabled`` mode the
+    server returns 503 with ``{"detail": "auth_disabled"}`` (see
+    docs/design/access-control.md §7 and the ``auth_api.py`` handler).
+    Any other status — 401 when standalone-auth is on but the client
+    isn't signed in, 200 when a valid bearer is already present, network
+    errors — returns False so the caller can proceed and surface the
+    real error itself.
+    """
+    url = f"{api_url.rstrip('/')}/auth/whoami"
+    try:
+        urllib.request.urlopen(url, timeout=5).read()
+    except urllib.error.HTTPError as e:
+        if e.code != 503:
+            return False
+        try:
+            detail = json.loads(e.read().decode("utf-8")).get("detail")
+        except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+            return False
+        return detail == "auth_disabled"
+    except (urllib.error.URLError, OSError):
+        return False
+    return False
 
 
 def _do_login(api_name: str, api_url: str) -> int:
-    """`sbs login` — prompt for creds, POST /auth/login, persist bearer."""
+    """`<API> login` — prompt for creds, POST /auth/login via restish, persist bearer."""
+    # Fail-fast when the server has auth disabled: don't prompt for
+    # credentials the server would ignore anyway. Uses whatever URL is
+    # currently registered (respects `sbs connect <alt>`), falling back
+    # to the compiled-in default.
+    effective_url = _registered_base(api_name) or api_url
+    if _auth_disabled(effective_url):
+        print(
+            f"Authentication is disabled on {effective_url}; no login required.",
+            file=sys.stderr,
+        )
+        return 2
+
     username = input("Username: ").strip()
     password = getpass.getpass("Password: ")
     if not username or not password:
         print("Username and password are required", file=sys.stderr)
         return 2
 
-    payload = json.dumps({"username": username, "password": password}).encode("utf-8")
-    req = urllib.request.Request(
-        f"{api_url.rstrip('/')}/auth/login",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
+    _ensure_connected(api_name, api_url)
+
+    # Body via stdin — nothing sensitive on argv. `-o json` forces
+    # machine-parseable output regardless of the terminal state.
+    body = json.dumps({"username": username, "password": password})
+    result = subprocess.run(
+        ["restish", *_retry_args(), api_name, "login", "-o", "json"],
+        input=body,
+        capture_output=True,
+        text=True,
     )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        try:
-            detail = json.loads(e.read().decode("utf-8")).get("detail", "")
-        except Exception:  # noqa: BLE001
-            detail = ""
-        if e.code == 401:
-            print(f"Login failed: {detail or 'invalid_credentials'}", file=sys.stderr)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip() or "login_failed"
+        # restish exits non-zero on 401; the server's `invalid_credentials`
+        # detail is in the response body which restish surfaces to stderr.
+        if "401" in detail or "invalid_credentials" in detail:
+            print("Login failed: invalid_credentials", file=sys.stderr)
         else:
-            print(f"Login failed ({e.code}): {detail or e.reason}", file=sys.stderr)
-        return 1
-    except urllib.error.URLError as e:
-        print(f"Cannot reach {api_url}: {e.reason}", file=sys.stderr)
+            print(f"Login failed: {detail}", file=sys.stderr)
         return 1
 
-    token = body.get("token")
+    try:
+        response = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        print("Server did not return valid JSON", file=sys.stderr)
+        return 1
+
+    token = response.get("token")
     if not token:
         print("Server did not return a token", file=sys.stderr)
         return 1
 
-    ensure_api_configured(api_name, api_url)
-    config, path = _load_config()
-    entry = config.setdefault(api_name, {"base": api_url})
-    headers = entry.setdefault("headers", {})
-    headers["Authorization"] = f"Bearer {token}"
-    _write_config(config, path)
-    print(f"Signed in as {body.get('tenant_id', username)}")
+    _store_bearer(api_name, token)
+    print(f"Signed in as {response.get('tenant_id', username)}")
     return 0
 
 
-def _do_logout(api_name: str, api_url: str) -> int:
-    """`sbs logout` — best-effort revoke, then wipe the stored header."""
-    config, path = _load_config()
-    entry = config.get(api_name) or {}
-    headers = entry.get("headers") or {}
-    token: Optional[str] = None
-    auth = headers.get("Authorization") or ""
-    parts = auth.split()
-    if len(parts) == 2 and parts[0].lower() == "bearer":
-        token = parts[1]
+def _do_logout(api_name: str) -> int:
+    """`<API> logout` — best-effort server revoke, then clear the stored bearer.
 
-    if token:
-        req = urllib.request.Request(
-            f"{api_url.rstrip('/')}/auth/logout",
-            headers={"Authorization": f"Bearer {token}"},
-            method="POST",
-        )
-        try:
-            urllib.request.urlopen(req, timeout=15).read()
-        except Exception:  # noqa: BLE001
-            pass  # server-side best-effort; always clear local state.
-
-    if "Authorization" in headers:
-        headers.pop("Authorization", None)
-        if not headers:
-            entry.pop("headers", None)
-        _write_config(config, path)
+    Uses restish's own ``api set … auth: null`` patcher (no secrets on
+    argv) rather than editing the config file inline.
+    """
+    subprocess.run(
+        ["restish", *_retry_args(), api_name, "logout"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    subprocess.run(
+        ["restish", "api", "set", api_name, "profiles.default.auth: null"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     print("Signed out")
     return 0
 
 
-def _do_whoami(api_url: str, token_override: Optional[str]) -> int:
-    """`sbs whoami` — GET /auth/whoami and pretty-print the result."""
-    config, _ = _load_config()
-    entry = config.get(API_NAME) or {}
-    headers = entry.get("headers") or {}
-    auth = token_override or headers.get("Authorization")
-    if token_override:
-        auth = f"Bearer {token_override}"
-    if not auth:
-        print("Not signed in — run `sbs login`", file=sys.stderr)
-        return 1
-    req = urllib.request.Request(
-        f"{api_url.rstrip('/')}/auth/whoami",
-        headers={"Authorization": auth},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            print("Session expired or invalid — run `sbs login`", file=sys.stderr)
-        else:
-            print(f"whoami failed ({e.code})", file=sys.stderr)
-        return 1
-    except urllib.error.URLError as e:
-        print(f"Cannot reach {api_url}: {e.reason}", file=sys.stderr)
-        return 1
-    print(json.dumps(body, indent=2))
+def _do_connect(api_name: str, url: str) -> int:
+    """`<API> connect <URL>` — repoint the CLI at a different backend.
+
+    Preserves credentials (no ``--replace``) so a URL switch does not
+    force a re-login when the same tenant lives at both hosts.
+    """
+    _restish_connect(api_name, url, replace=False)
+    _ensure_env_profile(api_name)
+    print(f"Connected to {url}")
     return 0
 
 
 def cli() -> None:
     """Main CLI entry point."""
-    # Intercept auth subcommands before any restish check — they use plain
-    # HTTP and don't need restish installed.
-    if len(sys.argv) >= 2 and sys.argv[1] in ("login", "logout", "whoami"):
-        api_url = _api_base_url(API_NAME, API_URL)
-        if sys.argv[1] == "login":
-            sys.exit(_do_login(API_NAME, api_url))
-        if sys.argv[1] == "logout":
-            sys.exit(_do_logout(API_NAME, api_url))
-        if sys.argv[1] == "whoami":
-            override = os.environ.get(SBS_TOKEN_ENV)
-            sys.exit(_do_whoami(api_url, override))
-
-    # Check if restish is installed
+    # All paths need restish on PATH.
     if not check_restish_installed():
         abort_with_install_instructions()
 
-    # Check for "connect <URL>" command
-    if len(sys.argv) == 3 and sys.argv[1] == "connect":
-        # Extract URL from "connect <URL>" format
-        url = sys.argv[2]
-        if url:
-            ensure_api_configured(API_NAME, url, True)
-            print(f"Connected to {url}")
-            sys.exit(0)
-        else:
-            print("Error: Invalid connect command. Usage: connect <URL>", file=sys.stderr)
-            sys.exit(1)
-    
-    # Ensure API is configured
-    api_url = ensure_api_configured(API_NAME, API_URL)
-    
-    # Delegate to restish, passing all arguments and filtering output
+    # Intercept subcommands that need local-side work (config writes,
+    # interactive prompts) before falling through to plain delegation.
+    if len(sys.argv) >= 2:
+        first = sys.argv[1]
+        if first == "login":
+            sys.exit(_do_login(API_NAME, API_URL))
+        if first == "logout":
+            sys.exit(_do_logout(API_NAME))
+        if first == "connect":
+            if len(sys.argv) != 3 or not sys.argv[2]:
+                print("Error: usage: connect <URL>", file=sys.stderr)
+                sys.exit(1)
+            sys.exit(_do_connect(API_NAME, sys.argv[2]))
+
+    # Everything else — including `whoami` — is a plain generated
+    # OpenAPI operation. Register the API on first use, then hand off
+    # to restish so it owns the TTY: color, streaming, interactive
+    # auth flows, and per-command help all work as documented.
+    _ensure_connected(API_NAME, API_URL)
+
+    cmd = ["restish", *_retry_args()]
+    # If API_TOKEN_ENV is set, run under the env-token profile so the
+    # token stays in the process environment and never lands on argv.
+    if os.environ.get(API_TOKEN_ENV):
+        cmd += ["-p", ENV_PROFILE]
+    cmd += [API_NAME] + sys.argv[1:]
+
     try:
-        # Build the command
-        cmd = ["restish", API_NAME] + sys.argv[1:]
-
-        # SBS_TOKEN, if set, overrides any stored token for this invocation
-        # (mirrors `gh`'s GH_TOKEN — see design §10.1). The env var is
-        # forwarded via restish's per-request header mechanism if that
-        # existed; instead we set restish's config via env and let restish
-        # merge headers. Simpler: prepend an explicit -H when set.
-        env = os.environ.copy()
-        override_token = env.get(SBS_TOKEN_ENV)
-        if override_token:
-            cmd += ["-H", f"Authorization: Bearer {override_token}"]
-
-        # Run restish and capture output
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-
-        # 401 from the server surfaces as a restish non-zero exit; give the
-        # user an actionable hint.
-        combined_lower = (result.stdout + result.stderr).lower()
-        if result.returncode != 0 and (
-            "401" in combined_lower
-            or "unauthorized" in combined_lower
-            or "invalid_or_expired_token" in combined_lower
-            or "missing_authorization" in combined_lower
-        ):
-            print(
-                "Session expired or invalid — run `sbs login`",
-                file=sys.stderr,
-            )
-            if result.stdout:
-                print(result.stdout, end="")
-            if result.stderr:
-                print(result.stderr, file=sys.stderr, end="")
-            sys.exit(result.returncode or 1)
-        
-        # Filter out "Global Flags:" section from output
-        output_lines = result.stdout.split('\n')
-        filtered_lines = []
-        skip_section = False
-        found_global_flags = False
-        
-        for line in output_lines:
-            if line.strip().startswith('Global Flags:'):
-                skip_section = True
-                found_global_flags = True
-            elif skip_section and line and not line[0].isspace():
-                # End of Global Flags section
-                skip_section = False
-            
-            if not skip_section:
-                line  = line.replace("restish ", "")
-                filtered_lines.append(line)
-        
-        # If we found and skipped Global Flags section, append custom text
-        if found_global_flags:
-            filtered_lines.append(f"Connected to URL: {api_url}\n")
-            filtered_lines.append("General commands:")
-            filtered_lines.append(f"  connect <URL>\t\t\tconnect to an alternate {API_NAME} URL\n")
-        
-        # Print filtered output
-        print('\n'.join(filtered_lines), end='')
-        
-        # Print stderr if any
-        if result.stderr:
-            print(result.stderr, file=sys.stderr, end='')
-        
-        # Exit with same code as restish
-        sys.exit(result.returncode)
-        
-    except Exception as e:
-        print(f"Error executing restish: {e}", file=sys.stderr)
-        sys.exit(1)
+        os.execvp(cmd[0], cmd)
+    except FileNotFoundError:
+        abort_with_install_instructions()
 
 
 if __name__ == "__main__":
