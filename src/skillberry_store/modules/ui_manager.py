@@ -68,6 +68,25 @@ class UIManager:
             logger.error(f"Error installing UI dependencies: {e}")
             return False
 
+    def _purge_stale_vite_config_artifacts(self) -> None:
+        """Remove tsc-emitted shadows of vite.config.ts before Vite starts.
+
+        Vite's config resolution prefers vite.config.js over vite.config.ts,
+        so a stale compiled config would silently override the source and
+        strip the `define: { VITE_ACL_MODE: ... }` block that ties the UI
+        to access_control_config.yaml. The source of truth for ACL mode is
+        that YAML, read by vite.config.ts at every startup — anything that
+        could shadow it must be gone before we spawn Vite.
+        """
+        for name in ("vite.config.js", "vite.config.d.ts", "tsconfig.node.tsbuildinfo"):
+            stale = self.ui_dir / name
+            try:
+                if stale.exists():
+                    stale.unlink()
+                    logger.info("Removed stale Vite config artifact: %s", stale)
+            except OSError as e:
+                logger.warning("Could not remove %s: %s", stale, e)
+
     def start(self) -> bool:
         """Start the UI development server.
 
@@ -86,6 +105,8 @@ class UIManager:
         if not self._install_dependencies():
             logger.error("Cannot start UI server without dependencies")
             return False
+
+        self._purge_stale_vite_config_artifacts()
 
         try:
             logger.info(f"Starting UI server on port {self.ui_port}...")
