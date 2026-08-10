@@ -37,7 +37,7 @@ CODE_FILES := $(CODE_FILES) pyproject.toml Makefile Dockerfile
 	@if [ -f .stamps/code-scan ]; then \
 		find $(CODE_SUBTREES) -type f $(CODE_FILTER) -newer .stamps/code-scan -print; \
 		for f in pyproject.toml Makefile Dockerfile; do \
-			[ -e "$$f" ] && [ "$$f" -nt .stamps/code-scan ] && echo "$$f"; \
+			[ -e "$$f" ] && [ "$$f" -nt .stamps/code-scan ] && echo "$$f" || true; \
 		done; \
 	fi
 	@mkdir -p .stamps && touch .stamps/code-scan
