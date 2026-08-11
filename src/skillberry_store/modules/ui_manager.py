@@ -92,7 +92,15 @@ class UIManager:
             # server (sirv) with no filesystem watchers, so it will not
             # exhaust inotify limits in Kind / other multi-pod environments.
             self.process = subprocess.Popen(
-                ["npx", "vite", "preview", "--host", "0.0.0.0", "--port", str(self.ui_port)],
+                [
+                    "npx",
+                    "vite",
+                    "preview",
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    str(self.ui_port),
+                ],
                 cwd=self.ui_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
