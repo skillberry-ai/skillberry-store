@@ -141,7 +141,7 @@ def register_auth_api(
         Args:
             request: The incoming request; ``Authorization: Bearer`` is
                 resolved directly (this endpoint is in the unauth
-                allow-list, so the middleware does not populate
+                allow-list, so the enforce dependency does not populate
                 ``request.state.subject`` for it).
 
         Returns:

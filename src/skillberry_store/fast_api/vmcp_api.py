@@ -6,6 +6,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 
+from skillberry_store.access_control.decorator import requires
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.vmcp_schema import VmcpSchema
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
@@ -51,6 +52,7 @@ def register_vmcp_api(
         ctx = unflatten_keys(dict(request.headers)).get(SKILLBERRY_CONTEXT.lower())
         return ctx.get("env_id") if ctx else ""
 
+    @requires("vmcp_servers", "create")
     @app.post(
         "/vmcp_servers/",
         tags=[tags],
@@ -96,6 +98,7 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error creating vmcp server: {str(e)}"
             )
 
+    @requires("vmcp_servers", "list")
     @app.get(
         "/facets/vmcp_servers",
         tags=[tags],
@@ -115,6 +118,7 @@ def register_vmcp_api(
                 detail=f"Error computing vmcp server facets: {str(e)}",
             )
 
+    @requires("vmcp_servers", "list")
     @app.get(
         "/vmcp_servers/",
         tags=[tags],
@@ -193,6 +197,7 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error listing vmcp servers: {str(e)}"
             )
 
+    @requires("vmcp_servers", "get")
     @app.get(
         "/vmcp_servers/{uuid_or_name}",
         tags=[tags],
@@ -222,6 +227,7 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error retrieving vmcp server: {str(e)}"
             )
 
+    @requires("vmcp_servers", "delete")
     @app.delete(
         "/vmcp_servers/{uuid_or_name}",
         tags=[tags],
@@ -253,6 +259,7 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error deleting vmcp server: {str(e)}"
             )
 
+    @requires("vmcp_servers", "update")
     @app.put(
         "/vmcp_servers/{uuid_or_name}",
         tags=[tags],
@@ -292,6 +299,7 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error updating vmcp server: {str(e)}"
             )
 
+    @requires("vmcp_servers", "execute")
     @app.post(
         "/vmcp_servers/{uuid_or_name}/start",
         tags=[tags],
@@ -333,6 +341,7 @@ def register_vmcp_api(
                 status_code=500, detail=f"Error starting vmcp server: {str(e)}"
             )
 
+    @requires("vmcp_servers", "search")
     @app.get(
         "/search/vmcp_servers",
         tags=[tags],

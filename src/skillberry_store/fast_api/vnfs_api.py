@@ -6,6 +6,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 
+from skillberry_store.access_control.decorator import requires
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.vnfs_schema import VnfsSchema
 from skillberry_store.services.exceptions import ObjectInUseError
@@ -38,6 +39,7 @@ def register_vnfs_api(
     assert service is not None  # narrowed for type checker
     app.state.vnfs_server_manager = service.server_manager
 
+    @requires("vnfs_servers", "create")
     @app.post(
         "/vnfs_servers/",
         tags=[tags],
@@ -83,6 +85,7 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error creating vNFS server: {exc}"
             )
 
+    @requires("vnfs_servers", "list")
     @app.get(
         "/facets/vnfs_servers",
         tags=[tags],
@@ -102,6 +105,7 @@ def register_vnfs_api(
                 detail=f"Error computing vNFS server facets: {exc}",
             )
 
+    @requires("vnfs_servers", "list")
     @app.get(
         "/vnfs_servers/",
         tags=[tags],
@@ -177,6 +181,7 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error listing vNFS servers: {exc}"
             )
 
+    @requires("vnfs_servers", "get")
     @app.get(
         "/vnfs_servers/{uuid_or_name}",
         tags=[tags],
@@ -206,6 +211,7 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error retrieving vNFS server: {exc}"
             )
 
+    @requires("vnfs_servers", "delete")
     @app.delete(
         "/vnfs_servers/{uuid_or_name}",
         tags=[tags],
@@ -237,6 +243,7 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error deleting vNFS server: {exc}"
             )
 
+    @requires("vnfs_servers", "update")
     @app.put(
         "/vnfs_servers/{uuid_or_name}",
         tags=[tags],
@@ -274,6 +281,7 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error updating vNFS server: {exc}"
             )
 
+    @requires("vnfs_servers", "execute")
     @app.post(
         "/vnfs_servers/{uuid_or_name}/start",
         tags=[tags],
@@ -314,6 +322,7 @@ def register_vnfs_api(
                 status_code=500, detail=f"Error starting vNFS server: {exc}"
             )
 
+    @requires("vnfs_servers", "search")
     @app.get(
         "/search/vnfs_servers",
         tags=[tags],

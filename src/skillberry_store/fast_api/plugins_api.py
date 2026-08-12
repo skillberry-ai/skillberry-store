@@ -5,6 +5,8 @@ from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from skillberry_store.access_control.decorator import requires
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,6 +25,7 @@ def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"
         tags: OpenAPI tags for these endpoints
     """
 
+    @requires("plugins", "list")
     @app.get(
         "/plugins/",
         tags=[tags],
@@ -54,6 +57,7 @@ def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"
                 status_code=500, detail=f"Failed to list plugins: {str(e)}"
             )
 
+    @requires("plugins", "get")
     @app.get(
         "/plugins/{plugin_name}",
         tags=[tags],
@@ -89,6 +93,7 @@ def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"
                 status_code=500, detail=f"Failed to get plugin info: {str(e)}"
             )
 
+    @requires("plugins", "update")
     @app.patch(
         "/plugins/{plugin_name}",
         tags=[tags],

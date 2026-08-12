@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import PlainTextResponse, StreamingResponse
 
+from skillberry_store.access_control.decorator import requires
 from skillberry_store.services.admin_service import AdminService
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ def register_admin_api(
         text = await service.get_metrics()
         return PlainTextResponse(content=text, media_type="text/plain")
 
+    @requires("admin", "admin")
     @app.delete(
         "/admin/purge-all", tags=[tags], openapi_extra={"x-cli-name": "purge-all"}
     )
@@ -76,6 +78,7 @@ def register_admin_api(
         """
         return service.purge_all()
 
+    @requires("admin", "admin")
     @app.get(
         "/admin/backup",
         tags=[tags],
@@ -108,6 +111,7 @@ def register_admin_api(
             },
         )
 
+    @requires("admin", "admin")
     @app.post(
         "/admin/restore",
         tags=[tags],
@@ -135,7 +139,11 @@ def register_admin_api(
         content = await backup_file.read()
         return service.restore_all(content)
 
-    @app.get("/health", tags=[tags], openapi_extra={"x-cli-name": "health"})
+    @app.get(
+        "/health",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "health"},
+    )
     def health_check():
         """Health check endpoint.
 
@@ -144,6 +152,7 @@ def register_admin_api(
         """
         return {"status": "healthy"}
 
+    @requires("admin", "list")
     @app.get("/changes", tags=[tags], openapi_extra={"x-cli-name": "changes-count"})
     def get_changes_count():
         """Get the global mutation counter for detecting data changes.
@@ -161,7 +170,11 @@ def register_admin_api(
 
         return {"count": get_count()}
 
-    @app.get("/health/ready", tags=[tags], openapi_extra={"x-cli-name": "health-ready"})
+    @app.get(
+        "/health/ready",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "health-ready"},
+    )
     def readiness_check(request: Request):
         """Readiness check endpoint - verifies all description stores are initialized.
 
