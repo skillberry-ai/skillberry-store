@@ -195,8 +195,8 @@ def test_repo_root_config_yaml_does_not_leak_into_tests(tmp_path, monkeypatch):
 
 def test_disabled_mode_ignores_bearer_on_normal_endpoints(fresh_sbs_factory):
     """A bearer token on a regular endpoint must also be ignored — the
-    middleware isn't installed in disabled mode, so the request behaves
-    identically whether or not an Authorization header is sent."""
+    enforce dependency isn't installed in disabled mode, so the request
+    behaves identically whether or not an Authorization header is sent."""
     client = fresh_sbs_factory("mode: disabled\n")
     no_auth = client.get("/skills/")
     with_auth = client.get(
@@ -436,11 +436,12 @@ def test_reader_mcp_surface_excludes_writes(fresh_sbs_factory):
 
 
 def test_per_user_mcp_paths_are_unauth_allowlisted(fresh_sbs_factory):
-    """The middleware must let /control_sse/<user>* through without a
-    token — the tool invocations that traverse the SSE transport are
-    each gated separately when the ASGI stack re-dispatches them. We
-    check the config directly rather than driving a live SSE handshake
-    (which would deadlock the TestClient)."""
+    """The unauth allow-list must include /control_sse/<user>* — the SSE
+    transport itself is open, and the tool invocations that traverse it
+    are each gated separately when the ASGI stack re-dispatches them
+    through the enforce dependency. We check the config directly rather
+    than driving a live SSE handshake (which would deadlock the
+    TestClient)."""
     client = fresh_sbs_factory(_standalone_yaml())
     cfg = client.app.state.acl_cfg
     assert cfg.is_unauthenticated("GET", "/control_sse/alice")

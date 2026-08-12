@@ -24,7 +24,11 @@ def _app_with_mcp_marked_routes() -> FastAPI:
         "/skills/",
         tags=["skills"],
         operation_id="list_skills",
-        openapi_extra={"x-mcp-tool": True},
+        openapi_extra={
+            "x-mcp-tool": True,
+            "x-rbac-resource": "skills",
+            "x-rbac-verb": "list",
+        },
     )
     def list_skills():
         return []
@@ -33,7 +37,11 @@ def _app_with_mcp_marked_routes() -> FastAPI:
         "/skills/",
         tags=["skills"],
         operation_id="create_skill",
-        openapi_extra={"x-mcp-tool": True},
+        openapi_extra={
+            "x-mcp-tool": True,
+            "x-rbac-resource": "skills",
+            "x-rbac-verb": "create",
+        },
     )
     def create_skill():
         return {}
@@ -42,7 +50,11 @@ def _app_with_mcp_marked_routes() -> FastAPI:
         "/skills/{uuid_or_name}",
         tags=["skills"],
         operation_id="delete_skill",
-        openapi_extra={"x-mcp-tool": True},
+        openapi_extra={
+            "x-mcp-tool": True,
+            "x-rbac-resource": "skills",
+            "x-rbac-verb": "delete",
+        },
     )
     def delete_skill(uuid_or_name: str):
         return {}
@@ -51,7 +63,11 @@ def _app_with_mcp_marked_routes() -> FastAPI:
         "/tools/{uuid_or_name}/execute",
         tags=["tools"],
         operation_id="execute_tool",
-        openapi_extra={"x-mcp-tool": True},
+        openapi_extra={
+            "x-mcp-tool": True,
+            "x-rbac-resource": "tools",
+            "x-rbac-verb": "execute",
+        },
     )
     def execute_tool(uuid_or_name: str):
         return {}
