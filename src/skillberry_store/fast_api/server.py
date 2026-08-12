@@ -119,14 +119,10 @@ class SBS(FastAPI):
         sessions = SessionStore()
         acl_dependencies: List = []
         if acl_cfg.mode == "standalone":
-            acl_dependencies = [
-                Depends(make_enforce_dependency(acl_cfg, sessions))
-            ]
+            acl_dependencies = [Depends(make_enforce_dependency(acl_cfg, sessions))]
         elif acl_cfg.mode != "disabled":
             # Should have been rejected at config load; belt and braces.
-            raise RuntimeError(
-                f"Unsupported access-control mode: {acl_cfg.mode!r}"
-            )
+            raise RuntimeError(f"Unsupported access-control mode: {acl_cfg.mode!r}")
 
         super().__init__(
             lifespan=_sbs_lifespan,
@@ -240,9 +236,7 @@ class SBS(FastAPI):
         # ------------------------------------------------------------------
         register_auth_api(self, cfg=acl_cfg, sessions=sessions, tags="auth")
         if acl_cfg.mode == "disabled":
-            logger.info(
-                "Access control mode=disabled — PEP dependency not installed"
-            )
+            logger.info("Access control mode=disabled — PEP dependency not installed")
         else:
             logger.info(
                 "Access control mode=%s — PEP dependency installed "
@@ -423,7 +417,16 @@ def custom_openapi(app: FastAPI, openapi_tags):
     # ``deep_dict_update`` concatenates lists (empty list is a no-op).
     acl_cfg = getattr(getattr(app, "state", None), "acl_cfg", None)
     if acl_cfg is not None and openapi_schema.get("paths"):
-        _METHOD_KEYS = {"get", "post", "put", "patch", "delete", "options", "head", "trace"}
+        _METHOD_KEYS = {
+            "get",
+            "post",
+            "put",
+            "patch",
+            "delete",
+            "options",
+            "head",
+            "trace",
+        }
         for path, path_item in openapi_schema["paths"].items():
             if not isinstance(path_item, dict):
                 continue
