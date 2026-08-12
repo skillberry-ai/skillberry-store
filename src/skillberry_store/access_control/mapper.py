@@ -1,4 +1,14 @@
-"""Route → (resource, verb) mapping. See §6 of the design doc."""
+"""Route → (resource, verb) mapping. See §6 of the design doc.
+
+Every REST endpoint declares its ``(resource, verb)`` explicitly via
+``@requires(...)`` (see ``decorator.py``). ``SBS.__init__`` stamps
+that marker onto the matched ``APIRoute.openapi_extra`` at startup;
+this module reads those keys back at request time. There is no
+method/path→verb rule table and no tag→resource fallback — a route
+that reaches the enforce dependency without markers is a bug, and
+``audit_rbac_coverage`` refuses to boot when any non-allowlisted route
+is unmarked.
+"""
 
 from __future__ import annotations
 
@@ -13,15 +23,13 @@ class UnmappedRouteError(Exception):
     """Raised when no FastAPI route matches the inbound request."""
 
 
-_TAG_TO_RESOURCE = {
-    "skills": "skills",
-    "tools": "tools",
-    "snippets": "snippets",
-    "vmcp_servers": "vmcp_servers",
-    "vnfs_servers": "vnfs_servers",
-    "admin": "admin",
-    "plugins": "plugins",
-}
+class UnmarkedRouteError(Exception):
+    """Raised when the matched route has no @requires marker.
+
+    Should never fire in production — the startup audit prevents it.
+    Kept as a defensive backstop for cases where a route is added after
+    startup (e.g. a runtime plugin mount) without the audit re-running.
+    """
 
 
 def resolve_route(request: Request) -> APIRoute:
@@ -38,73 +46,53 @@ def resolve_route(request: Request) -> APIRoute:
 
 
 def resource_for(route: APIRoute) -> str:
-    extra = route.openapi_extra or {}
-    if "x-rbac-resource" in extra:
-        return str(extra["x-rbac-resource"])
-    for tag in route.tags or []:
-        if tag in _TAG_TO_RESOURCE:
-            return _TAG_TO_RESOURCE[tag]
-    return "plugins"
+    """Return the RBAC resource declared on ``route`` via @requires.
 
-
-def verb_for(request: Request, route: APIRoute) -> str:
-    return verb_for_method_path(request.method, request.url.path, route)
-
-
-def verb_for_method_path(method: str, path: str, route: APIRoute) -> str:
-    """Resolve the RBAC verb without a live Request.
-
-    Used both by the middleware (via ``verb_for``) and by startup-time
-    planners that need to know the ``(resource, verb)`` of a route before
-    any request has arrived — e.g. computing the per-tenant MCP surface.
+    Raises ``UnmarkedRouteError`` if the marker is missing.
     """
     extra = route.openapi_extra or {}
-    if "x-rbac-verb" in extra:
-        return str(extra["x-rbac-verb"])
-    method = method.upper()
-    tags = set(route.tags or [])
-
-    if "admin" in tags:
-        admin_super_paths = ("/admin/backup", "/admin/restore", "/admin/purge-all")
-        if any(path.rstrip("/").startswith(p) for p in admin_super_paths):
-            return "admin"
-
-    if method == "GET":
-        if "/search/" in path or path.startswith("/search"):
-            return "search"
-        if "export-" in path:
-            return "get"
-        if _has_path_param(route):
-            return "get"
-        return "list"
-
-    if method == "POST":
-        if path.endswith("/execute") or path.endswith("/start") or path.endswith("/stop"):
-            return "execute"
-        return "create"
-
-    if method in ("PUT", "PATCH"):
-        return "update"
-
-    if method == "DELETE":
-        return "delete"
-
-    return "get"
+    resource = extra.get("x-rbac-resource")
+    if not isinstance(resource, str) or not resource:
+        raise UnmarkedRouteError(
+            f"{route.path}: missing x-rbac-resource "
+            f"(apply @requires above @app.<method>)"
+        )
+    return resource
 
 
-def _has_path_param(route: APIRoute) -> bool:
-    return "{" in route.path
+def verb_for_route(route: APIRoute) -> str:
+    """Return the RBAC verb declared on ``route`` via @requires.
+
+    Raises ``UnmarkedRouteError`` if the marker is missing.
+    """
+    extra = route.openapi_extra or {}
+    verb = extra.get("x-rbac-verb")
+    if not isinstance(verb, str) or not verb:
+        raise UnmarkedRouteError(
+            f"{route.path}: missing x-rbac-verb "
+            f"(apply @requires above @app.<method>)"
+        )
+    return verb
 
 
 def map_request(request: Request) -> Tuple[str, str, APIRoute]:
-    """Resolve the matched route and return ``(resource, verb, route)``."""
-    route = resolve_route(request)
-    resource = resource_for(route)
-    verb = verb_for(request, route)
-    return resource, verb, route
+    """Resolve the matched route and return ``(resource, verb, route)``.
+
+    Prefers ``request.scope["route"]`` when it is a live ``APIRoute`` —
+    which is the case on the production request path, because the
+    enforce dependency runs after Starlette routing has stamped the
+    matched route onto the scope. Falls back to walking
+    ``request.app.routes`` for callers that construct synthetic
+    ``Request`` objects and never invoke routing (``test_mapper.py``).
+    """
+    route = request.scope.get("route")
+    if not isinstance(route, APIRoute):
+        route = resolve_route(request)
+    return resource_for(route), verb_for_route(route), route
 
 
 def try_map_request(request: Request) -> Optional[Tuple[str, str, APIRoute]]:
+    """Return ``map_request`` result or ``None`` for unmapped routes."""
     try:
         return map_request(request)
     except UnmappedRouteError:

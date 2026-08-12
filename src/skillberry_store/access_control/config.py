@@ -181,7 +181,10 @@ _DEFAULT_UNAUTH_PATHS = [
     # Every /control_sse* path is a Control MCP transport (SSE handshake +
     # JSON-RPC messages), including per-tenant mount points like
     # /control_sse/<username>. The tool invocations that the transport
-    # forwards ARE gated by the middleware; the transport itself is not.
+    # forwards ARE gated by the enforce dependency on re-dispatch; the
+    # transport itself is not (SSE mounts are Starlette ``Mount`` objects,
+    # so router-level deps don't reach them either — the allow-list entry
+    # is defensive belt-and-braces).
     "GET /control_sse*",
     "POST /control_sse*",
 ]
