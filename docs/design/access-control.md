@@ -1,10 +1,12 @@
 # Access Control — Design
 
-Status: **Proposal (revision 11)**
+Status: **Proposal (revision 13)**
 Owner: skillberry-store
 Scope: `skillberry-store` FastAPI service (per-endpoint access control for tenants), extensible to per-object / per-namespace in later work.
 
 Revision notes:
+* r13 — **Fail-safe defaults via `@requires`**. Removed the method/path→verb rule table and the tag→resource fallback in the mapper. Every REST endpoint now declares its ``(resource, verb)`` explicitly with the ``@requires(resource, verb)`` decorator (`access_control/decorator.py`). ``SBS.__init__`` runs two startup helpers after every route (including plugin sub-routers) is registered: ``stamp_rbac_markers`` copies each handler's marker to its ``APIRoute.openapi_extra`` (so the OpenAPI schema publishes ``x-rbac-*`` for tooling), and ``audit_rbac_coverage`` refuses to boot when any non-allow-listed route lacks a marker — a missing decorator is now a *loud* deploy-time failure rather than a silent fall-through to some default. All 51 non-allowlisted endpoints across `skills_api`, `tools_api`, `snippets_api`, `vmcp_api`, `vnfs_api`, `admin_api`, and `plugins_api` were stamped in the same commit (`/auth/*`, `/health*`, `/admin/metrics` remain unauth-allowlisted and skip the audit). `mcp_plan.py` simplified: verb is method-independent now (a single marker per route), so `verb_for_method_path` was replaced by `verb_for_route`. §6 and §8 rewritten; §13 file inventory updated.
+* r12 — Refactored the PEP from a Starlette `BaseHTTPMiddleware` to a **single FastAPI dependency** installed on `router.dependencies` before any route is registered. Bearer extraction moved to FastAPI's `HTTPBearer` security scheme — the OpenAPI schema now advertises `securitySchemes.HTTPBearer` and per-route `security: [{HTTPBearer: []}]` (Swagger UI "Authorize" button and per-route lock icons). Removed the ad-hoc `Authorization` parser and hand-rolled 401 `JSONResponse` in favor of `HTTPBearer(auto_error=False)` + `HTTPException`. Kept the mapper's manual route-walk (it still runs on synthetic requests for the MCP-planning path and unit tests, but production calls now benefit from `request.scope["route"]` being populated because the dep fires after routing). Modules removed: `access_control/middleware.py`, `access_control/idp.py`. Module added: `access_control/deps.py`. §8 and §13 rewritten. Behavior unchanged — same allow/deny surface, same 401 with `WWW-Authenticate: Bearer`, same per-tenant MCP mounts.
 * r11 — Implementation-nit sweep before hand-off: (a) documented that `bcrypt.checkpw` and `bcrypt.hashpw` must run via `asyncio.to_thread` to avoid blocking the event loop, (b) called out that `sessions.py` needs an injectable time source for fast unit tests, (c) fixed the CLI-E2E test-isolation env var (`SBS_CONFIG_HOME` → `XDG_CONFIG_HOME`, which is what `restish` actually reads), (d) corrected the "invalid token" error-message example to `invalid_credentials`, (e) reworded §10.4's endpoint table to reflect that all three `/auth/*` endpoints (login/logout/whoami) exist, not just whoami, (f) renumbered §16 to eliminate the "7b." Markdown quirk, (g) moved the resolved MCP question out of §17.
 * r10 — Kept 12h `session_ttl_seconds` default. Documented the MCP token-refresh workflow explicitly in §10.2 (login → paste token in `claude_desktop_config.json` → restart MCP client when it expires); noted that raising the TTL is a one-value config change and added long-lived API tokens as §16 item 7b for the graduation path.
 * r9 — Final-pass gap fixes: made the middleware route-matching mechanism explicit (§6/§8), documented that the Control MCP works in **all** modes via the middleware transparently (FastApiMCP re-dispatches through `httpx.ASGITransport(app)` and forwards `Authorization` by default), clarified `Subject` vs `whoami`, fixed stale references (`standalone.tokens` → `standalone.users`, `signIn(token)` → `signIn(username, password)`, `/changes` moved out of the unauth allow-list), added operator-quickstart `hash_password.py` example, and pinned env-var precedence rules.
@@ -54,7 +56,7 @@ Revision notes:
 | **Scope** | *(future, deferred)* A block on the binding that filters target objects: `{ namespaces: [...], resourceNames: [...], ... }`. All object-selection filters live here so roles stay generic. |
 | **Mode** | One of `disabled`, `standalone` (in step 1). `delegated` is reserved for a later iteration. |
 | **Identity Provider (IdP)** | Component that turns an inbound request into a `(tenant_id, groups)` tuple — swappable per mode. |
-| **PEP** (Policy Enforcement Point) | FastAPI middleware that intercepts every request. |
+| **PEP** (Policy Enforcement Point) | A single FastAPI dependency installed on `router.dependencies`; runs on every route. Detail in §8. |
 | **PDP** (Policy Decision Point) | Pure function `authorize(subject, resource, verb) → Decision`. Stateless, cachable, unit-testable. |
 | **Namespace** | A logical grouping applied to store objects via a `namespace:<name>` tag on the object. Namespaces belong to objects, not tenants. Tenants gain access to a namespace via a role binding (future refinement). |
 
@@ -80,32 +82,34 @@ The mode name only changes the **IdP implementation**. The RBAC evaluator, confi
                          ┌─────────────────────────────────────────────┐
                          │                 skillberry-store            │
                          │                                             │
-Request ─────► CORS ───► │  PEP middleware                             │
-                         │    │                                        │
-                         │    ▼                                        │
-                         │  IdentityProvider  ── mode-specific ────────┤
-                         │    │   step 1: disabled | standalone         │
-                         │    ▼   (delegated: future)                   │
-                         │  Subject(tenant_id, groups)                 │
-                         │    │                                        │
-                         │    ▼                                        │
-                         │  RouteMapper: (method, path)                │
-                         │    → (resource, verb)                       │
-                         │    │                                        │
-                         │    ▼                                        │
-                         │  PDP.authorize(subject, resource, verb)     │
-                         │    │                                        │
-                         │    ├─ allow → request.state.subject = ...   │
-                         │    │            forward to endpoint         │
-                         │    └─ deny  → 401 (no identity)             │
-                         │              or 403 (identity but no perm)  │
-                         └─────────────────────────────────────────────┘
+Request ─► CORS ─► routing ─► │  enforce dep (global)                       │
+                              │    │  (HTTPBearer scheme → OpenAPI security)  │
+                              │    ▼                                        │
+                              │  bearer token → SessionStore.resolve → ────┤
+                              │    │   step 1: disabled | standalone       │
+                              │    ▼   (delegated: future)                 │
+                              │  Subject(tenant_id, groups)                │
+                              │    │                                        │
+                              │    ▼                                        │
+                              │  RouteMapper: (method, path)                │
+                              │    → (resource, verb)                       │
+                              │    │                                        │
+                              │    ▼                                        │
+                              │  PDP.authorize(subject, resource, verb)     │
+                              │    │                                        │
+                              │    ├─ allow → request.state.subject = ...   │
+                              │    │            forward to endpoint         │
+                              │    └─ deny  → 401 (no identity)             │
+                              │              or 403 (identity but no perm)  │
+                              └─────────────────────────────────────────────┘
 ```
 
-### Why a middleware, not a per-route `Depends`?
+### Why a single global `Depends`, not a Starlette middleware, not per-route `Depends`?
 
-* **Zero endpoint edits** — meets the "minimal change" requirement. All ~50 endpoints are enforced by the middleware.
-* Route → resource mapping can be **derived from the OpenAPI tag** already declared on every endpoint (`skills`, `tools`, `snippets`, `vmcp_servers`, `vnfs_servers`, `admin`, `plugins`). No new registration boilerplate.
+* **Zero endpoint edits** — meets the "minimal change" requirement. All ~50 endpoints are enforced by one dep on `router.dependencies`; handlers stay ACL-free.
+* Route → resource mapping is **derived from the OpenAPI tag** already declared on every endpoint (`skills`, `tools`, `snippets`, `vmcp_servers`, `vnfs_servers`, `admin`, `plugins`). No new registration boilerplate.
+* Using FastAPI's own dependency machinery instead of `BaseHTTPMiddleware` lets us hand bearer-extraction to the `HTTPBearer` security scheme. FastAPI then auto-populates `components.securitySchemes` and per-route `security` in the generated OpenAPI (Swagger UI "Authorize" button, generated SDKs, lock icons) — none of which a middleware-based enforcement would give us for free.
+* One dep, not fifty `Depends(require("skills", "create"))` calls. Per-route deps would require touching every endpoint definition and would drift as endpoints come and go — the "central mapper + one dep" shape scales without maintenance.
 * Adding per-endpoint refinement later (e.g. `x-rbac-verb: execute` in `openapi_extra`, which every route already carries) requires no framework change.
 
 ---
@@ -206,7 +210,7 @@ bindings:
 ```
 
 Notes:
-* In `disabled` mode, `standalone.users`, `roles`, and `bindings` are all ignored — the PEP is not mounted at all. Session tokens are not minted either (no `/auth/login` traffic is expected). There is no need to keep the standalone block consistent when mode is `disabled`.
+* In `disabled` mode, `standalone.users`, `roles`, and `bindings` are all ignored — the PEP dependency is not installed at all, and the OpenAPI schema publishes no `securitySchemes`. Session tokens are not minted either (no `/auth/login` traffic is expected). There is no need to keep the standalone block consistent when mode is `disabled`.
 * In step 1, the same role can be reused across many bindings without duplication (that is the point of the role/binding split); once `scope:` lands, the same role scales to per-namespace and per-object grants without any role-schema change.
 
 ### 5.2 Validation
@@ -264,104 +268,94 @@ Two env vars are read by the server; both override the YAML on conflict (env-fir
 
 ## 6. Route → (resource, verb) mapping
 
-We already have OpenAPI tags on every endpoint. The middleware needs to find the route matched by an inbound request and read `route.tags` + `route.openapi_extra` off it.
+Every endpoint declares its ``(resource, verb)`` explicitly via ``@requires(resource, verb)`` above ``@app.<method>(...)`` (see `access_control/decorator.py`). ``SBS.__init__`` stamps the marker onto the matched ``APIRoute.openapi_extra`` at startup (``x-rbac-resource`` / ``x-rbac-verb``); the mapper reads it back at request time. There is **no** method/path→verb rule table and **no** tag→resource fallback — a route that arrives at the enforce dep without markers is a bug, and ``audit_rbac_coverage`` refuses to boot when it happens (§8).
 
-**Implementation note — this must be done explicitly, not by reading `request.scope["route"]`.** A Starlette `BaseHTTPMiddleware` runs *before* FastAPI's routing, so `scope["route"]` is not populated when the middleware fires. The mapper walks the app's route table and matches by hand:
+At request time the mapper is trivial: given the matched `APIRoute`, read the two keys.
 
 ```python
-from starlette.routing import Match
+def resource_for(route):
+    extra = route.openapi_extra or {}
+    r = extra.get("x-rbac-resource")
+    if not r: raise UnmarkedRouteError(...)
+    return r
 
-def resolve(request: Request):
-    for route in request.app.routes:                 # FastAPI/Starlette Route objects
-        match, _child_scope = route.matches(request.scope)
-        if match == Match.FULL:
-            return route                              # APIRoute has .tags, .openapi_extra
-    raise UnmappedRouteError()
+def verb_for_route(route):
+    extra = route.openapi_extra or {}
+    v = extra.get("x-rbac-verb")
+    if not v: raise UnmarkedRouteError(...)
+    return v
 ```
 
-`APIRoute.matches` returns `Match.FULL` on an exact hit (including path-parameter templates like `/skills/{uuid_or_name}`). FastAPI's `APIRoute` inherits from Starlette's `Route` and adds `.tags` and `.openapi_extra` — both readable directly.
+Finding the matched route: on the production path the enforce dep runs *after* Starlette routing, so `request.scope["route"]` is already the matched `APIRoute` — no walk. `map_request` prefers that fast path and falls back to walking `request.app.routes` only when `scope["route"]` isn't populated (synthetic `Request` objects in `test_mapper.py`). Cost on the request path: O(1) attribute reads.
 
-**Cost:** O(#routes) per request. With ~50 routes, negligible next to any real handler work. A one-time cache keyed by `(method, path)` is a trivial optimization if we ever need it (not for step 1).
+`access_control/mcp_plan.py` is a separate offline caller: it enumerates `app.routes` at startup to compute the per-tenant MCP surface and calls `resource_for(route)` / `verb_for_route(route)` directly — no `Request`, no `map_request`, no walk.
 
-### 6.1 Resource derivation
+### 6.1 The @requires decorator
 
-* Default: the first `tag` becomes the `resource`. Existing tags map cleanly:
-  `skills → skills`, `tools → tools`, `snippets → snippets`,
-  `vmcp_servers → vmcp_servers`, `vnfs_servers → vnfs_servers`,
-  `admin → admin`, `plugins → plugins`.
-* Override via `openapi_extra["x-rbac-resource"]`. Zero required today; used later to e.g. distinguish `admin/backup` from `admin/health`.
+Placement is above ``@app.<method>``:
 
-### 6.2 Verb taxonomy
+```python
+@requires("skills", "create")
+@app.post(
+    "/skills/",
+    tags=["skills"],
+    openapi_extra={"x-cli-name": "add-skill", "x-mcp-tool": True},
+)
+async def create_skill(...): ...
+```
 
-The base set is CRUD-plus-search. The user's proposal to align **`import ≈ create`** and **`export ≈ get`** is adopted. In addition, two higher-risk operations deserve their own verbs — `execute` (running code) and `admin` (whole-store destructive operations) — so that "give this tenant read-only access" or "give this tenant tool-execution rights but no write" can be expressed cleanly.
+Ordering matters — `@app.post` runs first (registers the route, returns the wrapped function), then `@requires` sets a marker attribute (`fn.__rbac_requires__`) on the returned function. At startup, ``stamp_rbac_markers(app)`` walks `app.routes` and copies each marker onto the route's `openapi_extra` so the mapper and the generated OpenAPI schema both see it. `x-rbac-*` remains a valid manual override too — a hand-written `openapi_extra` marker takes precedence over the decorator (useful for one-off cases where the decorator can't be applied cleanly).
 
-Rule of thumb, HTTP method + path suffix + tag:
+### 6.2 Verb taxonomy (unchanged from r11)
 
-| HTTP | Suffix / semantic | Verb |
-|---|---|---|
-| GET | `/{id}` or `/{name}` | `get` |
-| GET | `.../export-*` | `get` *(export ≡ get)* |
-| GET | otherwise (collection listing) | `list` |
-| GET | `/search/...` | `search` |
-| POST | anything not covered below | `create` |
-| POST | `.../import-*`, `.../add` | `create` *(import ≡ create)* |
-| POST | `.../execute`, `.../start`, `.../stop` | `execute` |
-| PUT / PATCH | anything | `update` |
-| DELETE | anything | `delete` |
-| any | admin whole-store ops (`/admin/backup`, `/admin/restore`, `/admin/purge-all`) | `admin` |
+The verb set stays the same: CRUD-plus-search (`list`, `get`, `create`, `update`, `delete`, `search`) plus two higher-risk verbs (`execute`, `admin`). Nothing about r13 changes what verbs exist — only *how* each endpoint's verb is decided (explicit declaration, not inference).
 
-Override via `openapi_extra["x-rbac-verb"]` for any endpoint that does not fit the rule of thumb.
+The per-endpoint marker inventory below is the source of truth. Import ≡ `create` and export ≡ `get` are conventions the author applies when writing `@requires`, not rules the mapper enforces.
 
-Every current endpoint maps unambiguously under these rules. The concrete inventory (as of the current tree):
-
-| Endpoint | Tag | Verb |
-|---|---|---|
-| `POST /skills/` | skills | create |
-| `GET  /skills/` | skills | list |
-| `GET  /skills/{uuid_or_name}` | skills | get |
-| `DELETE /skills/{uuid_or_name}` | skills | delete |
-| `PUT  /skills/{uuid_or_name}` | skills | update |
-| `POST /skills/detect-anthropic-skills` | skills | create *(probe as part of an import flow)* |
-| `POST /skills/import-anthropic` | skills | create *(import ≡ create)* |
-| `GET  /skills/{uuid_or_name}/export-anthropic` | skills | get *(export ≡ get)* |
-| `GET  /facets/skills` | skills | list |
-| `GET  /search/skills` | skills | search |
-| `POST /tools/` | tools | create |
-| `POST /tools/add` | tools | create *(upload-based)* |
-| `POST /tools/add_code` | tools | create *(inline code)* |
-| `POST /tools/{uuid_or_name}/execute` | tools | **execute** |
-| `GET  /tools/{uuid_or_name}/module` | tools | get |
-| `GET  /tools/` etc. | tools | list / get / delete / update |
-| `POST /snippets/` etc. | snippets | create / list / get / delete / update |
-| `POST /vmcp/{uuid_or_name}/start` | vmcp_servers | **execute** |
-| `POST /vnfs/{uuid_or_name}/start` | vnfs_servers | **execute** |
-| `GET  /admin/metrics` | admin | *(unauthenticated allow-list)* |
-| `GET  /admin/backup` | admin | **admin** |
-| `POST /admin/restore` | admin | **admin** |
-| `DELETE /admin/purge-all` | admin | **admin** |
-| `GET  /health`, `GET  /health/ready` | admin | *(unauthenticated allow-list)* |
-| `GET  /changes` | admin | list *(polled by the UI; standard auth applies — 401 when logged out triggers UI login)* |
-| `GET  /plugins/` etc. | plugins | list / get / update |
-
-`detect-anthropic-skills` is grouped with `import` because it exists as a precursor step to the import flow and probes external URLs with the same credentials — same risk profile as `create` in the skills namespace. Overrideable via `x-rbac-verb` if we later decide to split it.
+| Endpoint | @requires |
+|---|---|
+| `POST /skills/` | `("skills", "create")` |
+| `GET  /skills/` | `("skills", "list")` |
+| `GET  /skills/{uuid_or_name}` | `("skills", "get")` |
+| `DELETE /skills/{uuid_or_name}` | `("skills", "delete")` |
+| `PUT  /skills/{uuid_or_name}` | `("skills", "update")` |
+| `POST /skills/detect-anthropic-skills` | `("skills", "create")` *(precursor to import)* |
+| `POST /skills/import-anthropic` | `("skills", "create")` |
+| `GET  /skills/{uuid_or_name}/export-anthropic` | `("skills", "get")` |
+| `GET  /facets/skills` | `("skills", "list")` |
+| `GET  /search/skills` | `("skills", "search")` |
+| `POST /tools/`, `POST /tools/add`, `POST /tools/add_code` | `("tools", "create")` |
+| `POST /tools/{uuid_or_name}/execute` | `("tools", "execute")` |
+| `GET  /tools/{uuid_or_name}/module` | `("tools", "get")` |
+| `GET  /tools/`, `GET /facets/tools`, `GET /search/tools`, `GET /tools/{id}`, `DELETE /tools/{id}`, `PUT /tools/{id}` | list / list / search / get / delete / update |
+| Snippets (7 endpoints) | mirror of skills (`create`, `list`, `get`, `delete`, `update`, `list` for facets, `search`) |
+| `POST /vmcp_servers/{uuid_or_name}/start`, `POST /vnfs_servers/{uuid_or_name}/start` | `execute` |
+| Other vmcp / vnfs (14 total) | CRUD + list/search as in the earlier inventory |
+| `GET  /admin/metrics`, `/health`, `/health/ready` | *(unauthenticated allow-list — no `@requires`)* |
+| `DELETE /admin/purge-all`, `GET /admin/backup`, `POST /admin/restore` | `("admin", "admin")` |
+| `GET  /changes` | `("admin", "list")` |
+| `GET  /plugins/`, `GET /plugins/{name}`, `PATCH /plugins/{name}` | `list` / `get` / `update` |
+| `POST /auth/login`, `POST /auth/logout`, `GET /auth/whoami` | *(unauthenticated allow-list — no `@requires`)* |
 
 ---
 
 ## 7. Identity providers
 
-A thin interface (single method) keeps modes swappable:
+Bearer resolution lives inside the `enforce` dependency (see §8). Rather than a separate `IdentityProvider` interface, the two supported modes are two branches in the wiring step:
+
+* `disabled` — no dep installed; every request runs with no `Subject`.
+* `standalone` — the `enforce` dep resolves an opaque bearer token against the in-memory `SessionStore` and constructs `Subject(tenant_id, groups)` from the resolved session. Any of missing/malformed/expired token → `HTTPException(401, ..., headers={"WWW-Authenticate": "Bearer"})`.
+
+A future `delegated` mode reads `X-Tenant-Id` (and optionally `X-Tenant-Groups`) at the same seam; the PDP, RouteMapper, and RBAC config schema stay unchanged.
 
 ```python
-class IdentityProvider(Protocol):
-    def identify(self, request: Request) -> Subject: ...
-    # Subject = dataclass(tenant_id: str | None, groups: list[str])
-    # May raise UnauthenticatedError → PEP returns 401.
+# Subject = dataclass(tenant_id: str | None, groups: list[str])
 ```
 
 **`Subject` vs `whoami`.** `Subject` is the internal, authoritative representation carried in `request.state.subject`. `GET /auth/whoami` returns an **enriched, serialized view** on top of it: `{tenant_id, groups, roles}`, where `roles` is computed from the loaded bindings (`cfg.roles_for(subject)`) rather than stored on `Subject`. Bindings can change (config reload) without invalidating minted sessions, which is why roles are derived at request time, not baked into `Subject` at login. This split is important to keep in mind when writing `auth_api.py` and the whoami tests in §14.
 
 ### 7.1 `disabled`
-Returns `Subject(tenant_id=None, groups=[])`. In `disabled` mode the PEP is not mounted at all, so the PDP is never consulted. The tenant identity is simply absent for the request's lifetime.
+No `Subject` is constructed. In `disabled` mode the PEP dependency is not installed at all, so the PDP is never consulted. The tenant identity is simply absent for the request's lifetime.
 
 ### 7.2 `standalone`
 
@@ -388,7 +382,7 @@ Server side:
 4. Store in a **module-level `dict[str, Session]`** keyed by token: `Session(tenant_id, groups, expires_at)`. Purely in-memory — the store is a plain Python dict, and its content is lost on server restart. This is a conscious simplicity trade for step 1: demo users log in again after a restart; no session store, no persistence, no cross-process concerns.
 5. Return the plaintext token to the client.
 
-**Subsequent requests — identity extraction (in the middleware):**
+**Subsequent requests — identity extraction (in the enforce dependency):**
 
 1. Read `Authorization: Bearer <token>`.
 2. Look up the token in the session dict.
@@ -411,41 +405,79 @@ Placeholder in the design so the config schema, IdP interface, and RBAC engine d
 
 ## 8. Enforcement (PEP)
 
-FastAPI middleware installed once in `SBS.__init__` right after CORS. Pseudocode:
+A single FastAPI dependency, installed on `FastAPI(dependencies=[...])` **before any route is registered**, so every route on the app (and every plugin sub-router included via `app.include_router`) inherits it at `add_api_route` time. Bearer extraction is delegated to FastAPI's `HTTPBearer` security scheme — the OpenAPI schema then advertises `components.securitySchemes.HTTPBearer` and per-route `security: [{HTTPBearer: []}]` automatically, giving Swagger UI the "Authorize" button and per-route lock icons for free.
+
+Pseudocode (see [access_control/deps.py](../../src/skillberry_store/access_control/deps.py) for the real thing):
 
 ```python
-class AccessControlMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        # 1. Allow-list bypass (health, metrics, docs).
-        if is_unauthenticated_path(request):
-            return await call_next(request)
+bearer_scheme = HTTPBearer(auto_error=False)  # let enforce shape the 401 body + WWW-Authenticate
+
+def make_enforce_dependency(cfg, sessions):
+    async def enforce(
+        request: Request,
+        creds: HTTPAuthorizationCredentials | None = Security(bearer_scheme),
+    ) -> None:
+        # 1. Allow-list bypass (health, metrics, docs, /auth/*).
+        if cfg.is_unauthenticated(request.method, request.url.path):
+            return
 
         # 2. Identity.
-        try:
-            subject = self.idp.identify(request)
-        except UnauthenticatedError as e:
-            return json_error(401, str(e))
+        if creds is None or creds.scheme.lower() != "bearer" or not creds.credentials:
+            raise HTTPException(401, "missing_authorization",
+                                headers={"WWW-Authenticate": "Bearer"})
+        session = sessions.resolve(creds.credentials)
+        if session is None:
+            raise HTTPException(401, "invalid_or_expired_token",
+                                headers={"WWW-Authenticate": "Bearer"})
+        subject = Subject(tenant_id=session.tenant_id, groups=list(session.groups))
 
-        # 3. Route → (resource, verb).
-        try:
-            resource, verb = self.mapper.map(request)
-        except UnmappedRouteError:
-            # Route not registered / 404-bound: pass through and let FastAPI
-            # 404. This preserves current behavior for typos.
-            return await call_next(request)
+        # 3. Route → (resource, verb). Unmapped routes (typos, mounts) pass
+        # through — FastAPI produces the normal 404.
+        mapped = try_map_request(request)
+        if mapped is None:
+            request.state.subject = subject
+            return
+        resource, verb, _ = mapped
 
         # 4. Decision.
-        decision = self.pdp.authorize(subject, resource, verb)
+        decision = authorize(subject, resource, verb, cfg)
         if not decision.allowed:
-            return json_error(403, decision.reason)
+            raise HTTPException(403, decision.reason)
 
-        request.state.subject = subject   # exposed to endpoints for later refinement
-        return await call_next(request)
+        request.state.subject = subject   # exposed to handlers
+    return enforce
 ```
 
-**Failure model:** 401 = no valid identity (retry with credentials); 403 = valid identity but no permission (do not retry).
+Wiring in `SBS.__init__` (see [server.py](../../src/skillberry_store/fast_api/server.py)):
 
-In `disabled` mode the middleware is not installed at all (see [server.py](../../src/skillberry_store/fast_api/server.py) `SBS.__init__`). This keeps request-path overhead at exactly zero for the backward-compatible default.
+```python
+acl_cfg = get_acl_config()
+sessions = SessionStore()
+acl_deps = []
+if acl_cfg.mode == "standalone":
+    acl_deps = [Depends(make_enforce_dependency(acl_cfg, sessions))]
+
+super().__init__(
+    lifespan=_sbs_lifespan,
+    generate_unique_id_function=custom_generate_unique_id,
+    dependencies=acl_deps,               # global gate, propagates to every route
+)
+```
+
+**Failure model:** 401 = no valid identity (retry with credentials, `WWW-Authenticate: Bearer` present); 403 = valid identity but no permission (do not retry).
+
+In `disabled` mode no dependency is installed at all. The OpenAPI schema publishes no `securitySchemes` and no per-route `security`, matching the pre-ACL baseline exactly. Request-path overhead is zero: no extra call in the dep chain, no lookup, no branch.
+
+**Fail-safe defaults via the startup audit (r13).** After every route (including plugin sub-routers) is registered, ``SBS.__init__`` runs two helpers from `access_control/audit.py`:
+
+  1. ``stamp_rbac_markers(app)`` — walks `app.routes` and copies each handler's ``@requires`` marker onto its ``APIRoute.openapi_extra`` under ``x-rbac-resource`` / ``x-rbac-verb``. The mapper reads those keys at request time; the OpenAPI schema publishes them to downstream tooling.
+  2. ``audit_rbac_coverage(app, cfg)`` — verifies every non-allowlisted `APIRoute` on the app carries the ``x-rbac-*`` markers. Any missing marker raises ``AccessControlConfigError`` and prevents startup, listing every offender in one message. The audit runs in **both** modes (`disabled` and `standalone`) so that missing markers are caught in tests and dev — not the day someone flips a production deployment to `standalone`.
+
+This closes the fail-open failure mode the pre-r13 rule table had: a new endpoint whose method/path shape didn't quite fit the rules used to derive some default `(resource, verb)` and become authorizable under whatever role happened to grant that default. With `@requires` mandatory and the audit gating startup, forgetting to declare intent breaks the server loudly at deploy time, not silently at request time.
+
+**Unauth allow-list and OpenAPI.** Because the enforce dep declares `HTTPBearer` as a security param, FastAPI decorates *every* route it covers with `security: [{HTTPBearer: []}]` — including the unauthenticated allow-list (`/auth/*`, `/health*`, `/admin/metrics`). This is misleading to schema consumers (Swagger UI, generated SDKs). The obvious workaround — `openapi_extra={"security": []}` per-route — does not work: FastAPI's `deep_dict_update` **concatenates** lists rather than replacing them, so an empty list is a no-op. Instead, `custom_openapi` in [server.py](../../src/skillberry_store/fast_api/server.py) post-processes the generated schema and strips `security` from any operation whose `(method, path)` matches `cfg.is_unauthenticated(...)`. The runtime allow-list is the single source of truth for both enforcement and the published schema.
+
+**MCP re-dispatch (unchanged from r10).** `FastApiMCP` mounts SSE endpoints as Starlette `Mount` objects. Mounts do not receive FastAPI router-level dependencies, so the SSE handshake and JSON-RPC transport pass through without going near the enforce dep — matching the requirement to leave those paths open. When an MCP tool call is forwarded, `FastApiMCP` re-enters the app via `httpx.ASGITransport(app)` as a full ASGI request against the underlying REST route; that request hits the enforce dep on the target route and is authorized per call. The `Authorization` header is forwarded by default, so bearer-based auth Just Works over MCP.
 
 ---
 
@@ -562,12 +594,12 @@ MCP client                          skillberry-store
 | Mode | MCP behavior |
 |---|---|
 | `disabled` | Middleware is not installed. Every MCP tool call goes straight to its route handler. All operations available. |
-| `standalone` | Every MCP tool call is authorized by the same middleware. Tools succeed if the tenant's role grants the corresponding `(resource, verb)`; otherwise 403. Client must include a session token on its MCP messages, obtained via `POST /auth/login` just like a REST client. |
+| `standalone` | Every MCP tool call is authorized by the same enforce dependency. Tools succeed if the tenant's role grants the corresponding `(resource, verb)`; otherwise 403. Client must include a session token on its MCP messages, obtained via `POST /auth/login` just like a REST client. |
 | `delegated` *(future)* | Same as `standalone` but with the trusted-header pattern instead of a session token. |
 
 **Configuration knobs:**
 
-* `/control_sse` and `/control_sse/messages` are **added to `unauthenticated_paths`**. The SSE handshake and JSON-RPC transport itself is unauthenticated; authorization happens at the tool-call layer via the forwarded `Authorization` header. This matches how the middleware treats `POST /auth/login` — the outer surface is open, the operation is gated where it matters.
+* `/control_sse` and `/control_sse/messages` are **added to `unauthenticated_paths`** (and are Starlette `Mount` objects, so router-level dependencies don't reach them anyway — the allow-list entry is defensive belt-and-braces). The SSE handshake and JSON-RPC transport itself is unauthenticated; authorization happens at the tool-call layer via the forwarded `Authorization` header. This matches how the enforce dep treats `POST /auth/login` — the outer surface is open, the operation is gated where it matters.
 * No changes to `server.py`'s `FastApiMCP(self, include_operations=…)` invocation. The default `headers=['authorization']` allowlist is already what we need.
 * Nothing needed inside `AccessControlMiddleware` — it does not have to know whether a request came from a REST client or from FastApiMCP's re-dispatch.
 
@@ -598,7 +630,7 @@ This is friction on long-running MCP setups and matches the pattern used by pre-
 
 ### 10.3 Plugin routers
 
-`plugin_loader.mount_routers(self)` adds routes via `APIRouter`. Any route registered on the app is gated by the middleware. Plugin authors should either declare a `plugins/<slug>` tag or set `x-rbac-resource` on their routes to opt into a specific resource; unmapped routes default to `resource=plugins`.
+`plugin_loader.mount_routers(self)` adds routes via `app.include_router(...)`. FastAPI propagates `app.router.dependencies` to routes included this way, so the enforce dep gates plugin routes automatically without any per-plugin wiring. Plugin authors should either declare a `plugins/<slug>` tag or set `x-rbac-resource` on their routes to opt into a specific resource; unmapped routes default to `resource=plugins`.
 
 ### 10.4 UI (React SPA)
 
@@ -690,7 +722,7 @@ Namespaces are already representable as ordinary tags of the form `namespace:<na
 1. **Data model consistency across modes.** Objects are never associated with a *tenant*; they are associated with a *namespace* (via `namespace:<name>` tags on the object). Therefore:
    * Objects created in `disabled` mode with `tags: [namespace:prod]` remain fully accessible to any authenticated tenant later granted a binding that scopes to `prod`.
    * Migrating `disabled` → `standalone` requires no data rewrite; it only requires the right bindings.
-2. **PDP signature is stable.** When scoping lands, `authorize(subject, resource, verb)` still returns a `Decision`. The change is that `Decision` grows an `effective_scope` field carrying the union of `scope:` blocks across all bindings that granted the role. Enforcement is a service-layer change (feeding `effective_scope.namespaces` into `apply_filters`), not an endpoint-layer or middleware-signature change.
+2. **PDP signature is stable.** When scoping lands, `authorize(subject, resource, verb)` still returns a `Decision`. The change is that `Decision` grows an `effective_scope` field carrying the union of `scope:` blocks across all bindings that granted the role. Enforcement is a service-layer change (feeding `effective_scope.namespaces` into `apply_filters`), not an endpoint-layer or enforce-dep-signature change.
 3. **Config-file forward compatibility.** Step 1 parses `scope:` if present and ignores it. Configs written today with `scope:` therefore keep working unchanged when scoping enforcement lands.
 
 ### One gotcha to remember when scoping enforcement lands
@@ -704,7 +736,7 @@ Namespaces are already representable as ordinary tags of the form `namespace:<na
 The `delegated` mode is not implemented in step 1 but is treated as a first-class design goal so that step 1 does not paint itself into a corner. Contract:
 
 * Config schema keeps `mode: delegated` as a **reserved value**. Loading a config with this value in step 1 fails with a clear "not yet supported" error at startup.
-* The `IdentityProvider` interface is stable: a future `DelegatedIdentityProvider` slots in without touching the PEP, PDP, RouteMapper, or RBAC config schema.
+* The bearer-resolution step in `enforce` is the seam a future `delegated` mode plugs into: read `X-Tenant-Id` (and optionally `X-Tenant-Groups`) instead of resolving a session token, and the PDP, RouteMapper, and RBAC config schema stay unchanged.
 * Everything documented as `standalone` in step 1 — token layout, unauthenticated allow-list, verb taxonomy, resource mapping — will apply identically to `delegated` when it ships. The only difference is where the `Subject` comes from.
 * Header names, trust anchors (mTLS peer cert CN / SPIFFE ID), and header-stripping guidance for the fronting gateway are to be finalized when the mode is implemented.
 
@@ -720,11 +752,12 @@ The `delegated` mode is not implemented in step 1 but is treated as a first-clas
 |---|---|---|
 | `src/skillberry_store/access_control/__init__.py` | ~5 | Package marker. |
 | `src/skillberry_store/access_control/config.py` | ~120 | YAML load + validation (mirrors `endpoint_auth.py`). Rejects `mode: delegated` in step 1. Parses `binding.scope` if present but does not surface it to the PDP (forward-compat). Parses `standalone.users`. |
-| `src/skillberry_store/access_control/idp.py` | ~70 | Two IdentityProvider implementations (`disabled`, `standalone`). `standalone` reads Bearer token and looks it up in the session store. |
 | `src/skillberry_store/access_control/sessions.py` | ~40 | In-memory `dict[token, Session]` with `mint(tenant_id, groups, ttl) -> token`, `resolve(token) -> Subject \| None`, `revoke(token)`. Lazy expiry pruning. **Time source must be injectable** — take `now: Callable[[], float] = time.time` on the store (or a module-level `_now` that tests can monkey-patch) so `test_sessions.py` and the `expired_token_rejected` integration test can advance the clock without real `sleep()`. |
 | `src/skillberry_store/access_control/pdp.py` | ~40 | Pure decision engine + `Subject`, `Decision` dataclasses. |
-| `src/skillberry_store/access_control/mapper.py` | ~60 | Route → (resource, verb), including the `import ≡ create` / `export ≡ get` / `execute` / `admin` rules. |
-| `src/skillberry_store/access_control/middleware.py` | ~55 | FastAPI middleware wiring the above. Skipped entirely in `disabled` mode. |
+| `src/skillberry_store/access_control/mapper.py` | ~50 | Route → (resource, verb) — reads `x-rbac-resource` / `x-rbac-verb` from `openapi_extra`. No rule table, no tag fallback; raises `UnmarkedRouteError` on missing markers. |
+| `src/skillberry_store/access_control/decorator.py` | ~50 | The `@requires(resource, verb)` decorator: sets a marker attribute on the handler, copied to `openapi_extra` at startup. (r13) |
+| `src/skillberry_store/access_control/audit.py` | ~90 | `stamp_rbac_markers(app)` and `audit_rbac_coverage(app, cfg)`. Called from `SBS.__init__` after all routes register; audit failure prevents startup. (r13) |
+| `src/skillberry_store/access_control/deps.py` | ~90 | Policy Enforcement Point as a FastAPI dependency. Owns the `HTTPBearer` security scheme (so OpenAPI publishes `securitySchemes.HTTPBearer` and per-route `security`), the unauth allow-list short-circuit, bearer-token resolution to a `Subject`, the PDP call, and stashing the subject on `request.state`. Skipped entirely in `disabled` mode (no dep installed → no security scheme in the schema). Replaces the ex-`middleware.py` + `idp.py` pair (r12). |
 | `src/skillberry_store/fast_api/auth_api.py` | ~90 | `POST /auth/login` (username/password → session token; bcrypt-verify), `POST /auth/logout`, `GET /auth/whoami`. |
 | `scripts/hash_password.py` | ~20 | Admin utility: `bcrypt.hashpw(getpass())` → prints the hash to paste into `access_control_config.yaml`. |
 | `access_control_config.yaml` | ~40 | Default config; ships with `mode: disabled`. |
@@ -821,11 +854,11 @@ Location: `src/skillberry_store/tests/access_control/` (new subdirectory).
 
 ### 14.2 Integration tests (in-process ASGI, no external server)
 
-Location: `src/skillberry_store/tests/fast_api/test_access_control.py` (new). Uses `httpx.AsyncClient(transport=ASGITransport(app))` — the pattern already used in `test_server.py` — so the whole PEP + PDP + IdP + auth_api stack is exercised without spawning a server.
+Location: `src/skillberry_store/tests/fast_api/test_access_control.py` (new). Uses `httpx.AsyncClient(transport=ASGITransport(app))` — the pattern already used in `test_server.py` — so the whole enforce-dep + PDP + auth_api stack is exercised without spawning a server.
 
 | Case | Coverage | Approx. LOC |
 |---|---|---:|
-| `disabled_mode_all_endpoints_open` | With `mode: disabled`, unauthenticated requests to `/skills/`, `/tools/`, `/admin/backup` all succeed (or hit their normal handler; not 401/403). No middleware overhead observable. | ~30 |
+| `disabled_mode_all_endpoints_open` | With `mode: disabled`, unauthenticated requests to `/skills/`, `/tools/`, `/admin/backup` all succeed (or hit their normal handler; not 401/403). No enforce dep is installed, so no request-path overhead. | ~30 |
 | `standalone_mode_missing_auth_returns_401` | With `mode: standalone`, any non-allow-list request without `Authorization` header returns 401 and `WWW-Authenticate: Bearer`. | ~20 |
 | `standalone_mode_unauth_allowlist_reachable` | `GET /health`, `GET /health/ready`, `GET /admin/metrics`, `POST /auth/login`, `GET /docs`, `GET /openapi.json` reachable without a token. | ~30 |
 | `login_flow_good_and_bad_creds` | `POST /auth/login` with good creds → 200 + `{token, expires_at, tenant_id}`; bad password → 401 `invalid_credentials`; unknown username → 401 with **identical** body (no user enumeration). | ~40 |
@@ -901,7 +934,7 @@ Update to the estimate table in §13.4: **Tests** row → **~1,155** (was ~350).
 
 ## 15. Backward compatibility
 
-* `disabled` (the shipped default) leaves all endpoints wide open — identical to today. The middleware is not installed, so there is no request-path overhead.
+* `disabled` (the shipped default) leaves all endpoints wide open — identical to today. The enforce dependency is not installed and the OpenAPI schema publishes no `securitySchemes`, so there is no request-path overhead and no observable schema change either.
 * Objects created under `disabled` inherit their namespace(s) from the `namespace:*` tags the caller supplies (unchanged behavior). Later switching to `standalone` does **not** require any data rewrite: tenants bound to a namespace will simply see the objects that already carry that namespace tag.
 * CLI without a token continues to work against `disabled` deployments.
 * UI in `disabled` mode: no login screen (`AuthGate` sees `VITE_ACL_MODE === 'disabled'` and passes through). Existing users see no visible change.
@@ -916,7 +949,7 @@ Update to the estimate table in §13.4: **Tests** row → **~1,155** (was ~350).
 3. **Binding `scope:` enforcement** — unified refinement covering both per-namespace and per-object (`resourceNames`) scoping. Service-layer change in [list_query.py](../../src/skillberry_store/services/list_query.py) and [search_filters.py](../../src/skillberry_store/fast_api/search_filters.py) that reads `Decision.effective_scope` and injects the filters; also the AND→OR fix for `namespace:*` tags called out in §11.
 4. **Additional scope filters** (tags, `created_by`, lifecycle_state) — slot into the same `scope:` block on the binding without any role-schema change.
 5. **Providers**: OIDC / JWT-with-JWKS / mTLS-CN. Adds `providers:` block to config.
-6. **MCP surface polish** — SSE-handshake authentication (currently unauth-listed since the tool call itself is gated), a "signed in as X" hint in MCP client-facing metadata, and per-session tenant caching to avoid re-resolving the bearer on every tool call. Not needed for correctness — step 1 already enforces per tool call via the middleware (§10.2).
+6. **MCP surface polish** — SSE-handshake authentication (currently unauth-listed since the tool call itself is gated), a "signed in as X" hint in MCP client-facing metadata, and per-session tenant caching to avoid re-resolving the bearer on every tool call. Not needed for correctness — step 1 already enforces per tool call via the enforce dependency (§10.2).
 7. **Session persistence & scale-out** — replace the in-memory session dict with signed JWTs (survives restart, works across workers) or a Redis-backed session store (easy revocation). Also enables sticky sessions past a restart.
 8. **Long-lived API tokens** — separate mint flow (`POST /auth/api-tokens`, UI page under the user dropdown, `sbs api-token create`) with 30- / 90-day TTLs, aimed at MCP clients and CI. Same server-side validation path as session tokens; different lifetime + minting UX. Ships when the 12h-relogin friction becomes a real demo blocker rather than a paper cut.
 9. **UI token hardening** — replace `sessionStorage` bearer with `HttpOnly, Secure, SameSite=Strict` cookie set by `/auth/login`, plus CSRF handling (double-submit token or `Origin` check). Removes the XSS token-exfiltration risk called out in §10.4.
