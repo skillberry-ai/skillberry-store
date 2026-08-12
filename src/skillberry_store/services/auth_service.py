@@ -186,7 +186,7 @@ class AuthService:
 
     # ------------------------------------------------------------------ #
     # Convenience for callers who already have a Subject on request.state
-    # (used by MCP or future middleware refinements).
+    # (populated by the enforce dependency in access_control/deps.py).
     # ------------------------------------------------------------------ #
 
     def roles_for(self, subject: Subject) -> List[str]:
