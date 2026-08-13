@@ -10,7 +10,7 @@ import uvicorn
 from pydantic_settings import BaseSettings
 from pydantic import Field, model_validator
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -24,6 +24,14 @@ from skillberry_store.fast_api.admin_api import register_admin_api
 from skillberry_store.fast_api.vmcp_api import register_vmcp_api
 from skillberry_store.fast_api.vnfs_api import register_vnfs_api
 from skillberry_store.fast_api.plugins_api import register_plugins_api
+from skillberry_store.fast_api.auth_api import register_auth_api
+from skillberry_store.access_control.audit import (
+    audit_rbac_coverage,
+    stamp_rbac_markers,
+)
+from skillberry_store.access_control.config import get_config as get_acl_config
+from skillberry_store.access_control.deps import make_enforce_dependency
+from skillberry_store.access_control.sessions import SessionStore
 from skillberry_store.tools.configure import (
     configure_logging,
 )
@@ -101,10 +109,28 @@ class SBS(FastAPI):
     def __init__(self, **settings: Any):
         """Initialize the SBS server with FastAPI and custom settings."""
 
+        # Access-control is wired as a global FastAPI dependency and MUST be
+        # loaded BEFORE super().__init__() so it lands on ``router.dependencies``
+        # while the router is empty. FastAPI copies the router-level dependency
+        # list into each route's dependant at ``add_api_route`` time — appending
+        # later would silently miss every already-registered route. See
+        # docs/design/access-control.md §8 for the wider design.
+        acl_cfg = get_acl_config()
+        sessions = SessionStore()
+        acl_dependencies: List = []
+        if acl_cfg.mode == "standalone":
+            acl_dependencies = [Depends(make_enforce_dependency(acl_cfg, sessions))]
+        elif acl_cfg.mode != "disabled":
+            # Should have been rejected at config load; belt and braces.
+            raise RuntimeError(f"Unsupported access-control mode: {acl_cfg.mode!r}")
+
         super().__init__(
             lifespan=_sbs_lifespan,
             generate_unique_id_function=custom_generate_unique_id,
+            dependencies=acl_dependencies,
         )
+        self.state.acl_cfg = acl_cfg
+        self.state.acl_sessions = sessions
         self.settings = SBSettings(**settings)
         self.configure_fastapi()
         configure_logging(logging._nameToLevel[self.settings.log_level])
@@ -201,9 +227,40 @@ class SBS(FastAPI):
 
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
 
+        # ------------------------------------------------------------------
+        # Access control (see docs/design/access-control.md).
+        # /auth/* endpoints are always registered. The PEP itself is a
+        # global FastAPI dependency installed on the router before this
+        # point (see the top of __init__); in 'disabled' mode no dep is
+        # installed and the OpenAPI schema publishes no security scheme.
+        # ------------------------------------------------------------------
+        register_auth_api(self, cfg=acl_cfg, sessions=sessions, tags="auth")
+        if acl_cfg.mode == "disabled":
+            logger.info("Access control mode=disabled — PEP dependency not installed")
+        else:
+            logger.info(
+                "Access control mode=%s — PEP dependency installed "
+                "(%d users, %d roles, %d bindings)",
+                acl_cfg.mode,
+                len(acl_cfg.users),
+                len(acl_cfg.roles),
+                len(acl_cfg.bindings),
+            )
+
         # Mount plugin routers
         plugin_loader.mount_routers(self)
         logger.info("Plugin routers mounted")
+
+        # ------------------------------------------------------------------
+        # RBAC marker stamping + coverage audit (r13). Every non-allowlisted
+        # APIRoute must declare (resource, verb) via @requires — the audit
+        # fails startup with a listing of any offenders. Runs in all modes
+        # so that missing markers are caught in tests / dev, not only when
+        # standalone mode is switched on.
+        # ------------------------------------------------------------------
+        stamped = stamp_rbac_markers(self)
+        logger.info("RBAC markers stamped on %d route(s)", stamped)
+        audit_rbac_coverage(self, acl_cfg)
 
         # Mount the Control MCP with a CURATED surface. The store auto-generates an
         # MCP tool per REST endpoint, but agents only need the content operations,
@@ -220,6 +277,7 @@ class SBS(FastAPI):
             len(mcp_included_operations),
             ", ".join(sorted(mcp_included_operations)),
         )
+
         mcp_server = FastApiMCP(self, include_operations=mcp_included_operations)
         mcp_server.mount_sse(mount_path="/control_sse")
 
@@ -318,6 +376,38 @@ def custom_openapi(app: FastAPI, openapi_tags):
         },
         routes=app.routes,
     )
+
+    # Strip the auto-derived ``security`` requirement from routes that the
+    # ACL config marks as unauthenticated (``/auth/*``, ``/health*``,
+    # ``/admin/metrics``, …). The router-level ``Depends(enforce)`` puts
+    # ``security: [{HTTPBearer: []}]`` on every operation via the
+    # ``HTTPBearer`` scheme in its param signature. That's correct as a
+    # default, but misleading for endpoints the enforce dep short-circuits
+    # — the OpenAPI schema is the same source Swagger UI / SDK generators
+    # consume, so lock icons there should track what the server actually
+    # requires. We remove ``security`` in place rather than layering an
+    # ``openapi_extra={"security": []}`` override because FastAPI's
+    # ``deep_dict_update`` concatenates lists (empty list is a no-op).
+    acl_cfg = getattr(getattr(app, "state", None), "acl_cfg", None)
+    if acl_cfg is not None and openapi_schema.get("paths"):
+        _METHOD_KEYS = {
+            "get",
+            "post",
+            "put",
+            "patch",
+            "delete",
+            "options",
+            "head",
+            "trace",
+        }
+        for path, path_item in openapi_schema["paths"].items():
+            if not isinstance(path_item, dict):
+                continue
+            for method, operation in list(path_item.items()):
+                if method not in _METHOD_KEYS or not isinstance(operation, dict):
+                    continue
+                if acl_cfg.is_unauthenticated(method, path):
+                    operation.pop("security", None)
 
     # Fix file upload schema for SDK generation
     # FastAPI generates contentMediaType but OpenAPI generators expect format: binary
