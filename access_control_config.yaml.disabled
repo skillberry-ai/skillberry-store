@@ -1,0 +1,67 @@
+# Default access-control config. Ships with mode: disabled so the store
+# behaves identically to prior versions until an operator opts in.
+#
+# See docs/design/access-control.md for the full schema and the operator
+# quickstart (generate a password hash via scripts/hash_password.py, then
+# switch mode to 'standalone').
+
+mode: disabled
+
+unauthenticated_paths:
+  - GET /health
+  - GET /health/ready
+  - GET /admin/metrics
+  - POST /auth/login
+  - POST /auth/logout
+  - GET /auth/whoami
+  - GET /docs
+  - GET /openapi.json
+  - GET /redoc
+  - GET /control_sse*
+  - POST /control_sse*
+
+# --- Mode-specific: standalone only -------------------------------------
+standalone:
+  session_ttl_seconds: 43200          # 12h; env: SBS_SESSION_TTL
+  users: []                           # populate with `scripts/hash_password.py`
+  # - username: alice
+  #   tenant_id: alice
+  #   password_hash: "$2b$12$..."
+  #   groups: [team-blue]
+
+# --- RBAC ---------------------------------------------------------------
+roles:
+  - name: reader
+    rules:
+      - resources: [skills, tools, snippets, vmcp_servers, vnfs_servers,
+                    facets, plugins, system]
+        verbs: [list, get, search]
+
+  - name: content-author
+    rules:
+      - resources: [skills, tools, snippets]
+        verbs: [list, get, search, create, update, delete]
+
+  - name: tool-runner
+    rules:
+      - resources: [tools, vmcp_servers, vnfs_servers]
+        verbs: [execute]
+
+  - name: server-operator
+    rules:
+      - resources: [vmcp_servers, vnfs_servers]
+        verbs: [list, get, create, update, delete, execute]
+
+  - name: admin
+    rules:
+      - resources: ["*"]
+        verbs: ["*"]
+
+  - name: base-user
+    rules:
+      - resources: [skills, tools, snippets, vmcp_servers, vnfs_servers,
+                    facets, plugins, system]
+        verbs: [list, get, search, execute]
+
+
+bindings: []
