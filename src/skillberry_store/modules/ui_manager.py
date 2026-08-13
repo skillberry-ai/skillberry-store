@@ -1,4 +1,8 @@
-"""UI Manager for starting and stopping the Vite development server."""
+"""UI Manager for starting and stopping the Vite preview server.
+
+Serves the prebuilt static bundle produced by `make ui-build`. Dev-mode
+Vite (with file watchers / HMR) is available separately via `make ui-dev`.
+"""
 
 import logging
 import subprocess
@@ -12,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class UIManager:
-    """Manages the Vite UI development server lifecycle."""
+    """Manages the Vite preview (static bundle) server lifecycle."""
 
     def __init__(self, ui_dir: Optional[Path] = None, ui_port: int = 3000):
         """Initialize the UI manager.
@@ -32,44 +36,12 @@ class UIManager:
         self.process: Optional[subprocess.Popen] = None
         self._is_running = False
 
-    def _check_node_modules(self) -> bool:
-        """Check if node_modules exists."""
-        node_modules = self.ui_dir / "node_modules"
-        return node_modules.exists()
-
-    def _install_dependencies(self) -> bool:
-        """Install npm dependencies if needed."""
-        if self._check_node_modules():
-            logger.info("UI dependencies already installed")
-            return True
-
-        logger.info("Installing UI dependencies...")
-        try:
-            result = subprocess.run(
-                ["npm", "install"],
-                cwd=self.ui_dir,
-                capture_output=True,
-                text=True,
-                shell=(
-                    os.name == "nt"
-                ),  # Windows requires shell=True to resolve npm.cmd
-                timeout=300,  # 5 minutes timeout
-            )
-            if result.returncode == 0:
-                logger.info("UI dependencies installed successfully")
-                return True
-            else:
-                logger.error(f"Failed to install UI dependencies: {result.stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            logger.error("UI dependency installation timed out")
-            return False
-        except Exception as e:
-            logger.error(f"Error installing UI dependencies: {e}")
-            return False
+    def _dist_exists(self) -> bool:
+        """Check whether the prebuilt Vite bundle is present."""
+        return (self.ui_dir / "dist" / "index.html").exists()
 
     def start(self) -> bool:
-        """Start the UI development server.
+        """Start the UI preview server.
 
         Returns:
             bool: True if started successfully, False otherwise.
@@ -82,17 +54,32 @@ class UIManager:
             logger.error(f"UI directory not found: {self.ui_dir}")
             return False
 
-        # Check and install dependencies if needed
-        if not self._install_dependencies():
-            logger.error("Cannot start UI server without dependencies")
+        # The static bundle is produced by `make ui-build` before we get here.
+        # We do not attempt to install deps or build from Python — that would
+        # duplicate Make's job and hide missing-build errors behind long delays.
+        if not self._dist_exists():
+            logger.error(
+                "UI bundle not found at %s. Run `make ui-build` (or `make run`) first.",
+                self.ui_dir / "dist",
+            )
             return False
 
         try:
             logger.info(f"Starting UI server on port {self.ui_port}...")
 
-            # Start the Vite dev server using npx to ensure vite is found
+            # Serve the prebuilt bundle via `vite preview` — a static file
+            # server (sirv) with no filesystem watchers, so it will not
+            # exhaust inotify limits in Kind / other multi-pod environments.
             self.process = subprocess.Popen(
-                ["npx", "vite", "--host", "0.0.0.0", "--port", str(self.ui_port)],
+                [
+                    "npx",
+                    "vite",
+                    "preview",
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    str(self.ui_port),
+                ],
                 cwd=self.ui_dir,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -126,7 +113,7 @@ class UIManager:
             return False
 
     def stop(self) -> bool:
-        """Stop the UI development server.
+        """Stop the UI preview server.
 
         Returns:
             bool: True if stopped successfully, False otherwise.
