@@ -18,20 +18,19 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictBool, StrictStr
-from typing import Any, ClassVar, Dict, List, Optional
+from pydantic import BaseModel, ConfigDict, StrictStr
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
-class GenerateRequest(BaseModel):
+class LoginResponse(BaseModel):
     """
-    GenerateRequest
+    LoginResponse
     """ # noqa: E501
-    object_type: Optional[StrictStr] = 'tool'
-    uuid: Optional[StrictStr] = None
-    apply: Optional[StrictBool] = False
-    only_if_missing: Optional[StrictBool] = False
-    __properties: ClassVar[List[str]] = ["object_type", "uuid", "apply", "only_if_missing"]
+    token: StrictStr
+    expires_at: StrictStr
+    tenant_id: StrictStr
+    __properties: ClassVar[List[str]] = ["token", "expires_at", "tenant_id"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -51,7 +50,7 @@ class GenerateRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of GenerateRequest from a JSON string"""
+        """Create an instance of LoginResponse from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -72,16 +71,11 @@ class GenerateRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if uuid (nullable) is None
-        # and model_fields_set contains the field
-        if self.uuid is None and "uuid" in self.model_fields_set:
-            _dict['uuid'] = None
-
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of GenerateRequest from a dict"""
+        """Create an instance of LoginResponse from a dict"""
         if obj is None:
             return None
 
@@ -89,10 +83,9 @@ class GenerateRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "object_type": obj.get("object_type") if obj.get("object_type") is not None else 'tool',
-            "uuid": obj.get("uuid"),
-            "apply": obj.get("apply") if obj.get("apply") is not None else False,
-            "only_if_missing": obj.get("only_if_missing") if obj.get("only_if_missing") is not None else False
+            "token": obj.get("token"),
+            "expires_at": obj.get("expires_at"),
+            "tenant_id": obj.get("tenant_id")
         })
         return _obj
 

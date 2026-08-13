@@ -31,7 +31,6 @@ types-python-dateutil = ">= 2.8.19.14"
 mypy = ">= 1.5"
 
 
-
 [tool.poetry.scripts]
 sbs = "skillberry_store_sdk.sdk_cli:cli"
 [build-system]
