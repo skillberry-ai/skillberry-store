@@ -64,8 +64,66 @@ class ThreadSafeLogCapture(logging.Handler):
 _session_log_handler = None
 
 
+# Model consumed by ``skillberry_store.vdbs.vector_db_interface`` for the
+# semantic encoder. Must match the string passed to ``SentenceTransformer(...)``
+# in that module — if it changes there, change it here too.
+_SEMANTIC_ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+
 @pytest.fixture(scope="session")
-def run_sbs(tmp_path_factory):
+def ensure_semantic_encoder_cached():
+    """Idempotently guarantee the sentence-transformer model is on disk.
+
+    Motivation: ``SBS.run()`` warms the semantic encoder in the background
+    at startup. On a cold ``~/.cache/huggingface`` (fresh CI runner, new
+    container) that warmup downloads ~88MB from HuggingFace before
+    ``/health/ready`` can return 200 — which routinely exceeds the 60s
+    fixture timeout in ``run_sbs`` and errors out every e2e test in the
+    session at setup. Doing the download *here*, before the server thread
+    starts, moves that cost outside the readiness-wait window.
+
+    Idempotent by construction:
+
+      * First try to load with ``local_files_only=True``. If the cache
+        already has every file the model needs (config, tokenizer, weights,
+        pooling module, …), this succeeds without any network call. Cache
+        hit: no-op, ~fraction of a second.
+      * If any file is missing, ``local_files_only`` raises. Fall back to
+        an online load, which downloads the missing pieces once. Subsequent
+        test sessions on the same runner take the cache-hit path.
+
+    Fixture is session-scoped and ``autouse=False`` — pulled in by
+    ``run_sbs`` so unit / integration tests that never spawn SBS pay
+    nothing. Failure to prepare the model (e.g. no cache AND no network)
+    still surfaces as an ``OSError`` here rather than as a mysterious
+    60s timeout deeper in the fixture chain — a much easier failure to
+    diagnose in CI logs.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    try:
+        SentenceTransformer(_SEMANTIC_ENCODER_MODEL, local_files_only=True)
+        logger.info(
+            "Semantic encoder model already cached (%s) — skipping download",
+            _SEMANTIC_ENCODER_MODEL,
+        )
+        return
+    except Exception as e:  # noqa: BLE001 — huggingface_hub raises several types
+        logger.info(
+            "Semantic encoder model not cached (%s): %s — downloading",
+            _SEMANTIC_ENCODER_MODEL,
+            e.__class__.__name__,
+        )
+
+    SentenceTransformer(_SEMANTIC_ENCODER_MODEL)
+    logger.info(
+        "Semantic encoder model downloaded and cached (%s)",
+        _SEMANTIC_ENCODER_MODEL,
+    )
+
+
+@pytest.fixture(scope="session")
+def run_sbs(ensure_semantic_encoder_cached, tmp_path_factory):
     """Start the SBS server once per session in a daemon thread."""
     from skillberry_store.fast_api.server import SBS
     from skillberry_store.tests.utils import clean_test_tmp_dir, wait_until_server_ready
@@ -139,6 +197,29 @@ def capture_server_logs(request):
         request.node.add_report_section("call", "server_logs", captured_logs)
         if request.config.getoption("verbose") > 0:
             logger.info(f"\n{'='*80}\nServer logs for {request.node.nodeid}:\n{captured_logs}\n{'='*80}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolate_access_control_config(tmp_path_factory):
+    """Prevent tests from consuming the operator's access_control_config.yaml.
+
+    Without this shield the loader falls back to
+    ``./access_control_config.yaml`` (repo root), which is a user-managed
+    file. If an operator flips it to ``mode: standalone`` locally, every
+    e2e/integration test that constructs ``SBS()`` would silently install
+    the RBAC middleware and start returning 401 to unauthenticated
+    requests. Point the env var at a non-existent path so the loader
+    returns its built-in ``mode: disabled`` defaults for all tests that
+    do not explicitly override it via monkeypatch.
+    """
+    from skillberry_store.access_control import config as acl_config
+
+    sentinel = tmp_path_factory.mktemp("acl") / "does-not-exist.yaml"
+    os.environ["SBS_ACCESS_CONTROL_CONFIG"] = str(sentinel)
+    acl_config.reset_config_cache()
+    yield
+    os.environ.pop("SBS_ACCESS_CONTROL_CONFIG", None)
+    acl_config.reset_config_cache()
 
 
 @pytest.fixture(scope="session", autouse=True)
