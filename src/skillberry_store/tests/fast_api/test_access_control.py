@@ -368,3 +368,82 @@ def test_admin_verb_gated(fresh_sbs_factory):
 def test_delegated_mode_rejected_at_startup(fresh_sbs_factory):
     with pytest.raises(Exception):  # AccessControlConfigError, wrapped by SBS init
         fresh_sbs_factory("mode: delegated\n")
+
+
+# ------------------ per-tenant MCP surface (option 2, §16.6) ------------- #
+
+
+def _mcp_mount_paths(client: TestClient) -> set[str]:
+    """Extract all mounted /control_sse* SSE endpoints from the app's routes."""
+    paths: set[str] = set()
+    for route in client.app.routes:
+        p = getattr(route, "path", "")
+        if p.startswith("/control_sse") and not p.endswith("/messages/"):
+            paths.add(p)
+    return paths
+
+
+def test_standalone_mode_mounts_one_mcp_per_user(fresh_sbs_factory):
+    client = fresh_sbs_factory(_standalone_yaml())
+    mounts = _mcp_mount_paths(client)
+    # One SSE endpoint per configured user, no shared /control_sse fallback.
+    assert "/control_sse/alice" in mounts
+    assert "/control_sse/bob" in mounts
+    assert "/control_sse/root" in mounts
+    assert "/control_sse" not in mounts
+
+
+def test_disabled_mode_mounts_shared_control_sse(fresh_sbs_factory):
+    client = fresh_sbs_factory("mode: disabled\n")
+    mounts = _mcp_mount_paths(client)
+    assert "/control_sse" in mounts
+    # No per-user paths in disabled mode.
+    assert not any(m.startswith("/control_sse/") for m in mounts)
+
+
+def test_reader_mcp_surface_excludes_writes(fresh_sbs_factory):
+    """alice is bound to `reader` — her MCP surface must not list writes.
+
+    We inspect the FastApiMCP's tool table directly rather than driving a
+    live SSE handshake (protocol-level plumbing that's out of scope for
+    unit tests). The tool table drives what any MCP client would see.
+    """
+    from skillberry_store.access_control.mcp_plan import operations_for_user
+
+    client = fresh_sbs_factory(_standalone_yaml())
+    cfg = client.app.state.acl_cfg
+    alice_ops = set(operations_for_user(client.app, cfg.user("alice"), cfg))
+    bob_ops = set(operations_for_user(client.app, cfg.user("bob"), cfg))
+    root_ops = set(operations_for_user(client.app, cfg.user("root"), cfg))
+
+    # alice is a reader — she gets list/get/search operations and no writes.
+    assert "list_skills" in alice_ops
+    assert "get_skill" in alice_ops
+    assert "search_skills" in alice_ops
+    assert "create_skill" not in alice_ops
+    assert "delete_skill" not in alice_ops
+    assert "execute_tool" not in alice_ops
+    assert "update_skill" not in alice_ops
+
+    # bob has content-author + tool-runner: writes on content + tool exec.
+    assert "create_skill" in bob_ops
+    assert "delete_skill" in bob_ops
+    assert "execute_tool" in bob_ops
+
+    # root has admin: full surface, everything alice has and everything bob has.
+    assert alice_ops.issubset(root_ops)
+    assert bob_ops.issubset(root_ops)
+
+
+def test_per_user_mcp_paths_are_unauth_allowlisted(fresh_sbs_factory):
+    """The unauth allow-list must include /control_sse/<user>* — the SSE
+    transport itself is open, and the tool invocations that traverse it
+    are each gated separately when the ASGI stack re-dispatches them
+    through the enforce dependency. We check the config directly rather
+    than driving a live SSE handshake (which would deadlock the
+    TestClient)."""
+    client = fresh_sbs_factory(_standalone_yaml())
+    cfg = client.app.state.acl_cfg
+    assert cfg.is_unauthenticated("GET", "/control_sse/alice")
+    assert cfg.is_unauthenticated("POST", "/control_sse/alice/messages/")
+    assert cfg.is_unauthenticated("GET", "/control_sse/root")
