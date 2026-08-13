@@ -29,6 +29,18 @@ API_TOKEN_ENV = f"{API_NAME.upper()}_TOKEN"
 ENV_PROFILE = "env-token"
 
 
+def _retry_args() -> list[str]:
+    """Default retries to 0 unless the caller set ``RSH_RETRY``.
+
+    Restish retries transient statuses (default: 2) — including 503
+    ``auth_disabled`` from the server in ``mode: disabled``, which turns
+    a single ``sbs whoami`` into three requests. Emit ``--rsh-retry 0``
+    when the user hasn't opted into their own retry count; when
+    ``RSH_RETRY`` is set (any value), leave the choice to restish.
+    """
+    return [] if "RSH_RETRY" in os.environ else ["--rsh-retry", "0"]
+
+
 def check_restish_installed() -> bool:
     """Check if restish is installed and available on PATH."""
     try:
@@ -128,7 +140,8 @@ def _registered_base(api_name: str) -> Optional[str]:
 def _restish_connect(api_name: str, api_url: str, replace: bool = False) -> None:
     """Register/refresh the API with restish. Errors surface to stderr and exit."""
     cmd = [
-        "restish", "api", "connect", api_name, api_url,
+        "restish", *_retry_args(),
+        "api", "connect", api_name, api_url,
         "--spec", f"{api_url.rstrip('/')}/openapi.json",
         "--yes",
     ]
@@ -242,7 +255,7 @@ def _do_login(api_name: str, api_url: str) -> int:
     # machine-parseable output regardless of the terminal state.
     body = json.dumps({"username": username, "password": password})
     result = subprocess.run(
-        ["restish", api_name, "login", "-o", "json"],
+        ["restish", *_retry_args(), api_name, "login", "-o", "json"],
         input=body,
         capture_output=True,
         text=True,
@@ -280,7 +293,7 @@ def _do_logout(api_name: str) -> int:
     argv) rather than editing the config file inline.
     """
     subprocess.run(
-        ["restish", api_name, "logout"],
+        ["restish", *_retry_args(), api_name, "logout"],
         capture_output=True,
         text=True,
         check=False,
@@ -333,7 +346,7 @@ def cli() -> None:
     # auth flows, and per-command help all work as documented.
     _ensure_connected(API_NAME, API_URL)
 
-    cmd = ["restish"]
+    cmd = ["restish", *_retry_args()]
     # If API_TOKEN_ENV is set, run under the env-token profile so the
     # token stays in the process environment and never lands on argv.
     if os.environ.get(API_TOKEN_ENV):
