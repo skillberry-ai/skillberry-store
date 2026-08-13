@@ -15,29 +15,36 @@
 
 import unittest
 
-from skillberry_store_sdk.api.dast_api import DastApi
+from skillberry_store_sdk.api.auth_api import AuthApi
 
 
-class TestDastApi(unittest.TestCase):
-    """DastApi unit test stubs"""
+class TestAuthApi(unittest.TestCase):
+    """AuthApi unit test stubs"""
 
     def setUp(self) -> None:
-        self.api = DastApi()
+        self.api = AuthApi()
 
     def tearDown(self) -> None:
         pass
 
-    def test_dast_scan_endpoint(self) -> None:
-        """Test case for dast_scan_endpoint
+    def test_login(self) -> None:
+        """Test case for login
 
-        Scan Endpoint
+        Login
         """
         pass
 
-    def test_dast_scan_status(self) -> None:
-        """Test case for dast_scan_status
+    def test_logout(self) -> None:
+        """Test case for logout
 
-        Scan Status
+        Logout
+        """
+        pass
+
+    def test_whoami(self) -> None:
+        """Test case for whoami
+
+        Whoami
         """
         pass
 

@@ -15,10 +15,10 @@
 
 import unittest
 
-from skillberry_store_sdk.models.add_tool_from_code_request import AddToolFromCodeRequest
+from skillberry_store_sdk.models.login_request import LoginRequest
 
-class TestAddToolFromCodeRequest(unittest.TestCase):
-    """AddToolFromCodeRequest unit test stubs"""
+class TestLoginRequest(unittest.TestCase):
+    """LoginRequest unit test stubs"""
 
     def setUp(self):
         pass
@@ -26,29 +26,28 @@ class TestAddToolFromCodeRequest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def make_instance(self, include_optional) -> AddToolFromCodeRequest:
-        """Test AddToolFromCodeRequest
+    def make_instance(self, include_optional) -> LoginRequest:
+        """Test LoginRequest
             include_optional is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # uncomment below to create an instance of `AddToolFromCodeRequest`
+        # uncomment below to create an instance of `LoginRequest`
         """
-        model = AddToolFromCodeRequest()
+        model = LoginRequest()
         if include_optional:
-            return AddToolFromCodeRequest(
-                code = '',
-                selected_func = '',
-                update = True,
-                module_name = ''
+            return LoginRequest(
+                username = '0',
+                password = '0'
             )
         else:
-            return AddToolFromCodeRequest(
-                code = '',
+            return LoginRequest(
+                username = '0',
+                password = '0',
         )
         """
 
-    def testAddToolFromCodeRequest(self):
-        """Test AddToolFromCodeRequest"""
+    def testLoginRequest(self):
+        """Test LoginRequest"""
         # inst_req_only = self.make_instance(include_optional=False)
         # inst_req_and_optional = self.make_instance(include_optional=True)
 

@@ -15,10 +15,10 @@
 
 import unittest
 
-from skillberry_store_sdk.models.add_tool_from_code_request import AddToolFromCodeRequest
+from skillberry_store_sdk.models.login_response import LoginResponse
 
-class TestAddToolFromCodeRequest(unittest.TestCase):
-    """AddToolFromCodeRequest unit test stubs"""
+class TestLoginResponse(unittest.TestCase):
+    """LoginResponse unit test stubs"""
 
     def setUp(self):
         pass
@@ -26,29 +26,30 @@ class TestAddToolFromCodeRequest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def make_instance(self, include_optional) -> AddToolFromCodeRequest:
-        """Test AddToolFromCodeRequest
+    def make_instance(self, include_optional) -> LoginResponse:
+        """Test LoginResponse
             include_optional is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # uncomment below to create an instance of `AddToolFromCodeRequest`
+        # uncomment below to create an instance of `LoginResponse`
         """
-        model = AddToolFromCodeRequest()
+        model = LoginResponse()
         if include_optional:
-            return AddToolFromCodeRequest(
-                code = '',
-                selected_func = '',
-                update = True,
-                module_name = ''
+            return LoginResponse(
+                token = '',
+                expires_at = '',
+                tenant_id = ''
             )
         else:
-            return AddToolFromCodeRequest(
-                code = '',
+            return LoginResponse(
+                token = '',
+                expires_at = '',
+                tenant_id = '',
         )
         """
 
-    def testAddToolFromCodeRequest(self):
-        """Test AddToolFromCodeRequest"""
+    def testLoginResponse(self):
+        """Test LoginResponse"""
         # inst_req_only = self.make_instance(include_optional=False)
         # inst_req_and_optional = self.make_instance(include_optional=True)
 

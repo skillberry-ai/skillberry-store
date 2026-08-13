@@ -15,10 +15,10 @@
 
 import unittest
 
-from skillberry_store_sdk.models.add_tool_from_code_request import AddToolFromCodeRequest
+from skillberry_store_sdk.models.who_am_i_response import WhoAmIResponse
 
-class TestAddToolFromCodeRequest(unittest.TestCase):
-    """AddToolFromCodeRequest unit test stubs"""
+class TestWhoAmIResponse(unittest.TestCase):
+    """WhoAmIResponse unit test stubs"""
 
     def setUp(self):
         pass
@@ -26,29 +26,31 @@ class TestAddToolFromCodeRequest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def make_instance(self, include_optional) -> AddToolFromCodeRequest:
-        """Test AddToolFromCodeRequest
+    def make_instance(self, include_optional) -> WhoAmIResponse:
+        """Test WhoAmIResponse
             include_optional is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # uncomment below to create an instance of `AddToolFromCodeRequest`
+        # uncomment below to create an instance of `WhoAmIResponse`
         """
-        model = AddToolFromCodeRequest()
+        model = WhoAmIResponse()
         if include_optional:
-            return AddToolFromCodeRequest(
-                code = '',
-                selected_func = '',
-                update = True,
-                module_name = ''
+            return WhoAmIResponse(
+                tenant_id = '',
+                groups = [
+                    ''
+                    ],
+                roles = [
+                    ''
+                    ]
             )
         else:
-            return AddToolFromCodeRequest(
-                code = '',
+            return WhoAmIResponse(
         )
         """
 
-    def testAddToolFromCodeRequest(self):
-        """Test AddToolFromCodeRequest"""
+    def testWhoAmIResponse(self):
+        """Test WhoAmIResponse"""
         # inst_req_only = self.make_instance(include_optional=False)
         # inst_req_and_optional = self.make_instance(include_optional=True)
 
