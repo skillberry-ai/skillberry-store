@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import List, Optional, Annotated
 from fastapi import FastAPI, HTTPException, Query, File, UploadFile
 
+from skillberry_store.access_control.decorator import requires
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.snippet_schema import SnippetSchema
 from skillberry_store.services.exceptions import ObjectInUseError
@@ -36,6 +37,7 @@ def register_snippets_api(
         service = get_service("snippet")
     assert service is not None  # narrowed for type checker
 
+    @requires("snippets", "create")
     @app.post(
         "/snippets/",
         tags=[tags],
@@ -83,6 +85,7 @@ def register_snippets_api(
                 status_code=500, detail=f"Error creating snippet: {str(e)}"
             )
 
+    @requires("snippets", "list")
     @app.get(
         "/snippets/",
         tags=[tags],
@@ -160,6 +163,7 @@ def register_snippets_api(
                 status_code=500, detail=f"Error listing snippets: {str(e)}"
             )
 
+    @requires("snippets", "get")
     @app.get(
         "/snippets/{uuid_or_name}",
         tags=[tags],
@@ -206,6 +210,7 @@ def register_snippets_api(
                 status_code=500, detail=f"Error retrieving snippet: {str(e)}"
             )
 
+    @requires("snippets", "delete")
     @app.delete(
         "/snippets/{uuid_or_name}",
         tags=[tags],
@@ -240,6 +245,7 @@ def register_snippets_api(
                 status_code=500, detail=f"Error deleting snippet: {str(e)}"
             )
 
+    @requires("snippets", "update")
     @app.put(
         "/snippets/{uuid_or_name}",
         tags=[tags],
@@ -273,6 +279,7 @@ def register_snippets_api(
                 status_code=500, detail=f"Error updating snippet: {str(e)}"
             )
 
+    @requires("snippets", "list")
     @app.get(
         "/facets/snippets",
         tags=[tags],
@@ -294,6 +301,7 @@ def register_snippets_api(
                 status_code=500, detail=f"Error computing snippet facets: {str(e)}"
             )
 
+    @requires("snippets", "search")
     @app.get(
         "/search/snippets",
         tags=[tags],

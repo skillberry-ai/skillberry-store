@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, File, UploadFile, Query, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
+from skillberry_store.access_control.decorator import requires
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.tool_schema import ToolSchema
 from skillberry_store.utils.utils import SKILLBERRY_CONTEXT, unflatten_keys
@@ -52,6 +53,7 @@ def register_tools_api(
         service = get_service("tool")
     assert service is not None  # narrowed for type checker
 
+    @requires("tools", "create")
     @app.post("/tools/", tags=[tags], openapi_extra={"x-cli-name": "create-tool"})
     async def create_tool(
         tool: Annotated[ToolSchema, Query()],
@@ -93,6 +95,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error creating tool: {str(e)}"
             )
 
+    @requires("tools", "list")
     @app.get(
         "/tools/",
         tags=[tags],
@@ -171,6 +174,7 @@ def register_tools_api(
                 detail=f"Error listing tools: {str(e)}\n{traceback.format_exc()}",
             )
 
+    @requires("tools", "get")
     @app.get(
         "/tools/{uuid_or_name}",
         tags=[tags],
@@ -218,6 +222,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error retrieving tool: {str(e)}"
             )
 
+    @requires("tools", "get")
     @app.get(
         "/tools/{uuid_or_name}/module",
         tags=[tags],
@@ -252,6 +257,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error retrieving module file: {str(e)}"
             )
 
+    @requires("tools", "delete")
     @app.delete(
         "/tools/{uuid_or_name}",
         tags=[tags],
@@ -286,6 +292,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error deleting tool: {str(e)}"
             )
 
+    @requires("tools", "update")
     @app.put(
         "/tools/{uuid_or_name}",
         tags=[tags],
@@ -320,6 +327,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error updating tool: {str(e)}"
             )
 
+    @requires("tools", "execute")
     @app.post(
         "/tools/{uuid_or_name}/execute",
         tags=[tags],
@@ -364,6 +372,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error executing tool: {str(e)}"
             )
 
+    @requires("tools", "list")
     @app.get(
         "/facets/tools",
         tags=[tags],
@@ -382,6 +391,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error computing tool facets: {str(e)}"
             )
 
+    @requires("tools", "search")
     @app.get(
         "/search/tools",
         tags=[tags],
@@ -441,6 +451,7 @@ def register_tools_api(
                 status_code=500, detail=f"Error searching tools: {str(e)}"
             )
 
+    @requires("tools", "create")
     @app.post("/tools/add", tags=[tags], openapi_extra={"x-cli-name": "add-tool"})
     async def add_tool_from_python(
         tool: UploadFile = File(...),
@@ -487,6 +498,7 @@ def register_tools_api(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error adding tool: {str(e)}")
 
+    @requires("tools", "create")
     @app.post(
         "/tools/add_code",
         tags=[tags],

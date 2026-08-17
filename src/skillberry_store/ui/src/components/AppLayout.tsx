@@ -21,6 +21,7 @@ import {
 } from '@patternfly/react-core';
 import { BarsIcon, CodeIcon } from '@patternfly/react-icons';
 import { PluginNotifications } from '@/components/PluginNotifications';
+import { UserBadge } from '@/components/UserBadge';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -81,7 +82,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         </MastheadBrand>
       </MastheadMain>
       <MastheadContent>
-        {/* Add user menu or other header content here */}
+        <div style={{ marginLeft: 'auto' }}>
+          <UserBadge />
+        </div>
       </MastheadContent>
     </Masthead>
   );

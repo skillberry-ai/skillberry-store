@@ -1,0 +1,82 @@
+# Demo access-control config. Puts the store in `standalone` mode with two
+# pre-provisioned users so the demo is usable out-of-the-box.
+#
+# WARNING: passwords in this file are trivial ("skillberry" / "admin") and
+# meant only for demos on a trusted machine. Never ship this file to a real
+# deployment. See docs/design/access-control.md and access_control_demo.md.
+
+mode: standalone
+
+unauthenticated_paths:
+  - GET /health
+  - GET /health/ready
+  - GET /admin/metrics
+  - POST /auth/login
+  - POST /auth/logout
+  - GET /auth/whoami
+  - GET /docs
+  - GET /openapi.json
+  - GET /redoc
+  - GET /control_sse*
+  - POST /control_sse*
+
+# --- Mode-specific: standalone only -------------------------------------
+standalone:
+  session_ttl_seconds: 43200          # 12h; env: SBS_SESSION_TTL
+  users:
+    - username: skillberry
+      tenant_id: skillberry
+      password_hash: '$2b$12$z1CKK7qHY.6ZlEAHbKBfDO5s/mWZin.SpU.iHyseaeOkUeOIqZZc2'
+      groups: []
+    - username: skillberry-admin
+      tenant_id: skillberry-admin
+      password_hash: '$2b$12$ssgkuUTSeR5B6mAJyoNm2udcEs2DcX5Kq4XuTYUnqrx3hO/DBy67e'
+      groups: []
+
+# --- RBAC ---------------------------------------------------------------
+roles:
+  - name: reader
+    rules:
+      - resources: [skills, tools, snippets, vmcp_servers, vnfs_servers,
+                    facets, plugins, system]
+        verbs: [list, get, search]
+
+  - name: content-author
+    rules:
+      - resources: [skills, tools, snippets]
+        verbs: [list, get, search, create, update, delete]
+
+  - name: tool-runner
+    rules:
+      - resources: [tools, vmcp_servers, vnfs_servers]
+        verbs: [execute]
+
+  - name: server-operator
+    rules:
+      - resources: [vmcp_servers, vnfs_servers]
+        verbs: [list, get, create, update, delete, execute]
+
+  - name: admin
+    rules:
+      - resources: ["*"]
+        verbs: ["*"]
+
+  - name: base-user
+    rules:
+      - resources: [skills, tools, snippets, vmcp_servers, vnfs_servers,
+                    facets, plugins, system]
+        verbs: [list, get, search, execute]
+
+
+bindings:
+  - name: skillberry-base
+    subjects:
+      - kind: tenant
+        name: skillberry
+    roles: [base-user]
+
+  - name: skillberry-admin
+    subjects:
+      - kind: tenant
+        name: skillberry-admin
+    roles: [admin]

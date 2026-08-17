@@ -6,6 +6,7 @@ from typing import Optional, Annotated, List, Any
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form, Header
 from fastapi.responses import Response
 
+from skillberry_store.access_control.decorator import requires
 from skillberry_store.tools.endpoint_auth import ReauthRequired
 from skillberry_store.modules.lifecycle import LifecycleState
 from skillberry_store.schemas.skill_schema import SkillSchema
@@ -52,6 +53,7 @@ def register_skills_api(
         service = get_service("skill")
     assert service is not None  # narrowed for type checker
 
+    @requires("skills", "create")
     @app.post(
         "/skills/",
         tags=[tags],
@@ -86,6 +88,7 @@ def register_skills_api(
                 status_code=500, detail=f"Error creating skill: {str(e)}"
             )
 
+    @requires("skills", "list")
     @app.get(
         "/skills/",
         tags=[tags],
@@ -166,6 +169,7 @@ def register_skills_api(
                 status_code=500, detail=f"Error listing skills: {str(e)}"
             )
 
+    @requires("skills", "get")
     @app.get(
         "/skills/{uuid_or_name}",
         tags=[tags],
@@ -218,6 +222,7 @@ def register_skills_api(
                 status_code=500, detail=f"Error retrieving skill: {str(e)}"
             )
 
+    @requires("skills", "delete")
     @app.delete(
         "/skills/{uuid_or_name}",
         tags=[tags],
@@ -269,6 +274,7 @@ def register_skills_api(
                 status_code=500, detail=f"Error deleting skill: {str(e)}"
             )
 
+    @requires("skills", "update")
     @app.put(
         "/skills/{uuid_or_name}",
         tags=[tags],
@@ -302,6 +308,7 @@ def register_skills_api(
                 status_code=500, detail=f"Error updating skill: {str(e)}"
             )
 
+    @requires("skills", "list")
     @app.get(
         "/facets/skills",
         tags=[tags],
@@ -320,6 +327,7 @@ def register_skills_api(
                 status_code=500, detail=f"Error computing skill facets: {str(e)}"
             )
 
+    @requires("skills", "search")
     @app.get(
         "/search/skills",
         tags=[tags],
@@ -380,6 +388,7 @@ def register_skills_api(
                 status_code=500, detail=f"Error searching skills: {str(e)}"
             )
 
+    @requires("skills", "create")
     @app.post(
         "/skills/detect-anthropic-skills",
         tags=[tags],
@@ -455,6 +464,7 @@ def register_skills_api(
                 detail=f"Error detecting skills: {str(e)}",
             )
 
+    @requires("skills", "create")
     @app.post(
         "/skills/import-anthropic",
         tags=[tags],
@@ -532,6 +542,7 @@ def register_skills_api(
             "ignored_files": result.get("ignored_files", []),
         }
 
+    @requires("skills", "get")
     @app.get(
         "/skills/{uuid_or_name}/export-anthropic",
         tags=[tags],
