@@ -35,6 +35,21 @@ export default defineConfig({
       },
     },
   },
+  // `vite preview` serves the built bundle without filesystem watchers.
+  // It reads this block, not `server:`, so port/host/allowedHosts/proxy
+  // must be mirrored here for prod-style startup (see `make ui-build`).
+  preview: {
+    port: parseInt(process.env.VITE_UI_PORT || '8002'),
+    host: true,
+    allowedHosts: parseAllowedHosts(process.env.VITE_ALLOWED_HOSTS),
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: true,
