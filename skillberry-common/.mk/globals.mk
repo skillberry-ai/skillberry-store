@@ -11,7 +11,7 @@ ARCH := $(shell uname -m)
 OS := $(shell uname -s)
 
 # Location of private SSH key for git+ssh dependencies, e.g., during docker build
-SSH_KEY ?= ~/.ssh/id_rsa 2>/dev/null
+SSH_KEY ?= $(HOME)/.ssh/id_rsa
 
 LLM_SVCS_ENV_VARS := RITS_API_KEY WATSONX_APIKEY WATSONX_PROJECT_ID WATSONX_URL
 
@@ -34,50 +34,18 @@ MAIN_SERVICE_PORT = $(firstword $(SERVICE_PORTS))
 		$(SB_COMMON_PATH)/scripts/mk_srv_env.sh "$(ACRONYM)" "$(SERVICE_PORTS)" "$(SERVICE_PORT_ROLES)" "$(SERVICE_HOST)" 2>/dev/null || true; \
 	fi
 
-# Set BUILD_VERSION variable
+# BUILD_VERSION: single label that identifies the current repository state.
 #
-# In SkillBerry every tag/release is created in a separate branch (to have dedicated toml with
-# proper @ to sdk). So we implement our logic to maintain git format for 'git describe --always --dirty'
-# - i.e. 0.5.3 or 0.5.3-5-gc9b7ddd or 0.5.3-5-gc9b7ddd-dirty
-
-_LATEST_RELEASE=$(shell git branch -r | grep 'branch-' | sed 's|.*/branch-||' | sort -V | tail -n 1 | head -n 1)
-
-#
-# _LATEST_RELEASE is the actual tag e.g. 0.5.3
-#
-ifeq ($(_LATEST_RELEASE),)
-	#
-	# Latest release does not exist
-	#
-
-	_CURRENT_COMMIT=$(shell git rev-parse --short=7 HEAD)
-	# sets with "dirty" if there are uncommitted changes
-	_DIRTY=$(shell git diff --quiet || echo "-dirty")
-	# e.g. gc9b7ddd, gc9b7ddd-dirty
-	BUILD_VERSION="g$(_CURRENT_COMMIT)$(_DIRTY)"
-else
-	# Find the common ancestor (branch point)
-	# TODO: confirm _BASE_COMMIT not needed and remove 
-	# _BASE_COMMIT=$(shell git merge-base origin/main origin/branch-$(_LATEST_RELEASE))
-
-	#
-	# Count commits in main after the branch point
-	# tag is git global - can be safely used
-	#
-	_COMMIT_COUNT=$(shell git rev-list --count $(_LATEST_RELEASE)..HEAD)
-
-	_CURRENT_COMMIT=$(shell git rev-parse --short=7 HEAD)
-
-	_DIRTY=$(shell git diff --quiet || echo "-dirty")
-
-	ifeq ($(_COMMIT_COUNT),0)
-		# e.g. 0.4
-		BUILD_VERSION="$(_LATEST_RELEASE)$(_DIRTY)"
-	else
-		# e.g. 0.4-70-gc9b7ddd
-		BUILD_VERSION="$(_LATEST_RELEASE)-$(_COMMIT_COUNT)-g$(_CURRENT_COMMIT)$(_DIRTY)"
-	endif
-endif
+# Computed by `scripts/git_state.py version`, which:
+#   - matches `git describe --always --dirty` conventions:
+#       clean at release commit:            <release>            (e.g. 0.5.3)
+#       N commits past latest release:      <release>-<N>-g<sha> (e.g. 0.5.3-5-gc9b7ddd)
+#       no release yet:                     g<sha>               (e.g. gc9b7ddd)
+#   - detects dirty state via `git status --porcelain` (staged + unstaged +
+#     untracked non-ignored) and appends `-dirty-<7hex>`, where the hex is a
+#     fingerprint of the actual dirty content, so different dirty states get
+#     different labels (concept 1 of docs/design/build_concepts.md).
+BUILD_VERSION := $(shell python $(SB_COMMON_PATH)/scripts/git_state.py version)
 
 # Platform-specific variables
 ifeq ($(OS),Windows_NT)
