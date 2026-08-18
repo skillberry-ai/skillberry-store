@@ -59,7 +59,7 @@ check-git-main:
 	fi
 
 .PHONY: install-requirements verify-venv
-install-requirements: git-hooks-setup verify-venv .stamps/install-requirements-$(ODEPS) ## Install dependencies. Opt: make install-requirements ODEPS=dev [SKIPOPT=1 to allow skip]
+install-requirements: git-hooks-setup verify-venv .stamps/git-version-manifest .stamps/install-requirements-$(ODEPS) ## Install dependencies. Opt: make install-requirements ODEPS=dev [SKIPOPT=1 to allow skip]
 	@true
 
 verify-venv:
@@ -76,12 +76,21 @@ verify-venv:
 
 
 # .stamps/git-version-manifest is the pivot of the build stamp graph — the
-# label-derived record that gates all downstream builds (concepts 2 & 4). It
-# is maintained by scripts/update-git-state.sh, which is called at Make parse
-# time from globals.mk. That call is content-idempotent (rewrites the file
-# only when state actually changed) and emits observability output to stderr.
-# Any `make ...` invocation therefore refreshes the manifest as a side effect
-# of parsing, before any target evaluation.
+# label-derived record that gates all downstream builds (concepts 2 & 4).
+#
+# The recipe runs whenever a make target that (transitively) depends on the
+# manifest is invoked (e.g. install-requirements, docker-build). It calls
+# scripts/update-git-state.sh, which is content-idempotent: the manifest file
+# is rewritten (and observability printed to stderr) only when repository
+# state has actually changed, keeping mtime stable so downstream targets
+# don't refire spuriously. Targets that don't need the label (make help,
+# make print_build_version, etc.) don't trigger this recipe.
+.stamps/git-version-manifest: FORCE
+	@$(SB_COMMON_PATH)/scripts/update-git-state.sh \
+	    "$(BUILD_VERSION)" "$@" "$(VERSION_LOCATION)"
+
+.PHONY: FORCE
+FORCE:
 
 
 release: check-git-main check-git-clean install-requirements  ## Release a new version (REDO=1 to cleanup existing artifacts)
@@ -115,6 +124,8 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 		gh release delete $(RELEASE_VERSION) --yes 2>/dev/null || echo "GitHub release does not exist"; \
 		echo "===> REDO: Cleaning up existing Docker images"; \
 		$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(RELEASE_VERSION) 2>/dev/null || echo "Docker image with version tag does not exist"; \
+		echo "===> REDO: Cleaning up docker build/get stamps so the re-release forces a fresh build"; \
+		rm -f .stamps/docker-build-registry-* .stamps/docker-get-* 2>/dev/null || true; \
 		echo "===> REDO: Cleanup completed"; \
 	fi
 
@@ -122,7 +133,13 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@git checkout -b branch-$(RELEASE_VERSION)
 	@echo "===> Generated release branch $(RELEASE_VERSION)"
 	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)"
-	@git push origin $(RELEASE_VERSION)
+	# Push BOTH the tag and the release branch. The branch is required on
+	# origin so that git-version.sh's _LATEST_RELEASE detection (which scans
+	# `git branch -r | grep 'branch-'`) picks up this release when the
+	# docker-build sub-make below recomputes BUILD_VERSION — otherwise the
+	# image is tagged with the previous-release-based label instead of
+	# $(RELEASE_VERSION).
+	@git push origin $(RELEASE_VERSION) branch-$(RELEASE_VERSION)
 
 	#
 	# Switch to main so the subsequent gh release notes command computes its
