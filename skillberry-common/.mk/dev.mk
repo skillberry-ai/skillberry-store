@@ -124,6 +124,8 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 		gh release delete $(RELEASE_VERSION) --yes 2>/dev/null || echo "GitHub release does not exist"; \
 		echo "===> REDO: Cleaning up existing Docker images"; \
 		$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(RELEASE_VERSION) 2>/dev/null || echo "Docker image with version tag does not exist"; \
+		echo "===> REDO: Cleaning up docker build/get stamps so the re-release forces a fresh build"; \
+		rm -f .stamps/docker-build-registry-* .stamps/docker-get-* 2>/dev/null || true; \
 		echo "===> REDO: Cleanup completed"; \
 	fi
 
@@ -131,7 +133,13 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@git checkout -b branch-$(RELEASE_VERSION)
 	@echo "===> Generated release branch $(RELEASE_VERSION)"
 	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)"
-	@git push origin $(RELEASE_VERSION)
+	# Push BOTH the tag and the release branch. The branch is required on
+	# origin so that git_state.py's _LATEST_RELEASE detection (which scans
+	# `git branch -r | grep 'branch-'`) picks up this release when the
+	# docker-build sub-make below recomputes BUILD_VERSION — otherwise the
+	# image is tagged with the previous-release-based label instead of
+	# $(RELEASE_VERSION).
+	@git push origin $(RELEASE_VERSION) branch-$(RELEASE_VERSION)
 
 	#
 	# Switch to main so the subsequent gh release notes command computes its
