@@ -19,28 +19,8 @@ OPEN_API_SPEC_URL ?= http://$(SERVICE_HOST):$(MAIN_SERVICE_PORT)
 
 export SERVICE_HAS_SDK ?= 0
 
-# List your subtree roots
-CODE_SUBTREES := src .mk $(SB_COMMON_PATH)/.mk $(SB_COMMON_PATH)/scripts
-
-# One common filter for all
-CODE_FILTER := \( -name '*.py' -o -name 'Makefile' -o -name '*.mk' -o -name '*.sh' \)
-
-# Expand to the union of files across all subtrees
-CODE_FILES := $(foreach T,$(CODE_SUBTREES), \
-  $(shell find $(T) -type f $(CODE_FILTER) -print))
-
-CODE_FILES := $(CODE_FILES) pyproject.toml Makefile Dockerfile
-
-# This stamp file checks for code changes
-.stamps/code-scan: $(CODE_FILES)
-	@echo "Detected code changed in: $(CODE_SUBTREES)"
-	@if [ -f .stamps/code-scan ]; then \
-		find $(CODE_SUBTREES) -type f $(CODE_FILTER) -newer .stamps/code-scan -print; \
-		for f in pyproject.toml Makefile Dockerfile; do \
-			[ -e "$$f" ] && [ "$$f" -nt .stamps/code-scan ] && echo "$$f" || true; \
-		done; \
-	fi
-	@mkdir -p .stamps && touch .stamps/code-scan
+# Change detection is driven off the BUILD_VERSION label (see globals.mk and
+# concept 4 of docs/design/build_concepts.md). No parallel file-scan is used.
 
 git-hooks-setup:
 	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
@@ -87,47 +67,31 @@ verify-venv:
 	@python $(SB_COMMON_PATH)/scripts/ensure_pip.py || exit 1
 	@python -m pip install uv
 
-# Need to actually install only when pyproject.toml changes
-.stamps/install-requirements-$(ODEPS): pyproject.toml .venv
-	@ODEPS="$(ODEPS)"; \
-	SKIPOPT="$(SKIPOPT)"; \
-	if [ -z "$$ODEPS" ]; then \
-		uv pip install -e . || exit 1; \
-	else \
-		if uv pip install -e .[$$ODEPS]; then \
-			true; \
-		elif [ "$$SKIPOPT" = "1" ]; then \
-			echo "Optional dependency install failed for ODEPS=$$ODEPS; retrying without optional dependencies because SKIPOPT=1"; \
-			uv pip install -e . || exit 1; \
-		else \
-			exit 1; \
-		fi; \
-	fi
-	@touch .stamps/install-requirements-$(ODEPS)
+# Install stamp: prerequisite is exactly `pyproject.toml`. The per-ODEPS stamp
+# name captures the ODEPS variant (concept 5). Concept-6 stamp bookkeeping
+# (single valid non-empty stamp, always-valid empty stamp, no touch on
+# failure) is performed by the delegated script.
+.stamps/install-requirements-$(ODEPS): pyproject.toml
+	@$(SB_COMMON_PATH)/scripts/install-requirements.sh "$(ODEPS)" "$(SKIPOPT)"
 
 
-# Will actually modify the file in $(VERSIOIN_LOCATION) only if it does not exist or has different content
-
+# $(VERSION_LOCATION) is a real file target so downstream stamps can depend on
+# it via Make's timestamp rules. The recipe delegates to a content-idempotent
+# writer, so the file's mtime stays stable when state does not change
+# (concept 2 of docs/design/build_concepts.md). FORCE ensures the recipe runs
+# every invocation to re-check content.
 .PHONY: update-git-version
-update-git-version:
+update-git-version: $(VERSION_LOCATION)
+
+$(VERSION_LOCATION): FORCE
 	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
-	    NEW_CONTENT="__git_version__ = \"$(BUILD_VERSION)\""; \
-	    if [ ! -f "$(VERSION_LOCATION)" ]; then \
-	        echo "Creating git version file at $(VERSION_LOCATION)"; \
-	        echo "$$NEW_CONTENT" > $(VERSION_LOCATION); \
-	    else \
-	        CURRENT_CONTENT=$$(cat $(VERSION_LOCATION) 2>/dev/null || echo ""); \
-	        if [ "$$CURRENT_CONTENT" != "$$NEW_CONTENT" ]; then \
-				echo "Git version changed. Current content: $$CURRENT_CONTENT <==> New content: $$NEW_CONTENT"; \
-	            echo "Updating git version in $(VERSION_LOCATION)"; \
-	            echo "$$NEW_CONTENT" > $(VERSION_LOCATION); \
-	        else \
-	            echo "Git version in $(VERSION_LOCATION) is already up to date"; \
-	        fi; \
-	    fi; \
+	    $(SB_COMMON_PATH)/scripts/write-git-version.sh "$(BUILD_VERSION)" "$@"; \
 	else \
 	    echo "Skipping update-git-version: not inside a Git repository."; \
 	fi
+
+.PHONY: FORCE
+FORCE:
 
 
 release: check-git-main check-git-clean install-requirements  ## Release a new version (REDO=1 to cleanup existing artifacts)

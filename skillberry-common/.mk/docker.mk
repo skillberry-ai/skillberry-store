@@ -88,9 +88,6 @@ else
 DOCKER_ARCH := unknown
 endif
 
-# Print the value of DOCKER
-@echo "Using Docker: $(DOCKER)"
-
 # Check whether docker is aliased to podman
 # It is assumed that the user is using zsh or bash and alias is defined in ~/.zshrc or ~/.bashrc
 # Check that either Docker or Podman is installed
@@ -120,15 +117,21 @@ else ifeq ($(DBT),registry)
 	DB_ARCH := $(SUPPORTED_ARCHS)
 	DB_ACTION := push
 else
-	@echo "Invalid DBT value: $(DBT). Supported values: local, registry"
-	@exit 1
+$(error Invalid DBT value: $(DBT). Supported values: local, registry)
 endif
 
-.PHONY: base-image-build 
-base-image-build: multiarch-check .stamps/base-image-build-$(DBT)	## Build skillberry base image (DBT=registry to build & push multi-arch)
+# Parse-time reconciler: if the local image at the current BUILD_VERSION label
+# has been removed (e.g., `docker rmi`), invalidate the stamps that claim it
+# exists so the next build/get restores the invariant (concept 3).
+_docker_reconcile := $(shell $(SB_COMMON_PATH)/scripts/docker-reconcile-stamp.sh \
+    $(DOCKER) $(FULL_IMAGE_NAME) $(BUILD_VERSION) $(DBT))
 
-# Build base multi-arch image if it does not exist
-.stamps/base-image-build-$(DBT): 
+.PHONY: base-image-build
+base-image-build: multiarch-check .stamps/base-image-build-$(DBT)-$(BASE_IMAGE_TAG)	## Build skillberry base image (DBT=registry to build & push multi-arch)
+
+# Build base multi-arch image if it does not exist. Stamp includes DBT and
+# BASE_IMAGE_TAG so different variants never share a stamp (concept 3).
+.stamps/base-image-build-$(DBT)-$(BASE_IMAGE_TAG):
 	@echo "Building Base Image using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Supported Architectures: $(DB_ARCH)"
 	@echo "Base Image Name: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
@@ -142,7 +145,7 @@ base-image-build: multiarch-check .stamps/base-image-build-$(DBT)	## Build skill
 		--$(DB_ACTION) \
 		. \
 		|| exit 1; \
-		touch .stamps/base-image-build-$(DBT); \
+		touch .stamps/base-image-build-$(DBT)-$(BASE_IMAGE_TAG); \
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		if [ "$(DBT)" = "registry" ]; then \
 			$(DOCKER) build --no-cache=true \
@@ -161,7 +164,7 @@ base-image-build: multiarch-check .stamps/base-image-build-$(DBT)	## Build skill
 			-t $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) \
 			. || exit 1; \
 		fi; \
-		touch .stamps/base-image-build-$(DBT); \
+		touch .stamps/base-image-build-$(DBT)-$(BASE_IMAGE_TAG); \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
@@ -179,13 +182,15 @@ base-image-build: multiarch-check .stamps/base-image-build-$(DBT)	## Build skill
 base-image-rm: docker-check ## Remove the local base image
 	@echo "Removing BASE image: $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG)"
 	$(DOCKER) rmi -f $(BASE_IMAGE_FULL_NAME):$(BASE_IMAGE_TAG) > /dev/null 2>&1 || true
-	rm -f .stamps/base-image-build*
+	rm -f .stamps/base-image-build-*-$(BASE_IMAGE_TAG)
 
-.PHONY: docker-build 
-docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Build docker image (DBT=registry to build & push multi-arch)
+.PHONY: docker-build
+docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)-$(BUILD_VERSION)	## Build docker image (DBT=registry to build & push multi-arch)
 
-# We actually build a new image only if the code changed by checking code-scan stamp
-.stamps/docker-build-$(DBT): .stamps/ssh-agent.env .stamps/code-scan
+# Rebuild only when the label-scoped stamp is missing (concept 3). Prerequisite
+# is the git-version file: if the label changes, the file's content changes,
+# its mtime updates, and this stamp is invalidated (concept 2 + 4).
+.stamps/docker-build-$(DBT)-$(BUILD_VERSION): $(VERSION_LOCATION) .stamps/ssh-agent.env
 	@echo "Building for $(DB_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@echo "Build version: $(BUILD_VERSION)"
@@ -208,8 +213,8 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Bui
 		-t $(FULL_IMAGE_NAME):latest \
 		--$(DB_ACTION) \
 		. || exit 1; \
-		touch .stamps/docker-build-$(DBT); \
-		touch .stamps/docker-get; \
+		touch .stamps/docker-build-$(DBT)-$(BUILD_VERSION); \
+		touch .stamps/docker-get-$(BUILD_VERSION); \
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		if [ "$(DBT)" = "registry" ]; then \
 			$(DOCKER) build --no-cache=true \
@@ -245,8 +250,8 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Bui
 			-t $(FULL_IMAGE_NAME):latest \
 			. || exit 1; \
 		fi; \
-		touch .stamps/docker-build-$(DBT); \
-		touch .stamps/docker-get; \
+		touch .stamps/docker-build-$(DBT)-$(BUILD_VERSION); \
+		touch .stamps/docker-get-$(BUILD_VERSION); \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
@@ -270,21 +275,23 @@ docker-pull: docker-check ## Pull the latest docker image from registry
 		echo "✓ Successfully pulled image: $(FULL_IMAGE_NAME):latest"; \
 		$(DOCKER) tag $(FULL_IMAGE_NAME):latest $(FULL_IMAGE_NAME):$(IMAGE_TAG); \
 		echo "✓ Tagged as: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"; \
-		touch .stamps/docker-get; \
+		touch .stamps/docker-get-$(BUILD_VERSION); \
 	else \
 		echo "✗ Failed to pull image: $(FULL_IMAGE_NAME):latest"; \
 		exit 1; \
 	fi
 
+# The get-stamp encodes concept 3's invariant: "an image at the current label
+# is present locally". Either a local build or a successful pull satisfies it.
 .PHONY: docker-get
-docker-get: .stamps/docker-get
+docker-get: .stamps/docker-get-$(BUILD_VERSION)
 	@true
 
 ifdef SBD_DEV
-.stamps/docker-get: docker-build ## Get docker image (SBD_DEV set: build only)
+.stamps/docker-get-$(BUILD_VERSION): docker-build ## Get docker image (SBD_DEV set: build only)
 	@echo "SBD_DEV is set - using locally built image"
 else
-.stamps/docker-get: ## Get docker image (pull latest or build if pull fails)
+.stamps/docker-get-$(BUILD_VERSION): ## Get docker image (pull latest or build if pull fails)
 	@echo "Attempting to get Docker image: $(FULL_IMAGE_NAME):latest"
 	@if $(MAKE) docker-pull; then \
 		echo "✓ Using pulled image"; \
@@ -320,8 +327,8 @@ docker-rmi: docker-check docker-clean ## Remove the docker container, image, and
 	@echo "Removing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(IMAGE_TAG) > /dev/null 2>&1 || true
 	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):latest > /dev/null 2>&1 || true
-	@rm -f .stamps/docker-build*
-	@rm -f .stamps/docker-get 
+	@rm -f .stamps/docker-build-*-$(BUILD_VERSION)
+	@rm -f .stamps/docker-get-$(BUILD_VERSION)
 
 .PHONY: docker-clean
 docker-clean: docker-check docker-stop ## Remove the docker container and temporary files, but keeping the image
