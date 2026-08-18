@@ -185,12 +185,13 @@ base-image-rm: docker-check ## Remove the local base image
 	rm -f .stamps/base-image-build-*-$(BASE_IMAGE_TAG)
 
 .PHONY: docker-build
-docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)-$(BUILD_VERSION)	## Build docker image (DBT=registry to build & push multi-arch)
+docker-build: docker-check .stamps/docker-build-$(DBT)-$(BUILD_VERSION)	## Build docker image (DBT=registry to build & push multi-arch)
 
-# Rebuild only when the label-scoped stamp is missing (concept 3). Prerequisite
-# is the git-version file: if the label changes, the file's content changes,
-# its mtime updates, and this stamp is invalidated (concept 2 + 4).
-.stamps/docker-build-$(DBT)-$(BUILD_VERSION): $(VERSION_LOCATION) .stamps/ssh-agent.env
+# Rebuild only when the label-scoped stamp is missing (concept 3). The
+# prerequisite is the git-state manifest: its mtime updates precisely when
+# repository state changes (concepts 2 + 4), and it exists in every project
+# regardless of whether VERSION_LOCATION is defined.
+.stamps/docker-build-$(DBT)-$(BUILD_VERSION): .stamps/git-version-manifest .stamps/ssh-agent.env
 	@echo "Building for $(DB_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@echo "Build version: $(BUILD_VERSION)"

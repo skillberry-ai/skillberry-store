@@ -59,7 +59,7 @@ check-git-main:
 	fi
 
 .PHONY: install-requirements verify-venv
-install-requirements: update-git-version git-hooks-setup verify-venv .stamps/install-requirements-$(ODEPS) ## Install dependencies. Opt: make install-requirements ODEPS=dev [SKIPOPT=1 to allow skip]
+install-requirements: git-hooks-setup verify-venv .stamps/install-requirements-$(ODEPS) ## Install dependencies. Opt: make install-requirements ODEPS=dev [SKIPOPT=1 to allow skip]
 	@true
 
 verify-venv:
@@ -75,23 +75,13 @@ verify-venv:
 	@$(SB_COMMON_PATH)/scripts/install-requirements.sh "$(ODEPS)" "$(SKIPOPT)"
 
 
-# $(VERSION_LOCATION) is a real file target so downstream stamps can depend on
-# it via Make's timestamp rules. The recipe delegates to a content-idempotent
-# writer, so the file's mtime stays stable when state does not change
-# (concept 2 of docs/design/build_concepts.md). FORCE ensures the recipe runs
-# every invocation to re-check content.
-.PHONY: update-git-version
-update-git-version: $(VERSION_LOCATION)
-
-$(VERSION_LOCATION): FORCE
-	@if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then \
-	    $(SB_COMMON_PATH)/scripts/write-git-version.sh "$(BUILD_VERSION)" "$@"; \
-	else \
-	    echo "Skipping update-git-version: not inside a Git repository."; \
-	fi
-
-.PHONY: FORCE
-FORCE:
+# .stamps/git-version-manifest is the pivot of the build stamp graph — the
+# label-derived record that gates all downstream builds (concepts 2 & 4). It
+# is maintained by scripts/update-git-state.sh, which is called at Make parse
+# time from globals.mk. That call is content-idempotent (rewrites the file
+# only when state actually changed) and emits observability output to stderr.
+# Any `make ...` invocation therefore refreshes the manifest as a side effect
+# of parsing, before any target evaluation.
 
 
 release: check-git-main check-git-clean install-requirements  ## Release a new version (REDO=1 to cleanup existing artifacts)
@@ -135,8 +125,8 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@git push origin $(RELEASE_VERSION)
 
 	#
-	# Important: change to main so that later invocation of "update-git-version" properly works,
-	# Note: update-git-version is called on different contexts later in this flow
+	# Switch to main so the subsequent gh release notes command computes its
+	# commit range against main rather than the release branch.
 	#
 	@git checkout main
 

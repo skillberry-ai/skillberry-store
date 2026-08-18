@@ -47,6 +47,14 @@ MAIN_SERVICE_PORT = $(firstword $(SERVICE_PORTS))
 #     different labels (concept 1 of docs/design/build_concepts.md).
 BUILD_VERSION := $(shell $(SB_COMMON_PATH)/scripts/git-version.sh)
 
+# Update the git-state manifest as a side effect of make parse, so downstream
+# stamps that depend on `.stamps/git-version-manifest` see a stable mtime when
+# state hasn't changed (concepts 2 + 4). The script emits observability lines
+# to stderr when the manifest is rewritten. Runs early — before any target
+# evaluation — so downstream stamp comparisons are correct.
+_ := $(shell $(SB_COMMON_PATH)/scripts/update-git-state.sh \
+    "$(BUILD_VERSION)" .stamps/git-version-manifest "$(VERSION_LOCATION)")
+
 # Platform-specific variables
 ifeq ($(OS),Windows_NT)
     WHICH_CMD := where
