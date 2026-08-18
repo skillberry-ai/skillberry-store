@@ -1,6 +1,6 @@
 ##@ Development
 
-lint: ## List the tools-service
+lint: ## Lint the codebase
 	@$(MAKE) install-requirements ODEPS=dev
 	black --check --diff --color src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils || \
 		(echo "Lint Failed. Please run 'black src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils' to fix the issues" && exit 1)
