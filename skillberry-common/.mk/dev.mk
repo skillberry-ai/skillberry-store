@@ -80,13 +80,13 @@ verify-venv:
 #
 # The recipe runs whenever a make target that (transitively) depends on the
 # manifest is invoked (e.g. install-requirements, docker-build). It calls
-# scripts/update-git-state.sh, which is content-idempotent: the manifest file
-# is rewritten (and observability printed to stderr) only when repository
-# state has actually changed, keeping mtime stable so downstream targets
-# don't refire spuriously. Targets that don't need the label (make help,
-# make print_build_version, etc.) don't trigger this recipe.
+# scripts/git_state.py update, which is content-idempotent: the manifest
+# file is rewritten (and observability printed to stderr) only when
+# repository state has actually changed, keeping mtime stable so downstream
+# targets don't refire spuriously. Targets that don't need the label (make
+# help, make print_build_version, etc.) don't trigger this recipe.
 .stamps/git-version-manifest: FORCE
-	@$(SB_COMMON_PATH)/scripts/update-git-state.sh \
+	@python $(SB_COMMON_PATH)/scripts/git_state.py update \
 	    "$(BUILD_VERSION)" "$@" "$(VERSION_LOCATION)"
 
 .PHONY: FORCE
@@ -134,7 +134,7 @@ release: check-git-main check-git-clean install-requirements  ## Release a new v
 	@echo "===> Generated release branch $(RELEASE_VERSION)"
 	@git tag -a $(RELEASE_VERSION) -m "Release $(RELEASE_VERSION)"
 	# Push BOTH the tag and the release branch. The branch is required on
-	# origin so that git-version.sh's _LATEST_RELEASE detection (which scans
+	# origin so that git_state.py's _LATEST_RELEASE detection (which scans
 	# `git branch -r | grep 'branch-'`) picks up this release when the
 	# docker-build sub-make below recomputes BUILD_VERSION — otherwise the
 	# image is tagged with the previous-release-based label instead of

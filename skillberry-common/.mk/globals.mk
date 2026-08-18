@@ -36,7 +36,7 @@ MAIN_SERVICE_PORT = $(firstword $(SERVICE_PORTS))
 
 # BUILD_VERSION: single label that identifies the current repository state.
 #
-# Computed by scripts/git-version.sh, which:
+# Computed by `scripts/git_state.py version`, which:
 #   - matches `git describe --always --dirty` conventions:
 #       clean at release commit:            <release>            (e.g. 0.5.3)
 #       N commits past latest release:      <release>-<N>-g<sha> (e.g. 0.5.3-5-gc9b7ddd)
@@ -45,7 +45,7 @@ MAIN_SERVICE_PORT = $(firstword $(SERVICE_PORTS))
 #     untracked non-ignored) and appends `-dirty-<7hex>`, where the hex is a
 #     fingerprint of the actual dirty content, so different dirty states get
 #     different labels (concept 1 of docs/design/build_concepts.md).
-BUILD_VERSION := $(shell $(SB_COMMON_PATH)/scripts/git-version.sh)
+BUILD_VERSION := $(shell python $(SB_COMMON_PATH)/scripts/git_state.py version)
 
 # Platform-specific variables
 ifeq ($(OS),Windows_NT)
