@@ -15,6 +15,16 @@ Subcommands:
             label is projected there using the same content-idempotence
             rule (concept 2).
 
+Observability for ``update``:
+  * No state change             → no output.
+  * State changed               → single line: ``==> BUILD_VERSION updated to '<label>'``.
+  * State changed, VERBOSE mode → the above plus a per-file breakdown of
+    what changed (commit-delta ``~``, newly-dirty ``+``, no-longer-dirty
+    ``-``, still-dirty-with-different-content ``!``).
+
+VERBOSE mode is enabled by setting the ``VERBOSE_BUILD_VERSION`` environment
+variable (any value, including empty string, counts as set).
+
 All human-facing output goes to stderr, so any subcommand is safe to call
 from a Makefile's ``$(shell ...)``.
 """
@@ -211,34 +221,47 @@ def cmd_update(version: str, manifest_path: str, version_location: str) -> int:
         print("Skipping git-state update: not inside a Git repository.", file=sys.stderr)
         return 0
 
+    # Observability levels:
+    #   - no state change              → no output
+    #   - state changed, VERBOSE unset → single line naming the new label
+    #   - state changed, VERBOSE set   → single line + per-file breakdown
+    # VERBOSE is opt-in via the VERBOSE_BUILD_VERSION env var (any value,
+    # including empty string, counts as "set" per the concept doc).
+    verbose = "VERBOSE_BUILD_VERSION" in os.environ
+
     new_manifest = compute_manifest()
     mp = Path(manifest_path)
     if mp.exists():
         old_manifest = mp.read_text()
         if old_manifest == new_manifest:
             return 0  # No change → keep mtime stable so downstream isn't invalidated.
-        _print_observability(version, True, old_manifest, new_manifest)
+        _print_observability(version, True, old_manifest, new_manifest, verbose)
     else:
-        _print_observability(version, False, "", new_manifest)
+        _print_observability(version, False, "", new_manifest, verbose)
 
     mp.parent.mkdir(parents=True, exist_ok=True)
     mp.write_text(new_manifest)
 
     if version_location:
-        _write_version_file(version, version_location)
+        _write_version_file(version, version_location, verbose)
     return 0
 
 
-def _print_observability(version: str, prior_exists: bool, old: str, new: str) -> None:
-    if not prior_exists:
-        print(
-            f"==> BUILD_VERSION set to '{version}'. No prior BUILD_VERSION detected.",
-            file=sys.stderr,
-        )
+def _print_observability(
+    version: str, prior_exists: bool, old: str, new: str, verbose: bool,
+) -> None:
+    verb = "updated" if prior_exists else "set"
+    print(f"==> BUILD_VERSION {verb} to '{version}'", file=sys.stderr)
+
+    if not verbose:
         return
+
+    if not prior_exists:
+        print("    No prior BUILD_VERSION detected.", file=sys.stderr)
+        return
+
     print(
-        f"==> BUILD_VERSION updated to '{version}'. "
-        "The following changes have been detected since previous BUILD_VERSION:",
+        "    The following changes have been detected since previous BUILD_VERSION:",
         file=sys.stderr,
     )
 
@@ -289,8 +312,12 @@ def _body_map(body: list[str]) -> dict[str, str]:
     return out
 
 
-def _write_version_file(version: str, path: str) -> None:
-    """Content-idempotent write of ``__git_version__ = "<version>"``."""
+def _write_version_file(version: str, path: str, verbose: bool) -> None:
+    """Content-idempotent write of ``__git_version__ = "<version>"``.
+
+    Progress is printed only when ``verbose`` is set — the terse observability
+    mode keeps output to the single BUILD_VERSION line.
+    """
     new = f'__git_version__ = "{version}"\n'
     p = Path(path)
     if p.exists() and p.read_text() == new:
@@ -298,7 +325,8 @@ def _write_version_file(version: str, path: str) -> None:
     p.parent.mkdir(parents=True, exist_ok=True)
     verb = "Updated" if p.exists() else "Created"
     p.write_text(new)
-    print(f"{verb} git version in {path} to {version}", file=sys.stderr)
+    if verbose:
+        print(f"{verb} git version in {path} to {version}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
