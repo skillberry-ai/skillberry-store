@@ -6,10 +6,20 @@ SERVICE_LOG=/tmp/$(SERVICE_NAME).log
 .PHONY: run stop clean clean_service_data
 
 
-ifeq ($(USE_LLM_SVCS),1)
-  RUN_DEPS := install-requirements check-rits-watsonx-envs .stamps/srv.env
+ifeq ($(DEPLOY_ONLY),TRUE)
+  # Deploy-only: deps and stamps are baked into the image at build time; skip
+  # install-requirements on the run path. The target itself remains invokable.
+  ifeq ($(USE_LLM_SVCS),1)
+    RUN_DEPS := check-rits-watsonx-envs .stamps/srv.env
+  else
+    RUN_DEPS := .stamps/srv.env
+  endif
 else
-  RUN_DEPS := install-requirements .stamps/srv.env
+  ifeq ($(USE_LLM_SVCS),1)
+    RUN_DEPS := install-requirements check-rits-watsonx-envs .stamps/srv.env
+  else
+    RUN_DEPS := install-requirements .stamps/srv.env
+  endif
 endif
 
 run: $(RUN_DEPS) ## Run the service (idempotent)

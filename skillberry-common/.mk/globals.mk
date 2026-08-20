@@ -1,5 +1,11 @@
 .DEFAULT_GOAL := help
 
+# Deploy-only mode. When TRUE, dev-time work (dependency install, UI build,
+# git plumbing, git-based version derivation) is bypassed on the `run` path
+# and inside parse-time hooks. User-facing (## commented) targets still work
+# fully when invoked directly, regardless of this flag.
+DEPLOY_ONLY ?= FALSE
+
 # function for converting space-separated list to comma-separated list
 empty :=
 space := $(empty) $(empty)
@@ -40,6 +46,11 @@ MAIN_SERVICE_PORT = $(firstword $(SERVICE_PORTS))
 # proper @ to sdk). So we implement our logic to maintain git format for 'git describe --always --dirty'
 # - i.e. 0.5.3 or 0.5.3-5-gc9b7ddd or 0.5.3-5-gc9b7ddd-dirty
 
+ifeq ($(DEPLOY_ONLY),TRUE)
+# Deploy-only: skip git-based derivation and honor a pre-baked BUILD_VERSION
+# from the environment (e.g., the Docker image build args).
+BUILD_VERSION ?= "unknown"
+else
 _LATEST_RELEASE=$(shell git branch -r | grep 'branch-' | sed 's|.*/branch-||' | sort -V | tail -n 1 | head -n 1)
 
 #
@@ -57,7 +68,7 @@ ifeq ($(_LATEST_RELEASE),)
 	BUILD_VERSION="g$(_CURRENT_COMMIT)$(_DIRTY)"
 else
 	# Find the common ancestor (branch point)
-	# TODO: confirm _BASE_COMMIT not needed and remove 
+	# TODO: confirm _BASE_COMMIT not needed and remove
 	# _BASE_COMMIT=$(shell git merge-base origin/main origin/branch-$(_LATEST_RELEASE))
 
 	#
@@ -77,6 +88,7 @@ else
 		# e.g. 0.4-70-gc9b7ddd
 		BUILD_VERSION="$(_LATEST_RELEASE)-$(_COMMIT_COUNT)-g$(_CURRENT_COMMIT)$(_DIRTY)"
 	endif
+endif
 endif
 
 # Platform-specific variables

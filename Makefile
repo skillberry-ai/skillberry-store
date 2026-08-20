@@ -10,7 +10,10 @@ SB_COMMON_BRANCH := main
 SB_COMMON_REMOTE := skillberry-common
 SB_COMMON_PATH := skillberry-common
 
+# Skipped in DEPLOY_ONLY mode (e.g., inside the runtime container), where the
+# git plumbing is irrelevant and may not even have a working git remote.
 _ensure_git_remote := $(shell \
+    [ "$${DEPLOY_ONLY:-FALSE}" = "TRUE" ] && exit 0; \
     git remote | grep -Fxq "$(SB_COMMON_REMOTE)" || { \
         echo "$(SB_COMMON_REMOTE) remote does not exist - adding it"; \
         git remote add "$(SB_COMMON_REMOTE)" "$(SB_COMMON_REPO)"; \
