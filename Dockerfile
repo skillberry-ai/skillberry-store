@@ -79,7 +79,9 @@ ENV BUILD_VERSION=$BUILD_VERSION \
     HOME=/app \
     XDG_CACHE_HOME=/tmp/.cache \
     UV_CACHE_DIR=/tmp/.cache/uv \
-    PIP_CACHE_DIR=/tmp/.cache/pip
+    PIP_CACHE_DIR=/tmp/.cache/pip \
+    USER=default \
+    LOGNAME=default
 
 # Python, NodeJS and venv are already set in the base image
 # WORKDIR is already set in the base image to /app
