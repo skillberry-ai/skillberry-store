@@ -6,10 +6,12 @@ __pycache__/
 *.sqlite3
 *.log
 .env
+.git/
 .gitignore
 .venv/
 venv/
 .vscode/
 .idea/
 .stamps/
+.githooks/
 src/skillberry_store/contrib/examples/skills-sh-importer/*/

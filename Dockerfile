@@ -17,6 +17,14 @@ ARG SERVICE_ENTRY_MODULE
 # value (--build-arg PLUGIN_EXTRAS=) to build a slim, core-only image.
 ARG PLUGIN_EXTRAS=plugins-all
 
+# Promote the BUILD_VERSION arg into an env var so `make` (invoked below) sees
+# the host-computed version. Combined with DEPLOY_ONLY=TRUE, this makes the
+# makefile's `BUILD_VERSION ?=` respect the passed-in value instead of trying
+# to re-derive it from git inside the container (.git is not shipped into the
+# build context; see .dockerignore).
+ENV BUILD_VERSION=$BUILD_VERSION \
+    DEPLOY_ONLY=TRUE
+
 # Python, NodeJS and venv are already set in the base image
 # WORKDIR is already set in the base image to /app
 
@@ -32,6 +40,10 @@ COPY . .
 
 # Install dependencies (requires SSH key for git+ssh)
 RUN --mount=type=ssh make install-requirements ODEPS=${PLUGIN_EXTRAS}
+
+# Build the UI static bundle so the runtime image ships it prebuilt (the
+# runtime stage sets DEPLOY_ONLY=TRUE, which drops ui-build from `make run`).
+RUN make ui-build
 
 ###########################################
 # Runtime Stage - Clean, no SSH key
@@ -61,6 +73,7 @@ ENV BUILD_VERSION=$BUILD_VERSION \
     SERVICE_PORTS=$SERVICE_PORTS \
     SERVICE_ENTRY_MODULE=$SERVICE_ENTRY_MODULE \
     ODEPS=$PLUGIN_EXTRAS \
+    DEPLOY_ONLY=TRUE \
     APP_HOME=/app \
     APP_DATA_DIR=/tmp/skillberry-store \
     HOME=/app \
