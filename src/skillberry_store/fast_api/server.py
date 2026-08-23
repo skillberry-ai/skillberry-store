@@ -13,7 +13,6 @@ from pydantic import Field, model_validator
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from fastapi_mcp import FastApiMCP
 
 from skillberry_store.fast_api.openapi_ids import custom_generate_unique_id
@@ -42,7 +41,6 @@ except:
     __git_version__ = "unknown"
 
 from skillberry_store.fast_api.observability import observability_setup
-from prometheus_client import Counter, Histogram
 
 # this environment variable is used to enable the latest API version
 ENABLE_API_VERSION = os.environ.get("ENABLE_API_VERSION", "latest")
@@ -331,6 +329,11 @@ class SBS(FastAPI):
 
         # Add observability for FastAPI application
         if int(os.getenv("OTEL_TRACES_PORT", 0)) > 0:
+            # Imported inside the guard rather than at module scope: a
+            # deployment without tracing never touches this instrumentation
+            # stack. See the companion note in observability.otel_setup.
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
             FastAPIInstrumentor.instrument_app(self)
 
     def run(self):

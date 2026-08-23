@@ -1,14 +1,10 @@
 import logging
 import os
 
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry import trace
 from prometheus_client import start_http_server
 
+# Configuring the logger by name does not import the opentelemetry package --
+# the OTel imports themselves live inside ``otel_setup`` (see the note there).
 logging.getLogger("opentelemetry").setLevel(logging.ERROR)
 
 OTEL_SERVICE_NAME = "skillberry-store"
@@ -42,6 +38,22 @@ def prometheus_setup():
 
 def otel_setup(otel_traces_port: int):
     """Configures OpenTelemetry tracing for a FastAPI app."""
+
+    # Imported here rather than at module scope: none of this is reachable
+    # unless OTEL_TRACES_PORT is set, and ``observability_setup`` -- the only
+    # caller -- already guards on that. Together with the FastAPIInstrumentor
+    # import in server.py this keeps ~20 MiB of RSS out of an untraced
+    # deployment (measured in-container; the isolated import cost is ~50 MiB,
+    # but much of OTel's transitive stack is already resident for other
+    # reasons). The OTLP gRPC exporter is the single largest piece.
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter,
+    )
+    from opentelemetry.instrumentation.requests import RequestsInstrumentor
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     trace_provider = TracerProvider(
         resource=Resource.create({SERVICE_NAME: OTEL_SERVICE_NAME})
