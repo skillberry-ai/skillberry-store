@@ -39,7 +39,6 @@ dependencies = [
   "httpcore>=1.0.7",
   "httpx>=0.28.1",
   "httpx-sse>=0.4.0",
-  "huggingface-hub>=0.29.1",
   "idna",
   "iniconfig>=2.0.0",
   "jdk4py>=21.0.4.2",
@@ -61,7 +60,6 @@ dependencies = [
   "mccabe>=0.6.1",
   "mcp>=1.4.1",
   "mdurl>=0.1.2",
-  "mpmath>=1.3.0",
   "mypy>=0.910",
   "mypy-extensions>=0.4.4",
   "networkx>=3.4.2",
@@ -94,7 +92,6 @@ dependencies = [
   "ruamel-yaml>=0.18.10",
   "ruamel-yaml-clib>=0.2.12",
   "ruff>=0.9.9",
-  "safetensors>=0.5.3",
   "scikit-learn>=1.6.1",
   "scipy>=1.15.2",
   "setuptools>=75.8.2",
@@ -103,14 +100,11 @@ dependencies = [
   "sniffio>=1.3.1",
   "sse-starlette>=2.1.3,<3.0.0",
   "starlette>=0.45.3,<1.0.0",
-  "sympy>=1.13.1",
   "tenacity>=9.0.0",
   "threadpoolctl>=3.5.0",
   "tiktoken>=0.9.0",
-  "tokenizers",
   "toml>=0.10.2",
   "tqdm>=4.67.1",
-  "transformers>=4.56.0,<5.0.0",
   "typer>=0.15.2",
   "typing-extensions>=4.12.2",
   "urllib3>=1.25.3",
@@ -131,10 +125,6 @@ dependencies = [
   "toml-cli",
   "tomli",
   "tomli-w",
-  "torch==2.10.0+cpu; platform_system == 'Linux'",
-  "torch==2.10.0; platform_system == 'Darwin'",
-  "torch==2.10.0+cpu; platform_system == 'Windows'",
-  "sentence_transformers",
   "pandas",
   "wsgidav>=4.3",
   "cheroot>=10.0",
@@ -261,12 +251,6 @@ skillberry-plugin-ask-runspace = { path = "plugins/skillberry-plugin-ask-runspac
 skillberry-plugin-dast = { path = "plugins/skillberry-plugin-dast", editable = true }
 skillberry-plugin-skillssh-importer = { path = "plugins/skillberry-plugin-skillssh-importer", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
-torch = { index = "pytorch-cpu" }
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
 
 [build-system]
 requires = ["setuptools", "wheel"]

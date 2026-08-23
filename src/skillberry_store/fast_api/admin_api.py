@@ -188,8 +188,7 @@ def register_admin_api(
 
         # Gate readiness on semantic encoder warmup too. Without this, the first
         # request that triggers an embedding races the background warmup and both
-        # concurrently instantiate SentenceTransformer — one path ends up with
-        # meta tensors and errors with "Cannot copy out of meta tensor".
+        # pay the model cold-load (download + onnx session build) at once.
         warmup_task = getattr(request.app.state, "encoder_warmup_task", None)
         warmup_done = warmup_task is None or warmup_task.done()
         result.setdefault("checks", {})["encoder_warmup"] = warmup_done

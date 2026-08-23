@@ -69,7 +69,7 @@ class SBSettings(BaseSettings):
 
 
 async def _warm_semantic_encoder() -> None:
-    """Force the SentenceTransformer encoder to initialize in a worker thread.
+    """Force the semantic encoder to initialize in a worker thread.
 
     Runs off the event loop so it does not stall concurrent request handling.
     Logs start/finish (with elapsed time) and swallows failures — a warmup miss
@@ -81,8 +81,8 @@ async def _warm_semantic_encoder() -> None:
     try:
         loop = asyncio.get_running_loop()
 
-        # Imported inside the executor call so the (heavy) sentence_transformers
-        # import itself is paid on the worker thread, not the event loop.
+        # Imported inside the executor call so the embedding-runtime import
+        # itself is paid on the worker thread, not the event loop.
         def _warm_sync() -> None:
             from skillberry_store.vdbs.vector_db_interface import text_to_vector
 
