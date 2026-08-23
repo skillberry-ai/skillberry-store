@@ -83,6 +83,20 @@ ENV BUILD_VERSION=$BUILD_VERSION \
     USER=default \
     LOGNAME=default
 
+# Cap glibc's per-thread malloc arenas (default 8 x ncpu, so 160 on a 20-core
+# host). uvicorn runs every `def` endpoint on an anyio threadpool, so the
+# process spreads its allocations across many arenas within seconds of startup;
+# capping at 2 trims the per-arena free-list and fragmentation overhead.
+#
+# Worth ~12 MiB of RSS, measured over 3 alternating container runs (527.6 ->
+# 515.9 MiB mean; Python-process RSS 447.6 -> 435.6 MiB, all three pairs
+# improving with non-overlapping ranges). Note this is far less than the
+# 50-150 MB sometimes claimed for this knob: the usual rationale is that each
+# arena's 64 MB reservation is charged to RSS, but those reservations are
+# PROT_NONE address space (VSZ) and only touched pages become resident.
+# We are not allocator-bound, so the throughput cost is nil.
+ENV MALLOC_ARENA_MAX=2
+
 # Python, NodeJS and venv are already set in the base image
 # WORKDIR is already set in the base image to /app
 
