@@ -40,8 +40,19 @@ BASE_DOCKER_FILE := $(SB_COMMON_PATH)/Dockerfile.base
 IMAGE_NAME = $(SERVICE_NAME)
 CNTR_NAME = $(SERVICE_NAME)
 
-IMAGE_TAG = $(BUILD_VERSION)
+# Optional suffix appended to both the versioned and the "latest" tag, so a
+# service can publish build variants side by side (e.g. IMAGE_TAG_SUFFIX=-full
+# yields :<version>-full and :latest-full). Empty by default. Every target that
+# refers to IMAGE_TAG/LATEST_TAG -- build, run, pull, rmi -- follows the suffix,
+# so `make docker-run IMAGE_TAG_SUFFIX=-full` runs the variant.
+IMAGE_TAG_SUFFIX ?=
+IMAGE_TAG = $(BUILD_VERSION)$(IMAGE_TAG_SUFFIX)
+LATEST_TAG = latest$(IMAGE_TAG_SUFFIX)
 FULL_IMAGE_NAME = $(REPOSITORY_NAME)/$(IMAGE_NAME)
+
+# Extra flags forwarded verbatim to the image build, typically service-specific
+# --build-arg values. Empty by default.
+EXTRA_BUILD_ARGS ?=
 
 DOCKER_FILE ?= Dockerfile
 
@@ -182,10 +193,10 @@ base-image-rm: docker-check ## Remove the local base image
 	rm -f .stamps/base-image-build*
 
 .PHONY: docker-build 
-docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Build docker image (DBT=registry to build & push multi-arch)
+docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX)	## Build docker image (DBT=registry to build & push multi-arch)
 
 # We actually build a new image only if the code changed by checking code-scan stamp
-.stamps/docker-build-$(DBT): .stamps/ssh-agent.env .stamps/code-scan
+.stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX): .stamps/ssh-agent.env .stamps/code-scan
 	@echo "Building for $(DB_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
 	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@echo "Build version: $(BUILD_VERSION)"
@@ -203,13 +214,14 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Bui
 		--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
 		--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+		$(EXTRA_BUILD_ARGS) \
 		--ssh default=$$SSH_AUTH_SOCK \
 		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
-		-t $(FULL_IMAGE_NAME):latest \
+		-t $(FULL_IMAGE_NAME):$(LATEST_TAG) \
 		--$(DB_ACTION) \
 		. || exit 1; \
-		touch .stamps/docker-build-$(DBT); \
-		touch .stamps/docker-get; \
+		touch .stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX); \
+		touch .stamps/docker-get$(IMAGE_TAG_SUFFIX); \
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		if [ "$(DBT)" = "registry" ]; then \
 			$(DOCKER) build --no-cache=true \
@@ -222,12 +234,13 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Bui
 			--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
 			--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 			--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+			$(EXTRA_BUILD_ARGS) \
 			--ssh default=$$SSH_AUTH_SOCK \
 			--manifest $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 			. && \
 			$(DOCKER) manifest push $(FULL_IMAGE_NAME):$(IMAGE_TAG) && \
-			$(DOCKER) tag $(FULL_IMAGE_NAME):$(IMAGE_TAG) $(FULL_IMAGE_NAME):latest && \
-			$(DOCKER) manifest push $(FULL_IMAGE_NAME):latest \
+			$(DOCKER) tag $(FULL_IMAGE_NAME):$(IMAGE_TAG) $(FULL_IMAGE_NAME):$(LATEST_TAG) && \
+			$(DOCKER) manifest push $(FULL_IMAGE_NAME):$(LATEST_TAG) \
 			|| exit 1; \
 		else \
 			$(DOCKER) build --no-cache=true \
@@ -240,13 +253,14 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Bui
 			--build-arg SERVICE_NAME="$(SERVICE_NAME)" \
 			--build-arg SERVICE_PORTS="$(SERVICE_PORTS)" \
 			--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
+			$(EXTRA_BUILD_ARGS) \
 			--ssh default=$$SSH_AUTH_SOCK \
 			-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
-			-t $(FULL_IMAGE_NAME):latest \
+			-t $(FULL_IMAGE_NAME):$(LATEST_TAG) \
 			. || exit 1; \
 		fi; \
-		touch .stamps/docker-build-$(DBT); \
-		touch .stamps/docker-get; \
+		touch .stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX); \
+		touch .stamps/docker-get$(IMAGE_TAG_SUFFIX); \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
@@ -259,33 +273,33 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)	## Bui
 # docker-push: docker-check docker-build ## Push docker image into the registry
 # 	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 # 	$(DOCKER) push $(FULL_IMAGE_NAME):$(IMAGE_TAG)
-# 	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):latest"
-# 	$(DOCKER) push $(FULL_IMAGE_NAME):latest
+# 	@echo "Pushing Docker image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"
+# 	$(DOCKER) push $(FULL_IMAGE_NAME):$(LATEST_TAG)
 
 
 .PHONY: docker-pull
 docker-pull: docker-check ## Pull the latest docker image from registry
-	@echo "Attempting to pull Docker image: $(FULL_IMAGE_NAME):latest"
-	@if $(DOCKER) pull $(FULL_IMAGE_NAME):latest; then \
-		echo "✓ Successfully pulled image: $(FULL_IMAGE_NAME):latest"; \
-		$(DOCKER) tag $(FULL_IMAGE_NAME):latest $(FULL_IMAGE_NAME):$(IMAGE_TAG); \
+	@echo "Attempting to pull Docker image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"
+	@if $(DOCKER) pull $(FULL_IMAGE_NAME):$(LATEST_TAG); then \
+		echo "✓ Successfully pulled image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"; \
+		$(DOCKER) tag $(FULL_IMAGE_NAME):$(LATEST_TAG) $(FULL_IMAGE_NAME):$(IMAGE_TAG); \
 		echo "✓ Tagged as: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"; \
-		touch .stamps/docker-get; \
+		touch .stamps/docker-get$(IMAGE_TAG_SUFFIX); \
 	else \
-		echo "✗ Failed to pull image: $(FULL_IMAGE_NAME):latest"; \
+		echo "✗ Failed to pull image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"; \
 		exit 1; \
 	fi
 
 .PHONY: docker-get
-docker-get: .stamps/docker-get
+docker-get: .stamps/docker-get$(IMAGE_TAG_SUFFIX)
 	@true
 
 ifdef SBD_DEV
-.stamps/docker-get: docker-build ## Get docker image (SBD_DEV set: build only)
+.stamps/docker-get$(IMAGE_TAG_SUFFIX): docker-build ## Get docker image (SBD_DEV set: build only)
 	@echo "SBD_DEV is set - using locally built image"
 else
-.stamps/docker-get: ## Get docker image (pull latest or build if pull fails)
-	@echo "Attempting to get Docker image: $(FULL_IMAGE_NAME):latest"
+.stamps/docker-get$(IMAGE_TAG_SUFFIX): ## Get docker image (pull latest or build if pull fails)
+	@echo "Attempting to get Docker image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"
 	@if $(MAKE) docker-pull; then \
 		echo "✓ Using pulled image"; \
 	else \
@@ -319,9 +333,9 @@ endif
 docker-rmi: docker-check docker-clean ## Remove the docker container, image, and temporary files
 	@echo "Removing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
 	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(IMAGE_TAG) > /dev/null 2>&1 || true
-	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):latest > /dev/null 2>&1 || true
+	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(LATEST_TAG) > /dev/null 2>&1 || true
 	@rm -f .stamps/docker-build*
-	@rm -f .stamps/docker-get 
+	@rm -f .stamps/docker-get*
 
 .PHONY: docker-clean
 docker-clean: docker-check docker-stop ## Remove the docker container and temporary files, but keeping the image

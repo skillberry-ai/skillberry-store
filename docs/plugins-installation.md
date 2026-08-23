@@ -8,22 +8,24 @@ The skillberry-store supports a flexible plugin architecture that allows extendi
 
 ### 1. Install Without Plugins (Minimal Installation)
 
-When you install skillberry-store, two plugins are included by default:
-
 ```bash
 pip install skillberry-store
 ```
 
-This installs:
-- Core skillberry-store functionality
-- skillberry-plugin-dedupe (AI-powered duplicate skill detection) — **default**
-- skillberry-plugin-kagenti-approver (automatic kagenti-approved labeling) — **default**
+This installs the core skillberry-store functionality and **no plugins**. Every
+plugin lives in an optional dependency group, so you install exactly the ones
+you want (see below).
 
-Both default plugins can be uninstalled individually if not needed:
-```bash
-pip uninstall skillberry-plugin-dedupe
-pip uninstall skillberry-plugin-kagenti-approver
-```
+> **Changed:** `skillberry-plugin-dedupe`, `skillberry-plugin-kagenti-approver`
+> and `skillberry-plugin-simulate` used to be core dependencies and were
+> therefore installed unconditionally. They are now opt-in like every other
+> plugin — add `[plugin-dedupe]`, `[plugin-kagenti-approver]` or
+> `[plugin-simulate]` (or `[plugins-all]`) to keep them.
+
+Installed plugins are auto-loaded through entry points at startup, which imports
+each plugin's top-level module and keeps its metadata object resident for the
+life of the process. Disabling a plugin from the admin UI does **not** reclaim
+that memory — only not installing it does.
 
 ### 2. Install All Plugins
 
@@ -38,11 +40,11 @@ This installs:
 - skillberry-plugin-creator (AI-powered content creation)
 - skillberry-plugin-evaluator (AI-powered content evaluation and tagging)
 - skillberry-plugin-security (AI-powered security evaluation)
-- skillberry-plugin-dedupe (AI-powered duplicate skill detection) — also a default plugin
+- skillberry-plugin-dedupe (AI-powered duplicate skill detection)
 - skillberry-plugin-mcp-importer (import tools from any MCP SSE server)
 - skillberry-plugin-anthropic-skill-generator (generate Anthropic skills from descriptions using Claude Code)
 - skillberry-plugin-skill-optimizer (optimize existing skills using Claude Code via runspace-agent)
-- skillberry-plugin-kagenti-approver (automatic kagenti-approved labeling) — also a default plugin
+- skillberry-plugin-kagenti-approver (automatic kagenti-approved labeling)
 
 ### 3. Install Specific Plugins
 
@@ -88,7 +90,85 @@ pip install skillberry-store[plugin-kagenti-approver]
 pip install skillberry-store[plugin-creator,plugin-evaluator,plugin-mcp-importer,plugin-anthropic-skill-generator,plugin-skill-optimizer]
 ```
 
-### 4. Adding Plugins Later
+### 4. Container Images
+
+The published container image is core-only, matching `pip install
+skillberry-store`. An all-plugins variant is published alongside it:
+
+| Tag | Contents |
+| --- | --- |
+| `skillberry-store:<version>`, `skillberry-store:latest` | core service, no plugins |
+| `skillberry-store:<version>-full`, `skillberry-store:latest-full` | core service + all 16 bundled plugins |
+
+Which plugins end up in an image is decided at **build** time by the
+`PLUGIN_EXTRAS` build argument in [`Dockerfile`](../Dockerfile), whose value is
+forwarded to `uv pip install -e .[<extras>]`. It defaults to empty (core only).
+The make system exposes three ways to drive it.
+
+#### Core-only (default)
+
+```bash
+make docker-build
+make docker-run
+```
+
+#### All plugins
+
+```bash
+make docker-build-full                    # tags :<version>-full and :latest-full
+make docker-run IMAGE_TAG_SUFFIX=-full
+```
+
+#### A custom subset
+
+Override two variables: `PLUGIN_EXTRAS` via the generic `EXTRA_BUILD_ARGS`
+passthrough, and `IMAGE_TAG_SUFFIX` to give the variant its own tag. Any
+comma-separated set of the `plugin-*` extras defined in
+[`pyproject.toml`](../pyproject.toml) is valid.
+
+```bash
+make docker-build \
+  IMAGE_TAG_SUFFIX=-mini \
+  EXTRA_BUILD_ARGS='--build-arg PLUGIN_EXTRAS=plugin-creator,plugin-dedupe'
+
+make docker-run IMAGE_TAG_SUFFIX=-mini
+```
+
+#### Notes and pitfalls
+
+- **`IMAGE_TAG_SUFFIX` must be repeated on every target that resolves a tag** —
+  `docker-run`, `docker-get`, `docker-pull`, `docker-rmi`. It is what selects the
+  variant; without it those targets act on the unsuffixed (core-only) image.
+  (`docker-clean` and `docker-stop` act on the container name, so they need no
+  suffix.)
+- **The build stamp keys on the tag suffix, not on the extras.** The stamp is
+  `.stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX)`, so rebuilding with different
+  `PLUGIN_EXTRAS` under the *same* suffix is treated as already up to date and
+  silently skipped. Give each variant a distinct `IMAGE_TAG_SUFFIX`, or clear the
+  stamps first:
+  ```bash
+  rm -f .stamps/docker-build-*
+  ```
+- **Nothing cross-checks the suffix against the extras.** `IMAGE_TAG_SUFFIX` is
+  just a label; you can tag a `plugins-all` build `-mini` if you are careless.
+- **`DBT=registry` pushes both the versioned and the `latest` tag**, each
+  carrying the suffix (`:<version>-full` and `:latest-full`). So publishing both
+  variants is two invocations:
+  ```bash
+  DBT=registry make docker-build        # :<version>      + :latest
+  DBT=registry make docker-build-full   # :<version>-full + :latest-full
+  ```
+- Building the image directly, bypassing make, works too — but you must
+  reproduce what `docker-build` does for you, including SSH forwarding for any
+  git-hosted dependency:
+  ```bash
+  DOCKER_BUILDKIT=1 docker buildx build \
+    --ssh default=$SSH_AUTH_SOCK \
+    --build-arg PLUGIN_EXTRAS=plugin-creator,plugin-dedupe \
+    -t ghcr.io/skillberry-ai/skillberry-store:mine --load .
+  ```
+
+### 5. Adding Plugins Later
 
 If you initially installed skillberry-store without plugins, you can add them later:
 
@@ -136,6 +216,11 @@ make run
 ```
 
 The `ODEPS` variable specifies optional dependencies (extras) to install.
+
+`ODEPS` is the knob for a **local virtualenv**; `PLUGIN_EXTRAS` (see
+[Container Images](#4-container-images)) is the knob for a **container image**.
+They take the same values, and `PLUGIN_EXTRAS` is in fact passed straight through
+to `ODEPS` inside the build.
 
 ## Available Plugins
 

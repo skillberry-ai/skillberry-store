@@ -129,9 +129,10 @@ dependencies = [
   "wsgidav>=4.3",
   "cheroot>=10.0",
   "shenanigaNFS @ git+https://github.com/JordanMilne/ShenanigaNFS.git",
-  "skillberry-plugin-dedupe>=0.1.0",
-  "skillberry-plugin-kagenti-approver>=0.1.0",
-  "skillberry-plugin-simulate>=0.1.0",
+  # NOTE: bundled plugins are deliberately NOT core dependencies -- they live in
+  # the "plugin-*" extras below (and "plugins-all"). Listing any of them here
+  # would make it impossible to build a core-only image, since entry-point
+  # auto-loading imports every installed plugin at startup.
 ]
 
 [project.optional-dependencies]

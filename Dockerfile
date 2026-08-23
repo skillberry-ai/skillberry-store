@@ -13,9 +13,18 @@ ARG SERVICE_NAME
 ARG SERVICE_PORTS
 ARG SERVICE_ENTRY_MODULE
 # Optional dependency group to install (see pyproject [project.optional-dependencies]).
-# Defaults to "plugins-all" so the image ships every bundled plugin; pass an empty
-# value (--build-arg PLUGIN_EXTRAS=) to build a slim, core-only image.
-ARG PLUGIN_EXTRAS=plugins-all
+#
+# Defaults to empty: the image ships the core service only. Plugins are
+# auto-loaded through entry points at startup (plugins/loader.py), so every
+# installed plugin's top-level module is imported and its metadata object is
+# retained for the life of the process -- even when the admin toggles the
+# plugin "off". Bundling all 16 by default made every deployment pay for all
+# of them.
+#
+# Build the all-plugins variant with `make docker-build-full`, or pick a subset
+# with `--build-arg PLUGIN_EXTRAS=plugin-creator,plugin-dedupe`. See
+# docs/plugins-installation.md.
+ARG PLUGIN_EXTRAS=
 
 # Promote the BUILD_VERSION arg into an env var so `make` (invoked below) sees
 # the host-computed version. Combined with DEPLOY_ONLY=TRUE, this makes the

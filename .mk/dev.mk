@@ -43,3 +43,15 @@ ui-clean: ## Remove UI build artifacts and node_modules
 ui-dev: $(UI_NM_STAMP) ## Run the Vite dev server with HMR (uses file watchers)
 	@cd $(UI_DIR) && npx vite --host 0.0.0.0 --port $${VITE_UI_PORT:-8002}
 
+
+##@ Docker image variants
+
+# The default image is core-only (Dockerfile sets ARG PLUGIN_EXTRAS= empty).
+# This builds the companion variant carrying every bundled plugin, tagged
+# :<version>-full / :latest-full so both can coexist in the registry. Run it
+# with `make docker-run IMAGE_TAG_SUFFIX=-full`.
+.PHONY: docker-build-full
+docker-build-full: ## Build the all-plugins image variant (tagged -full)
+	@$(MAKE) docker-build \
+		IMAGE_TAG_SUFFIX=-full \
+		EXTRA_BUILD_ARGS='--build-arg PLUGIN_EXTRAS=plugins-all'
