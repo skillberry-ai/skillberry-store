@@ -140,7 +140,7 @@ describe('AnthropicSkillImporter', () => {
       // Wait for import to complete
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
-          '/api/skills/import-anthropic',
+          '/skills/import-anthropic',
           expect.objectContaining({
             method: 'POST',
           })
@@ -249,7 +249,7 @@ describe('AnthropicSkillImporter', () => {
       // Wait for detection call
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
-          '/api/skills/detect-anthropic-skills',
+          '/skills/detect-anthropic-skills',
           expect.objectContaining({
             method: 'POST',
           })
