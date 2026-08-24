@@ -61,10 +61,13 @@ export default defineConfig({
     port: parseInt(process.env.VITE_UI_PORT || '8002'),
     allowedHosts: parseAllowedHosts(process.env.VITE_ALLOWED_HOSTS),
     proxy: {
-      '/api': {
+      // Forward every request that is NOT a Vite asset (src/, @vite/, @fs/,
+      // node_modules/) and NOT the UI route to the FastAPI backend.
+      // The API has no path prefix in this new layout — routes are served
+      // directly at their canonical paths (e.g. /skills/, /tools/, /auth/).
+      '^/(?!ui|@vite|@fs|src|node_modules)': {
         target: process.env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },
@@ -76,13 +79,13 @@ export default defineConfig({
     host: true,
     allowedHosts: parseAllowedHosts(process.env.VITE_ALLOWED_HOSTS),
     proxy: {
-      '/api': {
+      '^/(?!ui|@vite|@fs|src|node_modules)': {
         target: process.env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },
+  base: '/ui/',
   build: {
     outDir: 'dist',
     sourcemap: true,
