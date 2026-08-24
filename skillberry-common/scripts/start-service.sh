@@ -25,10 +25,14 @@ nohup $@ >& $logfile &
 svc_pid=$!
 echo $svc_pid > $pidfile
 
-# Tail the service output on the console as a background job
-tail -F $logfile &
+# Tail the service output on the console as a background job.
+# --pid=$svc_pid makes GNU tail exit on its own after the service dies AND
+# after performing a final read of the log file — so we never lose the
+# last chunk of output (e.g., a fatal traceback) to a race between the
+# service exiting and us killing tail.
+tail -F --pid=$svc_pid $logfile &
 
-# Capture the tail PID (for killing it after the service terminates)
+# Capture the tail PID (used to wait for it to finish flushing)
 tail_pid=$!
 
 # Function: Given a PID, Kill the process and then wait for it to finish terminating
@@ -39,13 +43,16 @@ kill_wait() {
   return $? 
 }
 
-# Function: Given service exit code, do an orderly termination: terminate tails
-# process, remove PID file, and exit with the service exit code
+# Function: Given service exit code, do an orderly termination: wait for
+# the tail process to flush and exit on its own, remove PID file, and exit
+# with the service exit code
 finish() {
   exit_code=$1
 
-  # Terminate the tail process
-  kill_wait $tail_pid
+  # Wait for the tail process. Because tail was started with --pid=$svc_pid,
+  # it exits on its own after the service dies and its final read completes,
+  # so no last-chunk data is lost.
+  wait $tail_pid 2>/dev/null
 
   # Remove PID file
   rm -f $pidfile

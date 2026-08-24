@@ -6,17 +6,27 @@ SERVICE_LOG=/tmp/$(SERVICE_NAME).log
 .PHONY: run stop clean clean_service_data
 
 
-ifeq ($(USE_LLM_SVCS),1)
-  RUN_DEPS := install-requirements check-rits-watsonx-envs .stamps/srv.env
+ifeq ($(DEPLOY_ONLY),TRUE)
+  # Deploy-only: deps and stamps are baked into the image at build time; skip
+  # install-requirements on the run path. The target itself remains invokable.
+  ifeq ($(USE_LLM_SVCS),1)
+    RUN_DEPS := check-rits-watsonx-envs .stamps/srv.env
+  else
+    RUN_DEPS := .stamps/srv.env
+  endif
 else
-  RUN_DEPS := install-requirements .stamps/srv.env
+  ifeq ($(USE_LLM_SVCS),1)
+    RUN_DEPS := install-requirements check-rits-watsonx-envs .stamps/srv.env
+  else
+    RUN_DEPS := install-requirements .stamps/srv.env
+  endif
 endif
 
 run: $(RUN_DEPS) ## Run the service (idempotent)
 	@if [ -f $(SERVICE_SENTINEL) ]; then \
 		echo "$(SERVICE_NAME) service is already running. Check the SERVICE_SENTINEL file ($(SERVICE_SENTINEL))"; \
 	else \
-		set -a; source .stamps/srv.env; set +a; \
+		set -a; . .stamps/srv.env; set +a; \
 		rc=0; \
 		echo "Starting $(SERVICE_NAME) service (version $(BUILD_VERSION) built on $(BUILD_DATE))"; \
 		$(SB_COMMON_PATH)/scripts/start-service.sh $(SERVICE_LOG) $(SERVICE_SENTINEL) python -m $(SERVICE_ENTRY_MODULE) || rc=$$?; \
