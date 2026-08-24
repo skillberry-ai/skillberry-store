@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, List, Literal
 
 import uvicorn
@@ -13,6 +14,8 @@ from pydantic import Field, model_validator
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi_mcp import FastApiMCP
 
 from skillberry_store.fast_api.openapi_ids import custom_generate_unique_id
@@ -335,6 +338,31 @@ class SBS(FastAPI):
             from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
             FastAPIInstrumentor.instrument_app(self)
+
+        # Serve the pre-built UI bundle via FastAPI's StaticFiles. This
+        # replaces the `npx vite preview` subprocess (UIManager) that used
+        # to run alongside the server, saving ~50–100 MiB of RSS.
+        #
+        # The bundle is produced at build time by `make ui-build` (or by
+        # the Dockerfile builder stage). If it is absent (e.g., a bare dev
+        # checkout), the /ui mount is simply skipped — the API still starts
+        # normally, and `make ui-dev` / `make ui-build && make run` work
+        # as before.
+        ui_dist = Path(__file__).parent.parent / "ui" / "dist"
+        if ui_dist.exists():
+            self.mount("/ui", StaticFiles(directory=ui_dist, html=True), name="ui")
+            logger.info("UI bundle mounted at /ui from %s", ui_dist)
+
+            @self.get("/", include_in_schema=False)
+            async def _root_redirect():
+                return RedirectResponse(url="/ui/")
+
+        else:
+            logger.warning(
+                "UI bundle not found at %s — /ui not mounted. "
+                "Run `make ui-build` to build it.",
+                ui_dist,
+            )
 
     def run(self):
         """Starts the FastAPI app using Uvicorn."""

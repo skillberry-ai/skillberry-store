@@ -17,6 +17,8 @@ unauthenticated_paths:
   - GET /docs
   - GET /openapi.json
   - GET /redoc
+  # Root redirect → /ui: public, no auth needed.
+  - GET /
   - GET /control_sse*
   - POST /control_sse*
 
