@@ -67,7 +67,9 @@ ARG SERVICE_PORTS
 ARG SERVICE_ENTRY_MODULE
 # Must match the builder-stage value so the runtime stamp lookup
 # (.stamps/install-requirements-$(ODEPS)) resolves to the file created at build.
-ARG PLUGIN_EXTRAS=plugins-all
+# Default is empty (core-only), matching the builder stage. Use
+# `make docker-build-full` to build the all-plugins variant.
+ARG PLUGIN_EXTRAS=
 
 # Label the image with metadata
 LABEL version="$BUILD_VERSION" \
