@@ -64,62 +64,32 @@ class ThreadSafeLogCapture(logging.Handler):
 _session_log_handler = None
 
 
-# Model consumed by ``skillberry_store.vdbs.vector_db_interface`` for the
-# semantic encoder. Must match the string passed to ``SentenceTransformer(...)``
-# in that module — if it changes there, change it here too.
-_SEMANTIC_ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-
-
 @pytest.fixture(scope="session")
 def ensure_semantic_encoder_cached():
-    """Idempotently guarantee the sentence-transformer model is on disk.
+    """Idempotently guarantee the semantic encoder model is on disk.
 
     Motivation: ``SBS.run()`` warms the semantic encoder in the background
-    at startup. On a cold ``~/.cache/huggingface`` (fresh CI runner, new
-    container) that warmup downloads ~88MB from HuggingFace before
-    ``/health/ready`` can return 200 — which routinely exceeds the 60s
-    fixture timeout in ``run_sbs`` and errors out every e2e test in the
-    session at setup. Doing the download *here*, before the server thread
-    starts, moves that cost outside the readiness-wait window.
+    at startup. On a cold fastembed cache (fresh CI runner, new container)
+    that warmup downloads ~80MB of ONNX weights before ``/health/ready``
+    can return 200 — which routinely exceeds the 60s fixture timeout in
+    ``run_sbs`` and errors out every e2e test in the session at setup.
+    Doing the download *here*, before the server thread starts, moves that
+    cost outside the readiness-wait window.
 
-    Idempotent by construction:
-
-      * First try to load with ``local_files_only=True``. If the cache
-        already has every file the model needs (config, tokenizer, weights,
-        pooling module, …), this succeeds without any network call. Cache
-        hit: no-op, ~fraction of a second.
-      * If any file is missing, ``local_files_only`` raises. Fall back to
-        an online load, which downloads the missing pieces once. Subsequent
-        test sessions on the same runner take the cache-hit path.
+    Idempotent by construction: it builds the very same encoder singleton
+    the server uses, so a warm cache makes this a sub-second no-op and a
+    cold one downloads exactly once for the whole session.
 
     Fixture is session-scoped and ``autouse=False`` — pulled in by
     ``run_sbs`` so unit / integration tests that never spawn SBS pay
     nothing. Failure to prepare the model (e.g. no cache AND no network)
-    still surfaces as an ``OSError`` here rather than as a mysterious
-    60s timeout deeper in the fixture chain — a much easier failure to
-    diagnose in CI logs.
+    still surfaces here rather than as a mysterious 60s timeout deeper in
+    the fixture chain — a much easier failure to diagnose in CI logs.
     """
-    from sentence_transformers import SentenceTransformer
+    from skillberry_store.vdbs.vector_db_interface import _ENCODER_MODEL, text_to_vector
 
-    try:
-        SentenceTransformer(_SEMANTIC_ENCODER_MODEL, local_files_only=True)
-        logger.info(
-            "Semantic encoder model already cached (%s) — skipping download",
-            _SEMANTIC_ENCODER_MODEL,
-        )
-        return
-    except Exception as e:  # noqa: BLE001 — huggingface_hub raises several types
-        logger.info(
-            "Semantic encoder model not cached (%s): %s — downloading",
-            _SEMANTIC_ENCODER_MODEL,
-            e.__class__.__name__,
-        )
-
-    SentenceTransformer(_SEMANTIC_ENCODER_MODEL)
-    logger.info(
-        "Semantic encoder model downloaded and cached (%s)",
-        _SEMANTIC_ENCODER_MODEL,
-    )
+    text_to_vector("cache warm")
+    logger.info("Semantic encoder model ready (%s)", _ENCODER_MODEL)
 
 
 @pytest.fixture(scope="session")

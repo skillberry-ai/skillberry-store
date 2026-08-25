@@ -86,7 +86,7 @@ export function AuthProvider({ children }: ProviderProps) {
   }, []);
 
   const signIn = useCallback(async (username: string, password: string) => {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch('/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -109,7 +109,7 @@ export function AuthProvider({ children }: ProviderProps) {
     const currentToken = tokenRef.current;
     if (currentToken) {
       try {
-        await fetch('/api/auth/logout', {
+        await fetch('/auth/logout', {
           method: 'POST',
           headers: { Authorization: `Bearer ${currentToken}` },
         });
@@ -125,7 +125,7 @@ export function AuthProvider({ children }: ProviderProps) {
     if (MODE === 'disabled' || !currentToken) {
       return { tenant_id: null, groups: [], roles: [] };
     }
-    const res = await fetch('/api/auth/whoami', {
+    const res = await fetch('/auth/whoami', {
       headers: { Authorization: `Bearer ${currentToken}` },
     });
     if (!res.ok) {
@@ -152,9 +152,14 @@ export function AuthProvider({ children }: ProviderProps) {
             ? input.toString()
             : (input as Request).url;
 
-      // Only intercept API calls, and never re-add auth to the login endpoint.
-      const isApi = url.includes('/api/') || url.startsWith('/api/');
-      const isLogin = url.includes('/api/auth/login');
+      // Intercept same-origin API calls (anything that is not the UI bundle
+      // or an external URL). The UI is served at /ui; everything else at the
+      // same origin is an API endpoint.
+      const isApi =
+        (url.startsWith('/') && !url.startsWith('/ui')) ||
+        (url.startsWith(window.location.origin) &&
+          !url.slice(window.location.origin.length).startsWith('/ui'));
+      const isLogin = url.includes('/auth/login');
 
       let finalInit = init;
       if (isApi && !isLogin && tokenRef.current) {
@@ -170,9 +175,9 @@ export function AuthProvider({ children }: ProviderProps) {
         clear();
         if (
           typeof window !== 'undefined' &&
-          window.location.pathname !== '/login'
+          window.location.pathname !== '/ui/login'
         ) {
-          window.location.assign('/login');
+          window.location.assign('/ui/login');
         }
       }
       return response;

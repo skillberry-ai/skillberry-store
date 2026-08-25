@@ -41,37 +41,34 @@ def main():
     Initializes and runs the SBS server with UI.
     """
     global ui_manager, server_instance
-    
+
     # Initialize server to get settings
     server = SBS()
     server_instance = server
+
+    # Register cleanup handlers
+    atexit.register(cleanup_all)
+    signal.signal(signal.SIGINT, signal_handler)
+    # SIGTERM is not supported on Windows
+    if os.name != "nt":
+        signal.signal(signal.SIGTERM, signal_handler)
+
+    # The UI is now served in-process by FastAPI (StaticFiles at /ui).
+    # UIManager (npx vite preview) is kept as a dev-only fallback:
+    # set ENABLE_UI_SUBPROCESS=true to restore the old Vite preview behaviour.
     ui_started = False
     ui_manager = None
-
-    # Check if UI should be enabled (default: True, can be disabled via env var)
-    enable_ui = os.getenv("ENABLE_UI", "true").lower() in ("true", "1", "yes")
-    
-    if enable_ui:
-        # Initialize and start UI manager with configured port
+    if os.getenv("ENABLE_UI_SUBPROCESS", "false").lower() in ("true", "1", "yes"):
         ui_manager = UIManager(ui_port=server.settings.ui_port)
-        
-        # Register cleanup handlers
-        atexit.register(cleanup_all)
-        signal.signal(signal.SIGINT, signal_handler)
-        # SIGTERM is not supported on Windows
-        if os.name != "nt":
-            signal.signal(signal.SIGTERM, signal_handler)
-        
-        # Start UI server
         ui_started = ui_manager.start()
-
         if not ui_started:
-            print("Warning: Failed to start UI server. Backend will run without UI.")
+            print("Warning: Failed to start UI subprocess. UI is still available via FastAPI at /ui.")
 
     print(f"\n{'='*60}")
+    print(f"  Skillberry Store UI:  http://{server.settings.display_host}:{server.settings.sbs_port}/ui")
+    print(f"  Backend API:          http://{server.settings.display_host}:{server.settings.sbs_port}/docs")
     if ui_started:
-        print(f"  Skillberry Store UI: http://{server.settings.display_host}:{ui_manager.ui_port}")
-    print(f"  Backend API: http://{server.settings.display_host}:{server.settings.sbs_port}/docs")
+        print(f"  Vite preview (dev):  http://{server.settings.display_host}:{ui_manager.ui_port}")
     print(f"{'='*60}\n")
     sys.stdout.flush()
 

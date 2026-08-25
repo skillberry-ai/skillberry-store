@@ -178,6 +178,12 @@ _DEFAULT_UNAUTH_PATHS = [
     "GET /docs",
     "GET /openapi.json",
     "GET /redoc",
+    # Root redirect and SPA deep-links → /ui: public, no auth needed.
+    # HEAD is listed alongside GET because the /ui handler serves both (the
+    # audit requires *every* method on a route to be allow-listed).
+    "GET /",
+    "GET /ui*",
+    "HEAD /ui*",
     # Every /control_sse* path is a Control MCP transport (SSE handshake +
     # JSON-RPC messages), including per-tenant mount points like
     # /control_sse/<username>. The tool invocations that the transport

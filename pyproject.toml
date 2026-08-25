@@ -11,13 +11,10 @@ authors = [{ name = "Eran Raichstein", email = "eranra@il.ibm.com" },
 requires-python = ">=3.11"
 dependencies = [
   "annotated-types>=0.7.0",
-  "maturin>=1.8.4",
-  "cargo",
   "anyio>=4.5.0",
   "asgiref>=3.8.1",
   "attrs>=25.1.0",
   "bcrypt>=4.0.0",
-  "bottleneck>=1.3.4",
   "certifi",
   "charset-normalizer",
   "click>=8.1.8",
@@ -33,19 +30,14 @@ dependencies = [
   "fasteners>=0.19",
   "fastembed",
   "filelock>=3.17.0",
-  "flake8>=3.9.0",
   "fsspec>=2025.2.0",
   "h11>=0.13.0",
   "httpcore>=1.0.7",
   "httpx>=0.28.1",
   "httpx-sse>=0.4.0",
-  "huggingface-hub>=0.29.1",
   "idna",
-  "iniconfig>=2.0.0",
-  "jdk4py>=21.0.4.2",
   "jinja2>=3.1.5",
   "jiter>=0.9.0",
-  "joblib>=1.4.2",
   "jsonpatch>=1.33",
   "jsonpointer>=3.0.0",
   "langchain-core>=0.3.49",
@@ -58,30 +50,18 @@ dependencies = [
   "langsmith>=0.3.22",
   "markdown-it-py>=3.0.0",
   "markupsafe>=3.0.2",
-  "mccabe>=0.6.1",
   "mcp>=1.4.1",
   "mdurl>=0.1.2",
-  "mpmath>=1.3.0",
-  "mypy>=0.910",
-  "mypy-extensions>=0.4.4",
-  "networkx>=3.4.2",
   "numpy>=1.26.4",
-  "openapi-python-client>=0.24.0",
   "orjson>=3.10.16",
-  "ormsgpack>=1.10.0",
   "packaging>=24.2",
   "pathspec>=0.12.1",
   "pillow>=11.1.0",
   "platformdirs>=4.3.6",
-  "pluggy>=1.5.0",
-  "pycodestyle>=2.7.0",
   "pydantic>=2.11.1",
   "pydantic-core",
   "pydantic-settings>=2.8.1",
-  "pyflakes>=2.3.1",
   "pygments>=2.19.1",
-  "pytest>=8.3.4",
-  "pytest-asyncio>=0.25.2",
   "python-dateutil>=2.9.0.post0",
   "python-dotenv>=1.0.1",
   "python-multipart>=0.0.6",
@@ -93,24 +73,14 @@ dependencies = [
   "rich>=13.9.4",
   "ruamel-yaml>=0.18.10",
   "ruamel-yaml-clib>=0.2.12",
-  "ruff>=0.9.9",
-  "safetensors>=0.5.3",
-  "scikit-learn>=1.6.1",
-  "scipy>=1.15.2",
-  "setuptools>=75.8.2",
-  "shellingham>=1.5.4",
   "six>=1.17.0",
   "sniffio>=1.3.1",
   "sse-starlette>=2.1.3,<3.0.0",
   "starlette>=0.45.3,<1.0.0",
-  "sympy>=1.13.1",
   "tenacity>=9.0.0",
-  "threadpoolctl>=3.5.0",
   "tiktoken>=0.9.0",
-  "tokenizers",
   "toml>=0.10.2",
   "tqdm>=4.67.1",
-  "transformers>=4.56.0,<5.0.0",
   "typer>=0.15.2",
   "typing-extensions>=4.12.2",
   "urllib3>=1.25.3",
@@ -123,33 +93,57 @@ dependencies = [
   "opentelemetry-exporter-otlp",
   "opentelemetry-instrumentation-fastapi",
   "opentelemetry-instrumentation-requests",
-  "openapi-generator-cli[jdk4py]==7.20.0",
-  "openapi-generator-cli",
   "faiss-cpu",
   "chromadb",
   "lancedb",
-  "toml-cli",
-  "tomli",
-  "tomli-w",
-  "torch==2.10.0+cpu; platform_system == 'Linux'",
-  "torch==2.10.0; platform_system == 'Darwin'",
-  "torch==2.10.0+cpu; platform_system == 'Windows'",
-  "sentence_transformers",
   "pandas",
   "wsgidav>=4.3",
   "cheroot>=10.0",
   "shenanigaNFS @ git+https://github.com/JordanMilne/ShenanigaNFS.git",
-  "skillberry-plugin-dedupe>=0.1.0",
-  "skillberry-plugin-kagenti-approver>=0.1.0",
-  "skillberry-plugin-simulate>=0.1.0",
+  # NOTE: bundled plugins are deliberately NOT core dependencies -- they live in
+  # the "plugin-*" extras below (and "plugins-all"). Listing any of them here
+  # would make it impossible to build a core-only image, since entry-point
+  # auto-loading imports every installed plugin at startup.
 ]
 
 [project.optional-dependencies]
 
-# Development dependencies
+# Development dependencies: linting, type-checking, formatting.
+# Install with: make install-requirements ODEPS=dev
 dev = [
   "black>=22.3.0",
-  "skillberry-store-sdk"
+  "flake8>=3.9.0",
+  "mccabe>=0.6.1",
+  "mypy>=0.910",
+  "mypy-extensions>=0.4.4",
+  "pycodestyle>=2.7.0",
+  "pyflakes>=2.3.1",
+  "ruff>=0.9.9",
+  "skillberry-store-sdk",
+]
+
+# Build/codegen tools: Rust build tools, SDK generation (includes jdk4py ~180 MB).
+# Install with: make install-requirements ODEPS=build
+build = [
+  "cargo",
+  "maturin>=1.8.4",
+  "openapi-generator-cli[jdk4py]==7.20.0",
+  "openapi-generator-cli",
+  "openapi-python-client>=0.24.0",
+  "setuptools>=75.8.2",
+  "toml-cli",
+  "tomli",
+  "tomli-w",
+  "wheel",
+]
+
+# Test dependencies: test runner and plugins.
+# The `test` extra at the bottom includes this via dev + plugins-all.
+pytest = [
+  "iniconfig>=2.0.0",
+  "pluggy>=1.5.0",
+  "pytest>=8.3.4",
+  "pytest-asyncio>=0.25.2",
 ]
 
 # Plugin dependencies
@@ -239,7 +233,7 @@ plugins-all = [
 ]
 
 test = [
-  "skillberry-store[dev,plugins-all]"
+  "skillberry-store[dev,pytest,plugins-all]"
 ]
 
 [tool.uv.sources]
@@ -261,12 +255,6 @@ skillberry-plugin-ask-runspace = { path = "plugins/skillberry-plugin-ask-runspac
 skillberry-plugin-dast = { path = "plugins/skillberry-plugin-dast", editable = true }
 skillberry-plugin-skillssh-importer = { path = "plugins/skillberry-plugin-skillssh-importer", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
-torch = { index = "pytorch-cpu" }
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
 
 [build-system]
 requires = ["setuptools", "wheel"]

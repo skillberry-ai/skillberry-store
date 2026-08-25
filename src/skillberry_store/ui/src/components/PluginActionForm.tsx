@@ -24,6 +24,16 @@ import type { PluginAction, PluginActionResult } from '@/types';
 // A file picked from a dropped/selected folder, with its path relative to that folder.
 type PickedFile = { file: File; path: string };
 
+// Normalise a plugin-supplied endpoint URL by stripping a leading "/api"
+// prefix if present. Plugin authors write "/api/plugins/..." because the
+// Vite proxy used to strip it before forwarding to FastAPI; now that the
+// UI is served in-process by FastAPI, no proxy exists and the routes are
+// accessed directly (e.g. "/plugins/..."). Keeping this normaliser here
+// means existing plugins do not need to be updated.
+function normalizeEndpoint(url: string): string {
+    return url.startsWith('/api/') ? url.slice(4) : url;
+}
+
 async function readDirEntries(reader: any): Promise<any[]> {
   const all: any[] = [];
   // readEntries yields children in batches; call until it returns none.
@@ -178,7 +188,7 @@ export function PluginActionForm({
       return asyncConfig?.poll_interval_ms ?? 2000;
     },
     queryFn: async () => {
-      const url = interpolateUrl(asyncConfig!.status_endpoint, { job_id: jobId! });
+      const url = normalizeEndpoint(interpolateUrl(asyncConfig!.status_endpoint, { job_id: jobId! }));
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       return resp.json() as Promise<{ status?: string; detail?: string; message?: string }>;
@@ -289,7 +299,7 @@ export function PluginActionForm({
     if (!asyncConfig?.cleanup_action || !jobId) return;
     setCleanupState('deleting');
     try {
-      const url = interpolateUrl(asyncConfig.cleanup_action.endpoint, { job_id: jobId });
+      const url = normalizeEndpoint(interpolateUrl(asyncConfig.cleanup_action.endpoint, { job_id: jobId }));
       const resp = await fetch(url, { method: 'POST' });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       setCleanupState('done');
@@ -309,7 +319,7 @@ export function PluginActionForm({
       // The third arg sets each part's filename to its relative path, which the
       // server uses to rebuild the folder structure.
       for (const { file, path } of picked) fd.append('files', file, path);
-      const resp = await fetch(endpoint, { method: 'POST', body: fd });
+      const resp = await fetch(normalizeEndpoint(endpoint), { method: 'POST', body: fd });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
       const id = json?.data?.upload_id as string | undefined;

@@ -1,22 +1,32 @@
 # vector_db_interface.py
 
+import threading
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
+
+# Same 384-dim weights that ``SentenceTransformer('all-MiniLM-L6-v2')`` used,
+# served through onnxruntime instead of torch. Both produce L2-normalized
+# vectors that agree to ~1e-7, so indices built by either remain valid.
+_ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 _encoder = None
+_encoder_lock = threading.Lock()
 
-def _get_encoder() -> SentenceTransformer:
+def _get_encoder() -> TextEmbedding:
     global _encoder
     if _encoder is None:
-        _encoder = SentenceTransformer('all-MiniLM-L6-v2')
+        # Locked so concurrent first-callers can't each build an onnx session.
+        with _encoder_lock:
+            if _encoder is None:
+                _encoder = TextEmbedding(model_name=_ENCODER_MODEL)
     return _encoder
 
 def text_to_vector(text: str) -> List[float]:
     """Convert text to vector embedding"""
     # TODO specify dimension to use for embedding
-    return _get_encoder().encode(text).tolist()
+    return next(iter(_get_encoder().embed([text]))).tolist()
 
 
 class VectorDBInterface(ABC):

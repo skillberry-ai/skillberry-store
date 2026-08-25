@@ -28,7 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <PaginationProvider>
-        <BrowserRouter>
+        <BrowserRouter basename="/ui">
           <AuthProvider>
             <App />
           </AuthProvider>

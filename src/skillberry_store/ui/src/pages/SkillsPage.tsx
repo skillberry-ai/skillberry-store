@@ -232,7 +232,7 @@ export function SkillsPage() {
       newSkill.toolUuids.forEach(uuid => params.append('tool_uuids', uuid));
       newSkill.snippetUuids.forEach(uuid => params.append('snippet_uuids', uuid));
 
-      const response = await fetch(`/api/skills/?${params}`, { method: 'POST' });
+      const response = await fetch(`/skills/?${params}`, { method: 'POST' });
 
       if (response.ok) {
         queryClient.invalidateQueries({ queryKey: ['skills'] });

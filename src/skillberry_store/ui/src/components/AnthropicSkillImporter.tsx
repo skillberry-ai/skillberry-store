@@ -249,7 +249,7 @@ export function AnthropicSkillImporter({
         headers['X-Endpoint-Token'] = overrideToken;
       }
 
-      const response = await fetch('/api/skills/detect-anthropic-skills', {
+      const response = await fetch('/skills/detect-anthropic-skills', {
         method: 'POST',
         body: formData,
         headers,
@@ -324,7 +324,7 @@ export function AnthropicSkillImporter({
       headers['X-Endpoint-Token'] = overrideToken;
     }
 
-    const response = await fetch('/api/skills/import-anthropic', {
+    const response = await fetch('/skills/import-anthropic', {
       method: 'POST',
       body: formData,
       headers,

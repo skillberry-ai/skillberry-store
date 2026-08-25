@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, List, Literal
 
 import uvicorn
@@ -13,7 +14,8 @@ from pydantic import Field, model_validator
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi_mcp import FastApiMCP
 
 from skillberry_store.fast_api.openapi_ids import custom_generate_unique_id
@@ -42,7 +44,6 @@ except:
     __git_version__ = "unknown"
 
 from skillberry_store.fast_api.observability import observability_setup
-from prometheus_client import Counter, Histogram
 
 # this environment variable is used to enable the latest API version
 ENABLE_API_VERSION = os.environ.get("ENABLE_API_VERSION", "latest")
@@ -69,7 +70,7 @@ class SBSettings(BaseSettings):
 
 
 async def _warm_semantic_encoder() -> None:
-    """Force the SentenceTransformer encoder to initialize in a worker thread.
+    """Force the semantic encoder to initialize in a worker thread.
 
     Runs off the event loop so it does not stall concurrent request handling.
     Logs start/finish (with elapsed time) and swallows failures — a warmup miss
@@ -81,8 +82,8 @@ async def _warm_semantic_encoder() -> None:
     try:
         loop = asyncio.get_running_loop()
 
-        # Imported inside the executor call so the (heavy) sentence_transformers
-        # import itself is paid on the worker thread, not the event loop.
+        # Imported inside the executor call so the embedding-runtime import
+        # itself is paid on the worker thread, not the event loop.
         def _warm_sync() -> None:
             from skillberry_store.vdbs.vector_db_interface import text_to_vector
 
@@ -331,7 +332,82 @@ class SBS(FastAPI):
 
         # Add observability for FastAPI application
         if int(os.getenv("OTEL_TRACES_PORT", 0)) > 0:
+            # Imported inside the guard rather than at module scope: a
+            # deployment without tracing never touches this instrumentation
+            # stack. See the companion note in observability.otel_setup.
+            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
             FastAPIInstrumentor.instrument_app(self)
+
+        # Serve the pre-built UI bundle via FastAPI's StaticFiles. This
+        # replaces the `npx vite preview` subprocess (UIManager) that used
+        # to run alongside the server, saving ~50–100 MiB of RSS.
+        #
+        # The bundle is produced at build time by `make ui-build` (or by
+        # the Dockerfile builder stage). If it is absent (e.g., a bare dev
+        # checkout), the /ui mount is simply skipped — the API still starts
+        # normally, and `make ui-dev` / `make ui-build && make run` work
+        # as before.
+        ui_dist = Path(__file__).parent.parent / "ui" / "dist"
+        if ui_dist.exists():
+            # Catch-all for SPA deep-links: any /ui/<path> that is not a real
+            # static file (JS/CSS/fonts) should serve index.html so React
+            # Router can handle the route client-side. This route must be
+            # registered BEFORE the StaticFiles mount, because Starlette
+            # evaluates mounts before APIRoutes — once StaticFiles is mounted
+            # at /ui it intercepts everything under that prefix and a 404 for
+            # unknown paths never reaches this handler. Registering the route
+            # first means FastAPI matches /ui/{path} here first, and only falls
+            # through to StaticFiles for requests where the path exists on disk.
+            # Vite emits content-hashed asset filenames, so a rebuild always
+            # produces new names -- those are safe to cache forever. index.html
+            # is the entry point and is NOT hashed: served without a
+            # Cache-Control header it only carries ETag/Last-Modified, and
+            # browsers then apply heuristic freshness and reuse it without
+            # revalidating. The stale HTML points at the previous build's asset
+            # names (also cached), so the whole old bundle boots with zero
+            # network traffic and no rebuild ever reaches the user.
+            _ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+            _INDEX_CACHE_CONTROL = "no-cache, must-revalidate"
+            ui_root = ui_dist.resolve()
+
+            # GET *and* HEAD: FastAPI's @app.get registers GET only (unlike
+            # Starlette's plain Route, which implies HEAD), so a HEAD would
+            # otherwise fall through to the StaticFiles mount below and answer
+            # without the cache directives set here.
+            @self.api_route(
+                "/ui/{path:path}", methods=["GET", "HEAD"], include_in_schema=False
+            )
+            async def _ui_spa_fallback(path: str):
+                # Real static assets (JS, CSS, fonts, images) are served from
+                # disk. Anything else falls back to index.html so React Router
+                # can handle the route client-side (/ui/skills, /ui/tools/:uuid).
+                asset = (ui_root / path).resolve()
+                # Unlike StaticFiles, this handler joins a client-supplied path
+                # onto the bundle directory, so it has to reject traversal out
+                # of it (e.g. GET /ui/../../../etc/passwd from a raw client).
+                if asset.is_relative_to(ui_root) and asset.is_file():
+                    return FileResponse(
+                        asset, headers={"Cache-Control": _ASSET_CACHE_CONTROL}
+                    )
+                return FileResponse(
+                    ui_root / "index.html",
+                    headers={"Cache-Control": _INDEX_CACHE_CONTROL},
+                )
+
+            self.mount("/ui", StaticFiles(directory=ui_dist, html=True), name="ui")
+            logger.info("UI bundle mounted at /ui from %s", ui_dist)
+
+            @self.get("/", include_in_schema=False)
+            async def _root_redirect():
+                return RedirectResponse(url="/ui/")
+
+        else:
+            logger.warning(
+                "UI bundle not found at %s — /ui not mounted. "
+                "Run `make ui-build` to build it.",
+                ui_dist,
+            )
 
     def run(self):
         """Starts the FastAPI app using Uvicorn."""
