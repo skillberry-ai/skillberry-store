@@ -277,7 +277,7 @@ export function SkillDetailPage() {
     setExportError('');
 
     try {
-      const response = await fetch(`/api/skills/${skill.name}/export-anthropic`);
+      const response = await fetch(`/skills/${skill.name}/export-anthropic`);
 
       if (!response.ok) {
         let detail: string;

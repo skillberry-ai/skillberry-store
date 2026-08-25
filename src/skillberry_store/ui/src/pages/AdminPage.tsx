@@ -19,7 +19,7 @@ import {
   ExclamationTriangleIcon,
 } from '@patternfly/react-icons';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = '';
 
 export function AdminPage() {
   const queryClient = useQueryClient();

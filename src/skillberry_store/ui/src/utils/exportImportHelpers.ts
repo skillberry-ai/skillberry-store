@@ -176,7 +176,7 @@ export async function importSkills(skills: any[]): Promise<ImportResult> {
       }
 
       // Call API with query parameters
-      const response = await fetch(`/api/skills/?${params}`, {
+      const response = await fetch(`/skills/?${params}`, {
         method: 'POST',
       });
 

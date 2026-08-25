@@ -13,7 +13,7 @@ import type {
   PluginActionResult,
 } from '@/types';
 
-const API_BASE = '/api';
+const API_BASE = '';
 
 class ApiError extends Error {
   constructor(

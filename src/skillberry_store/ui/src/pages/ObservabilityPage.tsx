@@ -16,7 +16,7 @@ import {
 } from '@patternfly/react-core';
 import { ChartLineIcon, ExternalLinkAltIcon } from '@patternfly/react-icons';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = '';
 const METRICS_ENDPOINT = `${API_BASE_URL}/admin/metrics`;
 const DEFAULT_PROMETHEUS_PORT = '8090';
 
