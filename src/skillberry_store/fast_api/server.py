@@ -14,7 +14,7 @@ from pydantic import Field, model_validator
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi_mcp import FastApiMCP
 
@@ -350,6 +350,26 @@ class SBS(FastAPI):
         # as before.
         ui_dist = Path(__file__).parent.parent / "ui" / "dist"
         if ui_dist.exists():
+            # Catch-all for SPA deep-links: any /ui/<path> that is not a real
+            # static file (JS/CSS/fonts) should serve index.html so React
+            # Router can handle the route client-side. This route must be
+            # registered BEFORE the StaticFiles mount, because Starlette
+            # evaluates mounts before APIRoutes — once StaticFiles is mounted
+            # at /ui it intercepts everything under that prefix and a 404 for
+            # unknown paths never reaches this handler. Registering the route
+            # first means FastAPI matches /ui/{path} here first, and only falls
+            # through to StaticFiles for requests where the path exists on disk.
+            @self.get("/ui/{path:path}", include_in_schema=False)
+            async def _ui_spa_fallback(path: str):
+                # Real static assets (JS, CSS, fonts, images) are served by
+                # StaticFiles via the /ui mount below. Only fall back to
+                # index.html for paths that don't have a file extension,
+                # i.e. React Router paths like /ui/skills, /ui/tools/:uuid.
+                asset = ui_dist / path
+                if asset.is_file():
+                    return FileResponse(asset)
+                return FileResponse(ui_dist / "index.html")
+
             self.mount("/ui", StaticFiles(directory=ui_dist, html=True), name="ui")
             logger.info("UI bundle mounted at /ui from %s", ui_dist)
 
