@@ -359,16 +359,41 @@ class SBS(FastAPI):
             # unknown paths never reaches this handler. Registering the route
             # first means FastAPI matches /ui/{path} here first, and only falls
             # through to StaticFiles for requests where the path exists on disk.
-            @self.get("/ui/{path:path}", include_in_schema=False)
+            # Vite emits content-hashed asset filenames, so a rebuild always
+            # produces new names -- those are safe to cache forever. index.html
+            # is the entry point and is NOT hashed: served without a
+            # Cache-Control header it only carries ETag/Last-Modified, and
+            # browsers then apply heuristic freshness and reuse it without
+            # revalidating. The stale HTML points at the previous build's asset
+            # names (also cached), so the whole old bundle boots with zero
+            # network traffic and no rebuild ever reaches the user.
+            _ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+            _INDEX_CACHE_CONTROL = "no-cache, must-revalidate"
+            ui_root = ui_dist.resolve()
+
+            # GET *and* HEAD: FastAPI's @app.get registers GET only (unlike
+            # Starlette's plain Route, which implies HEAD), so a HEAD would
+            # otherwise fall through to the StaticFiles mount below and answer
+            # without the cache directives set here.
+            @self.api_route(
+                "/ui/{path:path}", methods=["GET", "HEAD"], include_in_schema=False
+            )
             async def _ui_spa_fallback(path: str):
-                # Real static assets (JS, CSS, fonts, images) are served by
-                # StaticFiles via the /ui mount below. Only fall back to
-                # index.html for paths that don't have a file extension,
-                # i.e. React Router paths like /ui/skills, /ui/tools/:uuid.
-                asset = ui_dist / path
-                if asset.is_file():
-                    return FileResponse(asset)
-                return FileResponse(ui_dist / "index.html")
+                # Real static assets (JS, CSS, fonts, images) are served from
+                # disk. Anything else falls back to index.html so React Router
+                # can handle the route client-side (/ui/skills, /ui/tools/:uuid).
+                asset = (ui_root / path).resolve()
+                # Unlike StaticFiles, this handler joins a client-supplied path
+                # onto the bundle directory, so it has to reject traversal out
+                # of it (e.g. GET /ui/../../../etc/passwd from a raw client).
+                if asset.is_relative_to(ui_root) and asset.is_file():
+                    return FileResponse(
+                        asset, headers={"Cache-Control": _ASSET_CACHE_CONTROL}
+                    )
+                return FileResponse(
+                    ui_root / "index.html",
+                    headers={"Cache-Control": _INDEX_CACHE_CONTROL},
+                )
 
             self.mount("/ui", StaticFiles(directory=ui_dist, html=True), name="ui")
             logger.info("UI bundle mounted at /ui from %s", ui_dist)
