@@ -157,6 +157,9 @@ cython_debug/
 # stamp files for make
 .stamps/
 
+# staging area for EXTRA_COPY_FILES content (see .mk/docker.mk)
+.extra-copy/
+
 .idea/
 .vscode/
 

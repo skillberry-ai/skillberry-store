@@ -59,6 +59,15 @@ ENV BUILD_VERSION=$BUILD_VERSION \
 # This includes the application code and the .venv with all installed dependencies
 COPY --from=builder /app /app
 
+# Unpack the extra host content staged into the build context by
+# scripts/stage-extra-copy.sh (make docker-build EXTRA_COPY_FILES=<src>:<dst>,...).
+# The staged tree mirrors the absolute target paths, so one recursive copy into
+# "/" lands every entry at its target; the staging folder is then dropped.
+# Absent when EXTRA_COPY_FILES is empty.
+RUN if [ -d /app/.extra-copy ]; then \
+        cp -a /app/.extra-copy/. / && rm -rf /app/.extra-copy; \
+    fi
+
 # Expose all service ports
 EXPOSE $SERVICE_PORTS
 

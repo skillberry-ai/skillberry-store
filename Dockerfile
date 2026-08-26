@@ -115,13 +115,23 @@ ENV MALLOC_ARENA_MAX=2
 # This includes the application code and the .venv with all installed dependencies
 COPY --from=builder $APP_HOME $APP_HOME
 
+# Unpack the extra host content staged into the build context by
+# scripts/stage-extra-copy.sh (make docker-build EXTRA_COPY_FILES=<src>:<dst>,...).
+# The staged tree mirrors the absolute target paths, so one recursive copy into
+# "/" lands every entry at its target; the staging folder is then dropped.
+# Absent when EXTRA_COPY_FILES is empty. Done before the ownership fixups below
+# so extra content under $APP_HOME gets the same treatment.
+#
 # OpenShift compliance:
 #  - safe.directory '*' lets git operate under any UID (the image is immutable,
 #    so the CVE-2022-24765 threat model does not apply).
 #  - gid 0 + `chmod g=u` on runtime-writable paths lets the arbitrary UID that
 #    OpenShift assigns (always in gid 0) read/write everything the app needs.
 #    Harmless on plain Docker/k8s: group perms equal user perms.
-RUN git config --system --add safe.directory '*' \
+RUN if [ -d "$APP_HOME/.extra-copy" ]; then \
+        cp -a "$APP_HOME/.extra-copy/." / && rm -rf "$APP_HOME/.extra-copy"; \
+    fi \
+    && git config --system --add safe.directory '*' \
     && mkdir -p "$UV_CACHE_DIR" "$PIP_CACHE_DIR" "$APP_DATA_DIR" \
     && chgrp -R 0 "$APP_HOME" "$XDG_CACHE_HOME" "$APP_DATA_DIR" \
     && chmod -R g=u "$APP_HOME" "$XDG_CACHE_HOME" "$APP_DATA_DIR"
