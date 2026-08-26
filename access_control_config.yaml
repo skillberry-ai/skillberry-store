@@ -2,8 +2,8 @@
 # behaves identically to prior versions until an operator opts in.
 #
 # See docs/design/access-control.md for the full schema and the operator
-# quickstart (generate a password hash via scripts/hash_password.py, then
-# switch mode to 'standalone').
+# quickstart (provision a user via ./scripts/setup_user.py, then switch
+# mode to 'standalone').
 
 mode: disabled
 
@@ -27,7 +27,7 @@ unauthenticated_paths:
 # --- Mode-specific: standalone only -------------------------------------
 standalone:
   session_ttl_seconds: 43200          # 12h; env: SBS_SESSION_TTL
-  users: []                           # populate with `scripts/hash_password.py`
+  users: []                           # populate with `./scripts/setup_user.py`
   # - username: alice
   #   tenant_id: alice
   #   password_hash: "$2b$12$..."
