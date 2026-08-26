@@ -1,10 +1,11 @@
 # Access Control — Design
 
-Status: **Proposal (revision 13)**
+Status: **Proposal (revision 14)**
 Owner: skillberry-store
 Scope: `skillberry-store` FastAPI service (per-endpoint access control for tenants), extensible to per-object / per-namespace in later work.
 
 Revision notes:
+* r14 — **Operator tooling**: replaced `scripts/hash_password.py` with `scripts/setup_user.py`, an executable that provisions a user end-to-end instead of printing a hash for hand-editing. One required argument (`username`) plus `-f <config>` / `-b <role>` / `-t <tenant_id>` in any order, plus `-l` to list users as a `USER / TENANT / BINDING / ROLE` table and `-d` to delete one; it upserts `standalone.users` and the tenant's role binding in one comment-preserving atomic write, and refuses to leave a user with no binding (authenticated-but-permissionless) unless `-b` says which role to grant. `-b <binding>:<role>` names the binding rather than defaulting to `<tenant>-binding`, and adds the tenant to it when that binding already exists, so tenants can share one. `-d` never removes bindings (they are per-tenant and may be shared); it reports the ones left granting roles to nobody. `-f -` reproduces the old print-the-hash behavior. Runs without a `python` prefix or `source` — it re-execs into the project venv when the interpreter on `PATH` lacks `bcrypt` / `ruamel.yaml`. §5.5 rewritten, §13 inventory updated.
 * r13 — **Fail-safe defaults via `@requires`**. Removed the method/path→verb rule table and the tag→resource fallback in the mapper. Every REST endpoint now declares its ``(resource, verb)`` explicitly with the ``@requires(resource, verb)`` decorator (`access_control/decorator.py`). ``SBS.__init__`` runs two startup helpers after every route (including plugin sub-routers) is registered: ``stamp_rbac_markers`` copies each handler's marker to its ``APIRoute.openapi_extra`` (so the OpenAPI schema publishes ``x-rbac-*`` for tooling), and ``audit_rbac_coverage`` refuses to boot when any non-allow-listed route lacks a marker — a missing decorator is now a *loud* deploy-time failure rather than a silent fall-through to some default. All 51 non-allowlisted endpoints across `skills_api`, `tools_api`, `snippets_api`, `vmcp_api`, `vnfs_api`, `admin_api`, and `plugins_api` were stamped in the same commit (`/auth/*`, `/health*`, `/admin/metrics` remain unauth-allowlisted and skip the audit). `mcp_plan.py` simplified: verb is method-independent now (a single marker per route), so `verb_for_method_path` was replaced by `verb_for_route`. §6 and §8 rewritten; §13 file inventory updated.
 * r12 — Refactored the PEP from a Starlette `BaseHTTPMiddleware` to a **single FastAPI dependency** installed on `router.dependencies` before any route is registered. Bearer extraction moved to FastAPI's `HTTPBearer` security scheme — the OpenAPI schema now advertises `securitySchemes.HTTPBearer` and per-route `security: [{HTTPBearer: []}]` (Swagger UI "Authorize" button and per-route lock icons). Removed the ad-hoc `Authorization` parser and hand-rolled 401 `JSONResponse` in favor of `HTTPBearer(auto_error=False)` + `HTTPException`. Kept the mapper's manual route-walk (it still runs on synthetic requests for the MCP-planning path and unit tests, but production calls now benefit from `request.scope["route"]` being populated because the dep fires after routing). Modules removed: `access_control/middleware.py`, `access_control/idp.py`. Module added: `access_control/deps.py`. §8 and §13 rewritten. Behavior unchanged — same allow/deny surface, same 401 with `WWW-Authenticate: Bearer`, same per-tenant MCP mounts.
 * r11 — Implementation-nit sweep before hand-off: (a) documented that `bcrypt.checkpw` and `bcrypt.hashpw` must run via `asyncio.to_thread` to avoid blocking the event loop, (b) called out that `sessions.py` needs an injectable time source for fast unit tests, (c) fixed the CLI-E2E test-isolation env var (`SBS_CONFIG_HOME` → `XDG_CONFIG_HOME`, which is what `restish` actually reads), (d) corrected the "invalid token" error-message example to `invalid_credentials`, (e) reworded §10.4's endpoint table to reflect that all three `/auth/*` endpoints (login/logout/whoami) exist, not just whoami, (f) renumbered §16 to eliminate the "7b." Markdown quirk, (g) moved the resolved MCP question out of §17.
@@ -237,28 +238,53 @@ Two env vars are read by the server; both override the YAML on conflict (env-fir
 
 ### 5.5 Operator quickstart (demo)
 
-1. Generate a password hash:
+1. Provision the user — `scripts/setup_user.py` runs directly, no `python` prefix and no `source` (it re-execs into the project venv when the interpreter on `PATH` lacks `bcrypt` / `ruamel.yaml`):
    ```
-   $ python scripts/hash_password.py alice
+   $ ./scripts/setup_user.py alice -b base-user
+   Generating password hash for user: alice
    Password: ****
    Confirm:  ****
-   Copy this into access_control_config.yaml under standalone.users:
-     $2b$12$8f7a...
+   access_control_config.yaml: user 'alice' created (tenant_id: alice)
+   access_control_config.yaml: binding 'alice-binding' created: tenant 'alice' -> [base-user]
    ```
-   (The script uses `getpass` for no-echo entry, `bcrypt.hashpw(..., bcrypt.gensalt(rounds=12))` for hashing, and prints the hash to stdout. It never modifies the config file.)
+   `username` is the one required argument. The optional flags may appear in any order:
 
-2. Paste the hash into `access_control_config.yaml`:
+   | Flag | Meaning |
+   | --- | --- |
+   | `-f <file>` | Target config. Default `access_control_config.yaml` in the repo root. `-` prints the bcrypt hash to stdout and exits without touching any file (the old `hash_password.py` behavior). |
+   | `-b <role>` | Role for the user's tenant. Creates `<tenant>-binding` when no binding covers the tenant, otherwise replaces that binding's roles. **Without `-b`, a missing binding aborts** — the user would otherwise authenticate into zero permissions. |
+   | `-b <binding>:<role>` | Same, but names the binding instead of defaulting to `<tenant>-binding`. The name *selects* the binding: if it already exists, this tenant is added to its `subjects` — which is how several tenants come to share one binding (`-b readers:reader` for each of them). |
+   | `-t <tenant_id>` | Tenant the user maps to. Defaults to the username for a new user; for an existing user the current `tenant_id` is kept unless this flag is given, since silently re-pointing it would swap the user's bindings. |
+   | `-l` | List users as a `USER / TENANT / BINDING / ROLE` table and exit — read-only, and the only mode where `username` is optional (given one, it filters). A tenant covered by several bindings gets one row each. Exits 1 if a named user isn't there. |
+   | `-d` | Delete the user. `-b` / `-t` are ignored. Bindings are **not** removed — they are per-tenant and another user may still map to that tenant, so the tool reports any that now grant roles to nobody and leaves them for you. |
+
+   ```
+   $ ./scripts/setup_user.py -l
+   USER              TENANT            BINDING           ROLE
+   skillberry        skillberry        skillberry-base   base-user
+   skillberry-admin  skillberry-admin  skillberry-admin  admin
+   ```
+
+   The script uses `getpass` for no-echo entry and `bcrypt.hashpw(..., bcrypt.gensalt(rounds=12))` for hashing. Everything that can fail — unreadable/unwritable file, malformed YAML, wrong types, an unknown role, a missing binding — is checked *before* the password prompt. The config is rewritten through a round-trip YAML loader (comments, quoting and key order survive) and swapped in atomically with the original mode and ownership preserved.
+
+2. The result under `standalone.users` / `bindings`:
    ```yaml
    mode: standalone
    standalone:
      users:
        - username: alice
          tenant_id: alice
-         password_hash: "$2b$12$8f7a..."
-         groups: [team-blue]
+         password_hash: '$2b$12$8f7a...'
+         groups: []
    roles: [...]
-   bindings: [...]
+   bindings:
+     - name: alice-binding
+       subjects:
+         - kind: tenant
+           name: alice
+       roles: [base-user]
    ```
+   `groups` starts empty; add group names by hand to pick up `kind: group` bindings. Note the script does not switch `mode` — it warns when the target config is not in `mode: standalone`, and leaves the edit to you.
 
 3. Start the store — validation runs at startup; unresolved references (a binding pointing at a role that doesn't exist, a subject referring to an unknown group) surface as hard errors so you see them immediately.
 
@@ -377,7 +403,7 @@ Content-Type: application/json
 
 Server side:
 1. Look up `username` in `standalone.users`.
-2. `bcrypt.checkpw(password, user.password_hash)` — constant-time. **Must run via `await asyncio.to_thread(bcrypt.checkpw, …)`**: bcrypt at cost=12 takes ~250–500 ms on modern hardware and would otherwise block the asyncio event loop for the full duration of every login attempt, serializing concurrent logins and making brute-force attempts a self-DoS. Same goes for `bcrypt.hashpw` in `scripts/hash_password.py` (there it's fine synchronously — it's a one-shot CLI).
+2. `bcrypt.checkpw(password, user.password_hash)` — constant-time. **Must run via `await asyncio.to_thread(bcrypt.checkpw, …)`**: bcrypt at cost=12 takes ~250–500 ms on modern hardware and would otherwise block the asyncio event loop for the full duration of every login attempt, serializing concurrent logins and making brute-force attempts a self-DoS. Same goes for `bcrypt.hashpw` in `scripts/setup_user.py` (there it's fine synchronously — it's a one-shot CLI).
 3. Mint an opaque session token: `secrets.token_urlsafe(32)`.
 4. Store in a **module-level `dict[str, Session]`** keyed by token: `Session(tenant_id, groups, expires_at)`. Purely in-memory — the store is a plain Python dict, and its content is lost on server restart. This is a conscious simplicity trade for step 1: demo users log in again after a restart; no session store, no persistence, no cross-process concerns.
 5. Return the plaintext token to the client.
@@ -759,7 +785,7 @@ The `delegated` mode is not implemented in step 1 but is treated as a first-clas
 | `src/skillberry_store/access_control/audit.py` | ~90 | `stamp_rbac_markers(app)` and `audit_rbac_coverage(app, cfg)`. Called from `SBS.__init__` after all routes register; audit failure prevents startup. (r13) |
 | `src/skillberry_store/access_control/deps.py` | ~90 | Policy Enforcement Point as a FastAPI dependency. Owns the `HTTPBearer` security scheme (so OpenAPI publishes `securitySchemes.HTTPBearer` and per-route `security`), the unauth allow-list short-circuit, bearer-token resolution to a `Subject`, the PDP call, and stashing the subject on `request.state`. Skipped entirely in `disabled` mode (no dep installed → no security scheme in the schema). Replaces the ex-`middleware.py` + `idp.py` pair (r12). |
 | `src/skillberry_store/fast_api/auth_api.py` | ~90 | `POST /auth/login` (username/password → session token; bcrypt-verify), `POST /auth/logout`, `GET /auth/whoami`. |
-| `scripts/hash_password.py` | ~20 | Admin utility: `bcrypt.hashpw(getpass())` → prints the hash to paste into `access_control_config.yaml`. |
+| `scripts/setup_user.py` | ~800 | Standalone admin utility (executable, self-bootstrapping into the venv): `bcrypt.hashpw(getpass())` → upserts `standalone.users` and, with `-b <role>` / `-b <binding>:<role>`, the matching tenant binding in `access_control_config.yaml`, via a comment-preserving round-trip write. Also lists (`-l`) and deletes (`-d`) users; `-f -` prints a hash and writes nothing (supersedes the r9-era `hash_password.py`). |
 | `access_control_config.yaml` | ~40 | Default config; ships with `mode: disabled`. |
 | `docs/config-env-vars.md` | +8 | Document `SBS_ACCESS_CONTROL_CONFIG`, `SBS_SESSION_TTL`, and `SBS_TOKEN` (CLI-side). Precedence rules per §5.3. |
 | `pyproject.toml` | +1 | Add `bcrypt` dependency. |

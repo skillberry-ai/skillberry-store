@@ -36,7 +36,7 @@ standalone:
   session_ttl_seconds: 43200        # 12h; env override: SBS_SESSION_TTL
   users:
     - username: alice
-      password_hash: "$2b$12$..."   # produced by scripts/hash_password.py
+      password_hash: "$2b$12$..."   # produced by scripts/setup_user.py
       groups: [team-blue]
 roles:
   - name: reader
@@ -66,12 +66,19 @@ Always-open regardless of mode: `/health`, `/health/ready`, `/admin/metrics`, `/
 ## Operator quickstart
 
 ```bash
-python scripts/hash_password.py alice        # prints a bcrypt hash
-# paste hash into access_control_config.yaml under standalone.users
-# set mode: standalone, add a binding
+./scripts/setup_user.py alice -b base-user   # prompts for a password, writes the
+                                             # user + role binding into the config
+# set mode: standalone
 # restart the store
 sbs login                                    # or use the UI /login page
 ```
+
+`setup_user.py` runs on its own (re-execing into the project venv when needed).
+`-f <file>` targets another config, `-t <tenant>` maps the user onto a different
+tenant, `-b <binding>:<role>` names the binding (and shares it between tenants
+when it already exists), and `-f -` just prints a bcrypt hash without touching
+any file. `-l` lists users as a `USER / TENANT / BINDING / ROLE` table (no
+username needed), `-d` deletes one.
 
 ## Deferred (see §16 of the full design)
 
