@@ -10,8 +10,8 @@ VERSION_LOCATION := src/skillberry_store/fast_api/git_version.py
 SERVICE_ENTRY_MODULE := skillberry_store.main
 SERVICE_NAME := $(ASSET_NAME)
 # If this asset is an actual network service, define these service settings as well
-SERVICE_PORTS := 8000 8002
-SERVICE_PORT_ROLES := MAIN UI
+SERVICE_PORTS := 8000
+SERVICE_PORT_ROLES := MAIN
 SERVICE_HOST := 0.0.0.0
 SERVICE_HAS_SDK := 1
 # ----------------------------------------------------
