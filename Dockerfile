@@ -31,14 +31,40 @@ ARG PLUGIN_EXTRAS=
 # makefile's `BUILD_VERSION ?=` respect the passed-in value instead of trying
 # to re-derive it from git inside the container (.git is not shipped into the
 # build context; see .dockerignore).
+# APP_HOME mirrors the runtime stage: the base image only sets WORKDIR, so
+# without this the $APP_HOME references below would expand to empty.
 ENV BUILD_VERSION=$BUILD_VERSION \
-    DEPLOY_ONLY=TRUE
+    DEPLOY_ONLY=TRUE \
+    APP_HOME=/app
 
 # Python, NodeJS and venv are already set in the base image
 # WORKDIR is already set in the base image to /app
 
 # Copy the application
 COPY . .
+
+# Unpack the extra host content staged into the build context by
+# scripts/stage-extra-copy.sh (make docker-build EXTRA_COPY_FILES=<src>:<dst>,...).
+# The staged tree mirrors the absolute target paths, so one recursive copy into
+# "/" lands every entry at its target.
+#
+# This must precede every build step that reads the copied tree: the staged
+# files are real build inputs. `make ui-build` below bakes the ACL mode from
+# access_control_config.yaml into the UI bundle, so unpacking only in the
+# runtime stage shipped a bundle built against the repo's config while the
+# image ran with the operator's — a UI stuck in the wrong auth mode.
+#
+# This is the only unpack. Afterwards the staging tree is moved out of
+# $APP_HOME (so it does not ride along with the $APP_HOME copy in the runtime
+# stage) and its $APP_HOME mirror is pruned, leaving exactly the targets that
+# $APP_HOME cannot carry across the stage boundary. That split matters: paths
+# under $APP_HOME travel in whatever state the build left them, instead of
+# being reverted to the staged original by a second application. mkdir -p
+# keeps the recipe unconditional when EXTRA_COPY_FILES is unset.
+RUN mkdir -p "$APP_HOME/.extra-copy" \
+    && cp -a "$APP_HOME/.extra-copy/." / \
+    && mv "$APP_HOME/.extra-copy" /extra-copy \
+    && rm -rf "/extra-copy$APP_HOME"
 
 # Uncomment this to test your SSH cconnection to github.ibm.com
 # RUN --mount=type=ssh \
@@ -115,23 +141,27 @@ ENV MALLOC_ARENA_MAX=2
 # This includes the application code and the .venv with all installed dependencies
 COPY --from=builder $APP_HOME $APP_HOME
 
-# Unpack the extra host content staged into the build context by
-# scripts/stage-extra-copy.sh (make docker-build EXTRA_COPY_FILES=<src>:<dst>,...).
-# The staged tree mirrors the absolute target paths, so one recursive copy into
-# "/" lands every entry at its target; the staging folder is then dropped.
-# Absent when EXTRA_COPY_FILES is empty. Done before the ownership fixups below
-# so extra content under $APP_HOME gets the same treatment.
+# Place the staged extra host content whose targets sit outside $APP_HOME
+# (e.g. /etc/ssl/extra). The builder applied the whole staged tree and pruned
+# its $APP_HOME mirror, so this is exactly the complement of what the copy
+# above carries — no path is written twice, and nothing reverts a $APP_HOME
+# target to its staged original. Copies the tree's contents, so the staging
+# folder itself never appears in the image, and resolves to a no-op when
+# EXTRA_COPY_FILES is unset.
 #
+# Note these entries cross as staged, not as the build left them: a build step
+# that rewrote a target outside $APP_HOME would lose that edit. Placing them
+# by path would require the target list at parse time, which a Dockerfile
+# cannot have; nothing in this build writes outside $APP_HOME.
+COPY --from=builder /extra-copy/ /
+
 # OpenShift compliance:
 #  - safe.directory '*' lets git operate under any UID (the image is immutable,
 #    so the CVE-2022-24765 threat model does not apply).
 #  - gid 0 + `chmod g=u` on runtime-writable paths lets the arbitrary UID that
 #    OpenShift assigns (always in gid 0) read/write everything the app needs.
 #    Harmless on plain Docker/k8s: group perms equal user perms.
-RUN if [ -d "$APP_HOME/.extra-copy" ]; then \
-        cp -a "$APP_HOME/.extra-copy/." / && rm -rf "$APP_HOME/.extra-copy"; \
-    fi \
-    && git config --system --add safe.directory '*' \
+RUN git config --system --add safe.directory '*' \
     && mkdir -p "$UV_CACHE_DIR" "$PIP_CACHE_DIR" "$APP_DATA_DIR" \
     && chgrp -R 0 "$APP_HOME" "$XDG_CACHE_HOME" "$APP_DATA_DIR" \
     && chmod -R g=u "$APP_HOME" "$XDG_CACHE_HOME" "$APP_DATA_DIR"
