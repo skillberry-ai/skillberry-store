@@ -22,10 +22,11 @@ set -e
 # Normalize the staged content for the container runtime:
 #
 #  - umask 022 keeps the mirror's intermediate folders traversable (755)
-#    whatever the caller's umask is. This matters because the Dockerfile
-#    unpacks the mirror with "cp -a", which applies the mirror folder's mode to
-#    an already-existing target folder as well - so a private mirror folder
-#    would lock down, e.g., /etc for every non-root UID.
+#    whatever the caller's umask is. The unpack applies an archived folder's
+#    mode to any folder it has to create along a target path, so under a
+#    private umask the app could not reach its own content. (Folders that
+#    already exist in the image keep their own metadata - the Dockerfile
+#    unpacks with tar --no-overwrite-dir for exactly that reason.)
 #
 #  - "chmod g=u" per staged item (below) gives the group the owner's access.
 #    The build COPY forces ownership of everything in the context to root and

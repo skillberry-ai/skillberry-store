@@ -45,8 +45,15 @@ COPY . .
 
 # Unpack the extra host content staged into the build context by
 # scripts/stage-extra-copy.sh (make docker-build EXTRA_COPY_FILES=<src>:<dst>,...).
-# The staged tree mirrors the absolute target paths, so one recursive copy into
-# "/" lands every entry at its target.
+# The staged tree mirrors the absolute target paths, so one recursive unpack
+# into "/" lands every entry at its target.
+#
+# tar --no-overwrite-dir, and not "cp -a", because the mirror necessarily
+# carries a folder for every component of every target path, and cp applies
+# the mirror folder's mode to the pre-existing folder it lands on -- resetting
+# /tmp from 1777 to 755, for one. tar leaves existing folders' metadata alone
+# and still applies the archived mode to the content itself and to folders it
+# creates.
 #
 # This must precede every build step that reads the copied tree: the staged
 # files are real build inputs. `make ui-build` below bakes the ACL mode from
@@ -62,7 +69,7 @@ COPY . .
 # being reverted to the staged original by a second application. mkdir -p
 # keeps the recipe unconditional when EXTRA_COPY_FILES is unset.
 RUN mkdir -p "$APP_HOME/.extra-copy" \
-    && cp -a "$APP_HOME/.extra-copy/." / \
+    && tar -cf - -C "$APP_HOME/.extra-copy" . | tar -xf - --no-overwrite-dir -C / \
     && mv "$APP_HOME/.extra-copy" /extra-copy \
     && rm -rf "/extra-copy$APP_HOME"
 
@@ -145,15 +152,23 @@ COPY --from=builder $APP_HOME $APP_HOME
 # (e.g. /etc/ssl/extra). The builder applied the whole staged tree and pruned
 # its $APP_HOME mirror, so this is exactly the complement of what the copy
 # above carries — no path is written twice, and nothing reverts a $APP_HOME
-# target to its staged original. Copies the tree's contents, so the staging
-# folder itself never appears in the image, and resolves to a no-op when
-# EXTRA_COPY_FILES is unset.
+# target to its staged original. Resolves to an empty tree, and the unpack
+# below to a no-op, when EXTRA_COPY_FILES is unset.
 #
 # Note these entries cross as staged, not as the build left them: a build step
 # that rewrote a target outside $APP_HOME would lose that edit. Placing them
 # by path would require the target list at parse time, which a Dockerfile
 # cannot have; nothing in this build writes outside $APP_HOME.
-COPY --from=builder /extra-copy/ /
+#
+# The tree lands in a scratch folder instead of on "/" directly, because COPY
+# applies the mirror folders' modes to the pre-existing folders they land on
+# just as "cp -a" would -- resetting /tmp from 1777 to 755, which locks the
+# service out of its own log and pid files. The RUN below unpacks it with
+# tar --no-overwrite-dir, which leaves existing folders' metadata alone, and
+# drops the scratch folder. Unpacking there also puts the content in place
+# ahead of the ownership fixups, so targets under $APP_DATA_DIR (or any other
+# path fixed up below) get the same treatment.
+COPY --from=builder /extra-copy /extra-copy
 
 # OpenShift compliance:
 #  - safe.directory '*' lets git operate under any UID (the image is immutable,
@@ -161,7 +176,9 @@ COPY --from=builder /extra-copy/ /
 #  - gid 0 + `chmod g=u` on runtime-writable paths lets the arbitrary UID that
 #    OpenShift assigns (always in gid 0) read/write everything the app needs.
 #    Harmless on plain Docker/k8s: group perms equal user perms.
-RUN git config --system --add safe.directory '*' \
+RUN tar -cf - -C /extra-copy . | tar -xf - --no-overwrite-dir -C / \
+    && rm -rf /extra-copy \
+    && git config --system --add safe.directory '*' \
     && mkdir -p "$UV_CACHE_DIR" "$PIP_CACHE_DIR" "$APP_DATA_DIR" \
     && chgrp -R 0 "$APP_HOME" "$XDG_CACHE_HOME" "$APP_DATA_DIR" \
     && chmod -R g=u "$APP_HOME" "$XDG_CACHE_HOME" "$APP_DATA_DIR"
