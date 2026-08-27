@@ -7,19 +7,69 @@ Automated tool to download and import skills from [skills.sh](https://skills.sh)
 This tool implements a 6-phase process to:
 1. Extract all repository metadata from skills.sh (sorted by popularity)
 2. Clone repositories iteratively until finding N skill subfolders with SKILL.md
-3. Discover skills in /skills/ folders
+3. Discover skill folders (`SKILL.md`) — see [Skill Detection](#skill-detection)
 4. Import skills via Anthropic API (handles transformation automatically) **with automatic benchmarking**
 5. Validate imports
 6. Generate comprehensive reports with benchmark statistics
 
 **Key Features:**
-- A "skill" is defined as a subfolder in `/skills/` directory containing a `SKILL.md` file
+- A "skill" is a folder containing a `SKILL.md` file; **`--flex-import`** finds such folders at any depth (see [Skill Detection](#skill-detection))
 - **Clone mode** clones repositories from skills.sh until it finds N such skills (up to ~9,700 repos)
 - **Automatic benchmarking** of all import operations (timing, size, file counts, throughput)
 - **Clone-only mode** for downloading skills without importing (Phases 1-2)
 - **Import-only mode** for importing already-downloaded skills (Phases 3-6) — useful for repeated benchmarking
 - **`--overwrite`** re-clones repositories that already exist on disk (default: reuse them)
 - Failed or empty clones are cleaned up automatically — no partial or useless data is kept on disk
+
+## Skill Detection
+
+A skill is a folder that directly contains a `SKILL.md` file — that folder, with
+all of its contents, is imported as one skill in Anthropic format. Two modes
+control **which** folders qualify:
+
+### Default mode (backward-compatible)
+
+Only the direct children of a `skills/` directory are recognised:
+
+```
+<skills-dir>/
+└── <repo>/               <- one "repository" per group
+    └── skills/
+        ├── <skill>/SKILL.md
+        └── <skill>/SKILL.md
+```
+
+This is the layout produced by cloning (Phases 1-2), so clone and full modes
+behave exactly as before. A directory tree that keeps its skills anywhere else
+(directly under `<skills-dir>/<set>/`, in `.claude/skills/`, nested deeper) yields
+`Found 0 repositories with skills` in this mode.
+
+### `--flex-import` (flexible detection)
+
+Every directory containing a `SKILL.md` file anywhere below `--skills-dir` is a
+skill, regardless of nesting depth or folder names:
+
+```bash
+python3 download_and_import_skills.py --import-only --flex-import --skills-dir ./skill-sets
+```
+
+- **Outermost match wins** — once a folder is recognised as a skill, its subtree
+  is not searched further. Sub-skills bundled inside a skill folder therefore stay
+  part of their parent skill instead of being imported twice.
+- `.git` directories are never searched; symlinks are followed with loop protection.
+- Skills are grouped by their top-level directory under `--skills-dir` so the rest
+  of the pipeline still reports per-"repository" counts. For the default layout the
+  group names come out identical to default mode.
+- The flag applies to clone mode too: a cloned repo counts (and keeps) skills found
+  anywhere in its tree, instead of only those under `<repo>/skills/`.
+
+Effect on the bundled sample trees:
+
+| `--skills-dir` | default mode | `--flex-import` |
+|----------------|--------------|-----------------|
+| `./skills` (cloned repos) | 60 repos, 2,936 skills | 60 repos, 7,044 skills |
+| `./skill-sets` (`<set>/skills/<skill>/`) | 4 sets, 800 skills | 4 sets, 800 skills |
+| `./skill-sets/advertising` (a single set) | 0 repos — aborts | 1 group, 200 skills |
 
 ## How skills.sh exposes its catalog
 
@@ -107,6 +157,7 @@ python3 download_and_import_skills.py \
 | `--output-dir` | `.` (current directory) | Directory for output files. A timestamped subdirectory is created per run |
 | `--clone-only` | false | Run only Phases 1-2 (extract + clone); skip discovery and import |
 | `--import-only` | false | Skip Phases 1-2; use existing skills from `--skills-dir` |
+| `--flex-import` | false | Treat any folder containing `SKILL.md` as a skill, at any depth (see [Skill Detection](#skill-detection)) |
 | `--overwrite` | false | Remove and re-clone repo directories that already exist on disk |
 
 `--clone-only` and `--import-only` are mutually exclusive.
@@ -156,6 +207,7 @@ Use `--import-only` to skip cloning and use existing skills already on disk. Ide
 - **Repeated benchmarking**: Test import performance multiple times on the same skill set
 - **Performance optimization**: Benchmark after making changes to the import process
 - **Selective importing**: Import a subset of previously downloaded skills
+- **Importing hand-curated skill sets**: Combine with `--flex-import` for trees that do not follow the cloned-repo layout
 
 ### Example Usage
 
@@ -168,6 +220,9 @@ python3 download_and_import_skills.py --import-only --max-skills 10 --skills-dir
 
 # Benchmark with a different SBS instance
 python3 download_and_import_skills.py --import-only --sbs-url http://localhost:9000 --output-dir ./benchmarks
+
+# Import any tree containing SKILL.md folders, whatever its layout
+python3 download_and_import_skills.py --import-only --flex-import --skills-dir ./skill-sets
 ```
 
 ### Output in Import-Only Mode
@@ -218,18 +273,21 @@ Reads `sitemap-owners.xml` to obtain the full catalog of ~9,700 `owner/repo` pai
 ### Phase 2: Clone Repositories Until N Skills Found
 
 - Clones repositories from the list produced by Phase 1
-- After each clone, counts subfolders in `/skills/` that contain `SKILL.md`
+- After each clone, counts the skill folders it contains (`<repo>/skills/<skill>/` by
+  default, anywhere in the tree with `--flex-import`)
 - Accumulates the count until reaching `--max-skills`
-- Repos without a `/skills/` folder (or with no valid skills) are cleaned up immediately
+- Repos with no valid skills are cleaned up immediately
 - Already-cloned repositories are reused by default; use `--overwrite` to force re-clone
 
 **Output:**
 - `clone-results.json` — `cloned_repos`, `skipped_repos`, `failed_repos`, `summary`
 - `<skills-dir>/` — Cloned repositories (valid ones only)
 
-### Phase 3: Discover Skills in /skills/ Folders
+### Phase 3: Discover Skill Folders
 
-Scans the skill directories on disk (produced by Phase 2), finds every subfolder containing `SKILL.md`, and loads content and metadata.
+Scans the skill directories on disk (produced by Phase 2, or pre-existing under
+`--import-only`), finds every folder containing `SKILL.md` per the active
+[detection mode](#skill-detection), and loads content and metadata.
 
 **Output:** `discovered-skills.json`
 

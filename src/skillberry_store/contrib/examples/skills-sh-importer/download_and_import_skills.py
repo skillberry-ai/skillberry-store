@@ -5,14 +5,21 @@ Download and Import Skills from skills.sh
 This script implements a 6-phase process to:
 1. Extract repository metadata from skills.sh
 2. Clone repositories until finding N skills
-3. Discover skills in /skills/ folders
+3. Discover skills (see --flex-import for the two detection modes)
 4. Import via Anthropic API
 5. Validate imports
 6. Generate final report
 
+Skill detection has two modes:
+    default        a skill is a direct child of a /skills/ directory that
+                   contains SKILL.md, i.e. <skills-dir>/<repo>/skills/<skill>/
+    --flex-import  a skill is ANY directory containing SKILL.md, at any depth
+                   under --skills-dir (outermost match wins)
+
 Usage:
     python download_and_import_skills.py --max-skills 10
     python download_and_import_skills.py --max-skills 10 --overwrite
+    python download_and_import_skills.py --import-only --flex-import --skills-dir ./skill-sets
 """
 
 import argparse
@@ -36,10 +43,19 @@ logger = logging.getLogger(__name__)
 
 class SkillsImporter:
     """Main class for importing skills from skills.sh"""
-    
+
+    # Marker file that identifies a skill folder (Anthropic skill format)
+    SKILL_FILE = 'SKILL.md'
+
+    # Directory names never descended into while searching for skill folders
+    SKIP_DIR_NAMES = {'.git'}
+
     def __init__(self, args):
         self.args = args
         self.script_dir = Path(__file__).parent
+
+        # Flexible skill detection (see find_skill_folders)
+        self.flex_import = getattr(args, 'flex_import', False)
         
         # Determine skills directory (where repos are cloned)
         if args.skills_dir:
@@ -106,6 +122,11 @@ class SkillsImporter:
         
         logger.info(f"Initialized SkillsImporter")
         logger.info(f"Skills directory: {self.repos_dir}")
+        logger.info(
+            "Skill detection: "
+            + ("flexible (any folder containing SKILL.md)" if self.flex_import
+               else "default (<repo>/skills/<skill>/SKILL.md)")
+        )
         logger.info(f"Output directory: {self.output_dir}")
         logger.info(f"Max skills: {self.max_skills if self.max_skills is not None else 'unlimited'}")
         logger.info(f"SBS URL: {args.sbs_url}")
@@ -226,26 +247,88 @@ class SkillsImporter:
     
     # ========== PHASE 2: Clone Repositories ==========
     
+    def find_skill_folders(self, root: Path) -> List[Path]:
+        """
+        Recursively locate every skill folder under root.
+
+        A skill folder is a directory that directly contains a SKILL.md file;
+        that directory, with all of its contents, is the skill in Anthropic
+        format.
+
+        Two detection modes, selected by --flex-import:
+
+        default (backward-compatible)
+            Only the direct children of ``root/skills/`` are considered, i.e.
+            the classic ``<root>/skills/<skill>/SKILL.md`` layout.
+
+        --flex-import
+            Layout-agnostic: every directory containing SKILL.md anywhere below
+            ``root`` is a skill, so ``<root>/<set>/skills/<skill>/``,
+            ``<root>/<skill>/``, ``.claude/skills/<skill>/`` and any other
+            nesting depth all work.  The outermost match wins - once a
+            directory is recognised as a skill its subtree is not searched
+            further, so sub-skills bundled inside a skill folder remain part of
+            their parent skill instead of being imported separately.
+
+        Args:
+            root: Directory to search
+
+        Returns:
+            List of skill folder paths, in deterministic (sorted) order
+        """
+        if not self.flex_import:
+            # Default mode: direct children of root/skills/ only
+            skills_dir = root / 'skills'
+            if not skills_dir.is_dir():
+                return []
+            return [
+                subfolder for subfolder in sorted(skills_dir.iterdir())
+                if subfolder.is_dir() and (subfolder / self.SKILL_FILE).is_file()
+            ]
+
+        found: List[Path] = []
+        visited = set()
+
+        def walk(directory: Path) -> None:
+            # Guard against symlink loops / repeated visits
+            try:
+                real = directory.resolve()
+            except OSError:
+                return
+            if real in visited:
+                return
+            visited.add(real)
+
+            if (directory / self.SKILL_FILE).is_file():
+                found.append(directory)
+                return  # outermost match wins - do not descend into a skill
+
+            try:
+                children = sorted(directory.iterdir())
+            except OSError as e:
+                logger.debug(f"  Cannot read {directory}: {e}")
+                return
+
+            for child in children:
+                if child.is_dir() and child.name not in self.SKIP_DIR_NAMES:
+                    walk(child)
+
+        if root.is_dir():
+            walk(root)
+
+        return found
+
     def count_skills_in_repo(self, repo_path: Path) -> int:
         """
-        Count skill subfolders with SKILL.md in /skills/ directory
+        Count skill folders in a repo (see find_skill_folders for the modes)
         
         Args:
             repo_path: Path to cloned repository
             
         Returns:
-            Number of valid skill subfolders found
+            Number of valid skill folders found
         """
-        skills_dir = repo_path / 'skills'
-        if not skills_dir.exists() or not skills_dir.is_dir():
-            return 0
-        
-        count = 0
-        for subfolder in skills_dir.iterdir():
-            if subfolder.is_dir() and (subfolder / 'SKILL.md').exists():
-                count += 1
-        
-        return count
+        return len(self.find_skill_folders(repo_path))
     
     def clone_repositories(self, metadata: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
@@ -345,11 +428,12 @@ class SkillsImporter:
 
                     logger.info(f"  ✓ Successfully cloned to {repo_path}")
 
-                # Count skills in /skills/ directory
-                skill_count = self.count_skills_in_repo(repo_path)
+                # Locate skill folders (any directory containing SKILL.md)
+                skill_folders = self.find_skill_folders(repo_path)
+                skill_count = len(skill_folders)
 
                 if skill_count == 0:
-                    logger.info(f"  ⊘ No /skills/ folder or no SKILL.md files found")
+                    logger.info(f"  ⊘ No SKILL.md files found")
                     # Remove only directories we cloned in this run (not pre-existing ones)
                     if not pre_existed:
                         shutil.rmtree(repo_path, ignore_errors=True)
@@ -364,7 +448,7 @@ class SkillsImporter:
 
                 # Found skills!
                 total_skills_found += skill_count
-                logger.info(f"  ✓ Found {skill_count} skill(s) in /skills/ folder")
+                logger.info(f"  ✓ Found {skill_count} skill(s)")
                 logger.info(f"  Progress: {total_skills_found}/{self.max_skills} skills found")
 
                 cloned_repos.append({
@@ -372,6 +456,7 @@ class SkillsImporter:
                     'repo_name': repo_name,
                     'repo_path': str(repo_path),
                     'skills_count': skill_count,
+                    'skill_folders': [str(f) for f in skill_folders],
                     'already_existed': pre_existed,
                 })
 
@@ -445,7 +530,15 @@ class SkillsImporter:
             return []
         
         cloned_repos = []
-        
+
+        if self.flex_import:
+            cloned_repos = self._scan_existing_repos_flex()
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Found {len(cloned_repos)} repositories with skills")
+            logger.info(f"Total skills available: {sum(r['skills_count'] for r in cloned_repos)}")
+            logger.info(f"{'='*60}")
+            return cloned_repos
+
         # Scan for directories that look like cloned repos
         for repo_dir in self.repos_dir.iterdir():
             if not repo_dir.is_dir():
@@ -480,12 +573,60 @@ class SkillsImporter:
         logger.info(f"{'='*60}")
         
         return cloned_repos
-    
+
+    def _scan_existing_repos_flex(self) -> List[Dict[str, Any]]:
+        """
+        Flexible variant of scan_existing_repos (--flex-import).
+
+        Locates every skill folder anywhere under the skills directory, then
+        groups the results by their top-level directory so the remaining phases
+        still see a list of "repositories".  For the classic
+        <skills-dir>/<repo>/skills/<skill>/ layout this reproduces the same repo
+        names as the default mode; for other layouts it groups by whatever the
+        first level happens to be (e.g. one group per skill-set).
+
+        Returns:
+            List of repository info dictionaries
+        """
+        groups: Dict[str, List[Path]] = {}
+
+        for folder in self.find_skill_folders(self.repos_dir):
+            parts = folder.relative_to(self.repos_dir).parts
+            if len(parts) >= 2 and parts[0] != 'skills':
+                # <skills-dir>/<group>/.../<skill>
+                group_path = self.repos_dir / parts[0]
+            elif len(parts) >= 2:
+                # <skills-dir>/skills/<skill> - the skills dir is the group
+                group_path = self.repos_dir
+            elif len(parts) == 1:
+                # Skill sits directly under the skills dir
+                group_path = self.repos_dir
+            else:
+                # The skills dir is itself a single skill folder
+                group_path = self.repos_dir.parent
+            groups.setdefault(str(group_path), []).append(folder)
+
+        cloned_repos = []
+        for group_path, folders in groups.items():
+            group_name = Path(group_path).name
+            logger.info(f"  Found: {group_name} with {len(folders)} skill(s)")
+            cloned_repos.append({
+                'source': 'unknown',  # We don't know the original source
+                'repo_name': group_name,
+                'repo_path': group_path,
+                'skills_count': len(folders),
+                'skill_folders': [str(f) for f in folders],
+                'already_existed': True,
+            })
+
+        return cloned_repos
+
     def discover_skills(self, cloned_repos: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Phase 3: Discover skills in /skills/ subfolders with SKILL.md
+        Phase 3: Discover the skill folders found for each repository
         
-        A skill is a subfolder in /skills/ directory containing SKILL.md file
+        A skill is a folder containing a SKILL.md file; which folders qualify
+        depends on the detection mode (see find_skill_folders / --flex-import)
         
         Args:
             cloned_repos: List of cloned repository info
@@ -494,7 +635,7 @@ class SkillsImporter:
             List of discovered skills with their SKILL.md content
         """
         logger.info("\n" + "=" * 60)
-        logger.info("PHASE 3: Discovering skills in /skills/ folders")
+        logger.info("PHASE 3: Discovering skill folders (SKILL.md)")
         logger.info("=" * 60)
         
         discovered = []
@@ -508,19 +649,20 @@ class SkillsImporter:
             logger.info(f"\nScanning {repo_name}...")
             logger.info(f"  Expected skills: {repo['skills_count']}")
             
-            # Look for /skills/ directory
-            skills_dir = repo_path / 'skills'
-            if not skills_dir.exists() or not skills_dir.is_dir():
-                logger.warning(f"  ✗ No /skills/ directory found (unexpected!)")
+            # Reuse the skill folders located earlier, or search the repo now
+            if repo.get('skill_folders') is not None:
+                skill_folders = [Path(f) for f in repo['skill_folders']]
+            else:
+                skill_folders = self.find_skill_folders(repo_path)
+            
+            if not skill_folders:
+                logger.warning(f"  ✗ No skill folder with SKILL.md found (unexpected!)")
                 continue
             
-            # Find all subfolders with SKILL.md
+            # Read each skill folder
             skills_found = 0
-            for subfolder in skills_dir.iterdir():
-                if not subfolder.is_dir():
-                    continue
-                
-                skill_md = subfolder / 'SKILL.md'
+            for subfolder in skill_folders:
+                skill_md = subfolder / self.SKILL_FILE
                 if not skill_md.exists():
                     logger.debug(f"  - Skipping {subfolder.name} (no SKILL.md)")
                     continue
@@ -1133,6 +1275,18 @@ def parse_arguments():
         '--import-only',
         action='store_true',
         help='Skip phases 1-2, use existing downloaded skills from skills-dir and start from phase 3. If --max-skills specified, import up to that limit; otherwise import all discovered skills.'
+    )
+
+    parser.add_argument(
+        '--flex-import',
+        action='store_true',
+        help=(
+            'Flexible skill detection: treat every directory containing a SKILL.md '
+            'file as a skill, at any depth under --skills-dir (outermost match wins, '
+            'so sub-skills stay part of their parent skill). '
+            'Without this flag only the default layout '
+            '<skills-dir>/<repo>/skills/<skill>/SKILL.md is recognised.'
+        )
     )
 
     parser.add_argument(
