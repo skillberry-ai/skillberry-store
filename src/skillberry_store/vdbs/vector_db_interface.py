@@ -19,6 +19,23 @@ _ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 # Explicit override for the ONNX weight cache.
 ENCODER_CACHE_DIR_ENV = "SBS_ENCODER_CACHE_DIR"
 
+# Maximum sequence length, in tokens, before the input is truncated.
+#
+# ``SentenceTransformer('all-MiniLM-L6-v2')`` caps this model at
+# ``max_seq_length=256``; fastembed instead applies whatever limit ships in the
+# tokenizer config, which for the qdrant ONNX conversion of these weights is
+# **128** — half as much. Anything longer therefore truncated at a different
+# point than the vectors already in a faiss index, changing the vector and its
+# ranking (PR #308 review issue #10; measured cosine similarity 0.928 between the
+# two limits for a ~600-token description, against ~1e-7 agreement for short
+# text). Pinning the value restores the "existing indices remain valid" property
+# the migration claimed, and makes the limit explicit rather than an artefact of
+# whatever a future fastembed release ships.
+#
+# Override only to match an index that was already built at a different limit.
+ENCODER_MAX_LENGTH_ENV = "SBS_ENCODER_MAX_LENGTH"
+ENCODER_MAX_LENGTH = 256
+
 _encoder = None
 _encoder_lock = threading.Lock()
 
@@ -53,6 +70,48 @@ def encoder_cache_dir() -> Path:
     return base / "fastembed"
 
 
+def encoder_max_length() -> int:
+    """Token limit to truncate at — see ENCODER_MAX_LENGTH."""
+    raw = os.environ.get(ENCODER_MAX_LENGTH_ENV)
+    if not raw:
+        return ENCODER_MAX_LENGTH
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value <= 0:
+        logger.warning(
+            "%s=%r is not a positive integer; using the default %d",
+            ENCODER_MAX_LENGTH_ENV,
+            raw,
+            ENCODER_MAX_LENGTH,
+        )
+        return ENCODER_MAX_LENGTH
+    return value
+
+
+def _pin_max_length(encoder: TextEmbedding, max_length: int) -> None:
+    """Force the tokenizer's truncation limit.
+
+    fastembed accepts (and silently ignores) a ``max_length`` constructor kwarg,
+    so the limit has to be set on the loaded tokenizer. Reaching through
+    ``.model.tokenizer`` is internal API, hence best-effort: a fastembed release
+    that moves it degrades to that release's default rather than failing to
+    embed at all.
+    """
+    tokenizer = getattr(getattr(encoder, "model", None), "tokenizer", None)
+    enable_truncation = getattr(tokenizer, "enable_truncation", None)
+    if enable_truncation is None:
+        logger.warning(
+            "Could not pin the encoder truncation limit to %d tokens: this "
+            "fastembed release does not expose model.tokenizer.enable_truncation. "
+            "Long descriptions may embed differently from existing indices.",
+            max_length,
+        )
+        return
+    enable_truncation(max_length=max_length)
+
+
 def _get_encoder() -> TextEmbedding:
     global _encoder
     if _encoder is None:
@@ -72,10 +131,12 @@ def _get_encoder() -> TextEmbedding:
                         exc,
                     )
                     _encoder = TextEmbedding(model_name=_ENCODER_MODEL)
+                    _pin_max_length(_encoder, encoder_max_length())
                     return _encoder
                 _encoder = TextEmbedding(
                     model_name=_ENCODER_MODEL, cache_dir=str(cache_dir)
                 )
+                _pin_max_length(_encoder, encoder_max_length())
     return _encoder
 
 def text_to_vector(text: str) -> List[float]:
