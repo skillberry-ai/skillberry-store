@@ -115,6 +115,56 @@ def test_spa_deep_links_fall_back_to_index(ui_client, path):
     assert resp.headers["cache-control"] == INDEX_CACHE
 
 
+def test_bare_ui_prefix_redirects_to_the_bundle_root(ui_client):
+    """issue #15: this was the only path the (now removed) StaticFiles mount served.
+
+    The `{path:path}` route needs the trailing slash, so without an explicit
+    route `/ui` would 404.
+    """
+    resp = ui_client.get("/ui", follow_redirects=False)
+
+    assert resp.status_code in (307, 308)
+    assert resp.headers["location"] == "/ui/"
+
+
+def test_bare_ui_prefix_redirect_also_answers_head(ui_client):
+    resp = ui_client.head("/ui", follow_redirects=False)
+
+    assert resp.status_code in (307, 308)
+
+
+def test_no_staticfiles_mount_is_registered(ui_client):
+    """The mount was unreachable behind the catch-all route; keep it gone.
+
+    Starlette walks routes in registration order with no Mount precedence, so a
+    re-added mount under /ui would be dead code again — and the comment claiming
+    otherwise is what hid the loss of StaticFiles' own hardening.
+    """
+    from starlette.routing import Mount
+
+    ui_mounts = [
+        route
+        for route in ui_client.app.routes
+        if isinstance(route, Mount) and route.path.startswith("/ui")
+    ]
+
+    assert not ui_mounts, f"unreachable StaticFiles mount(s) under /ui: {ui_mounts}"
+
+
+def test_assets_are_served_with_byte_range_support(ui_client):
+    """Dropping the mount must not cost Range support — FileResponse handles it."""
+    resp = ui_client.get(
+        "/ui/assets/index-abc12345.js", headers={"Range": "bytes=0-6"}
+    )
+
+    assert resp.status_code == 206, "byte-range requests must be honoured"
+    assert resp.headers["content-range"].startswith("bytes 0-6/")
+    assert resp.text == "console"
+
+    full = ui_client.get("/ui/assets/index-abc12345.js")
+    assert full.headers.get("accept-ranges") == "bytes"
+
+
 def test_root_redirects_to_the_bundle(ui_client):
     resp = ui_client.get("/", follow_redirects=False)
 
@@ -250,7 +300,7 @@ def test_every_ui_route_is_allow_listed_for_all_its_methods(ui_client):
     machine that had built it audited differently from CI (issue #7).
     """
     cfg = get_acl_config()
-    ui_paths = {"/", "/ui/{path:path}"}
+    ui_paths = {"/", "/ui", "/ui/{path:path}"}
     ui_routes = [
         route
         for route in ui_client.app.routes
