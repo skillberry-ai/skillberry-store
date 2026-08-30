@@ -32,6 +32,19 @@ function readAclMode(): 'disabled' | 'standalone' {
   return 'disabled';
 }
 
+// Whether to emit sourcemaps for a production build. Opt-in, not default:
+// sourcemaps embed the complete original TypeScript, and the built bundle is now
+// served in-process by FastAPI on the *same, unauthenticated* port as the API
+// (GET /ui* is on the allow-list), so it can no longer be firewalled separately
+// the way the old port-8002 `vite preview` could. Emitting maps by default
+// therefore publishes the frontend source to anyone who can reach the service.
+// Turn them on deliberately when debugging a deployed build:
+//   VITE_SOURCEMAP=true make ui-build
+function sourcemapsEnabled(): boolean {
+  const value = (process.env.VITE_SOURCEMAP ?? '').trim().toLowerCase();
+  return value === 'true' || value === '1' || value === 'yes';
+}
+
 // Parse the VITE_ALLOWED_HOSTS env var into Vite's server.allowedHosts value.
 // Unset  -> undefined (Vite default: only localhost is allowed).
 // "true"/"all"/"*" -> true (allow any host; useful behind a trusted gateway).
@@ -88,6 +101,6 @@ export default defineConfig({
   base: '/ui/',
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: sourcemapsEnabled(),
   },
 });
