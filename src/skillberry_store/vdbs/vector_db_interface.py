@@ -1,18 +1,57 @@
 # vector_db_interface.py
 
+import logging
+import os
 import threading
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from fastembed import TextEmbedding
+
+logger = logging.getLogger(__name__)
 
 # Same 384-dim weights that ``SentenceTransformer('all-MiniLM-L6-v2')`` used,
 # served through onnxruntime instead of torch. Both produce L2-normalized
 # vectors that agree to ~1e-7, so indices built by either remain valid.
 _ENCODER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
+# Explicit override for the ONNX weight cache.
+ENCODER_CACHE_DIR_ENV = "SBS_ENCODER_CACHE_DIR"
+
 _encoder = None
 _encoder_lock = threading.Lock()
+
+
+def encoder_cache_dir() -> Path:
+    """Directory fastembed caches the ~80 MB ONNX model in.
+
+    fastembed does NOT honour HF_HOME / TRANSFORMERS_CACHE / XDG_CACHE_HOME: left
+    to itself it caches into a fresh temp directory, so the download repeats on
+    every pod restart where /tmp is an ephemeral emptyDir — and ``/health/ready``
+    gates on ``encoder_warmup``, putting an ~11.5 s HuggingFace round-trip on the
+    readiness critical path (PR #308 review issue #9). Pinning it to a stable,
+    group-writable path lets the image ship the weights pre-seeded and start
+    without reaching HuggingFace at all.
+
+    Resolution order:
+      1. ``SBS_ENCODER_CACHE_DIR`` — explicit override.
+      2. ``$APP_HOME/.cache/fastembed`` — the container layout. The Dockerfile
+         seeds this at build time and applies ``chgrp 0`` / ``chmod g=u`` to
+         $APP_HOME, so the arbitrary UID OpenShift assigns can read it.
+      3. ``$XDG_CACHE_HOME/fastembed``, else ``~/.cache/fastembed`` — a dev
+         checkout, where the point is simply to survive a /tmp cleanup.
+    """
+    explicit = os.environ.get(ENCODER_CACHE_DIR_ENV)
+    if explicit:
+        return Path(explicit)
+    app_home = os.environ.get("APP_HOME")
+    if app_home:
+        return Path(app_home) / ".cache" / "fastembed"
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg_cache) if xdg_cache else Path.home() / ".cache"
+    return base / "fastembed"
+
 
 def _get_encoder() -> TextEmbedding:
     global _encoder
@@ -20,7 +59,23 @@ def _get_encoder() -> TextEmbedding:
         # Locked so concurrent first-callers can't each build an onnx session.
         with _encoder_lock:
             if _encoder is None:
-                _encoder = TextEmbedding(model_name=_ENCODER_MODEL)
+                cache_dir = encoder_cache_dir()
+                try:
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                except OSError as exc:
+                    # An unwritable cache must not take the service down: fall
+                    # back to fastembed's own temp-dir cache (the old behaviour).
+                    logger.warning(
+                        "Encoder cache dir %s is unusable (%s); "
+                        "falling back to fastembed's default temp cache",
+                        cache_dir,
+                        exc,
+                    )
+                    _encoder = TextEmbedding(model_name=_ENCODER_MODEL)
+                    return _encoder
+                _encoder = TextEmbedding(
+                    model_name=_ENCODER_MODEL, cache_dir=str(cache_dir)
+                )
     return _encoder
 
 def text_to_vector(text: str) -> List[float]:
