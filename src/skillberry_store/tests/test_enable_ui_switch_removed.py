@@ -29,8 +29,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # preview` subprocess), so match ENABLE_UI only when not followed by an underscore.
 ENABLE_UI = re.compile(r"\bENABLE_UI(?!_)")
 
-# The triage document quotes the switch while describing its removal.
-EXEMPT = {"docs/feedback_308.md"}
+# Files that necessarily name the switch in order to describe its removal:
+# the triage document, and this guard itself.
+EXEMPT = {
+    "docs/feedback_308.md",
+    "src/skillberry_store/tests/test_enable_ui_switch_removed.py",
+}
 
 TEXT_SUFFIXES = {
     ".py", ".md", ".ts", ".tsx", ".js", ".jsx", ".html", ".yaml", ".yml",
