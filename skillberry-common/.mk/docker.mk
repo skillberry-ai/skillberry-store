@@ -7,6 +7,10 @@
 # 4. If you want to push a new image or new base image to GHCR (multi-platform build & push), do: DBT=registry make docker-build, or DBT=registry make base-image-build. 
 #    Notes: A. This operation requires multi-platform docker support (you will get an error message with detailed instructions if it's not available). 
 #           B. This operation may not create a local image (docker buildx limitation).
+# 5. To bake host content that lives outside the build context into the image, set EXTRA_COPY_FILES (see below),
+#    e.g., make docker-build EXTRA_COPY_FILES=./certs:/etc/ssl/extra,../site.yaml:/app/site.yaml
+# 6. To give the image a single tag of your choosing instead of the usual versioned + "latest" pair,
+#    set CUSTOM_TAG (see below), e.g., make docker-build CUSTOM_TAG=my-experiment
 
 # Supported container architectures
 SUPPORTED_ARCHS := linux/amd64 linux/arm64
@@ -44,15 +48,57 @@ CNTR_NAME = $(SERVICE_NAME)
 # service can publish build variants side by side (e.g. IMAGE_TAG_SUFFIX=-full
 # yields :<version>-full and :latest-full). Empty by default. Every target that
 # refers to IMAGE_TAG/LATEST_TAG -- build, run, pull, rmi -- follows the suffix,
-# so `make docker-run IMAGE_TAG_SUFFIX=-full` runs the variant.
+# so `make docker-run IMAGE_TAG_SUFFIX=-full` runs the variant. Ignored when
+# CUSTOM_TAG is set.
 IMAGE_TAG_SUFFIX ?=
+
+# Custom tag: when set, the image carries exactly this one tag -- neither the
+# version tag nor "latest" is applied, and IMAGE_TAG_SUFFIX is ignored. It is
+# also the tag that run/pull/rmi operate on, so `make docker-run
+# CUSTOM_TAG=<tag>` runs the custom-tagged image. Empty by default.
+CUSTOM_TAG ?=
+
+FULL_IMAGE_NAME = $(REPOSITORY_NAME)/$(IMAGE_NAME)
+
+ifeq ($(strip $(CUSTOM_TAG)),)
 IMAGE_TAG = $(BUILD_VERSION)$(IMAGE_TAG_SUFFIX)
 LATEST_TAG = latest$(IMAGE_TAG_SUFFIX)
-FULL_IMAGE_NAME = $(REPOSITORY_NAME)/$(IMAGE_NAME)
+# All tags the build applies to the image; IMAGE_TAG is the primary one.
+IMAGE_TAGS = $(IMAGE_TAG) $(LATEST_TAG)
+# Tag that docker-pull fetches from the registry.
+PULL_TAG = $(LATEST_TAG)
+# Suffix keeping the build stamps of one tagging scheme apart from another's.
+TAG_STAMP_SFX = $(IMAGE_TAG_SUFFIX)
+else
+IMAGE_TAG = $(CUSTOM_TAG)
+LATEST_TAG = $(CUSTOM_TAG)
+IMAGE_TAGS = $(IMAGE_TAG)
+PULL_TAG = $(CUSTOM_TAG)
+TAG_STAMP_SFX = -$(CUSTOM_TAG)
+endif
+
+# Tags other than the primary one, applied on top of it after the build.
+SECONDARY_IMAGE_TAGS = $(filter-out $(IMAGE_TAG),$(IMAGE_TAGS))
+# The tags as build flags, e.g. "-t <image>:1.2.3 -t <image>:latest"
+IMAGE_TAG_FLAGS = $(foreach tag,$(IMAGE_TAGS),-t $(FULL_IMAGE_NAME):$(tag))
 
 # Extra flags forwarded verbatim to the image build, typically service-specific
 # --build-arg values. Empty by default.
 EXTRA_BUILD_ARGS ?=
+
+# Extra host content to bake into the image: a comma-separated list of
+# <source>:<target> pairs. A directory source contributes its tree contents to
+# the target folder; a file source is copied to the target path (or into it,
+# when the target ends with "/"). Targets are absolute container paths. Empty
+# by default.
+#
+# A container build only reads from its build context, so the sources are first
+# staged into the context by scripts/stage-extra-copy.sh and then unpacked to
+# their targets by the Dockerfile. Staging also grants the group the owner's
+# access to the copied content (the image runs with gid 0), so it stays
+# readable at runtime under an arbitrary OpenShift UID -- and writable exactly
+# when it was writable to its owner on the host.
+EXTRA_COPY_FILES ?=
 
 DOCKER_FILE ?= Dockerfile
 
@@ -193,15 +239,16 @@ base-image-rm: docker-check ## Remove the local base image
 	rm -f .stamps/base-image-build*
 
 .PHONY: docker-build 
-docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX)	## Build docker image (DBT=registry to build & push multi-arch)
+docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)$(TAG_STAMP_SFX)	## Build docker image (DBT=registry for multi-arch & push, EXTRA_COPY_FILES for extra files & folders, CUSTOM_TAG for a single custom tag)
 
 # We actually build a new image only if the code changed by checking code-scan stamp
-.stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX): .stamps/ssh-agent.env .stamps/code-scan
+.stamps/docker-build-$(DBT)$(TAG_STAMP_SFX): .stamps/ssh-agent.env .stamps/code-scan
 	@echo "Building for $(DB_ARCH) using $(DOCKER) version: $(shell $(DOCKER) --version)"
-	@echo "Building Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
+	@echo "Building Docker image with tag(s): $(foreach tag,$(IMAGE_TAGS),$(FULL_IMAGE_NAME):$(tag))"
 	@echo "Build version: $(BUILD_VERSION)"
 	@echo "Build date: $(BUILD_DATE)"
 	@echo "Building using the Docker file: $(DOCKER_FILE)"
+	@$(SB_COMMON_PATH)/scripts/stage-extra-copy.sh "$(EXTRA_COPY_FILES)"
 	@. .stamps/ssh-agent.env; \
 	if [ "$(DOCKER)" = "docker" ]; then \
 		DOCKER_BUILDKIT=1 $(DOCKER) buildx build \
@@ -216,12 +263,11 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)$(IMAGE
 		--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 		$(EXTRA_BUILD_ARGS) \
 		--ssh default=$$SSH_AUTH_SOCK \
-		-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
-		-t $(FULL_IMAGE_NAME):$(LATEST_TAG) \
+		$(IMAGE_TAG_FLAGS) \
 		--$(DB_ACTION) \
 		. || exit 1; \
-		touch .stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX); \
-		touch .stamps/docker-get$(IMAGE_TAG_SUFFIX); \
+		touch .stamps/docker-build-$(DBT)$(TAG_STAMP_SFX); \
+		touch .stamps/docker-get$(TAG_STAMP_SFX); \
 	elif [ "$(DOCKER)" = "podman" ]; then \
 		if [ "$(DBT)" = "registry" ]; then \
 			$(DOCKER) build --no-cache=true \
@@ -239,8 +285,10 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)$(IMAGE
 			--manifest $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
 			. && \
 			$(DOCKER) manifest push $(FULL_IMAGE_NAME):$(IMAGE_TAG) && \
-			$(DOCKER) tag $(FULL_IMAGE_NAME):$(IMAGE_TAG) $(FULL_IMAGE_NAME):$(LATEST_TAG) && \
-			$(DOCKER) manifest push $(FULL_IMAGE_NAME):$(LATEST_TAG) \
+			for tag in $(SECONDARY_IMAGE_TAGS); do \
+				$(DOCKER) tag $(FULL_IMAGE_NAME):$(IMAGE_TAG) $(FULL_IMAGE_NAME):$$tag && \
+				$(DOCKER) manifest push $(FULL_IMAGE_NAME):$$tag || exit 1; \
+			done \
 			|| exit 1; \
 		else \
 			$(DOCKER) build --no-cache=true \
@@ -255,12 +303,11 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)$(IMAGE
 			--build-arg SERVICE_ENTRY_MODULE="$(SERVICE_ENTRY_MODULE)" \
 			$(EXTRA_BUILD_ARGS) \
 			--ssh default=$$SSH_AUTH_SOCK \
-			-t $(FULL_IMAGE_NAME):$(IMAGE_TAG) \
-			-t $(FULL_IMAGE_NAME):$(LATEST_TAG) \
+			$(IMAGE_TAG_FLAGS) \
 			. || exit 1; \
 		fi; \
-		touch .stamps/docker-build-$(DBT)$(IMAGE_TAG_SUFFIX); \
-		touch .stamps/docker-get$(IMAGE_TAG_SUFFIX); \
+		touch .stamps/docker-build-$(DBT)$(TAG_STAMP_SFX); \
+		touch .stamps/docker-get$(TAG_STAMP_SFX); \
     else \
 		echo "Unsupported Docker version: $(DOCKER)"; \
 		echo "Please use Docker or Podman"; \
@@ -279,27 +326,29 @@ docker-build: docker-check update-git-version .stamps/docker-build-$(DBT)$(IMAGE
 
 .PHONY: docker-pull
 docker-pull: docker-check ## Pull the latest docker image from registry
-	@echo "Attempting to pull Docker image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"
-	@if $(DOCKER) pull $(FULL_IMAGE_NAME):$(LATEST_TAG); then \
-		echo "✓ Successfully pulled image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"; \
-		$(DOCKER) tag $(FULL_IMAGE_NAME):$(LATEST_TAG) $(FULL_IMAGE_NAME):$(IMAGE_TAG); \
-		echo "✓ Tagged as: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"; \
-		touch .stamps/docker-get$(IMAGE_TAG_SUFFIX); \
+	@echo "Attempting to pull Docker image: $(FULL_IMAGE_NAME):$(PULL_TAG)"
+	@if $(DOCKER) pull $(FULL_IMAGE_NAME):$(PULL_TAG); then \
+		echo "✓ Successfully pulled image: $(FULL_IMAGE_NAME):$(PULL_TAG)"; \
+		if [ "$(PULL_TAG)" != "$(IMAGE_TAG)" ]; then \
+			$(DOCKER) tag $(FULL_IMAGE_NAME):$(PULL_TAG) $(FULL_IMAGE_NAME):$(IMAGE_TAG); \
+			echo "✓ Tagged as: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"; \
+		fi; \
+		touch .stamps/docker-get$(TAG_STAMP_SFX); \
 	else \
-		echo "✗ Failed to pull image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"; \
+		echo "✗ Failed to pull image: $(FULL_IMAGE_NAME):$(PULL_TAG)"; \
 		exit 1; \
 	fi
 
 .PHONY: docker-get
-docker-get: .stamps/docker-get$(IMAGE_TAG_SUFFIX)
+docker-get: .stamps/docker-get$(TAG_STAMP_SFX)
 	@true
 
 ifdef SBD_DEV
-.stamps/docker-get$(IMAGE_TAG_SUFFIX): docker-build ## Get docker image (SBD_DEV set: build only)
+.stamps/docker-get$(TAG_STAMP_SFX): docker-build ## Get docker image (SBD_DEV set: build only)
 	@echo "SBD_DEV is set - using locally built image"
 else
-.stamps/docker-get$(IMAGE_TAG_SUFFIX): ## Get docker image (pull latest or build if pull fails)
-	@echo "Attempting to get Docker image: $(FULL_IMAGE_NAME):$(LATEST_TAG)"
+.stamps/docker-get$(TAG_STAMP_SFX): ## Get docker image (pull latest or build if pull fails)
+	@echo "Attempting to get Docker image: $(FULL_IMAGE_NAME):$(PULL_TAG)"
 	@if $(MAKE) docker-pull; then \
 		echo "✓ Using pulled image"; \
 	else \
@@ -331,9 +380,10 @@ endif
 
 .PHONY: docker-rmi
 docker-rmi: docker-check docker-clean ## Remove the docker container, image, and temporary files
-	@echo "Removing Docker image: $(FULL_IMAGE_NAME):$(IMAGE_TAG)"
-	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(IMAGE_TAG) > /dev/null 2>&1 || true
-	@$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$(LATEST_TAG) > /dev/null 2>&1 || true
+	@echo "Removing Docker image tag(s): $(foreach tag,$(IMAGE_TAGS),$(FULL_IMAGE_NAME):$(tag))"
+	@for tag in $(IMAGE_TAGS); do \
+		$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$$tag > /dev/null 2>&1 || true; \
+	done
 	@rm -f .stamps/docker-build*
 	@rm -f .stamps/docker-get*
 

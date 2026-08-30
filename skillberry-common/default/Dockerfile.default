@@ -59,6 +59,23 @@ ENV BUILD_VERSION=$BUILD_VERSION \
 # This includes the application code and the .venv with all installed dependencies
 COPY --from=builder /app /app
 
+# Unpack the extra host content staged into the build context by
+# scripts/stage-extra-copy.sh (make docker-build EXTRA_COPY_FILES=<src>:<dst>,...).
+# The staged tree mirrors the absolute target paths, so one recursive unpack
+# into "/" lands every entry at its target; the staging folder is then dropped.
+# Absent when EXTRA_COPY_FILES is empty.
+#
+# tar --no-overwrite-dir, and not "cp -a", because the mirror necessarily
+# carries a folder for every component of every target path, and cp applies the
+# mirror folder's mode to the pre-existing folder it lands on -- resetting /tmp
+# from 1777 to 755, for one. tar leaves existing folders' metadata alone and
+# still applies the archived mode to the content itself and to folders it
+# creates.
+RUN if [ -d /app/.extra-copy ]; then \
+        tar -cf - -C /app/.extra-copy . | tar -xf - --no-overwrite-dir -C / \
+        && rm -rf /app/.extra-copy; \
+    fi
+
 # Expose all service ports
 EXPOSE $SERVICE_PORTS
 

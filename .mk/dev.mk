@@ -17,6 +17,12 @@ UI_SOURCES  := $(shell find $(UI_DIR)/src -type f 2>/dev/null) \
                $(UI_DIR)/vite.config.ts \
                $(UI_DIR)/tsconfig.json \
                $(UI_DIR)/tsconfig.node.json
+# ACL mode is baked into the bundle at build time by vite.config.ts, so the
+# access-control config is a build input too — mirror its path resolution
+# here. Wildcard-guarded: an absent config is a supported setup (both
+# vite.config.ts and load_config() fall back to mode=disabled), so it must
+# not become a hard "No rule to make target" failure.
+ACL_CONFIG  := $(wildcard $(or $(SBS_ACCESS_CONTROL_CONFIG),access_control_config.yaml))
 
 .PHONY: ui-build ui-clean ui-dev ui-typecheck
 ui-build: $(UI_STAMP) ## Build the UI static bundle (idempotent, stamp-based)
@@ -24,7 +30,7 @@ ui-build: $(UI_STAMP) ## Build the UI static bundle (idempotent, stamp-based)
 # Bundle only — no `tsc` prefix. Vite/esbuild strips types without checking,
 # which matches how `npx vite` (dev) and `vitest` have always run. Type
 # checking is a separate concern; use `make ui-typecheck` as a CI gate.
-$(UI_STAMP): $(UI_SOURCES) $(UI_NM_STAMP)
+$(UI_STAMP): $(UI_SOURCES) $(UI_NM_STAMP) $(ACL_CONFIG)
 	@echo "===> Building UI static bundle"
 	@cd $(UI_DIR) && npx vite build
 	@mkdir -p .stamps && touch $@
