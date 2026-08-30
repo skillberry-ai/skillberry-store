@@ -106,6 +106,17 @@ async def _sbs_lifespan(app: FastAPI):
     yield
 
 
+def ui_dist_dir() -> Path:
+    """Location of the pre-built UI bundle (``make ui-build`` / Dockerfile builder).
+
+    A module-level function rather than an inline expression so tests can point
+    the /ui mount at a synthetic bundle: `dist` is gitignored and no test target
+    builds it, so on CI the directory never exists and every /ui route would
+    otherwise be dead code (PR #308 review issue #7).
+    """
+    return Path(__file__).parent.parent / "ui" / "dist"
+
+
 class SBS(FastAPI):
     def __init__(self, **settings: Any):
         """Initialize the SBS server with FastAPI and custom settings."""
@@ -348,7 +359,7 @@ class SBS(FastAPI):
         # checkout), the /ui mount is simply skipped — the API still starts
         # normally, and `make ui-dev` / `make ui-build && make run` work
         # as before.
-        ui_dist = Path(__file__).parent.parent / "ui" / "dist"
+        ui_dist = ui_dist_dir()
         if ui_dist.exists():
             # Catch-all for SPA deep-links: any /ui/<path> that is not a real
             # static file (JS/CSS/fonts) should serve index.html so React
@@ -387,9 +398,19 @@ class SBS(FastAPI):
                 # onto the bundle directory, so it has to reject traversal out
                 # of it (e.g. GET /ui/../../../etc/passwd from a raw client).
                 if asset.is_relative_to(ui_root) and asset.is_file():
-                    return FileResponse(
-                        asset, headers={"Cache-Control": _ASSET_CACHE_CONTROL}
+                    # Only content-hashed assets may be cached immutably. HTML
+                    # is never hashed by Vite, so `GET /ui/index.html` — the
+                    # entry point requested by its real name, which is what a
+                    # bookmark, a doc link or an ingress rewriting /ui/ ->
+                    # /ui/index.html sends — must get the no-cache directive
+                    # instead. Matching on the suffix rather than on the exact
+                    # name also covers any additional HTML entry point.
+                    cache_control = (
+                        _INDEX_CACHE_CONTROL
+                        if asset.suffix == ".html"
+                        else _ASSET_CACHE_CONTROL
                     )
+                    return FileResponse(asset, headers={"Cache-Control": cache_control})
                 return FileResponse(
                     ui_root / "index.html",
                     headers={"Cache-Control": _INDEX_CACHE_CONTROL},
