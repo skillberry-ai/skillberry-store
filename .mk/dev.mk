@@ -75,3 +75,24 @@ docker-build-full: ## Build the all-plugins image variant (tagged -full)
 	@$(MAKE) docker-build \
 		IMAGE_TAG_SUFFIX=-full \
 		EXTRA_BUILD_ARGS='--build-arg PLUGIN_EXTRAS=plugins-all'
+
+# `ci-push` in skillberry-common builds and pushes only the default image, which
+# is now core-only — so :$(VERSION)-full / :latest-full, the tags the #308
+# BREAKING note tells deployments to switch to, would never exist in the
+# registry. Hook the -full variant into ci-push as an extra prerequisite (same
+# pattern as `run: ui-build` in .mk/process.mk, since the ci-push recipe itself
+# lives in skillberry-common).
+#
+# It depends on ci-pull-request so lint/test/test-e2e always pass *before* an
+# image is pushed, regardless of prerequisite ordering: .mk/dev.mk is read
+# before skillberry-common/.mk/ci.mk, so this prerequisite is evaluated ahead of
+# ci-push's own. Make runs each target at most once per invocation, so
+# ci-pull-request is not repeated.
+.PHONY: ci-docker-build-full
+ci-docker-build-full: ci-pull-request ## Build & push the all-plugins (-full) image; run automatically by ci-push
+	@echo "|||====> Executing make docker-build-full (buildx multi-platform - also push)"
+	VERSION=$(VERSION) DBT=registry $(MAKE) docker-build-full
+	@echo "|||====> docker-build-full Done."
+	@echo ""
+
+ci-push: ci-docker-build-full
