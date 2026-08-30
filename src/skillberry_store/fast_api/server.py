@@ -443,9 +443,7 @@ class SBS(FastAPI):
             # The `{path:path}` route above needs the trailing slash, so the bare
             # prefix gets its own redirect. This used to be the only thing the
             # StaticFiles mount still handled.
-            @self.api_route(
-                "/ui", methods=["GET", "HEAD"], include_in_schema=False
-            )
+            @self.api_route("/ui", methods=["GET", "HEAD"], include_in_schema=False)
             async def _ui_prefix_redirect():
                 return RedirectResponse(url="/ui/")
 
