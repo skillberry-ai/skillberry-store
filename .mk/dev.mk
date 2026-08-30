@@ -68,6 +68,24 @@ UI_TEST_ARGS ?=
 ui-test: $(UI_NM_STAMP) ## Run the UI unit tests (vitest; UI_TEST_ARGS to scope, see note)
 	@cd $(UI_DIR) && npx vitest run $(UI_TEST_ARGS)
 
+# `dist` is gitignored and neither `make test` nor `make test-e2e` built it, so
+# `ui_dist.exists()` was always false in CI: the /ui mount, root redirect, SPA
+# fallback, cache headers, traversal guard and the RBAC allow-list entries were
+# all dead code during tests, while dev machines that *had* built the bundle
+# registered extra routes and audited RBAC differently (issue #7). Build it
+# before the test targets so both see the same route table.
+#
+# Best-effort by design: a checkout with no node toolchain must still be able to
+# run the Python suite, and the tests that need the real bundle skip themselves
+# when it is absent.
+.PHONY: ui-build-optional
+ui-build-optional: ## Build the UI bundle if a node toolchain is present (used by the test targets)
+	@if command -v npm >/dev/null 2>&1; then \
+		$(MAKE) ui-build; \
+	else \
+		echo "NOTE: npm not found - skipping the UI bundle build; /ui tests will skip."; \
+	fi
+
 $(UI_NM_STAMP): $(UI_DIR)/package.json $(UI_DIR)/package-lock.json
 	@echo "===> Installing UI dependencies"
 	@cd $(UI_DIR) && (test -d node_modules || npm ci)

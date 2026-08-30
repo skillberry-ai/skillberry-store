@@ -20,11 +20,14 @@ bundle has been built.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
+from skillberry_store.access_control.config import get_config as get_acl_config
 from skillberry_store.fast_api import server as server_module
-from skillberry_store.fast_api.server import SBS
+from skillberry_store.fast_api.server import SBS, ui_dist_dir
 from skillberry_store.tests.utils import clean_test_tmp_dir
 
 ASSET_CACHE = "public, max-age=31536000, immutable"
@@ -157,3 +160,105 @@ def test_ui_routes_absent_when_bundle_is_not_built(tmp_path, monkeypatch):
     finally:
         object_handler.clear_object_handlers()
         registry.clear_services()
+
+
+# --------------------------------------------------------------------------- #
+# The real, built bundle
+# --------------------------------------------------------------------------- #
+# `make test` / `make test-e2e` build it via ui-build-optional, which is a no-op
+# when no node toolchain is present — hence the skips rather than hard failures.
+REAL_DIST = ui_dist_dir()
+requires_built_bundle = pytest.mark.skipif(
+    not (REAL_DIST / "index.html").is_file(),
+    reason="UI bundle not built (run `make ui-build`)",
+)
+
+
+def _local_asset_refs(index_html: str) -> list[str]:
+    """src=/href= values in index.html that point at our own bundle."""
+    refs = re.findall(r'(?:src|href)="([^"]+)"', index_html)
+    return [r for r in refs if not r.startswith(("http://", "https://", "data:", "#"))]
+
+
+@pytest.fixture
+def real_bundle_client():
+    """An SBS app serving the bundle that `make ui-build` actually produced."""
+    from skillberry_store.modules import object_handler
+    from skillberry_store.services import registry
+
+    clean_test_tmp_dir()
+    object_handler.clear_object_handlers()
+    registry.clear_services()
+    with TestClient(SBS()) as client:
+        yield client
+    object_handler.clear_object_handlers()
+    registry.clear_services()
+
+
+@requires_built_bundle
+def test_real_bundle_is_built_with_the_ui_basename():
+    """`base: '/ui/'` in vite.config.ts — every asset reference must be /ui/-rooted.
+
+    A wrong basename is invisible to the synthetic-bundle tests above and breaks
+    the deployed SPA on its first asset request.
+    """
+    refs = _local_asset_refs((REAL_DIST / "index.html").read_text())
+
+    assert refs, "index.html references no local assets — is the bundle complete?"
+    offenders = [r for r in refs if not r.startswith("/ui/")]
+    assert not offenders, f"asset references are not rooted at /ui/: {offenders}"
+
+
+@requires_built_bundle
+def test_real_bundle_assets_resolve_with_the_right_cache_headers(real_bundle_client):
+    """Fetch what index.html actually asks for, through the real route table."""
+    refs = _local_asset_refs((REAL_DIST / "index.html").read_text())
+
+    for ref in refs:
+        resp = real_bundle_client.get(ref)
+        assert resp.status_code == 200, f"{ref} did not resolve"
+        expected = INDEX_CACHE if ref.endswith(".html") else ASSET_CACHE
+        assert resp.headers["cache-control"] == expected, f"wrong directive for {ref}"
+
+
+@requires_built_bundle
+def test_real_bundle_entry_point_and_deep_link(real_bundle_client):
+    for path in ("/ui/", "/ui/index.html", "/ui/skills"):
+        resp = real_bundle_client.get(path)
+        assert resp.status_code == 200, path
+        assert resp.headers["cache-control"] == INDEX_CACHE, path
+        assert "<div id=\"root\"></div>" in resp.text, path
+
+
+@pytest.mark.parametrize("method,path", [("GET", "/"), ("GET", "/ui*"), ("HEAD", "/ui*")])
+def test_ui_paths_are_on_the_unauthenticated_allow_list(method, path):
+    """The bundle must load before login, so /ui and the root redirect bypass ACL.
+
+    Asserted independently of whether the bundle happens to be built, since the
+    allow-list is what makes the RBAC startup audit pass for these routes.
+    """
+    cfg = get_acl_config()
+    assert f"{method} {path}" in cfg.unauthenticated_paths, (
+        f"{method} {path} is not allow-listed; the SPA would 401 before login"
+    )
+
+
+def test_every_ui_route_is_allow_listed_for_all_its_methods(ui_client):
+    """The RBAC audit requires *every* method on a route to be allow-listed.
+
+    With the bundle present the app registers extra routes, which is why a dev
+    machine that had built it audited differently from CI (issue #7).
+    """
+    cfg = get_acl_config()
+    ui_paths = {"/", "/ui/{path:path}"}
+    ui_routes = [
+        route
+        for route in ui_client.app.routes
+        if getattr(route, "path", None) in ui_paths and getattr(route, "methods", None)
+    ]
+    assert ui_routes, "no /ui routes registered even though a bundle is mounted"
+    for route in ui_routes:
+        for method in sorted(route.methods):
+            assert cfg.is_unauthenticated(method, route.path), (
+                f"{method} {route.path} requires auth: the SPA cannot load before login"
+            )

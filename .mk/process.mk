@@ -7,6 +7,11 @@
 # prereq (the `ui-build` target itself remains invokable directly).
 ifneq ($(DEPLOY_ONLY),TRUE)
 run: ui-build
+
+# Same reasoning for the test targets, but best-effort — see ui-build-optional
+# in .mk/dev.mk. Without this the whole /ui surface is untested in CI.
+test: ui-build-optional
+test-e2e: ui-build-optional
 endif
 
 clean-service-data: stop
