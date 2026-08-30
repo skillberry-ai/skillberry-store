@@ -34,6 +34,8 @@ ENABLE_UI = re.compile(r"\bENABLE_UI(?!_)")
 EXEMPT = {
     "docs/feedback_308.md",
     "src/skillberry_store/tests/test_enable_ui_switch_removed.py",
+    # A migration note has to name the variable it tells deployers to remove.
+    "CHANGELOG.md",
 }
 
 TEXT_SUFFIXES = {
