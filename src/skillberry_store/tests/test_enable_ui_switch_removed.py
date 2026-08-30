@@ -31,11 +31,14 @@ ENABLE_UI = re.compile(r"\bENABLE_UI(?!_)")
 
 # Files that necessarily name the switch in order to describe its removal:
 # the triage document, and this guard itself.
+# Files whose subject *is* the removal, and which therefore have to name the
+# variable. Everything else — code, configuration, documentation, test setup — is
+# scanned, which is what makes this cover issue #14's conftest.py case.
 EXEMPT = {
-    "docs/feedback_308.md",
-    "src/skillberry_store/tests/test_enable_ui_switch_removed.py",
-    # A migration note has to name the variable it tells deployers to remove.
-    "CHANGELOG.md",
+    "docs/feedback_308.md",  # the review triage table
+    "CHANGELOG.md",  # tells deployers which variable to delete
+    "src/skillberry_store/tests/test_enable_ui_switch_removed.py",  # this guard
+    "src/skillberry_store/tests/test_changelog.py",  # asserts the note names it
 }
 
 TEXT_SUFFIXES = {
