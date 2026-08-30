@@ -80,9 +80,10 @@ You can control where SBS stores its data by setting `SBS_BASE_DIR` (defaults to
 
 ### Interacting with the UI 👨‍💻
 
-The Skillberry Store now includes a modern web UI that starts automatically with the backend:
+The Skillberry Store includes a modern web UI, served by the backend itself on the
+same port as the API (there is no separate UI server or port):
 
-- **Web UI**: [http://localhost:8002](http://localhost:8002) - Modern React-based interface
+- **Web UI**: [http://localhost:8000/ui/](http://localhost:8000/ui/) - Modern React-based interface
 - **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs) - OpenAPI/Swagger interface
 
 The Web UI provides:
@@ -173,7 +174,8 @@ sbs-srv
 
   * By default, SBS runs on host `0.0.0.0` and port `8000` publishing its metrics on port `8090`. To change, set the environment variables SBS_PORT/SBS_HOST/PROMETHEUS_METRICS_PORT
   * To disable observability all together, set environment variable `OBSERVABILITY` with `False`
-  * On first run, the UI will automatically install its dependencies (requires Node.js 18+)
+  * The Web UI is served by the backend at `/ui` on the same port (so `http://localhost:8000/ui/` by default) — it is not a separate process and has no port of its own
+  * The UI bundle is built by `make ui-build`, which `make run` runs for you (requires Node.js 18+). Container images ship it prebuilt
 
 ## Web UI Features 🎨
 
@@ -198,7 +200,17 @@ The Skillberry Store includes a modern React-based web interface with:
 
 ### UI Development
 
-To work on the UI separately:
+For a hot-reloading dev server (Vite, on its own port, proxying API calls to the
+backend on 8000):
+
+```bash
+make ui-dev            # defaults to port 8002, override with VITE_UI_PORT
+```
+
+Other UI targets: `make ui-build` (production bundle, what the backend serves at
+`/ui`), `make ui-test` (vitest), `make ui-typecheck`.
+
+To drive npm directly instead:
 
 ```bash
 cd src/skillberry_store/ui

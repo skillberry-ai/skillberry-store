@@ -6,7 +6,8 @@ This table lists the default ports, host URLs and overall service configuration 
 |--------------------------|---------------|----------------------------------|-------------------------------------------------------------|
 | FastAPI Service host     | "0.0.0.0"     | `SBS_HOST`                       |                                                             |
 | FastAPI Service port     | 8000          | `SBS_PORT`                       |                                                             |
-| UI port                  | 8002          | `SBS_UI_PORT`                    | Port for the web UI server                                  |
+| UI port (legacy subprocess) | 8002       | `SBS_UI_PORT`                    | Only the legacy `ENABLE_UI_SUBPROCESS=true` mode, which spawns `vite preview`. The UI is normally served by the backend itself at `/ui` on `SBS_PORT` |
+| Vite dev server port     | 8002          | `VITE_UI_PORT`                   | `make ui-dev` only (hot-reloading dev server, proxies API calls to `SBS_PORT`)  |
 | Prometheus metric port   | 8090          | `PROMETHEUS_METRICS_PORT`        | SBS prometheus endpoint (used for scraping metrics)         |
 | Open telemetric port     | None          | `OTEL_TRACES_PORT`               | Must be set for OpenTelemetry tracing to work               |
 | Observability enablement | True          | `OBSERVABILITY`                  | If False - disable observability (telemetry and prometheus) |
