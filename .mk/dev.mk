@@ -5,6 +5,22 @@ lint: ## List the tools-service
 	black --check --diff --color src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils || \
 		(echo "Lint Failed. Please run 'black src/skillberry_store/modules src/skillberry_store/tools src/skillberry_store/fast_api src/skillberry_store/utils' to fix the issues" && exit 1)
 
+# `generate-sdk` (skillberry-common/.mk/dev.mk) depends on `install-requirements`
+# with an unset ODEPS — core dependencies only — but openapi-generator-cli,
+# openapi-python-client and toml-cli now live in the [build] extra, and nothing
+# earlier installs it. `make update-sdk`, run by ci-push, therefore dies with
+# "openapi-generator-cli: command not found".
+#
+# Add the missing install as an extra prerequisite rather than overriding the
+# upstream recipe. It has to be a recursive $(MAKE): the install stamp name
+# embeds $(ODEPS) at parse time (.stamps/install-requirements-$(ODEPS)), so
+# ODEPS must be set for a fresh parse, not just for a recipe line.
+.PHONY: install-build-requirements
+install-build-requirements: ## Install the [build] extra (SDK codegen + Rust build tools)
+	@$(MAKE) install-requirements ODEPS=build
+
+generate-sdk: install-build-requirements
+
 ##@ UI
 
 UI_DIR      := src/skillberry_store/ui
