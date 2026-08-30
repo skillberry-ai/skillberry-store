@@ -154,7 +154,29 @@ ssh-agent: .stamps/ssh-agent.env
 		echo "Capturing running SSH agent"; \
 		echo "SSH_AUTH_SOCK=$$SSH_AUTH_SOCK" > .stamps/ssh-agent.env; \
 	fi 
+	@# The redirect above creates the file even when ssh-agent fails to start
+	@# (e.g. "too long for Unix domain socket"), and make would then treat this
+	@# stamp as up to date forever while docker-build sources an empty file and
+	@# passes `--ssh default=` to buildx. Fail here, where the cause is still
+	@# visible, and drop the unusable stamp so the next run retries.
+	@if ! grep -q SSH_AUTH_SOCK .stamps/ssh-agent.env; then \
+		echo "ERROR: could not obtain an SSH agent socket - see the error above."; \
+		rm -f .stamps/ssh-agent.env; \
+		exit 1; \
+	fi
+	@# Adding a key is best-effort. A CI runner (and any checkout that builds
+	@# only public dependencies) has no ~/.ssh/id_rsa, and ssh-add then exits 1
+	@# with its message swallowed by the redirect baked into $(SSH_KEY) - which
+	@# is how every ci-push run died at this step, before docker-build, with no
+	@# diagnostic at all. Docker still gets the agent socket from this stamp via
+	@# `--ssh default=$$SSH_AUTH_SOCK`; a keyless agent simply resolves no
+	@# private git dependency over SSH.
 	@. .stamps/ssh-agent.env; \
-	ssh-add $(SSH_KEY); 
+	if ssh-add $(SSH_KEY); then \
+		echo "SSH key added to the agent"; \
+	else \
+		echo "NOTE: no SSH key added to the agent (tried $(SSH_KEY)) - continuing."; \
+		echo "      Builds that fetch private git dependencies over SSH will fail."; \
+	fi
 
 
