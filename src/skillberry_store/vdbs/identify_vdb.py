@@ -1,7 +1,7 @@
 # identify_vdb.py
 
 from enum import Enum
-from typing import Type
+from typing import Optional, Type
 
 from skillberry_store.vdbs.vector_db_interface import VectorDBInterface
 import logging
@@ -46,3 +46,32 @@ def identify_vector_db(db_type: VectorDBType) -> Type[VectorDBInterface]:
         return LanceDB
 
     raise ValueError(f"Unsupported database type: {db_type}")
+
+
+def check_backend_available(db_type: str) -> Optional[str]:
+    """Resolve a backend without using it; return a problem description or None.
+
+    The on-demand imports above mean a misconfiguration only surfaces at the first
+    embedding call — ``SBS_VDB=chroma`` on a core-only image fails on a search, not
+    at boot, which is a needlessly obscure failure point (PR #308 review issue #18).
+    Calling this at startup makes it visible in the boot log while deliberately not
+    introducing a new crash mode: a deployment that currently starts and serves its
+    non-search endpoints keeps doing so.
+
+    Accepts the raw string form, since that is what ``SBS_VDB`` provides.
+    """
+    try:
+        resolved = VectorDBType(db_type)
+    except ValueError:
+        supported = ", ".join(t.value for t in VectorDBType)
+        return f"unsupported vector DB type {db_type!r} (supported: {supported})"
+
+    try:
+        identify_vector_db(resolved)
+    except ImportError as exc:
+        return (
+            f"vector DB backend {resolved.value!r} is configured but not "
+            f"installed ({exc}). Install the matching extra, or use a variant "
+            "image that bundles it"
+        )
+    return None

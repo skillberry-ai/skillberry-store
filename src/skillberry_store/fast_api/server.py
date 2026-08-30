@@ -95,12 +95,31 @@ async def _warm_semantic_encoder() -> None:
         logger.exception("Semantic encoder warmup failed")
 
 
+def _check_vector_db_backend() -> None:
+    """Surface a misconfigured SBS_VDB in the boot log rather than on first search.
+
+    Backend imports are on demand (chroma pulls onnxruntime/hnswlib, lancedb pulls
+    pyarrow/pandas), so an unavailable backend previously failed at the first
+    embedding call. This only logs: a deployment that starts today and serves its
+    non-search endpoints must keep starting.
+    """
+    from skillberry_store.vdbs.identify_vdb import check_backend_available
+
+    db_type = os.getenv("SBS_VDB", "faiss")
+    problem = check_backend_available(db_type)
+    if problem:
+        logger.error("Vector DB backend check failed: %s", problem)
+    else:
+        logger.info("Vector DB backend %r is available", db_type)
+
+
 @asynccontextmanager
 async def _sbs_lifespan(app: FastAPI):
     """FastAPI lifespan hook — schedules background warmups without blocking startup."""
     # Fire-and-forget: create_task returns immediately, so lifespan yields to
     # uvicorn straight away and the server begins accepting connections. Keep a
     # reference on app.state so the task isn't garbage-collected mid-run.
+    _check_vector_db_backend()
     app.state.encoder_warmup_task = asyncio.create_task(_warm_semantic_encoder())
     yield
 
