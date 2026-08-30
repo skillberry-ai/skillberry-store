@@ -24,7 +24,7 @@ UI_SOURCES  := $(shell find $(UI_DIR)/src -type f 2>/dev/null) \
 # not become a hard "No rule to make target" failure.
 ACL_CONFIG  := $(wildcard $(or $(SBS_ACCESS_CONTROL_CONFIG),access_control_config.yaml))
 
-.PHONY: ui-build ui-clean ui-dev ui-typecheck
+.PHONY: ui-build ui-clean ui-dev ui-typecheck ui-test
 ui-build: $(UI_STAMP) ## Build the UI static bundle (idempotent, stamp-based)
 
 # Bundle only — no `tsc` prefix. Vite/esbuild strips types without checking,
@@ -37,6 +37,20 @@ $(UI_STAMP): $(UI_SOURCES) $(UI_NM_STAMP) $(ACL_CONFIG)
 
 ui-typecheck: $(UI_NM_STAMP) ## Run TypeScript type checking on the UI (not part of ui-build)
 	@cd $(UI_DIR) && npm run typecheck
+
+# The vitest suite is not part of `make test` (pytest-only, and it must run
+# without a node toolchain) and no CI workflow runs it, which is how several
+# assertions rotted unnoticed. NOTE: the suite currently has pre-existing
+# failures unrelated to the /api normalisation work (VMCPServerDetailPage*,
+# SkillsPage.cascade-delete, AnthropicSkillImporter, openApiGenerator.error), so
+# this is a developer tool, not yet a green gate. The invariant that matters at
+# runtime — no dead "/api" URL prefix ever reaching fetch() — is guarded
+# statically by src/skillberry_store/tests/test_ui_api_prefix.py, which DOES run
+# in `make test`. Pass UI_TEST_ARGS to scope the run:
+#   make ui-test UI_TEST_ARGS=src/utils/endpoints.test.ts
+UI_TEST_ARGS ?=
+ui-test: $(UI_NM_STAMP) ## Run the UI unit tests (vitest; UI_TEST_ARGS to scope, see note)
+	@cd $(UI_DIR) && npx vitest run $(UI_TEST_ARGS)
 
 $(UI_NM_STAMP): $(UI_DIR)/package.json $(UI_DIR)/package-lock.json
 	@echo "===> Installing UI dependencies"

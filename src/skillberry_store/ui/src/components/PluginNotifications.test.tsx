@@ -47,6 +47,8 @@ const PLUGIN_WITH_NOTIFICATIONS: Plugin = {
     color: '#C9190B',
     actions: [],
     notifications: {
+      // Deliberately carries the legacy "/api" prefix real plugins still declare:
+      // the component must normalise it away before fetching (PR #308 issue #1).
       poll_endpoint: '/api/plugins/dedupe/decisions',
       item_schema: {
         title_field: 'skill_name',
@@ -84,7 +86,7 @@ describe('PluginNotifications', () => {
     const { container } = render(<PluginNotifications />, { wrapper });
 
     await waitFor(() =>
-      expect(mockFetch).toHaveBeenCalledWith('/api/plugins/')
+      expect(mockFetch).toHaveBeenCalledWith('/plugins/')
     );
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
@@ -180,11 +182,26 @@ describe('PluginNotifications', () => {
 
     await waitFor(() => {
       const keepCall = mockFetch.mock.calls.find(
-        (c) => c[0] === '/api/plugins/dedupe/decisions/skill-abc/keep'
+        (c) => c[0] === '/plugins/dedupe/decisions/skill-abc/keep'
       );
       expect(keepCall).toBeDefined();
       expect(keepCall![1].method).toBe('POST');
     });
+  });
+
+  it('polls the notifications endpoint with the /api prefix stripped', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([PLUGIN_WITH_NOTIFICATIONS]) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) });
+
+    render(<PluginNotifications />, { wrapper });
+
+    await waitFor(() =>
+      expect(mockFetch).toHaveBeenCalledWith('/plugins/dedupe/decisions')
+    );
+    expect(
+      mockFetch.mock.calls.filter((c) => String(c[0]).startsWith('/api'))
+    ).toHaveLength(0);
   });
 
   it('calls delete endpoint with uuid substituted when Delete is clicked', async () => {
@@ -208,7 +225,7 @@ describe('PluginNotifications', () => {
 
     await waitFor(() => {
       const deleteCall = mockFetch.mock.calls.find(
-        (c) => c[0] === '/api/plugins/dedupe/decisions/skill-xyz/delete'
+        (c) => c[0] === '/plugins/dedupe/decisions/skill-xyz/delete'
       );
       expect(deleteCall).toBeDefined();
     });

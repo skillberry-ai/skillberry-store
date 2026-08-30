@@ -9,6 +9,8 @@ import type { PluginAction, PluginActionResult } from '@/types';
 
 // A deliberately non-"simulate" plugin action: proves the form has NO plugin-specific
 // strings or protocol baked in — every user-facing label comes from async_action.labels.
+// The endpoints deliberately carry the legacy "/api" prefix real plugins still
+// declare: the form must normalise it away before fetching (PR #308 issue #1).
 const ASYNC_ACTION: PluginAction = {
   label: 'Brew coffee',
   endpoint: '/api/plugins/coffee/brew',
@@ -89,7 +91,7 @@ describe('PluginActionForm — generic async actions', () => {
     await waitFor(() => {
       expect(screen.getByText(/Coffee is ready/i)).toBeDefined();
     });
-    expect(mockFetch).toHaveBeenCalledWith('/api/plugins/coffee/status/job-xyz');
+    expect(mockFetch).toHaveBeenCalledWith('/plugins/coffee/status/job-xyz');
     const done = screen.getByRole('button', { name: /Grab it/i });
     expect((done as HTMLButtonElement).disabled).toBe(false);
   });
@@ -222,6 +224,42 @@ describe('PluginActionForm — generic async actions', () => {
     const values = skillInputs.map((i) => i.value);
     expect(values).toContain('a');
     expect(values).toContain('b');
+  });
+
+  // PR #308 issue #1: the `x-options-from` fetch was the one raw-fetch site in this
+  // component that never went through the /api normaliser, so plugin-declared
+  // dropdowns (e.g. ask-runspace presets) 404'd once the Vite proxy was removed.
+  it('strips the /api prefix from an x-options-from dropdown endpoint', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 'opt1', label: 'Opt 1' }],
+    });
+    const action = {
+      label: 'Run preset',
+      endpoint: '/plugins/ask-runspace/run',
+      method: 'POST',
+      params_schema: {
+        type: 'object',
+        properties: {
+          preset_id: {
+            type: 'string',
+            'x-options-from': '/api/plugins/ask-runspace/presets',
+            'x-option-label': 'label',
+            'x-option-value': 'id',
+          },
+        },
+      },
+    } as any;
+
+    renderForm(action, async () => ({ success: true }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'Opt 1' })).toBeDefined();
+    });
+    expect(mockFetch).toHaveBeenCalledWith('/plugins/ask-runspace/presets');
+    expect(
+      mockFetch.mock.calls.filter((c) => String(c[0]).startsWith('/api'))
+    ).toHaveLength(0);
   });
 
   it('prefills an object field as JSON and submits it parsed back to an object', async () => {
@@ -360,7 +398,7 @@ describe('PluginActionForm — generic async actions', () => {
     // It uploads to the field's endpoint and reports the folder as ready.
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
-        '/api/plugins/ask-runspace/upload-skills',
+        '/plugins/ask-runspace/upload-skills',
         expect.objectContaining({ method: 'POST' })
       );
       expect(screen.getByText(/file\(s\) ready/i)).toBeDefined();

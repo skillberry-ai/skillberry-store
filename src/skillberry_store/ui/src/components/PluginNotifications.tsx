@@ -11,6 +11,7 @@ import {
   TextListItem,
 } from '@patternfly/react-core';
 import { pluginsApi } from '@/services/api';
+import { normalizeEndpoint } from '@/utils/endpoints';
 import type { Plugin, PluginNotificationsConfig, PluginNotificationAction } from '@/types';
 
 export function PluginNotifications() {
@@ -53,7 +54,7 @@ function PluginNotificationPoller({
   const { data: items = [] } = useQuery<Record<string, unknown>[]>({
     queryKey,
     queryFn: async () => {
-      const response = await fetch(notificationsConfig.poll_endpoint);
+      const response = await fetch(normalizeEndpoint(notificationsConfig.poll_endpoint));
       if (!response.ok) return [];
       return response.json();
     },
@@ -63,7 +64,7 @@ function PluginNotificationPoller({
   const currentItem = items[0] as Record<string, unknown> | undefined;
 
   const handleAction = async (action: PluginNotificationAction, itemUuid: string) => {
-    const endpoint = action.endpoint.replace('{uuid}', itemUuid);
+    const endpoint = normalizeEndpoint(action.endpoint.replace('{uuid}', itemUuid));
     await fetch(endpoint, { method: action.method });
     queryClient.invalidateQueries({ queryKey });
   };

@@ -20,19 +20,10 @@ import {
   TextContent,
 } from '@patternfly/react-core';
 import type { PluginAction, PluginActionResult } from '@/types';
+import { normalizeEndpoint } from '@/utils/endpoints';
 
 // A file picked from a dropped/selected folder, with its path relative to that folder.
 type PickedFile = { file: File; path: string };
-
-// Normalise a plugin-supplied endpoint URL by stripping a leading "/api"
-// prefix if present. Plugin authors write "/api/plugins/..." because the
-// Vite proxy used to strip it before forwarding to FastAPI; now that the
-// UI is served in-process by FastAPI, no proxy exists and the routes are
-// accessed directly (e.g. "/plugins/..."). Keeping this normaliser here
-// means existing plugins do not need to be updated.
-function normalizeEndpoint(url: string): string {
-    return url.startsWith('/api/') ? url.slice(4) : url;
-}
 
 async function readDirEntries(reader: any): Promise<any[]> {
   const all: any[] = [];
@@ -130,7 +121,7 @@ export function PluginActionForm({
     template.replace(/\{(\w+)\}/g, (_, key) => encodeURIComponent(data[key] ?? ''));
 
   const fetchOptions = async (propertyName: string, schema: any, currentFormData: Record<string, any>) => {
-    const url = interpolateUrl(schema['x-options-from'], currentFormData);
+    const url = normalizeEndpoint(interpolateUrl(schema['x-options-from'], currentFormData));
     const labelKey: string = schema['x-option-label'] ?? 'label';
     const valueKey: string = schema['x-option-value'] ?? 'value';
     const excludeTags: string[] = schema['x-exclude-tags'] ?? [];
