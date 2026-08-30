@@ -7,7 +7,6 @@ This table lists the default ports, host URLs and overall service configuration 
 | FastAPI Service host     | "0.0.0.0"     | `SBS_HOST`                       |                                                             |
 | FastAPI Service port     | 8000          | `SBS_PORT`                       |                                                             |
 | UI port                  | 8002          | `SBS_UI_PORT`                    | Port for the web UI server                                  |
-| UI enablement            | True          | `ENABLE_UI`                      | If False - disable the UI and run only the backend          |
 | Prometheus metric port   | 8090          | `PROMETHEUS_METRICS_PORT`        | SBS prometheus endpoint (used for scraping metrics)         |
 | Open telemetric port     | None          | `OTEL_TRACES_PORT`               | Must be set for OpenTelemetry tracing to work               |
 | Observability enablement | True          | `OBSERVABILITY`                  | If False - disable observability (telemetry and prometheus) |

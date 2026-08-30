@@ -103,7 +103,6 @@ def run_sbs(ensure_semantic_encoder_cached, tmp_path_factory):
     logger.info("Starting SBS server in background thread")
     clean_test_tmp_dir()
 
-    os.environ["ENABLE_UI"] = "false"
     os.environ["PROMETHEUS_METRICS_PORT"] = "0"
     os.environ["SKILLBERRY_PLUGIN_CONFIG"] = str(
         tmp_path_factory.mktemp("plugin-config") / "plugins.json"

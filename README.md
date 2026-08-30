@@ -92,11 +92,6 @@ The Web UI provides:
 - Code viewing and editing
 - Real-time updates
 
-To disable the UI and run only the backend:
-```bash
-ENABLE_UI=false make run
-```
-
 ## Prerequisites 🛠️
 
 - Docker or Podman is installed on your machine.
@@ -178,7 +173,6 @@ sbs-srv
 
   * By default, SBS runs on host `0.0.0.0` and port `8000` publishing its metrics on port `8090`. To change, set the environment variables SBS_PORT/SBS_HOST/PROMETHEUS_METRICS_PORT
   * To disable observability all together, set environment variable `OBSERVABILITY` with `False`
-  * The Web UI starts automatically on port `3000`. To disable it, set `ENABLE_UI=false`
   * On first run, the UI will automatically install its dependencies (requires Node.js 18+)
 
 ## Web UI Features 🎨
