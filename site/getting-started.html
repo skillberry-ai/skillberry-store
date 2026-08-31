@@ -83,12 +83,9 @@ make run</code></pre>
     <h2>4. Open the UI &amp; API</h2>
     <p>The modern web UI starts automatically alongside the backend:</p>
     <div class="tiles cols-2" style="margin:1.25rem 0">
-      <div class="tile"><h3>Web UI</h3><p><a href="http://localhost:8002">http://localhost:8002</a> — the React-based console for tools, skills, snippets, VMCP &amp; vNFS servers, and plugins.</p></div>
+      <div class="tile"><h3>Web UI</h3><p><a href="http://localhost:8000/ui/">http://localhost:8000/ui/</a> — the React-based console for tools, skills, snippets, VMCP &amp; vNFS servers, and plugins. Served by the backend on the same port as the API.</p></div>
       <div class="tile"><h3>API docs</h3><p><a href="http://localhost:8000/docs">http://localhost:8000/docs</a> — the OpenAPI / Swagger interface for the REST API.</p></div>
     </div>
-    <p>To run only the backend without the UI:</p>
-    <pre><code>ENABLE_UI=false make run</code></pre>
-
     <div class="feature-shot" style="margin:2rem 0">
       <img src="assets/screenshots/sbs-home.png" alt="Skillberry Store web UI home" loading="lazy">
       <p class="caption">The Skillberry Store home screen</p>
@@ -127,8 +124,8 @@ curl -X POST "http://localhost:8000/vmcp_servers/?name=my-skill&skill_uuid=&lt;u
         <thead><tr><th>Setting</th><th>Default</th><th>Variable</th></tr></thead>
         <tbody>
           <tr><td>API host / port</td><td>0.0.0.0 / 8000</td><td><code>SBS_HOST</code> / <code>SBS_PORT</code></td></tr>
-          <tr><td>Web UI port</td><td>8002</td><td><code>SBS_UI_PORT</code></td></tr>
-          <tr><td>Enable UI</td><td>True</td><td><code>ENABLE_UI</code></td></tr>
+          <tr><td>Web UI</td><td>served at <code>/ui</code> on the API port</td><td>&mdash;</td></tr>
+          <tr><td>Vite dev server port (<code>make ui-dev</code> only)</td><td>8002</td><td><code>VITE_UI_PORT</code></td></tr>
           <tr><td>Prometheus metrics port</td><td>8090</td><td><code>PROMETHEUS_METRICS_PORT</code></td></tr>
           <tr><td>Observability</td><td>True</td><td><code>OBSERVABILITY</code></td></tr>
           <tr><td>Storage base directory</td><td>{temp}/skillberry-store</td><td><code>SBS_BASE_DIR</code></td></tr>

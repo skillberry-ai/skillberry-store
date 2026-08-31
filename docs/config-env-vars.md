@@ -6,8 +6,8 @@ This table lists the default ports, host URLs and overall service configuration 
 |--------------------------|---------------|----------------------------------|-------------------------------------------------------------|
 | FastAPI Service host     | "0.0.0.0"     | `SBS_HOST`                       |                                                             |
 | FastAPI Service port     | 8000          | `SBS_PORT`                       |                                                             |
-| UI port                  | 8002          | `SBS_UI_PORT`                    | Port for the web UI server                                  |
-| UI enablement            | True          | `ENABLE_UI`                      | If False - disable the UI and run only the backend          |
+| UI port (legacy subprocess) | 8002       | `SBS_UI_PORT`                    | Only the legacy `ENABLE_UI_SUBPROCESS=true` mode, which spawns `vite preview`. The UI is normally served by the backend itself at `/ui` on `SBS_PORT` |
+| Vite dev server port     | 8002          | `VITE_UI_PORT`                   | `make ui-dev` only (hot-reloading dev server, proxies API calls to `SBS_PORT`)  |
 | Prometheus metric port   | 8090          | `PROMETHEUS_METRICS_PORT`        | SBS prometheus endpoint (used for scraping metrics)         |
 | Open telemetric port     | None          | `OTEL_TRACES_PORT`               | Must be set for OpenTelemetry tracing to work               |
 | Observability enablement | True          | `OBSERVABILITY`                  | If False - disable observability (telemetry and prometheus) |
@@ -40,11 +40,13 @@ This table lists persistency configuration used by SBS service, along with the e
 
 This table lists embedding configuration used by SBS service, along with the environment variables that can be used to override them.
 
-| Configuration   | Default value                                     | Environment Variables Override | 
-|-----------------|---------------------------------------------------|--------------------------------|
-| Vector database | "faiss"                                           | `SBS_VDB`                      |
-| Model dimension | 384                                               | `EMBEDDING_MODEL_DIMENSION`    |
-| Model search k  | 5                                                 | `EMBEDDING_MODEL_SEARCH_K`     |
+| Configuration     | Default value                                   | Environment Variables Override | Notes |
+|-------------------|-------------------------------------------------|--------------------------------|-------|
+| Vector database   | "faiss"                                         | `SBS_VDB`                      |       |
+| Model dimension   | 384                                             | `EMBEDDING_MODEL_DIMENSION`    |       |
+| Model search k    | 5                                               | `EMBEDDING_MODEL_SEARCH_K`     |       |
+| Model cache dir   | `$APP_HOME/.cache/fastembed` in the container, else `$XDG_CACHE_HOME/fastembed` or `~/.cache/fastembed` | `SBS_ENCODER_CACHE_DIR` | Where the ~80 MB ONNX encoder weights are cached. The image ships them pre-seeded so startup needs no HuggingFace access; fastembed ignores `HF_HOME` / `TRANSFORMERS_CACHE` / `XDG_CACHE_HOME`, so this is the only knob |
+| Max sequence length | 256                                           | `SBS_ENCODER_MAX_LENGTH`       | Tokens before input is truncated. 256 matches `SentenceTransformer('all-MiniLM-L6-v2')`, so vectors stay comparable with indices built before the fastembed migration. Override only to match an index already built at a different limit (fastembed's own default for these weights is 128) |
 
 > You can override the default values by setting the corresponding environment variables in your deployment configuration.
 

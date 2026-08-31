@@ -28,7 +28,16 @@ dependencies = [
   "fastapi-mcp>=0.3.7",
   "fastapi-versioning>=0.10.0",
   "fasteners>=0.19",
-  "fastembed",
+  # Bounded on both sides deliberately (PR #308 review issue #11). The model
+  # string "sentence-transformers/all-MiniLM-L6-v2" is pinned in
+  # vdbs/vector_db_interface.py, and the truncation-limit pin added for issue #10
+  # reaches through the internal `.model.tokenizer` path — neither of which is a
+  # public API contract. fastembed is pre-1.0, so its minor releases are the
+  # breaking increments: an unbounded dependency turns "renamed or dropped the
+  # model" into a failure at first embed rather than at build. Raise the upper
+  # bound deliberately, after checking the model string still resolves and the
+  # encoder tests pass.
+  "fastembed>=0.8.0,<0.9",
   "filelock>=3.17.0",
   "fsspec>=2025.2.0",
   "h11>=0.13.0",

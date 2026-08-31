@@ -87,6 +87,28 @@ RUN --mount=type=ssh make install-requirements ODEPS=${PLUGIN_EXTRAS}
 # runtime stage sets DEPLOY_ONLY=TRUE, which drops ui-build from `make run`).
 RUN make ui-build
 
+# Pre-seed the ~80 MB ONNX encoder weights so the runtime image can start
+# without reaching HuggingFace at all.
+#
+# fastembed ignores HF_HOME / TRANSFORMERS_CACHE / XDG_CACHE_HOME and caches into
+# its own temp directory, so an unseeded image paid an ~11.5 s download on the
+# *readiness* critical path (/health/ready gates on encoder_warmup) and paid it
+# again on every pod restart where that temp dir is an ephemeral emptyDir — and
+# never started at all in an air-gapped deployment. encoder_cache_dir() resolves
+# to $APP_HOME/.cache/fastembed here, which rides along with the
+# `COPY --from=builder $APP_HOME $APP_HOME` below and picks up the same
+# `chgrp 0` / `chmod g=u` treatment, so the arbitrary UID OpenShift assigns can
+# read it.
+#
+# Best-effort: an image built without egress to HuggingFace is still usable, it
+# just falls back to downloading at first embed like before. The warning names
+# the consequence so a silent miss is not mistaken for a seeded cache.
+RUN python -c "\
+from skillberry_store.vdbs.vector_db_interface import encoder_cache_dir, text_to_vector; \
+text_to_vector('cache warm'); \
+print('Encoder weights pre-seeded into', encoder_cache_dir())" \
+    || echo "WARNING: could not pre-seed the encoder model; the image will download it at first embed (no air-gapped start)."
+
 ###########################################
 # Runtime Stage - Clean, no SSH key
 ###########################################

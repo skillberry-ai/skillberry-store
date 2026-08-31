@@ -384,8 +384,17 @@ docker-rmi: docker-check docker-clean ## Remove the docker container, image, and
 	@for tag in $(IMAGE_TAGS); do \
 		$(DOCKER) rmi -f $(FULL_IMAGE_NAME):$$tag > /dev/null 2>&1 || true; \
 	done
-	@rm -f .stamps/docker-build*
-	@rm -f .stamps/docker-get*
+	@# Only this variant's stamps. A bare `docker-build*` / `docker-get*` glob also
+	@# invalidated every *other* tagging scheme's stamps -- removing the core image
+	@# forced a needless rebuild of the -full variant (and of any CUSTOM_TAG build),
+	@# even though its image is still present. The stamps are named
+	@# .stamps/docker-build-$$(DBT)$$(TAG_STAMP_SFX) and
+	@# .stamps/docker-get$$(TAG_STAMP_SFX), and DBT is local or registry, so both of
+	@# this variant's build stamps are cleared explicitly: the image is gone either
+	@# way, so neither may still claim to be up to date.
+	@rm -f .stamps/docker-build-local$(TAG_STAMP_SFX) \
+		.stamps/docker-build-registry$(TAG_STAMP_SFX) \
+		.stamps/docker-get$(TAG_STAMP_SFX)
 
 .PHONY: docker-clean
 docker-clean: docker-check docker-stop ## Remove the docker container and temporary files, but keeping the image

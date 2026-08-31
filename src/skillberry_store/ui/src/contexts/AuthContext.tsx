@@ -4,9 +4,10 @@
 // Access-control frontend context. Mode is a compile-time constant injected
 // by vite.config.ts (see §10.4 of docs/design/access-control.md). In
 // `standalone` mode this context also installs a `window.fetch` interceptor
-// on mount that (a) adds `Authorization: Bearer <token>` on same-origin
-// `/api/*` calls when a token is set, and (b) clears the token and forces a
-// redirect to `/login` when the server returns 401.
+// on mount that (a) adds `Authorization: Bearer <token>` on same-origin API
+// calls — everything outside the `/ui` bundle — when a token is set, and
+// (b) clears the token and forces a redirect to `/login` when the server
+// returns 401.
 
 import {
   createContext,

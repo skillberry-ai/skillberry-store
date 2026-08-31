@@ -12,6 +12,8 @@ const CONFIG: CatalogImportConfig = {
   type: 'catalog-import',
   title: 'Import widgets',
   description: 'Search the widget catalog.',
+  // The three endpoints deliberately carry the legacy "/api" prefix real plugins
+  // still declare: the view must normalise it away before fetching (issue #1).
   search_endpoint: '/api/plugins/widgetcat/search',
   detail_endpoint: '/api/plugins/widgetcat/detail/{id}',
   import_endpoint: '/api/plugins/widgetcat/import',
@@ -75,6 +77,14 @@ describe('CatalogImportView', () => {
 
     expect(await screen.findByText('Imported 1 skill')).toBeTruthy();
     expect(screen.getByText(/2 tools, 0 snippets/)).toBeTruthy();
+
+    // PR #308 issue #1: none of the three raw-fetch sites normalised the
+    // plugin-declared "/api" prefix, so every call 404'd without the Vite proxy.
+    const urls = mockFetch.mock.calls.map((c) => String(c[0]));
+    expect(urls).toContain('/plugins/widgetcat/search');
+    expect(urls).toContain('/plugins/widgetcat/detail/w1');
+    expect(urls).toContain('/plugins/widgetcat/import');
+    expect(urls.filter((u) => u.startsWith('/api'))).toHaveLength(0);
   });
 
   it('shows a disabled banner and setup steps when the plugin is not enabled', async () => {

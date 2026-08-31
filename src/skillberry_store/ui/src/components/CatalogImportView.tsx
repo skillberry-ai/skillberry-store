@@ -20,6 +20,7 @@ import {
 import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
 import { SearchIcon, ImportIcon } from '@patternfly/react-icons';
 import type { Plugin, CatalogImportConfig, CatalogItem, CatalogItemDetail } from '@/types';
+import { normalizeEndpoint } from '@/utils/endpoints';
 
 interface DescEntry { status: 'loading' | 'done' | 'error'; description: string; }
 interface DescriptionCache { [id: string]: DescEntry; }
@@ -68,7 +69,7 @@ export function CatalogImportView({ config, plugin, isOpen, onClose }: CatalogIm
     setImportResult(null); setDescriptions({}); fetchingRef.current.clear();
     setSubmittedQuery(q);
     try {
-      const resp = await fetch(config.search_endpoint, {
+      const resp = await fetch(normalizeEndpoint(config.search_endpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q, limit: 50 }),
@@ -92,7 +93,7 @@ export function CatalogImportView({ config, plugin, isOpen, onClose }: CatalogIm
     fetchingRef.current.add(id);
     setDescriptions((prev) => ({ ...prev, [id]: { status: 'loading', description: '' } }));
     try {
-      const url = config.detail_endpoint.replace('{id}', encodeURIComponent(id));
+      const url = normalizeEndpoint(config.detail_endpoint.replace('{id}', encodeURIComponent(id)));
       const resp = await fetch(url);
       const body = await resp.json();
       setDescriptions((prev) => ({ ...prev, [id]: { status: 'done', description: body.description ?? '' } }));
@@ -116,7 +117,7 @@ export function CatalogImportView({ config, plugin, isOpen, onClose }: CatalogIm
     if (selected.size === 0) return;
     setImporting(true); setImportResult(null);
     try {
-      const resp = await fetch(config.import_endpoint, {
+      const resp = await fetch(normalizeEndpoint(config.import_endpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skill_ids: Array.from(selected), ...(config.import_extra_params ?? {}) }),

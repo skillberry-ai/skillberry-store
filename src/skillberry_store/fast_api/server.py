@@ -15,7 +15,6 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi_mcp import FastApiMCP
 
 from skillberry_store.fast_api.openapi_ids import custom_generate_unique_id
@@ -96,14 +95,44 @@ async def _warm_semantic_encoder() -> None:
         logger.exception("Semantic encoder warmup failed")
 
 
+def _check_vector_db_backend() -> None:
+    """Surface a misconfigured SBS_VDB in the boot log rather than on first search.
+
+    Backend imports are on demand (chroma pulls onnxruntime/hnswlib, lancedb pulls
+    pyarrow/pandas), so an unavailable backend previously failed at the first
+    embedding call. This only logs: a deployment that starts today and serves its
+    non-search endpoints must keep starting.
+    """
+    from skillberry_store.vdbs.identify_vdb import check_backend_available
+
+    db_type = os.getenv("SBS_VDB", "faiss")
+    problem = check_backend_available(db_type)
+    if problem:
+        logger.error("Vector DB backend check failed: %s", problem)
+    else:
+        logger.info("Vector DB backend %r is available", db_type)
+
+
 @asynccontextmanager
 async def _sbs_lifespan(app: FastAPI):
     """FastAPI lifespan hook — schedules background warmups without blocking startup."""
     # Fire-and-forget: create_task returns immediately, so lifespan yields to
     # uvicorn straight away and the server begins accepting connections. Keep a
     # reference on app.state so the task isn't garbage-collected mid-run.
+    _check_vector_db_backend()
     app.state.encoder_warmup_task = asyncio.create_task(_warm_semantic_encoder())
     yield
+
+
+def ui_dist_dir() -> Path:
+    """Location of the pre-built UI bundle (``make ui-build`` / Dockerfile builder).
+
+    A module-level function rather than an inline expression so tests can point
+    the /ui mount at a synthetic bundle: `dist` is gitignored and no test target
+    builds it, so on CI the directory never exists and every /ui route would
+    otherwise be dead code (PR #308 review issue #7).
+    """
+    return Path(__file__).parent.parent / "ui" / "dist"
 
 
 class SBS(FastAPI):
@@ -339,26 +368,32 @@ class SBS(FastAPI):
 
             FastAPIInstrumentor.instrument_app(self)
 
-        # Serve the pre-built UI bundle via FastAPI's StaticFiles. This
-        # replaces the `npx vite preview` subprocess (UIManager) that used
-        # to run alongside the server, saving ~50–100 MiB of RSS.
+        # Serve the pre-built UI bundle from this process. This replaces the
+        # `npx vite preview` subprocess (UIManager) that used to run alongside
+        # the server, saving ~50–100 MiB of RSS.
         #
         # The bundle is produced at build time by `make ui-build` (or by
         # the Dockerfile builder stage). If it is absent (e.g., a bare dev
         # checkout), the /ui mount is simply skipped — the API still starts
         # normally, and `make ui-dev` / `make ui-build && make run` work
         # as before.
-        ui_dist = Path(__file__).parent.parent / "ui" / "dist"
+        ui_dist = ui_dist_dir()
         if ui_dist.exists():
-            # Catch-all for SPA deep-links: any /ui/<path> that is not a real
-            # static file (JS/CSS/fonts) should serve index.html so React
-            # Router can handle the route client-side. This route must be
-            # registered BEFORE the StaticFiles mount, because Starlette
-            # evaluates mounts before APIRoutes — once StaticFiles is mounted
-            # at /ui it intercepts everything under that prefix and a 404 for
-            # unknown paths never reaches this handler. Registering the route
-            # first means FastAPI matches /ui/{path} here first, and only falls
-            # through to StaticFiles for requests where the path exists on disk.
+            # Catch-all for /ui: this one route serves both real static files
+            # (JS/CSS/fonts) and, for anything else, index.html so React Router
+            # can handle the route client-side.
+            #
+            # There is deliberately no StaticFiles mount. A previous version
+            # mounted one and justified the ordering with "Starlette evaluates
+            # mounts before APIRoutes" — it does not: `Router.__call__` walks
+            # routes in registration order with no Mount precedence. Since this
+            # `{path:path}` route was registered first it matched everything
+            # under /ui, leaving the mount reachable only for the bare `/ui` ->
+            # `/ui/` redirect, which is now an explicit route below. Starlette's
+            # FileResponse handles Range requests itself (it sets accept-ranges
+            # and parses Range/If-Range), so serving from here rather than from
+            # StaticFiles costs no byte-range support.
+            #
             # Vite emits content-hashed asset filenames, so a rebuild always
             # produces new names -- those are safe to cache forever. index.html
             # is the entry point and is NOT hashed: served without a
@@ -373,8 +408,8 @@ class SBS(FastAPI):
 
             # GET *and* HEAD: FastAPI's @app.get registers GET only (unlike
             # Starlette's plain Route, which implies HEAD), so a HEAD would
-            # otherwise fall through to the StaticFiles mount below and answer
-            # without the cache directives set here.
+            # otherwise 405 instead of answering with the cache directives set
+            # here.
             @self.api_route(
                 "/ui/{path:path}", methods=["GET", "HEAD"], include_in_schema=False
             )
@@ -387,16 +422,32 @@ class SBS(FastAPI):
                 # onto the bundle directory, so it has to reject traversal out
                 # of it (e.g. GET /ui/../../../etc/passwd from a raw client).
                 if asset.is_relative_to(ui_root) and asset.is_file():
-                    return FileResponse(
-                        asset, headers={"Cache-Control": _ASSET_CACHE_CONTROL}
+                    # Only content-hashed assets may be cached immutably. HTML
+                    # is never hashed by Vite, so `GET /ui/index.html` — the
+                    # entry point requested by its real name, which is what a
+                    # bookmark, a doc link or an ingress rewriting /ui/ ->
+                    # /ui/index.html sends — must get the no-cache directive
+                    # instead. Matching on the suffix rather than on the exact
+                    # name also covers any additional HTML entry point.
+                    cache_control = (
+                        _INDEX_CACHE_CONTROL
+                        if asset.suffix == ".html"
+                        else _ASSET_CACHE_CONTROL
                     )
+                    return FileResponse(asset, headers={"Cache-Control": cache_control})
                 return FileResponse(
                     ui_root / "index.html",
                     headers={"Cache-Control": _INDEX_CACHE_CONTROL},
                 )
 
-            self.mount("/ui", StaticFiles(directory=ui_dist, html=True), name="ui")
-            logger.info("UI bundle mounted at /ui from %s", ui_dist)
+            # The `{path:path}` route above needs the trailing slash, so the bare
+            # prefix gets its own redirect. This used to be the only thing the
+            # StaticFiles mount still handled.
+            @self.api_route("/ui", methods=["GET", "HEAD"], include_in_schema=False)
+            async def _ui_prefix_redirect():
+                return RedirectResponse(url="/ui/")
+
+            logger.info("UI bundle served at /ui from %s", ui_dist)
 
             @self.get("/", include_in_schema=False)
             async def _root_redirect():
