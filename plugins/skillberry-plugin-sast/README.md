@@ -102,11 +102,36 @@ Response:
 
 UUIDs that resolve to nothing are reported in `not_found` rather than failing the
 whole batch. For tools and snippets the findings are persisted to
-`extra["evaluation"]["sast"]` and summarized as tags (`sast:high:1`, or
-`sast:clean`).
+`extra["evaluation"]["sast"]` and summarized as tags.
 
 In the UI report you can **filter findings by severity** (low/medium/high/
 critical chips) and **select objects** to fix.
+
+## Tags
+
+Every scan writes two families of tags, replacing any from a previous scan:
+
+| Family | Example | Emitted when | For |
+|--------|---------|--------------|-----|
+| Display | `sast:high:1`, or `sast:clean` | only for severities that fired | humans, facets, filtering |
+| Counters | `sast-low:0` `sast-medium:0` `sast-high:1` `sast-critical:0` `sast-findings:1` | always, zeros included | policy plugins |
+
+The counters exist because a `<key>:<number>` tag is the interface
+`skillberry-plugin-kagenti-approver` reads, and the display tags cannot serve
+that role — `sast:high:1` splits at the first colon into key `sast` and value
+`"high:1"`, which is not a number. Zeros are emitted explicitly because the
+approver fails any condition whose tag is absent, so a clean object needs a
+real `0` to be approvable while an object that was never scanned still fails
+closed.
+
+That makes a deterministic approval chain possible with no LLM plugin in it:
+
+```bash
+KAGENTI_CRITERIA='sast-high<1,sast-critical<1'
+```
+
+Skills carry the aggregate of their referenced tools and snippets (a skill has
+no code of its own), so the criteria apply to skills as written.
 
 ## Fixing (LLM, optional)
 

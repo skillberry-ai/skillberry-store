@@ -232,13 +232,38 @@ class SkillberryPluginSast(PluginBase):
     # ── tag helpers ──────────────────────────────────────────────────────────
 
     def _strip_sast_tags(self, tags: List[str]) -> List[str]:
-        """Drop prior sast:* tags so a re-scan replaces rather than accumulates."""
-        return [t for t in tags if not t.startswith("sast:")]
+        """Drop prior sast tags so a re-scan replaces rather than accumulates.
+
+        Covers both families written by :meth:`_summary_tags` — the ``sast:``
+        display tags and the ``sast-`` numeric counters.
+        """
+        return [t for t in tags if not t.startswith(("sast:", "sast-"))]
 
     def _summary_tags(self, summary: Dict[str, int]) -> List[str]:
-        """Build `sast:<severity>:<count>` tags, or `sast:clean` when empty."""
-        tags = [f"sast:{sev}:{summary[sev]}" for sev in SEVERITIES if summary.get(sev)]
-        return tags or ["sast:clean"]
+        """Build the tag set for one scanned object: display tags + counters.
+
+        ``sast:<severity>:<count>`` (or ``sast:clean``) are the human-facing
+        display tags, emitted only for severities that actually fired.
+
+        ``sast-<severity>:<count>`` and ``sast-findings:<total>`` are numeric
+        counters, always emitted **including zeros**, so a policy plugin can
+        threshold on them. skillberry-plugin-kagenti-approver parses
+        ``<key>:<number>`` tags and treats a missing key as a failed condition,
+        so a clean object must carry an explicit ``0`` to be approvable. The
+        display tags can't serve that role: ``sast:high:2`` partitions at the
+        first colon into key ``sast`` and value ``"high:2"``, which is not a
+        number. That is what makes criteria such as
+        ``KAGENTI_CRITERIA=sast-high<1,sast-critical<1`` work with no LLM
+        plugin in the chain.
+        """
+        display = [
+            f"sast:{sev}:{summary[sev]}" for sev in SEVERITIES if summary.get(sev)
+        ]
+        counters = [f"sast-{sev}:{summary.get(sev, 0)}" for sev in SEVERITIES]
+        counters.append(
+            f"sast-findings:{sum(summary.get(sev, 0) for sev in SEVERITIES)}"
+        )
+        return (display or ["sast:clean"]) + counters
 
     # ── code extraction ──────────────────────────────────────────────────────
 

@@ -102,17 +102,57 @@ def test_strip_sast_tags_removes_only_sast():
         assert plugin._strip_sast_tags(tags) == ["python", "security-score:4"]
 
 
+def test_strip_sast_tags_removes_numeric_counters():
+    """Counters use a `sast-` prefix, so stripping must cover both families or a
+    re-scan leaves a stale count behind for the policy plugin to read."""
+    with _make_plugin() as plugin:
+        tags = ["python", "sast-high:2", "sast-findings:2", "security-score:4"]
+        assert plugin._strip_sast_tags(tags) == ["python", "security-score:4"]
+
+
 def test_summary_tags_clean_when_empty():
     with _make_plugin() as plugin:
-        assert plugin._summary_tags(
-            {"low": 0, "medium": 0, "high": 0, "critical": 0}
-        ) == ["sast:clean"]
+        tags = plugin._summary_tags({"low": 0, "medium": 0, "high": 0, "critical": 0})
+        assert "sast:clean" in tags
+        assert not any(t.startswith("sast:") and t != "sast:clean" for t in tags)
 
 
 def test_summary_tags_counts():
     with _make_plugin() as plugin:
         tags = plugin._summary_tags({"low": 1, "medium": 0, "high": 2, "critical": 0})
         assert "sast:low:1" in tags and "sast:high:2" in tags
+
+
+def test_summary_tags_emit_numeric_counters_including_zeros():
+    """kagenti-approver fails a condition whose tag is absent, so every severity
+    needs an explicit count — otherwise a clean object can never be approved."""
+    with _make_plugin() as plugin:
+        tags = plugin._summary_tags({"low": 1, "medium": 0, "high": 2, "critical": 0})
+        assert "sast-low:1" in tags
+        assert "sast-medium:0" in tags
+        assert "sast-high:2" in tags
+        assert "sast-critical:0" in tags
+        assert "sast-findings:3" in tags
+
+
+def test_numeric_counters_are_parseable_by_kagenti_approver():
+    """The counters exist to be read by the approver's `<key>:<number>` parser;
+    the display tags are not (`sast:high:2` -> value "high:2", not a number)."""
+    kagenti = pytest.importorskip(
+        "skillberry_plugin_kagenti_approver.plugin",
+        reason="kagenti-approver not installed",
+    )
+    with _make_plugin() as plugin:
+        clean = plugin._summary_tags({"low": 0, "medium": 0, "high": 0, "critical": 0})
+        dirty = plugin._summary_tags({"low": 0, "medium": 0, "high": 1, "critical": 0})
+
+    criteria = kagenti.parse_criteria("sast-high<1,sast-critical<1")
+    assert kagenti.evaluate_criteria(criteria, kagenti.extract_scores(clean)) is True
+    assert kagenti.evaluate_criteria(criteria, kagenti.extract_scores(dirty)) is False
+    # An object that was never scanned carries no counters -> fail closed.
+    assert (
+        kagenti.evaluate_criteria(criteria, kagenti.extract_scores(["python"])) is False
+    )
 
 
 # ── engine selection precedence ──────────────────────────────────────────────

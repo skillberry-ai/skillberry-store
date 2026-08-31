@@ -185,7 +185,9 @@ plugin-kagenti-approver = [
 ]
 
 plugin-sast = [
-  "skillberry-plugin-sast>=0.1.0",
+  # [bandit] pulls the scan engine; without it the plugin boots disabled
+  # ("no configured engine is installed").
+  "skillberry-plugin-sast[bandit]>=0.1.0",
   "llm-switchboard"
 ]
 
@@ -214,7 +216,9 @@ plugin-ask-runspace = [
 ]
 
 plugin-dast = [
-  "skillberry-plugin-dast>=0.1.0",
+  # [hypothesis] pulls the input-generator engine; without it the plugin boots
+  # disabled ("no input-generator engine installed").
+  "skillberry-plugin-dast[hypothesis]>=0.1.0",
 ]
 
 plugin-skillssh-importer = [
@@ -230,14 +234,14 @@ plugins-all = [
   "skillberry-plugin-mcp-importer>=0.1.0",
   "skillberry-plugin-anthropic-skill-generator>=0.1.0",
   "skillberry-plugin-kagenti-approver>=0.1.0",
-  "skillberry-plugin-sast>=0.1.0",
+  "skillberry-plugin-sast[bandit]>=0.1.0",
   "skillberry-plugin-skill-optimizer>=0.1.0",
   "skillberry-plugin-simulate>=0.1.0",
   "skillberry-plugin-provenance>=0.1.0",
   "skillberry-plugin-doc-generator>=0.1.0",
   "skillberry-plugin-dependency-tracker>=0.1.0",
   "skillberry-plugin-ask-runspace>=0.1.0",
-  "skillberry-plugin-dast>=0.1.0",
+  "skillberry-plugin-dast[hypothesis]>=0.1.0",
   "skillberry-plugin-skillssh-importer>=0.1.0",
 ]
 
