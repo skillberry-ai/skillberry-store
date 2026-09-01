@@ -193,10 +193,14 @@ class FileExecutor:
         """
         Initialize the PythonExecutor with the directory path.
 
-        The executor runtime is determined by the environment variable CODE_EXEC_RUNTIME.
-        If the variable is set to "podman", the executor will use Podman.
-        If the variable is set to "docker", the executor will use Docker.
-        If the variable is not set or has an invalid value, an HTTPException will be raised.
+        This class depends on no skillberry-store global state — every input
+        arrives through this constructor — so it can be instantiated standalone
+        by a plugin that owns its own execution.
+
+        Python code is run either in-process or in a container, selected by the
+        ``execute_python_locally`` argument, which defaults to the
+        EXECUTE_PYTHON_LOCALLY environment variable. Container execution uses
+        the Docker SDK; Podman is not currently supported.
 
         Args:
             name (str): the name of the execution
@@ -223,6 +227,80 @@ class FileExecutor:
             logger.error(f"Error parsing manifest: {e}")
             raise HTTPException(status_code=400, detail=f"Error parsing manifest: {e}")
 
+    # Execution paths this executor can dispatch to. ``mcp`` is the only
+    # natively-async one; the rest are blocking calls.
+    PATH_PYTHON_LOCAL = "python-local"
+    PATH_PYTHON_DOCKER = "python-docker"
+    PATH_BASH = "bash"
+    PATH_MCP = "mcp"
+
+    def _resolve_path(self) -> str:
+        """Resolve which execution path this manifest selects.
+
+        Single source of truth for dispatch, shared by the sync and async
+        entry points so they can never disagree.
+
+        Raises:
+            HTTPException: 400 for an unsupported language or packaging format.
+        """
+        language = self.manifest.get("programming_language")
+        if language == "bash":
+            return self.PATH_BASH
+        if language != "python":
+            raise HTTPException(
+                status_code=400, detail="Unsupported programming language"
+            )
+
+        packaging = self.manifest.get("packaging_format")
+        if packaging == "code":
+            # Read dynamically: the flag may be set after construction.
+            return (
+                self.PATH_PYTHON_LOCAL
+                if self.execute_python_locally
+                else self.PATH_PYTHON_DOCKER
+            )
+        if packaging == "mcp":
+            return self.PATH_MCP
+        raise HTTPException(status_code=400, detail="Unsupported packaging format")
+
+    def execute_file_sync(self, parameters: Dict[str, Any], env_id=None) -> dict:
+        """Execute synchronously, blocking the calling thread.
+
+        The counterpart to :meth:`execute_file` for callers that manage their
+        own threading — a caller that must be able to *abandon* a hung
+        execution needs the work to happen directly in a thread it owns, which
+        ``asyncio.to_thread`` cannot provide (its pool threads are non-daemon
+        and joined at interpreter exit).
+
+        The MCP path is internally async and is driven on a private event loop
+        here, so every path is callable synchronously.
+
+        Args:
+            parameters (Dict): Execution parameters.
+            env_id: Optional environment ID for execution isolation.
+
+        Returns:
+            dict: A message with the execution result or error message.
+        """
+        logger.info(f"Executing (sync): {self.name} with parameters: {parameters}")
+        try:
+            path = self._resolve_path()
+            if path == self.PATH_PYTHON_LOCAL:
+                return self.execute_python_file_locally(parameters, env_id=env_id)
+            if path == self.PATH_PYTHON_DOCKER:
+                return self.execute_python_file_using_docker(parameters, env_id=env_id)
+            if path == self.PATH_BASH:
+                return self.execute_bash_file(parameters=parameters)
+            # PATH_MCP — natively async, so drive it on a private loop.
+            return asyncio.run(self.execute_python_file_in_mcp_server(parameters))
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error executing file: {e}")
+            return {
+                "error": f"Error executing file: {str(e)}",
+            }
+
     async def execute_file(self, parameters: Dict[str, Any], env_id=None) -> dict:
         """
         Executes dynamically based on manifest and parameters.
@@ -236,9 +314,14 @@ class FileExecutor:
         logger.info(f"Executing: {self.name} with parameters: {parameters}")
 
         try:
-            result = await self.based_on_programming_language(
-                parameters=parameters, env_id=env_id
-            )
+            # The MCP path stays on the caller's loop; the blocking paths are
+            # offloaded to a worker thread via the shared sync entry point.
+            if self._resolve_path() == self.PATH_MCP:
+                result = await self.execute_python_file_in_mcp_server(parameters)
+            else:
+                result = await asyncio.to_thread(
+                    self.execute_file_sync, parameters, env_id
+                )
             # If result contains an error, return it as-is
             if isinstance(result, dict) and "error" in result:
                 return result
@@ -256,6 +339,9 @@ class FileExecutor:
     def based_on_programming_language(self, parameters, env_id=None):
         """
         Switches based on the programming_language field in the manifest.
+
+        Retained for callers that predate :meth:`execute_file_sync`; dispatch
+        itself lives in :meth:`_resolve_path`.
         """
         if self.manifest.get("programming_language") == "python":
             return self.execute_python_file(parameters=parameters, env_id=env_id)
