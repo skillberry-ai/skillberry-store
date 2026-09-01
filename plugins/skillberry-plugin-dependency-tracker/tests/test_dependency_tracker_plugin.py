@@ -269,16 +269,21 @@ async def test_local_modules_not_counted_as_missing(monkeypatch):
         modules={
             ("mr", "merge_runs.py"): "def merge_runs():\n    pass\n",
             ("user", "u.py"): (
-                "from helpers.merge_runs import merge_runs\n" "import lxml.etree\n"
+                "from helpers.merge_runs import merge_runs\n"
+                # Deliberately a name no distribution can provide. Using a real
+                # package here made the test depend on it being ABSENT from the
+                # venv, which silently inverted the assertion once anything
+                # pulled it in as a transitive dependency.
+                "import sbs_absent_external.etree\n"
             ),
         },
     )
     p = _plugin(store, monkeypatch)
     block = (await p.scan("skill", "sk3"))["dependencies"]
     reasons = {u["import_name"]: u["reason"] for u in block["unresolved_imports"]}
-    # `helpers` recognized as first-party, lxml flagged as a real missing pkg
+    # `helpers` recognized as first-party, the unknown import flagged as missing
     assert reasons.get("helpers") == "local_module"
-    assert reasons.get("lxml") == "no_distribution"
+    assert reasons.get("sbs_absent_external") == "no_distribution"
     assert block["summary"]["local_module_count"] == 1
     assert block["summary"]["missing_count"] == 1
     # tag reflects only the real missing external
