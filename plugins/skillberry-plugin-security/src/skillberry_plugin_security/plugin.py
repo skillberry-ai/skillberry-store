@@ -147,9 +147,9 @@ class SkillberryPluginSecurity(PluginBase):
             module_name = obj.get("module_name")
             if module_name and self._store_api is not None:
                 try:
-                    code = self.store.tools.read_file(
-                        obj["uuid"], module_name, raw_content=True
-                    )
+                    code = self.store.get_tool_module(obj["uuid"])
+                    if code is None:
+                        raise ValueError("no module source available")
                     lines.append(f"\nCode ({module_name}):\n```\n{code}\n```")
                 except Exception as e:
                     logger.info(f"Could not read code for tool {obj.get('uuid')}: {e}")
@@ -198,11 +198,11 @@ class SkillberryPluginSecurity(PluginBase):
         }
 
         if content_type == "tool":
-            self.store.tools.write_dict(uuid, obj)
+            self.store.update_tool(uuid, obj)
         elif content_type == "skill":
-            self.store.skills.write_dict(uuid, obj)
+            self.store.update_skill(uuid, obj)
         elif content_type == "snippet":
-            self.store.snippets.write_dict(uuid, obj)
+            self.store.update_snippet(uuid, obj)
 
     async def evaluate_security(self, uuid: str, content_type: str) -> Dict[str, Any]:
         """

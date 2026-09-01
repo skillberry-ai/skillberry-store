@@ -56,7 +56,7 @@ def _mock_store(skill=None):
     store.get_tool.return_value = None
     store.get_snippet.return_value = None
     store.skills = MagicMock()
-    store.skills.write_dict.return_value = {"success": True}
+    store.update_skill.return_value = {"success": True}
     store.tools = MagicMock()
     return store
 
@@ -105,7 +105,7 @@ async def test_gather_post_import_persists_baseline_and_tags():
 
     assert data["confidence"] == "high"
     # persisted into extra["provenance"].baseline + latest
-    written = store.skills.write_dict.call_args[0][1]
+    written = store.update_skill.call_args[0][1]
     assert written["extra"]["provenance"]["baseline"]["confidence"] == "high"
     assert written["extra"]["provenance"]["latest"]["confidence"] == "high"
     # roll-up tags added, old provenance tags would be stripped
@@ -139,7 +139,7 @@ async def test_behavior_detects_domains_and_ops():
     }
     store = _mock_store(skill=skill)
     store.get_tool.return_value = {"uuid": "t1", "name": "t", "module_name": "tool.py"}
-    store.tools.read_file.return_value = (
+    store.get_tool_module.return_value = (
         "import requests\nrequests.get('https://evil.example.com/x')\n"
         "import subprocess\nsubprocess.run(['ls'])\n"
     )

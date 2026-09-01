@@ -6,8 +6,25 @@ for plugins without exposing internal implementation details.
 
 from typing import Any, Dict, List, Optional
 import logging
+import warnings
 
 logger = logging.getLogger(__name__)
+
+_HANDLER_PROPERTY_DEPRECATION = (
+    "StoreAPI.{name} returns the raw ObjectHandler and is deprecated for plugin "
+    "use: it exposes the whole persistence layer, not a supported interface. Use "
+    "the named accessors instead — get_tool_module()/update_tool_module() for "
+    "module source, and update_tool()/update_skill()/update_snippet() to write a "
+    "complete object."
+)
+
+
+def _warn_handler_property(name: str) -> None:
+    warnings.warn(
+        _HANDLER_PROPERTY_DEPRECATION.format(name=name),
+        DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 class StoreAPI:
@@ -22,7 +39,12 @@ class StoreAPI:
 
     @property
     def tools(self):
-        """Expose tools handler for testing/plugin access."""
+        """Deprecated: the raw tools ObjectHandler.
+
+        Retained for out-of-tree plugins and for test injection. In-tree callers
+        use the named accessors; see :func:`_warn_handler_property`.
+        """
+        _warn_handler_property("tools")
         # For testing: check if attribute was set directly (bypassing property)
         if '_tools' in self.__dict__:
             return self._tools
@@ -38,7 +60,12 @@ class StoreAPI:
 
     @property
     def skills(self):
-        """Expose skills handler for testing/plugin access."""
+        """Deprecated: the raw skills ObjectHandler.
+
+        Retained for out-of-tree plugins and for test injection. In-tree callers
+        use the named accessors; see :func:`_warn_handler_property`.
+        """
+        _warn_handler_property("skills")
         # For testing: check if attribute was set directly (bypassing property)
         if '_skills' in self.__dict__:
             return self._skills
@@ -54,7 +81,12 @@ class StoreAPI:
 
     @property
     def snippets(self):
-        """Expose snippets handler for testing/plugin access."""
+        """Deprecated: the raw snippets ObjectHandler.
+
+        Retained for out-of-tree plugins and for test injection. In-tree callers
+        use the named accessors; see :func:`_warn_handler_property`.
+        """
+        _warn_handler_property("snippets")
         # For testing: check if attribute was set directly (bypassing property)
         if '_snippets' in self.__dict__:
             return self._snippets

@@ -491,3 +491,42 @@ async def test_execute_tool_without_service_raises():
 
     with pytest.raises(RuntimeError, match="Tools service not available"):
         await StoreAPI({}).execute_tool("test-uuid")
+
+
+# ── deprecated handler properties ─────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", ["tools", "skills", "snippets"])
+def test_handler_properties_warn(mock_services, name):
+    """The raw-handler accessors still work, but plugins must be steered off them."""
+    import warnings
+
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    store_api = StoreAPI(mock_services)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        handler = getattr(store_api, name)
+
+    assert handler is mock_services[name].handler
+    assert len(caught) == 1
+    assert issubclass(caught[0].category, DeprecationWarning)
+    assert name in str(caught[0].message)
+
+
+def test_store_api_write_paths_do_not_warn(mock_services):
+    """StoreAPI must not trip its own deprecation on internal handler access."""
+    import warnings
+
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    store_api = StoreAPI(mock_services)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        store_api.update_tool("u", {"uuid": "u"})
+        store_api.update_skill("u", {"uuid": "u"})
+        store_api.update_snippet("u", {"uuid": "u"})
+
+    assert [w for w in caught if issubclass(w.category, DeprecationWarning)] == []

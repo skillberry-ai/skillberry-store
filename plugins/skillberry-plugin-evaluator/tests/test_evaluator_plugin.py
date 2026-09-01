@@ -180,7 +180,6 @@ async def test_evaluate_object_tool_returns_all_six_fields():
         "programming_language": "python", "packaging_format": "code",
         "params": {}, "tags": [], "extra": {},
     }
-    mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7))
 
@@ -200,13 +199,12 @@ async def test_evaluate_object_writes_score_tags_to_tool():
         "uuid": "tool-1", "name": "t", "description": "",
         "tags": ["existing-tag"], "extra": {},
     }
-    mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7))
 
     await plugin.evaluate_object("tool-1", "tool")
 
-    written = mock_store.tools.write_dict.call_args[0][1]
+    written = mock_store.update_tool.call_args[0][1]
     assert "quality-score:8" in written["tags"]
     assert "performance-score:7" in written["tags"]
     assert "existing-tag" in written["tags"]
@@ -220,13 +218,12 @@ async def test_evaluate_object_writes_evaluation_metadata_to_skill():
         "uuid": "skill-1", "name": "s", "description": "",
         "tool_uuids": [], "snippet_uuids": [], "tags": [], "extra": {},
     }
-    mock_store.skills = MagicMock()
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=6, p=5))
 
     await plugin.evaluate_object("skill-1", "skill")
 
-    written = mock_store.skills.write_dict.call_args[0][1]
+    written = mock_store.update_skill.call_args[0][1]
     eval_meta = written["extra"]["evaluation"]
     assert eval_meta["quality"]["score"] == 6
     assert eval_meta["performance"]["score"] == 5
@@ -245,13 +242,12 @@ async def test_evaluate_object_replaces_old_score_tags_on_snippet():
         "tags": ["keeper", "quality-score:3", "performance-score:2"],
         "extra": {},
     }
-    mock_store.snippets = MagicMock()
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(q=8, p=7))
 
     await plugin.evaluate_object("snip-1", "snippet")
 
-    written = mock_store.snippets.write_dict.call_args[0][1]
+    written = mock_store.update_snippet.call_args[0][1]
     tags = written["tags"]
     assert "quality-score:8" in tags
     assert "quality-score:3" not in tags
@@ -278,7 +274,6 @@ async def test_evaluate_object_raises_runtime_error_on_bad_llm_response():
     mock_store.get_tool.return_value = {
         "uuid": "t1", "name": "t", "description": "", "tags": [], "extra": {},
     }
-    mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value="not json at all")
 
@@ -307,9 +302,6 @@ async def test_skill_content_added_also_evaluates_referenced_tools_and_snippets(
         "uuid": "snip-b", "name": "snip_b", "description": "",
         "content": "hello", "content_type": "text/plain", "tags": [], "extra": {},
     }
-    mock_store.skills = MagicMock()
-    mock_store.tools = MagicMock()
-    mock_store.snippets = MagicMock()
 
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json())
@@ -335,9 +327,9 @@ async def test_skill_content_added_also_evaluates_referenced_tools_and_snippets(
         await handler(uuid="skill-1")
 
         # skill, tool, and snippet should each have write_dict called
-        assert mock_store.skills.write_dict.called
-        assert mock_store.tools.write_dict.called
-        assert mock_store.snippets.write_dict.called
+        assert mock_store.update_skill.called
+        assert mock_store.update_tool.called
+        assert mock_store.update_snippet.called
     finally:
         events_module._event_handlers.clear()
         events_module._event_handlers.update(saved)

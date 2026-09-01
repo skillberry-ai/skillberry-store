@@ -281,9 +281,9 @@ class SkillberryPluginSast(PluginBase):
             language = (obj.get("programming_language") or "").lower()
             if module_name and self._store_api is not None:
                 try:
-                    code = self.store.tools.read_file(
-                        obj["uuid"], module_name, raw_content=True
-                    )
+                    code = self.store.get_tool_module(obj["uuid"])
+                    if code is None:
+                        raise ValueError("no module source available")
                     blobs.append(
                         {"code": code, "filename": module_name, "language": language}
                     )
@@ -461,11 +461,11 @@ class SkillberryPluginSast(PluginBase):
         }
 
         if content_type == "tool":
-            self.store.tools.write_dict(uuid, obj)
+            self.store.update_tool(uuid, obj)
         elif content_type == "snippet":
-            self.store.snippets.write_dict(uuid, obj)
+            self.store.update_snippet(uuid, obj)
         elif content_type == "skill":
-            self.store.skills.write_dict(uuid, obj)
+            self.store.update_skill(uuid, obj)
 
     def _write_skill_aggregate(
         self,
@@ -679,10 +679,10 @@ class SkillberryPluginSast(PluginBase):
 
         # Persist the fixed code in place.
         if content_type == "tool":
-            self.store.tools.write_file(uuid, obj["module_name"], new_code)
+            self.store.update_tool_module(uuid, new_code)
         else:  # snippet
             obj["content"] = new_code
-            self.store.snippets.write_dict(uuid, obj)
+            self.store.update_snippet(uuid, obj)
 
         # Record the fix without clobbering the existing sast block.
         obj = (
@@ -702,9 +702,9 @@ class SkillberryPluginSast(PluginBase):
             ),
         }
         if content_type == "tool":
-            self.store.tools.write_dict(uuid, obj)
+            self.store.update_tool(uuid, obj)
         else:
-            self.store.snippets.write_dict(uuid, obj)
+            self.store.update_snippet(uuid, obj)
 
         return {
             "uuid": uuid,

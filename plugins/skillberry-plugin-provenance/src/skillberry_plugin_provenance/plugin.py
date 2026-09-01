@@ -191,11 +191,9 @@ class SkillberryPluginProvenance(PluginBase):
                 tool = self.store.get_tool(tool_uuid)
                 module = (tool or {}).get("module_name")
                 if tool and module:
-                    out.append(
-                        self.store.tools.read_file(
-                            tool_uuid, module, raw_content=True
-                        )
-                    )
+                    source = self.store.get_tool_module(tool_uuid)
+                    if source is not None:
+                        out.append(source)
             except Exception as e:
                 logger.debug("provenance: could not read tool %s: %s", tool_uuid, e)
         for snippet_uuid in skill.get("snippet_uuids") or []:
@@ -226,9 +224,9 @@ class SkillberryPluginProvenance(PluginBase):
                 tool = self.store.get_tool(tool_uuid)
                 module = (tool or {}).get("module_name")
                 if tool and module:
-                    code = self.store.tools.read_file(
-                        tool_uuid, module, raw_content=True
-                    )
+                    code = self.store.get_tool_module(tool_uuid)
+                    if code is None:
+                        continue
                     hashes[f"tool:{tool.get('name') or tool_uuid}"] = hashlib.sha256(
                         code.encode("utf-8", "replace")
                     ).hexdigest()
@@ -349,7 +347,7 @@ class SkillberryPluginProvenance(PluginBase):
         skill["tags"] = self._provenance_tags(
             self._strip_provenance_tags(skill.get("tags") or []), background, drift
         )
-        self.store.skills.write_dict(uuid, skill)
+        self.store.update_skill(uuid, skill)
 
     @staticmethod
     def _strip_provenance_tags(tags: List[str]) -> List[str]:
