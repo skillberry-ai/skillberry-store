@@ -2,14 +2,16 @@ import logging
 import os
 import socket
 import time
+from dataclasses import dataclass, field
 
-import requests
 from prometheus_client import Counter, Histogram
 from pydantic import Field
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any, Callable, Dict, List, Optional, Protocol
 
 from mcp.server.fastmcp import FastMCP
 from skillberry_store.modules.object_handler import get_object_handler
+
+logger = logging.getLogger(__name__)
 
 # observability - metrics for runtime tool invocation inside the VMCP server.
 # These belong here (not in the FastAPI layer) because they describe runtime
@@ -65,6 +67,119 @@ def _patch_sse_starlette_for_multi_loop() -> None:
 _patch_sse_starlette_for_multi_loop()
 
 
+class ToolSource(Protocol):
+    """Where a server gets its tools' manifests, and how it runs them.
+
+    Supplying one lets a caller own a server instance without the core
+    server's process-global state. Deliberately expressed as *what the
+    server needs* rather than as an ``ObjectHandler`` mirror: the server
+    never reads module files or resolves dependencies itself, so execution
+    strategy stays with whoever owns the content.
+    """
+
+    def get_manifest(self, uuid: str) -> dict:
+        """Return the full manifest for ``uuid``. Raise if unavailable."""
+        ...
+
+    async def execute(self, manifest: dict, parameters: dict, env_id: str) -> dict:
+        """Execute the tool described by ``manifest`` and return its result."""
+        ...
+
+
+class SnippetSource(Protocol):
+    """Where a server gets its snippets' manifests."""
+
+    def get_manifest(self, uuid: str) -> dict:
+        """Return the full manifest for ``uuid``. Raise if unavailable."""
+        ...
+
+
+@dataclass
+class InvokeRecord:
+    """One observed tool invocation, passed to a server's ``on_invoke`` hook.
+
+    Recorded for failures as well as successes — a caller observing a server
+    to find misbehaviour cares most about the calls that blew up.
+    """
+
+    tool_name: str
+    parameters: dict
+    result: Any = None
+    error: Optional[BaseException] = None
+    duration: float = 0.0
+
+    @property
+    def failed(self) -> bool:
+        return self.error is not None
+
+
+class _HandlerToolSource:
+    """Default source: the core ``ObjectHandler`` singletons and service registry.
+
+    This is the behaviour every in-process server had before sources were
+    injectable, kept verbatim — including pinning the manifest captured at
+    registration time, so that a later overwrite of the tool JSON (e.g. by an
+    MCP wrapper of the same name) cannot recurse back through the server.
+    """
+
+    def __init__(self, handler=None):
+        self.handler = handler or get_object_handler("tool")
+
+    def get_manifest(self, uuid: str) -> dict:
+        return self.handler.read_dict(uuid)
+
+    async def execute(self, manifest: dict, parameters: dict, env_id: str) -> dict:
+        from skillberry_store.modules.file_executor import FileExecutor
+        from skillberry_store.services.registry import get_service
+
+        tool_name = manifest.get("name")
+        module_name = manifest.get("module_name")
+        if not module_name:
+            raise ValueError(
+                f"Tool '{tool_name}' has no module_name in cached manifest"
+            )
+
+        tool_uuid = manifest.get("uuid")
+        if not tool_uuid:
+            raise ValueError(f"Tool '{tool_name}' has no uuid in cached manifest")
+
+        # Read the module file from the tool's UUID subdirectory.
+        module_content = self.handler.read_file(
+            tool_uuid, module_name, raw_content=True
+        )
+        if not isinstance(module_content, str):
+            raise ValueError(f"Could not read module for tool '{tool_name}'")
+
+        # Load tool dependencies recursively via the shared service method.
+        dependencies = manifest.get("dependencies", [])
+        tool_dep_ids = get_service("tool").find_dependencies(dependencies, tool_uuid)
+
+        dep_dicts = self.handler.read_dicts(list(tool_dep_ids))
+        dep_files = [
+            self.handler.read_file(m["uuid"], m["module_name"], raw_content=True)
+            for m in dep_dicts
+        ]
+
+        executor = FileExecutor(
+            name=tool_name,
+            file_content=module_content,
+            file_manifest=manifest,
+            dependent_file_contents=dep_files,
+            dependent_tools_as_dict=dep_dicts,
+        )
+        return await executor.execute_file(parameters=parameters, env_id=env_id)
+
+
+class _HandlerSnippetSource:
+    """Default snippet source: the core ``ObjectHandler`` singleton."""
+
+    def __init__(self, handler=None):
+        self.handler = handler or get_object_handler("snippet")
+
+    def get_manifest(self, uuid: str) -> dict:
+        return self.handler.read_dict(uuid)
+
+
 class VirtualMcpServer:
     """
     Represents a virtual MCP server.
@@ -88,6 +203,11 @@ class VirtualMcpServer:
         sts_url: Optional[str] = None,
         app=None,
         env_id=None,
+        tool_source: Optional[ToolSource] = None,
+        snippet_source: Optional[SnippetSource] = None,
+        serve: bool = True,
+        metrics_enabled: bool = True,
+        on_invoke: Optional[Callable[[InvokeRecord], None]] = None,
     ):
         """
         Initializes and starts a new VirtualMcpServer instance.
@@ -99,6 +219,23 @@ class VirtualMcpServer:
             tools (List[str]): A list of tool UUIDs to register with the virtual MCP server.
             snippets (List[str]): A list of snippet UUIDs to register as prompts with the virtual MCP server.
             env_id (str): A string representing the environment id to be used for this server (Optional).
+            tool_source (ToolSource): Where to read tool manifests from and how to
+                execute them. Defaults to the core ObjectHandler singletons plus
+                the service registry — pass one to own a server instance without
+                depending on that process-global state.
+            snippet_source (SnippetSource): Likewise for snippets.
+            serve (bool): When False, register nothing over HTTP: no port is
+                taken, no FastMCP instance is built and no uvicorn thread is
+                started. The server still resolves manifests and dispatches
+                ``invoke_tool`` in-process, which is all a caller needs when it
+                drives the tools itself rather than exposing them to an MCP client.
+            metrics_enabled (bool): When False, skip the process-wide Prometheus
+                metrics. Short-lived instances should disable them: the series are
+                labelled by server name, so throwaway names accumulate cardinality
+                that is never reclaimed.
+            on_invoke (Callable): Called with an :class:`InvokeRecord` after every
+                ``invoke_tool`` dispatch, successful or not. Exceptions raised by
+                the hook are logged and swallowed.
 
         Raises:
             ValueError: If the specified port is not available.
@@ -110,10 +247,33 @@ class VirtualMcpServer:
         self.sts_url = sts_url or "http://localhost:8000"
         self.app = app
         self.env_id = env_id
+        self.serve = serve
+        self.metrics_enabled = metrics_enabled
+        self.on_invoke = on_invoke
 
-        # Initialize ObjectHandlers for resolving UUIDs to objects
-        self.tools_handler = get_object_handler("tool")
-        self.snippets_handler = get_object_handler("snippet")
+        # Content + execution sources. Defaults fall back to the core
+        # singletons so an in-process server behaves exactly as before, but they
+        # are resolved *lazily*: a caller that injects a tool source and serves
+        # no snippets must never touch a core singleton at all.
+        self._tool_source = tool_source
+        self._snippet_source = snippet_source
+
+        # Cache of tool_name -> raw manifest dict, populated during
+        # _load_manifests so that invoke_tool executes the manifest pinned at
+        # registration time rather than re-reading files (which may have been
+        # overwritten by an MCP wrapper with the same name after server creation).
+        self._tool_manifests: dict = {}
+
+        if not self.serve:
+            # In-process only: no port, no FastMCP, no transport.
+            self.port = None
+            self.mcp = None
+            self._load_manifests()
+            logging.info(
+                f"VirtualMcpServer '{name}' created (in-process, no transport) "
+                f"with {len(self._tool_manifests)} tools"
+            )
+            return
 
         if port is None:
             self.port = self._find_available_port()
@@ -127,40 +287,26 @@ class VirtualMcpServer:
         # Create FastMCP instance
         self.mcp = FastMCP(name=name, port=self.port)
 
-        # Configure CORS middleware for browser access
-        # This will be passed to mcp.run() in _start_server()
-        from starlette.middleware import Middleware
-        from starlette.middleware.cors import CORSMiddleware
-
-        self.cors_middleware = [
-            Middleware(
-                CORSMiddleware,
-                allow_origins=["*"],  # Allow all origins for development
-                allow_methods=["GET", "POST", "OPTIONS"],
-                allow_headers=[
-                    "mcp-protocol-version",
-                    "mcp-session-id",
-                    "Authorization",
-                    "Content-Type",
-                    "*",  # Allow all headers
-                ],
-                expose_headers=["mcp-session-id"],
-                allow_credentials=True,
-            )
-        ]
-        logging.info("CORS middleware configured for FastMCP server")
-
-        # Cache of tool_name -> raw manifest dict, populated during _register_tools so that
-        # invoke_tool can execute code tools directly without re-reading files (which may have
-        # been overwritten by an MCP wrapper with the same name after server creation).
-        self._tool_manifests: dict = {}
-
         self._register_tools()
         self._register_prompts()
         self._start_server()
         logging.info(
             f"VirtualMcpServer '{name}' created and started on port {self.port} with {len(self.tool_uuids)} tools and {len(self.snippet_uuids)} prompts"
         )
+
+    @property
+    def tool_source(self) -> ToolSource:
+        """The injected tool source, or the core-singleton default on first use."""
+        if self._tool_source is None:
+            self._tool_source = _HandlerToolSource()
+        return self._tool_source
+
+    @property
+    def snippet_source(self) -> SnippetSource:
+        """The injected snippet source, or the core-singleton default on first use."""
+        if self._snippet_source is None:
+            self._snippet_source = _HandlerSnippetSource()
+        return self._snippet_source
 
     def _is_port_available(self, port: int) -> bool:
         """
@@ -197,6 +343,40 @@ class VirtualMcpServer:
             port += 1
         return port
 
+    def _load_manifests(self) -> dict:
+        """Resolve this server's tool UUIDs to manifests and cache them.
+
+        Pure data resolution — no FastMCP involvement — so it is usable with or
+        without a transport. Populating the cache is the *point* of this method
+        rather than a side effect of listing, which is what lets ``tool_names``
+        report reliably.
+
+        Returns:
+            dict: the cache, mapping tool name -> manifest.
+        """
+        logger.debug("Loading manifests for tool UUIDs: %s", self.tool_uuids)
+        for tool_uuid in self.tool_uuids:
+            try:
+                tool_dict = self.tool_source.get_manifest(tool_uuid)
+                tool_name = tool_dict.get("name")
+                if not tool_name:
+                    logger.warning("Tool UUID %s has no name; skipping", tool_uuid)
+                    continue
+                self._tool_manifests[tool_name] = tool_dict
+                logger.debug("Loaded tool UUID %s as '%s'", tool_uuid, tool_name)
+            except Exception as e:
+                logging.warning(f"Failed to get tool UUID {tool_uuid}: {e}")
+        logger.debug("Loaded %d tool manifest(s)", len(self._tool_manifests))
+        return self._tool_manifests
+
+    def tool_names(self) -> List[str]:
+        """Names of the tools this server serves, as registered."""
+        return list(self._tool_manifests.keys())
+
+    def tool_manifest(self, tool_name: str) -> Optional[dict]:
+        """The pinned manifest for ``tool_name``, or None if not registered."""
+        return self._tool_manifests.get(tool_name)
+
     def list_tools(self):
         """
         Lists the tools registered with the virtual MCP server.
@@ -205,41 +385,13 @@ class VirtualMcpServer:
         Returns:
             List (mcp.types.Tool): A list of tools
         """
-        print(f"DEBUG list_tools: self.tool_uuids = {self.tool_uuids}")
         tools = []
-        for tool_uuid in self.tool_uuids:
+        for tool_name, tool_dict in self._load_manifests().items():
             try:
-
-                # Try HTTP first if available
-                if self.app:
-                    # Read tool dict by UUID
-                    tool_dict = self.tools_handler.read_dict(tool_uuid)
-                    tool_name = tool_dict.get("name")
-
-                    # Cache the tool dict
-                    if tool_name:
-                        self._tool_manifests[tool_name] = tool_dict
-
-                    print(
-                        f"DEBUG list_tools: Got tool UUID {tool_uuid}, name: {tool_name}"
-                    )
-                    tools.append(self.tool_dict_to_mcp_tool(tool_dict))
-                else:
-                    # Fallback to HTTP when app is not available
-                    response = requests.get(f"{self.sts_url}/tools/{tool_uuid}")
-                    response.raise_for_status()
-                    tool_dict = response.json()
-                    tool_name = tool_dict.get("name")
-                    print(
-                        f"DEBUG list_tools: Got tool {tool_uuid} from HTTP: {tool_name}"
-                    )
-                    self._tool_manifests[tool_name] = tool_dict
-                    tools.append(self.tool_dict_to_mcp_tool(tool_dict))
-
+                tools.append(self.tool_dict_to_mcp_tool(tool_dict))
             except Exception as e:
-                logging.warning(f"Failed to get tool UUID {tool_uuid}: {e}")
-                print(f"DEBUG list_tools: Failed to get tool UUID {tool_uuid}: {e}")
-        print(f"DEBUG list_tools: Returning {len(tools)} tools")
+                logging.warning(f"Failed to convert tool '{tool_name}': {e}")
+        logger.debug("Returning %d MCP tool(s)", len(tools))
         return tools
 
     def list_snippets(self):
@@ -250,34 +402,20 @@ class VirtualMcpServer:
         Returns:
             List[dict]: A list of snippet dictionaries
         """
-        print(f"DEBUG list_snippets: self.snippet_uuids = {self.snippet_uuids}")
+        logger.debug("Loading snippet UUIDs: %s", self.snippet_uuids)
         snippets = []
         for snippet_uuid in self.snippet_uuids:
             try:
-                if self.app:
-                    # Read snippet dict by UUID
-                    snippet_dict = self.snippets_handler.read_dict(snippet_uuid)
-                    snippet_name = snippet_dict.get("name")
-
-                    print(
-                        f"DEBUG list_snippets: Got snippet UUID {snippet_uuid}, name: {snippet_name}"
-                    )
-                    snippets.append(snippet_dict)
-                else:
-                    # Fallback to HTTP when app is not available
-                    response = requests.get(f"{self.sts_url}/snippets/{snippet_uuid}")
-                    response.raise_for_status()
-                    snippet_dict = response.json()
-                    print(
-                        f"DEBUG list_snippets: Got snippet {snippet_uuid} from HTTP: {snippet_dict.get('name')}"
-                    )
-                    snippets.append(snippet_dict)
+                snippet_dict = self.snippet_source.get_manifest(snippet_uuid)
+                logger.debug(
+                    "Loaded snippet UUID %s as '%s'",
+                    snippet_uuid,
+                    snippet_dict.get("name"),
+                )
+                snippets.append(snippet_dict)
             except Exception as e:
                 logging.warning(f"Failed to get snippet UUID {snippet_uuid}: {e}")
-                print(
-                    f"DEBUG list_snippets: Failed to get snippet UUID {snippet_uuid}: {e}"
-                )
-        print(f"DEBUG list_snippets: Returning {len(snippets)} snippets")
+        logger.debug("Returning %d snippet(s)", len(snippets))
         return snippets
 
     def _register_tools(self):
@@ -498,68 +636,42 @@ class VirtualMcpServer:
             result: The result of the tool invocation.
         """
         # Record invocation attempt
-        invoke_vmcp_tool_counter.labels(
-            server_name=self.name, tool_name=tool_name
-        ).inc()
+        if self.metrics_enabled:
+            invoke_vmcp_tool_counter.labels(
+                server_name=self.name, tool_name=tool_name
+            ).inc()
         start_time = time.time()
 
         # Check if tool_name is in our cached tool names
         if tool_name not in self._tool_manifests:
             raise ValueError(f"Tool {tool_name} not found")
 
+        # Execute the manifest pinned at registration time, not whatever is on
+        # disk now: a later overwrite of the tool JSON (e.g. by an MCP wrapper
+        # with the same name) would otherwise recurse back through this server.
+        tool_dict = self._tool_manifests.get(tool_name)
+        if tool_dict is None:
+            raise ValueError(f"No cached manifest for tool '{tool_name}'")
+
         try:
-            from skillberry_store.modules.file_executor import FileExecutor
-            from skillberry_store.services.registry import get_service
-
-            # Use the manifest cached at server creation time so that a later overwrite of the
-            # tool JSON file (e.g. by an MCP wrapper with the same name) cannot cause
-            # infinite recursion back through this server.
-            tool_dict = self._tool_manifests.get(tool_name)
-            if tool_dict is None:
-                raise ValueError(f"No cached manifest for tool '{tool_name}'")
-
-            module_name = tool_dict.get("module_name")
-            if not module_name:
-                raise ValueError(
-                    f"Tool '{tool_name}' has no module_name in cached manifest"
+            result = await self.tool_source.execute(tool_dict, parameters, env_id)
+        except Exception as e:
+            logging.error(
+                f"Error invoking tool {tool_name} on VMCP server {self.name}: {e}"
+            )
+            self._notify_invoke(
+                InvokeRecord(
+                    tool_name=tool_name,
+                    parameters=parameters,
+                    error=e,
+                    duration=time.time() - start_time,
                 )
-
-            tool_uuid = tool_dict.get("uuid")
-            if not tool_uuid:
-                raise ValueError(f"Tool '{tool_name}' has no uuid in cached manifest")
-
-            # Use the object handler to read the module file from the tool's UUID subdirectory
-            module_content = self.tools_handler.read_file(
-                tool_uuid, module_name, raw_content=True
             )
-            if not isinstance(module_content, str):
-                raise ValueError(f"Could not read module for tool '{tool_name}'")
+            raise
 
-            # Load tool dependencies recursively via the shared service method.
-            dependencies = tool_dict.get("dependencies", [])
-            tool_dep_ids = get_service("tool").find_dependencies(
-                dependencies, tool_uuid
-            )
-
-            dep_dicts = self.tools_handler.read_dicts(list(tool_dep_ids))
-            dep_files = [
-                self.tools_handler.read_file(
-                    m["uuid"], m["module_name"], raw_content=True
-                )
-                for m in dep_dicts
-            ]
-
-            executor = FileExecutor(
-                name=tool_name,
-                file_content=module_content,
-                file_manifest=tool_dict,
-                dependent_file_contents=dep_files,
-                dependent_tools_as_dict=dep_dicts,
-            )
-            result = await executor.execute_file(parameters=parameters, env_id=env_id)
-
-            # Record successful execution metrics
-            duration = time.time() - start_time
+        # Record successful execution metrics
+        duration = time.time() - start_time
+        if self.metrics_enabled:
             invoke_successfully_vmcp_tool_counter.labels(
                 server_name=self.name, tool_name=tool_name
             ).inc()
@@ -567,12 +679,31 @@ class VirtualMcpServer:
                 server_name=self.name, tool_name=tool_name
             ).observe(duration)
 
-            return result
-        except Exception as e:
-            logging.error(
-                f"Error invoking tool {tool_name} on VMCP server {self.name}: {e}"
+        self._notify_invoke(
+            InvokeRecord(
+                tool_name=tool_name,
+                parameters=parameters,
+                result=result,
+                duration=duration,
             )
-            raise
+        )
+        return result
+
+    def _notify_invoke(self, record: InvokeRecord) -> None:
+        """Hand one invocation to the ``on_invoke`` hook, if any.
+
+        An observer must never be able to break dispatch, so its exceptions are
+        logged and dropped.
+        """
+        if self.on_invoke is None:
+            return
+        try:
+            self.on_invoke(record)
+        except Exception as e:
+            logging.warning(
+                f"on_invoke hook failed for tool {record.tool_name} "
+                f"on VMCP server {self.name}: {e}"
+            )
 
     def tool_dict_to_mcp_tool(self, tool_dict: dict):
         """
@@ -701,6 +832,14 @@ class VirtualMcpServer:
                         f"VMCP server thread '{self.name}' did not stop within "
                         "timeout; leaving as daemon thread."
                     )
+
+    def __enter__(self) -> "VirtualMcpServer":
+        """Support ``with VirtualMcpServer(...) as server:`` so a served instance
+        always releases its port, even if the caller raises."""
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.stop()
 
     def to_dict(self):
         """
