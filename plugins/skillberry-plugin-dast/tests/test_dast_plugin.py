@@ -15,18 +15,21 @@ requires_engine = pytest.mark.skipif(
 )
 
 
-class _Tools:
-    def __init__(self, modules):
-        self._modules = modules  # (uuid, filename) -> source
-
-    def read_file(self, uuid, filename, raw_content=False):
-        return self._modules[(uuid, filename)]
-
-
 class FakeStore:
+    """Mimics the sanctioned StoreAPI surface — not the internal ObjectHandler.
+
+    Module source is reached through ``get_tool_module(uuid)``, so the fake no
+    longer has to know that tools are stored as files under a filename.
+    """
+
     def __init__(self, objects=None, modules=None):
         self._objs = objects or {}
-        self.tools = _Tools(modules or {})
+        # {(uuid, filename): source} is still accepted for readability at the
+        # call sites; lookup is by uuid alone.
+        self._modules = {uuid: src for (uuid, _fn), src in (modules or {}).items()}
+
+    def get_tool_module(self, uuid):
+        return self._modules.get(uuid)
 
     def get_skill(self, uuid):
         return copy.deepcopy(self._objs.get(("skill", uuid)))

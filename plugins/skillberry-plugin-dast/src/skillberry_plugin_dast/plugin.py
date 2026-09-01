@@ -29,6 +29,7 @@ from .engine import (
     SHIM_SOURCE,
     BenignMcpTwin,
     EntryPoint,
+    StoreApiToolSource,
     discover_entry_points,
     generator_available,
     progress,
@@ -161,7 +162,7 @@ class SkillberryPluginDast(PluginBase):
     # ── store -> engine inputs ────────────────────────────────────────────────
 
     def _get_object(self, object_type: str, uuid: str) -> Optional[Dict[str, Any]]:
-        if self._store_api is None:
+        if not self.store_available:
             raise RuntimeError("Store API not available")
         getter = {
             "skill": self.store.get_skill,
@@ -182,12 +183,11 @@ class SkillberryPluginDast(PluginBase):
         def _add_tool(tool: Dict[str, Any]) -> None:
             tools.append(tool)
             module = tool.get("module_name")
-            if module and self._store_api is not None:
+            if module and self.store_available:
                 try:
-                    src = self.store.tools.read_file(
-                        tool.get("uuid"), module, raw_content=True
-                    )
-                    blobs.append((module, src))
+                    src = self.store.get_tool_module(tool.get("uuid"))
+                    if src is not None:
+                        blobs.append((module, src))
                 except Exception as e:
                     logger.debug("dast: could not read tool module: %s", e)
 
@@ -238,9 +238,9 @@ class SkillberryPluginDast(PluginBase):
             if not live:
                 return ({"return value": ""}, "")
 
-            from skillberry_store.modules.file_executor import FileExecutor
+            from skillberry_store.standalone import FileExecutor
 
-            if self._store_api is None:
+            if not self.store_available:
                 return ({"error": "store unavailable"}, "")
 
             target = self._resolve_execution_target(
@@ -309,13 +309,13 @@ class SkillberryPluginDast(PluginBase):
         # Tier-1: a registered tool — execute its own function as-is.
         tool = tools_by_name.get(ep.name)
         if tool is not None and ep.kind == KIND_TOOL:
-            module = tool.get("module_name")
             try:
-                source = self.store.tools.read_file(
-                    tool.get("uuid"), module, raw_content=True
-                )
+                source = self.store.get_tool_module(tool.get("uuid"))
             except Exception as e:
                 logger.debug("dast: read failed for tool %s: %s", ep.name, e)
+                return None
+            if source is None:
+                logger.debug("dast: no module source for tool %s", ep.name)
                 return None
             return (tool.get("name"), source, tool)
 
@@ -452,35 +452,14 @@ class SkillberryPluginDast(PluginBase):
     def _run_executor_bounded(self, executor, args, env_id):
         """Bounded execution of one entry point (raises _ExecTimeout on hang).
 
-        Calls FileExecutor's SYNCHRONOUS per-language path directly inside the
-        bounded daemon thread (rather than the async ``execute_file`` which
-        offloads to a nested, non-daemon ``to_thread`` worker that would block
-        scan shutdown when abandoned).
+        Uses FileExecutor's public SYNCHRONOUS entry point so the work happens
+        directly in our own daemon thread — the async ``execute_file`` offloads
+        to a non-daemon ``to_thread`` worker that would block scan shutdown when
+        abandoned.
         """
-
-        def _work():
-            return self._execute_file_sync(executor, args, env_id)
-
-        return self._run_bounded(_work)
-
-    @staticmethod
-    def _execute_file_sync(executor, args, env_id):
-        """Synchronous equivalent of ``FileExecutor.execute_file`` for the code
-        packaging path; falls back to driving the async API on a private loop for
-        non-code (e.g. mcp) formats."""
-        fmt = (executor.manifest or {}).get("packaging_format", "code")
-        lang = (executor.manifest or {}).get("programming_language", "python")
-        try:
-            if fmt == "code" and lang == "python":
-                if executor.execute_python_locally:
-                    return executor.execute_python_file_locally(args, env_id=env_id)
-                return executor.execute_python_file_using_docker(args, env_id=env_id)
-            if fmt == "code" and lang == "bash":
-                return executor.execute_bash_file(parameters=args)
-        except Exception as e:
-            return {"error": f"execute failed: {e}"}
-        # Other formats (e.g. mcp): run the async path on a private loop.
-        return asyncio.run(executor.execute_file(parameters=args, env_id=env_id))
+        return self._run_bounded(
+            lambda: executor.execute_file_sync(args, env_id=env_id)
+        )
 
     # ── core scan ──────────────────────────────────────────────────────────────
 
@@ -569,6 +548,7 @@ class SkillberryPluginDast(PluginBase):
                         twin = BenignMcpTwin(
                             name=f"dast-twin-{uuid[:8]}",
                             tool_uuids=twin_tool_uuids,
+                            tool_source=StoreApiToolSource(self.store),
                         ).start()
                     except Exception as e:
                         logger.warning("dast: vMCP twin failed to start: %s", e)

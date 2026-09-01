@@ -22,7 +22,8 @@ from .fuzz import (
 )
 from .observe import EVENT_SINK_ENV, SHIM_SOURCE, findings_from_output, parse_events
 from .runner import run_dast
-from .twin import BenignMcpTwin, host_address_for_container
+from .tool_source import StoreApiToolSource
+from .twin import BenignMcpTwin
 
 __all__ = [
     "DastReport",
@@ -40,7 +41,7 @@ __all__ = [
     "findings_from_output",
     "run_dast",
     "BenignMcpTwin",
-    "host_address_for_container",
+    "StoreApiToolSource",
     "progress",
     "scope",
 ]

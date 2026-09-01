@@ -2,11 +2,11 @@ import logging
 import os
 import socket
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from prometheus_client import Counter, Histogram
 from pydantic import Field
-from typing import Annotated, Any, Callable, Dict, List, Optional, Protocol
+from typing import Annotated, Any, Callable, List, Optional, Protocol
 
 from mcp.server.fastmcp import FastMCP
 from skillberry_store.modules.object_handler import get_object_handler

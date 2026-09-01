@@ -46,14 +46,6 @@ requires_engine = pytest.mark.skipif(
 )
 
 
-class _Tools:
-    def __init__(self, m):
-        self.m = m
-
-    def read_file(self, uuid, fn, raw_content=False):
-        return self.m[(uuid, fn)]
-
-
 def _skill_store():
     # one tool (Tier-1 "send") whose module also has a Tier-2 "helper"
     src = "def send(p):\n    return p\ndef helper(q):\n    return q\n"
@@ -79,7 +71,10 @@ def _skill_store():
     class Store:
         def __init__(self):
             self._o = objs
-            self.tools = _Tools({("t1", "s.py"): src})
+            self._modules = {"t1": src}
+
+        def get_tool_module(self, uuid):
+            return self._modules.get(uuid)
 
         def get_skill(self, u):
             return copy.deepcopy(self._o.get(("skill", u)))
