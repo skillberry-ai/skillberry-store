@@ -89,6 +89,57 @@ class StoreAPI:
         # ``narrow``, so opt back into ``full`` here.
         return self.tools_service.list_all(filter_criteria, fields="full")
 
+    def get_tool_module(self, uuid_or_name: str) -> Optional[str]:
+        """Return a tool's module source, or None if unavailable.
+
+        Prefer this over reaching for ``store.tools.read_file(...)``: it needs
+        no filename, and for MCP-packaged tools it returns the generated stub
+        instead of failing (there is no stored module file for those).
+        """
+        if not self.tools_service:
+            return None
+        try:
+            return self.tools_service.get_module(uuid_or_name)
+        except KeyError:
+            return None
+        except Exception as e:
+            logger.error(f"Failed to read module for {uuid_or_name}: {e}")
+            return None
+
+    def update_tool_module(self, uuid_or_name: str, content: str) -> bool:
+        """Replace a tool's module source. Returns False if it could not be written."""
+        if not self.tools_service:
+            return False
+        try:
+            self.tools_service.set_module(uuid_or_name, content)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to write module for {uuid_or_name}: {e}")
+            return False
+
+    async def execute_tool(
+        self,
+        uuid_or_name: str,
+        parameters: Optional[Dict[str, Any]] = None,
+        env_id: str = "",
+    ) -> Dict[str, Any]:
+        """Execute a tool through the store's own execution path.
+
+        Resolves dependencies and runs the tool exactly as the REST
+        ``/tools/{uuid}/execute`` endpoint does, so callers do not have to
+        assemble execution inputs themselves.
+
+        Raises:
+            RuntimeError: If the tools service is unavailable, or the tool
+                reported an execution error.
+            KeyError: If the tool was not found.
+        """
+        if not self.tools_service:
+            raise RuntimeError("Tools service not available")
+        return await self.tools_service.execute(
+            uuid_or_name, parameters or {}, env_id=env_id
+        )
+
     def update_tool_tags(self, uuid: str, tags: List[str]) -> bool:
         if not self.tools_service:
             return False
@@ -129,7 +180,9 @@ class StoreAPI:
 
     def update_tool(self, uuid: str, tool_data: Dict[str, Any]) -> bool:
         """Write a complete tool object to the store."""
-        handler = self.tools
+        # Deliberately not via the public ``tools`` property: that accessor is
+        # deprecated for plugin use, and StoreAPI must not trip its own warning.
+        handler = self.tools_service.handler if self.tools_service else None
         if not handler:
             return False
         try:
@@ -210,7 +263,9 @@ class StoreAPI:
 
     def update_skill(self, uuid: str, skill_data: Dict[str, Any]) -> bool:
         """Write a complete skill object to the store."""
-        handler = self.skills
+        # Deliberately not via the public ``skills`` property: that accessor is
+        # deprecated for plugin use, and StoreAPI must not trip its own warning.
+        handler = self.skills_service.handler if self.skills_service else None
         if not handler:
             return False
         try:
@@ -276,7 +331,9 @@ class StoreAPI:
 
     def update_snippet(self, uuid: str, snippet_data: Dict[str, Any]) -> bool:
         """Write a complete snippet object to the store."""
-        handler = self.snippets
+        # Deliberately not via the public ``snippets`` property: that accessor is
+        # deprecated for plugin use, and StoreAPI must not trip its own warning.
+        handler = self.snippets_service.handler if self.snippets_service else None
         if not handler:
             return False
         try:

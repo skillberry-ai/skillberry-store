@@ -158,3 +158,40 @@ def test_plugin_base_requires_all_abstract_methods():
         IncompletePlugin()
 
 # Made with Bob
+
+
+def test_plugin_base_store_available():
+    """``store_available`` answers what ``store`` cannot: is the API injected?
+
+    Plugins previously read the private ``_store_api`` to branch on this,
+    because ``store`` raises rather than reporting.
+    """
+    from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+
+    class TestPlugin(PluginBase):
+        @property
+        def metadata(self) -> PluginMetadata:
+            return PluginMetadata(
+                name="Test",
+                description="Test plugin",
+                version="1.0.0",
+                plugin_type=PluginType.CREATOR,
+            )
+
+        def is_enabled(self) -> bool:
+            return True
+
+        def get_router(self) -> Optional[Any]:
+            return None
+
+        def get_cli_commands(self) -> Optional[Dict[str, Any]]:
+            return None
+
+        def get_ui_config(self) -> Optional[Dict[str, Any]]:
+            return None
+
+    plugin = TestPlugin()
+    assert plugin.store_available is False
+
+    plugin.set_store_api(object())
+    assert plugin.store_available is True

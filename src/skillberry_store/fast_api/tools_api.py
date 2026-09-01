@@ -28,6 +28,12 @@ class AddToolFromCodeRequest(BaseModel):
     module_name: Optional[str] = None
 
 
+class UpdateToolModuleRequest(BaseModel):
+    """Body for ``PUT /tools/{uuid_or_name}/module`` — replacement module source."""
+
+    content: str
+
+
 def register_tools_api(
     app: FastAPI,
     tags: str = "tools",
@@ -255,6 +261,50 @@ def register_tools_api(
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error retrieving module file: {str(e)}"
+            )
+
+    @requires("tools", "update")
+    @app.put(
+        "/tools/{uuid_or_name}/module",
+        tags=[tags],
+        openapi_extra={"x-cli-name": "update-tool-module", "x-mcp-tool": True},
+    )
+    async def update_tool_module(
+        uuid_or_name: str, request: UpdateToolModuleRequest
+    ) -> Dict:
+        """Replace the module file content for a specific tool.
+
+        The write counterpart to ``GET /tools/{uuid_or_name}/module``. The module
+        filename is resolved from the tool's own manifest, so it is not part of
+        the request. Only the module file is written — use
+        ``PUT /tools/{uuid_or_name}`` to change metadata.
+
+        Args:
+            uuid_or_name: The UUID or name of the tool whose module to replace.
+            request: Body carrying the new module source.
+
+        Returns:
+            dict: Success message confirming the write.
+
+        Raises:
+            HTTPException: 404 if tool not found, 400 if the tool has no module
+                file to write (including MCP-packaged tools), 500 for other errors.
+        """
+        try:
+            service.set_module(uuid_or_name, request.content)
+            return {
+                "message": (
+                    f"Module for tool with UUID or name '{uuid_or_name}' "
+                    "updated successfully."
+                )
+            }
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error updating module file: {str(e)}"
             )
 
     @requires("tools", "delete")

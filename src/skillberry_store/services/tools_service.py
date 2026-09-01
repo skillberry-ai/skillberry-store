@@ -41,6 +41,10 @@ get_tool_module_counter = Counter(
     f"{prom_prefix}get_tool_module_counter",
     "Count number of tool module get operations",
 )
+set_tool_module_counter = Counter(
+    f"{prom_prefix}set_tool_module_counter",
+    "Count number of tool module set operations",
+)
 delete_tool_counter = Counter(
     f"{prom_prefix}delete_tool_counter", "Count number of tool delete operations"
 )
@@ -435,6 +439,43 @@ class ToolsService:
             raise
         except Exception as e:
             logger.error(f"Error retrieving module for '{uuid_or_name}': {e}")
+            raise
+
+    def set_module(self, uuid_or_name: str, content: str) -> None:
+        """Replace the module file content for a code-packaged tool.
+
+        The write counterpart to :meth:`get_module`. The module filename is
+        resolved from the tool's own manifest, so callers do not need to know
+        it.
+
+        Args:
+            uuid_or_name: Tool UUID or name.
+            content: New module source to persist.
+
+        Raises:
+            KeyError: If the tool is not found.
+            ValueError: If the tool has no module file to write — which includes
+                MCP-packaged tools, whose module content is synthesized on read
+                rather than stored.
+        """
+        set_tool_module_counter.inc()
+        try:
+            uuid = self._resolve_uuid(uuid_or_name)
+            with self.handler.read_lock(uuid):
+                tool = self.handler.read_dict(uuid)
+                if tool.get("packaging_format") == "mcp":
+                    raise ValueError(
+                        f"Tool '{uuid_or_name}' is MCP-packaged and has no "
+                        "stored module file to write"
+                    )
+                module_name = tool.get("module_name")
+                if not module_name:
+                    raise ValueError(f"Tool '{uuid_or_name}' has no module file")
+                self.handler.write_file(uuid, module_name, content)
+        except (KeyError, ValueError):
+            raise
+        except Exception as e:
+            logger.error(f"Error writing module for '{uuid_or_name}': {e}")
             raise
 
     def list_all(

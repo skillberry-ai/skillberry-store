@@ -197,6 +197,45 @@ def test_get_module_returns_file_content():
     assert "def hello" in content
 
 
+def test_set_module_writes_resolved_filename():
+    """The module filename comes from the manifest, not from the caller."""
+    h = _handler()
+    svc = ToolsService(h)
+    svc.set_module("t1", "print('fixed')\n")
+    h.write_file.assert_called_once_with("cccc-3333", "t1.py", "print('fixed')\n")
+
+
+def test_set_module_rejects_mcp_packaged_tool():
+    """MCP tools have no stored module file — their content is synthesized on read."""
+    h = _handler()
+    h.read_dict.return_value = {
+        "uuid": "cccc-3333", "name": "t1", "packaging_format": "mcp",
+    }
+    svc = ToolsService(h)
+    with pytest.raises(ValueError, match="MCP-packaged"):
+        svc.set_module("t1", "x")
+    h.write_file.assert_not_called()
+
+
+def test_set_module_rejects_tool_without_module_name():
+    h = _handler()
+    h.read_dict.return_value = {"uuid": "cccc-3333", "name": "t1"}
+    svc = ToolsService(h)
+    with pytest.raises(ValueError, match="no module file"):
+        svc.set_module("t1", "x")
+    h.write_file.assert_not_called()
+
+
+def test_set_module_raises_key_error_when_not_found():
+    h = _handler()
+    h.resolve_to_uuid_or_error.side_effect = HTTPException(
+        status_code=404, detail="not found"
+    )
+    svc = ToolsService(h)
+    with pytest.raises(KeyError):
+        svc.set_module("missing", "x")
+
+
 def _search_handler_tools(cached_tool):
     h = _handler()
     h.read_dict.return_value = cached_tool
