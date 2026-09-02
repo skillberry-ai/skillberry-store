@@ -208,11 +208,35 @@ bindings:
       - kind: group
         name: admins
     roles: [admin]
+
+  # A plugin's autonomous work runs as an owner tenant, which is bound here like
+  # any other subject. `plugin-user` is deliberately VIRTUAL: it has no
+  # `standalone.users` entry, therefore no password hash and no way to log in
+  # from the network, while its grants stay reviewable in this same file. See
+  # docs/design/plugin-identity.md §5.3.
+  - name: plugin-agent-binding
+    subjects:
+      - kind: tenant
+        name: plugin-user
+    roles: [plugin-agent]
+
+# --- Plugin identity -------------------------------------------------
+# Deployment-wide fallback identity for plugin work. Precedence:
+#   the owner recorded when a tenant enabled the plugin (PATCH /plugins/{name})
+#   -> plugins.owner_tenant
+#   -> none, and the plugin's outward calls FAIL rather than going anonymous.
+# See docs/design/plugin-identity.md §5.
+plugins:
+  owner_tenant: plugin-user
+  owner_groups: []              # groups for the owner tenant (it has no users entry)
+  token_ttl_seconds: 900        # TTL of tokens minted for a plugin's
+                                # out-of-process calls; env: SBS_PLUGIN_TOKEN_TTL
 ```
 
 Notes:
 * In `disabled` mode, `standalone.users`, `roles`, and `bindings` are all ignored — the PEP dependency is not installed at all, and the OpenAPI schema publishes no `securitySchemes`. Session tokens are not minted either (no `/auth/login` traffic is expected). There is no need to keep the standalone block consistent when mode is `disabled`.
 * In step 1, the same role can be reused across many bindings without duplication (that is the point of the role/binding split); once `scope:` lands, the same role scales to per-namespace and per-object grants without any role-schema change.
+* The `plugins:` block is read in every mode but only *acts* in `standalone`: in `disabled` mode nothing reads the ambient subject, so the owner tenant is inert. It is still worth setting there, so that flipping to `standalone` does not silently stop every auto-triggering plugin.
 
 ### 5.2 Validation
 
@@ -230,6 +254,7 @@ Two env vars are read by the server; both override the YAML on conflict (env-fir
 |---|---|---|
 | `SBS_ACCESS_CONTROL_CONFIG` | Path to the config YAML. | Env > default (`./access_control_config.yaml`). |
 | `SBS_SESSION_TTL` | Session TTL in seconds. | **Env > YAML `standalone.session_ttl_seconds` > built-in default (43200 / 12h).** |
+| `SBS_PLUGIN_TOKEN_TTL` | TTL of tokens minted for a plugin's out-of-process calls. | **Env > YAML `plugins.token_ttl_seconds` > built-in default (900 / 15m).** |
 
 ### 5.4 Reload
 
@@ -656,7 +681,21 @@ This is friction on long-running MCP setups and matches the pattern used by pre-
 
 ### 10.3 Plugin routers
 
-`plugin_loader.mount_routers(self)` adds routes via `app.include_router(...)`. FastAPI propagates `app.router.dependencies` to routes included this way, so the enforce dep gates plugin routes automatically without any per-plugin wiring. Plugin authors should either declare a `plugins/<slug>` tag or set `x-rbac-resource` on their routes to opt into a specific resource; unmapped routes default to `resource=plugins`.
+`plugin_loader.mount_routers(self)` adds routes via `app.include_router(...)`. FastAPI propagates `app.router.dependencies` to routes included this way, so the enforce dep gates plugin routes automatically without any per-plugin wiring.
+
+**Every plugin route must declare `@requires(resource, verb)`** — there is no tag convention and no default resource. An earlier draft of this section proposed both; they were removed for the same reason method/path inference was (§6.1): a default chosen by the loader is fail-open, and a route whose shape did not match a rule fell through to it silently. Import the decorator from the plugin contract, not from `access_control`:
+
+```python
+from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType, requires
+
+@requires("skills", "update")     # what the action does to the STORE, not the
+@router.post("/scan")             # subsystem the endpoint belongs to
+async def scan(...): ...
+```
+
+The startup coverage audit checks plugin routes too, which required teaching its walker to descend the `_IncludedRouter` nesting FastAPI >= 0.137 introduced — before that fix plugin routes were invisible to the audit *and* to the marker stamper, and every plugin action endpoint returned 500 under `standalone`.
+
+Plugin *identity* — which tenant a plugin's own calls run as, and how its in-process store calls reach the PDP at all — is a larger topic with its own document: [plugin-identity.md](plugin-identity.md).
 
 ### 10.4 UI (React SPA)
 

@@ -718,6 +718,86 @@ make install-requirements ODEPS=plugins-all
 pip install --upgrade skillberry-store[plugins-all]
 ```
 
+## Plugins under access control
+
+When `access_control_config.yaml` is in `mode: standalone`, a plugin is subject to
+the same authorization as the rest of the store. Two obligations for plugin
+authors, and one thing operators must set. The full rationale is in
+[docs/design/plugin-identity.md](design/plugin-identity.md).
+
+### 1. Every route declares what it needs (required in all modes)
+
+```python
+from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType, requires
+
+@requires("skills", "update")     # what the action does to the STORE
+@router.post("/scan")             # (not the subsystem the endpoint belongs to)
+async def scan(request: ScanRequest): ...
+```
+
+The startup audit refuses to boot a `standalone` deployment with an unmarked
+plugin route, and logs a warning in `mode: disabled`. Declare the *coarsest
+honest* requirement: if the action fans out across resources (a skill scan that
+also touches its tools), the door checks what you declared and each store call is
+checked individually as it happens.
+
+A route object that is not an `APIRoute` — a websocket, a Starlette `Mount` — is
+reported the same way. A `Mount` sits outside the FastAPI dependency chain
+entirely and would answer with no token at all.
+
+### 2. Work handed to a thread must carry the identity
+
+The tenant a plugin runs as is ambient context, and a thread the asyncio
+machinery did not create for you starts with an empty one:
+
+| Offload | Carries identity? |
+|---|---|
+| `asyncio.to_thread(fn)` | yes |
+| a `def` endpoint (Starlette's threadpool) | yes |
+| `loop.run_in_executor(None, fn)` | **no** |
+| `ThreadPoolExecutor.submit(fn)` / `threading.Thread(target=fn)` | **no** |
+
+For the bottom two, copy it explicitly:
+
+```python
+ctx = contextvars.copy_context()
+threading.Thread(target=ctx.run, args=(work,), daemon=True).start()
+```
+
+Without this, every store call from that thread fails with `PluginIdentityError`.
+
+### 3. Operators: assign an owner tenant
+
+A plugin's *autonomous* work — event handlers, timers, background sweeps — runs
+as its **owner tenant**, not as whoever triggered it. That is deliberate: a
+scanner's coverage should not depend on the uploader's role, and an annotation is
+the plugin's judgement rather than an action the uploader took. A plugin's own
+API call is different: it runs as the *calling* tenant, so "the plugin can do it"
+never becomes "therefore I can ask the plugin to do it for me".
+
+The owner comes from, in order:
+
+1. the tenant that enabled the plugin (`PATCH /plugins/{name}` records it);
+2. `plugins.owner_tenant` in the access-control config (the shipped configs set
+   `plugin-user`, with a `plugin-agent` role);
+3. nothing — and then the plugin's outward calls **fail** rather than proceeding
+   anonymously. `GET /plugins/` says so in each plugin's `status`, and the
+   framework labels the affected object `<slug>:error`.
+
+Failures on the event path are otherwise invisible: handlers run as background
+tasks whose exceptions never reach a request. Check the object's tags and its
+`extra.<slug>.outcome` block, not just the response to the upload.
+
+### Notes for plugins that reach further
+
+- `StoreAPI.tools` / `.skills` / `.snippets` (the raw `ObjectHandler`) raise under
+  access control. Use the named accessors — each is authorized.
+- `skillberry_store.standalone.VirtualMcpServer` requires an explicit
+  `tool_source` under access control; pass one obtained through `StoreAPI`.
+- To hand work to an out-of-process agent, ask the store for a credential rather
+  than inventing one: `store.mcp_sse_config(base_url)` returns the Control MCP
+  URL for the current identity plus a short-lived token minted for it.
+
 ## Support
 
 For plugin-related issues:
