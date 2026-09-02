@@ -381,3 +381,95 @@ def test_annotation_writes_do_not_re_enter_event_handlers(
 
     assert services[service_key].handler.write_dict.called
     assert emitted == []
+
+
+# ── §4.5: materializing the ambient tenant out of process ───────────────── #
+
+
+class _FakeSessions:
+    def __init__(self):
+        self.minted = []
+
+    def mint(self, tenant_id, groups, ttl_seconds):
+        self.minted.append((tenant_id, list(groups), ttl_seconds))
+        return f"token-for-{tenant_id}", 0.0
+
+
+def test_disabled_mode_mints_no_token():
+    """There is no PEP to validate one and /control_sse is already
+    unauthenticated, so minting would be pointless (§2.5)."""
+    api = StoreAPI(_services(), DISABLED, sessions=_FakeSessions())
+    assert api.internal_token() is None
+
+
+def test_token_is_minted_for_the_ambient_subject():
+    sessions = _FakeSessions()
+    cfg = _standalone(verbs=["*"])
+    cfg.plugin_token_ttl_seconds = 120
+    api = StoreAPI(_services(), cfg, sessions=sessions).for_plugin("ask-runspace")
+    set_current_subject(Subject(tenant_id="owner", groups=["g1"]))
+    assert api.internal_token() == "token-for-owner"
+    assert sessions.minted == [("owner", ["g1"], 120)]
+
+
+def test_minting_with_no_identity_fails_rather_than_going_anonymous():
+    api = StoreAPI(_services(), _standalone(verbs=["*"]), sessions=_FakeSessions())
+    with pytest.raises(PluginIdentityError):
+        api.internal_token()
+
+
+def test_no_session_store_means_no_token():
+    api = StoreAPI(_services(), _standalone(verbs=["*"]))
+    set_current_subject(Subject(tenant_id="owner"))
+    assert api.internal_token() is None
+
+
+def test_mount_path_follows_the_ambient_subject():
+    api = StoreAPI(_services(), _standalone(verbs=["*"]))
+    api.set_mcp_mounts({"owner": "/control_sse/plugin-user"})
+    set_current_subject(Subject(tenant_id="owner"))
+    assert api.mcp_mount_path() == "/control_sse/plugin-user"
+    set_current_subject(Subject(tenant_id="stranger"))
+    assert api.mcp_mount_path() is None
+
+
+def test_disabled_mode_uses_the_single_shared_mount():
+    api = StoreAPI(_services(), DISABLED)
+    api.set_mcp_mounts({}, default="/control_sse")
+    assert api.mcp_mount_path() == "/control_sse"
+
+
+def test_mounts_reach_views_created_before_they_were_set():
+    """The loader builds per-plugin views during discovery, long before the
+    mounts exist — so the mount state must be shared by reference."""
+    shared = StoreAPI(_services(), DISABLED)
+    view = shared.for_plugin("ask-runspace")
+    shared.set_mcp_mounts({}, default="/control_sse")
+    assert view.mcp_mount_path() == "/control_sse"
+
+
+def test_mcp_sse_config_carries_url_and_credential():
+    cfg = _standalone(verbs=["*"])
+    api = StoreAPI(_services(), cfg, sessions=_FakeSessions()).for_plugin("ask")
+    api.set_mcp_mounts({"owner": "/control_sse/plugin-user"})
+    set_current_subject(Subject(tenant_id="owner"))
+    entry = api.mcp_sse_config("http://localhost:8000")
+    assert entry == {
+        "type": "sse",
+        "url": "http://localhost:8000/control_sse/plugin-user",
+        "headers": {"Authorization": "Bearer token-for-owner"},
+    }
+
+
+def test_mcp_sse_config_is_none_without_a_mount():
+    api = StoreAPI(_services(), _standalone(verbs=["*"]), sessions=_FakeSessions())
+    set_current_subject(Subject(tenant_id="owner"))
+    assert api.mcp_sse_config("http://localhost:8000") is None
+
+
+def test_mcp_sse_config_injects_no_header_without_acl():
+    """Do not inject an empty Authorization header in ``disabled`` mode."""
+    api = StoreAPI(_services(), DISABLED, sessions=_FakeSessions())
+    api.set_mcp_mounts({}, default="/control_sse")
+    entry = api.mcp_sse_config("http://localhost:8000")
+    assert entry == {"type": "sse", "url": "http://localhost:8000/control_sse"}

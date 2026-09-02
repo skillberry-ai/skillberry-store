@@ -80,6 +80,20 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`~/.skillberry/plugins.json` gained an `owners` key.** Files written by earlier
   versions load unchanged; the key is added on the next write.
 
+### Fixed
+
+- **A Claude Code agent handed the store's MCP URL can now use it under access
+  control.** Two independent things were broken, so fixing either alone left it
+  broken: the agent had no credential (the SSE handshake is allow-listed, but every
+  re-dispatched tool call goes through the PEP and 401s), and the URL it was given —
+  the bare `/control_sse` — is not mounted at all under `standalone`. The Control MCP
+  mount loop now covers every subject that needs a surface rather than only
+  `standalone.users` entries, so a virtual plugin owner tenant gets one too, and
+  `ask-runspace` resolves the mount for whoever is calling and attaches a short-lived
+  token minted for that identity. No password, no stored secret: the token is derived
+  from identity the store already holds and dies with the process. The UI prefill
+  carries the URL only — a bearer token has no business round-tripping through a form.
+
 - **`ENABLE_UI` has been removed.** It had already stopped doing anything: the UI is
   served in-process by FastAPI at `/ui`, and `main()` only ever consulted
   `ENABLE_UI_SUBPROCESS`, so setting `ENABLE_UI=false` silently still served the UI.

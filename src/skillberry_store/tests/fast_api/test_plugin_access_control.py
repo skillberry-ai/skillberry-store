@@ -573,3 +573,89 @@ def test_disabled_mode_admits_the_same_plugin_work(sbs_factory):
     r = client.post("/probe-fanout", params={"uuid": uuid})
     assert r.status_code == 200, r.text
     assert r.json()["wrote"] is True
+
+
+# ── §4.5: the per-subject MCP mount ─────────────────────────────────────── #
+
+
+def _mcp_mounts(client: TestClient) -> set:
+    return {
+        getattr(r, "path", "")
+        for r in client.app.routes
+        if getattr(r, "path", "").startswith("/control_sse")
+        and not getattr(r, "path", "").endswith("/messages/")
+    }
+
+
+def test_the_plugin_owner_tenant_gets_its_own_mcp_mount(sbs_factory):
+    """Defect C's second half: the mount loop was driven by ``cfg.users``, and a
+    virtual owner tenant has no users entry by design — so the URL a plugin
+    handed an agent was not mounted at all."""
+    client = sbs_factory(_owner_yaml())
+    mounts = _mcp_mounts(client)
+    assert "/control_sse/root" in mounts
+    assert "/control_sse/plugin-user" in mounts
+    assert "/control_sse" not in mounts
+
+
+def test_a_per_plugin_owner_also_gets_a_mount(sbs_factory):
+    client = sbs_factory(_owner_yaml())
+    loader = client.app.state.plugin_loader
+    slug = next(iter(loader.plugins))
+    loader.record_owner(slug, "team-blue")
+    # Mounts are computed at startup, so rebuild to pick the new owner up.
+    client = sbs_factory(_owner_yaml())
+    assert "/control_sse/team-blue" in _mcp_mounts(client)
+
+
+def test_the_owner_mount_surface_matches_its_role(sbs_factory):
+    """``operations_for_subject`` works on any subject, not only a config user —
+    only the iteration source widened."""
+    from skillberry_store.access_control.mcp_plan import operations_for_subject
+    from skillberry_store.access_control.pdp import Subject
+
+    client = sbs_factory(_owner_yaml())
+    cfg = client.app.state.acl_cfg
+    ops = set(
+        operations_for_subject(
+            client.app, Subject(tenant_id="plugin-user"), cfg
+        )
+    )
+    # plugin-agent grants content authorship and tool execution…
+    assert {"create_skill", "update_skill", "execute_tool"} <= ops
+    # …and never mentions the admin resource.
+    assert not any(o.startswith("purge") or "backup" in o for o in ops)
+
+
+def test_a_plugin_resolves_its_own_mount_and_token(sbs_factory):
+    """What ask-runspace hands an out-of-process agent: a mounted per-subject
+    URL plus a short-lived token minted for the ambient identity — no password,
+    no stored secret."""
+    client = sbs_factory(_owner_yaml())
+    store = client.app.state.plugin_loader.store_api.for_plugin("ask-runspace")
+
+    from skillberry_store.access_control.context import set_current_subject
+    from skillberry_store.access_control.pdp import Subject
+
+    set_current_subject(Subject(tenant_id="root", groups=["admins"]))
+    try:
+        entry = store.mcp_sse_config("http://localhost:8000")
+    finally:
+        set_current_subject(None)
+
+    assert entry["url"] == "http://localhost:8000/control_sse/root"
+    token = entry["headers"]["Authorization"].removeprefix("Bearer ")
+    # The token is a real session on this store, for that tenant.
+    whoami = client.get(
+        "/auth/whoami", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert whoami.status_code == 200
+    assert whoami.json()["tenant_id"] == "root"
+
+
+def test_disabled_mode_still_mounts_the_shared_control_sse(sbs_factory):
+    client = sbs_factory("mode: disabled\n")
+    assert "/control_sse" in _mcp_mounts(client)
+    store = client.app.state.plugin_loader.store_api
+    assert store.mcp_mount_path() == "/control_sse"
+    assert store.internal_token() is None

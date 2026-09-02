@@ -577,3 +577,149 @@ def test_upload_skills_then_run_consumes_and_cleans_up(monkeypatch):
     assert seen["has_skill_a"] is True
     # The uploaded temp dir is removed once the run consumes it.
     assert not os.path.exists(seen["skills_dir"])
+
+
+# ── out-of-process delegation under access control (plugin-identity §4.5) ── #
+
+
+class _FakeStore:
+    """The two things this plugin needs from StoreAPI to delegate identity."""
+
+    def __init__(self, mount=None, entry=None, raises=None):
+        self._mount = mount
+        self._entry = entry
+        self._raises = raises
+
+    def mcp_mount_path(self):
+        if self._raises:
+            raise self._raises
+        return self._mount
+
+    def mcp_sse_config(self, base_url):
+        if self._raises:
+            raise self._raises
+        return self._entry
+
+
+def test_store_mcp_url_defaults_to_the_shared_mount():
+    from skillberry_plugin_ask_runspace.plugin import _store_mcp_url
+
+    with patch.dict(os.environ, {"SBS_HOST": "0.0.0.0", "SBS_PORT": "8123"}, clear=False):
+        assert _store_mcp_url() == "http://localhost:8123/control_sse"
+
+
+def test_store_mcp_url_honours_a_per_subject_mount():
+    """Under ``standalone`` the bare ``/control_sse`` is not mounted at all."""
+    from skillberry_plugin_ask_runspace.plugin import _store_mcp_url
+
+    with patch.dict(os.environ, {"SBS_HOST": "0.0.0.0", "SBS_PORT": "8123"}, clear=False):
+        assert (
+            _store_mcp_url("/control_sse/alice")
+            == "http://localhost:8123/control_sse/alice"
+        )
+
+
+def test_ui_prefill_uses_this_callers_mount():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    p.set_store_api(_FakeStore(mount="/control_sse/alice"))
+    import json as _json
+
+    props = p.get_ui_config()["actions"][0]["params_schema"]["properties"]
+    entry = _json.loads(props["mcp_servers"]["default"])["skillberry-store"]
+    assert entry["url"].endswith("/control_sse/alice")
+    # The prefill is echoed back through a form, so it must carry no credential.
+    assert "headers" not in entry
+
+
+def test_ui_prefill_survives_a_store_that_cannot_answer():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    p.set_store_api(_FakeStore(raises=RuntimeError("no mount")))
+    import json as _json
+
+    props = p.get_ui_config()["actions"][0]["params_schema"]["properties"]
+    entry = _json.loads(props["mcp_servers"]["default"])["skillberry-store"]
+    assert entry["url"].endswith("/control_sse")
+
+
+def test_run_injects_the_stores_url_and_token():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    p.set_store_api(
+        _FakeStore(
+            entry={
+                "type": "sse",
+                "url": "http://localhost:8000/control_sse/alice",
+                "headers": {"Authorization": "Bearer minted"},
+            }
+        )
+    )
+    out = p._authorize_store_mcp(
+        {"skillberry-store": {"type": "sse", "url": "http://localhost:8000/control_sse"}}
+    )
+    entry = out["skillberry-store"]
+    assert entry["url"] == "http://localhost:8000/control_sse/alice"
+    assert entry["headers"]["Authorization"] == "Bearer minted"
+
+
+def test_run_leaves_other_mcp_servers_alone():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    p.set_store_api(
+        _FakeStore(entry={"type": "sse", "url": "u", "headers": {"Authorization": "B"}})
+    )
+    out = p._authorize_store_mcp(
+        {
+            "skillberry-store": {"type": "sse", "url": "old"},
+            "someone-else": {"type": "sse", "url": "keep-me"},
+        }
+    )
+    assert out["someone-else"] == {"type": "sse", "url": "keep-me"}
+
+
+def test_run_preserves_caller_headers_without_letting_them_shadow_ours():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    p.set_store_api(
+        _FakeStore(
+            entry={"type": "sse", "url": "u", "headers": {"Authorization": "Bearer ours"}}
+        )
+    )
+    out = p._authorize_store_mcp(
+        {
+            "skillberry-store": {
+                "type": "sse",
+                "url": "old",
+                "headers": {"X-Trace": "abc", "Authorization": "Bearer theirs"},
+            }
+        }
+    )
+    headers = out["skillberry-store"]["headers"]
+    assert headers["X-Trace"] == "abc"
+    assert headers["Authorization"] == "Bearer ours"
+
+
+def test_run_injects_nothing_without_access_control():
+    """``mcp_sse_config`` returns no headers in ``disabled`` mode, and an empty
+    Authorization header would be worse than none."""
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    p.set_store_api(
+        _FakeStore(entry={"type": "sse", "url": "http://localhost:8000/control_sse"})
+    )
+    out = p._authorize_store_mcp(
+        {"skillberry-store": {"type": "sse", "url": "http://localhost:8000/control_sse"}}
+    )
+    assert "headers" not in out["skillberry-store"]
+
+
+def test_run_tolerates_an_identity_error():
+    """P5 on this path must not 500 the run request; the agent simply gets no
+    store credential, and the reason is logged."""
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    p.set_store_api(_FakeStore(raises=RuntimeError("no tenant in context")))
+    payload = {"skillberry-store": {"type": "sse", "url": "u"}}
+    assert p._authorize_store_mcp(payload) == payload
+
+
+def test_run_tolerates_a_missing_store_entry():
+    p = _plugin({"ANTHROPIC_API_KEY": "k"})
+    p.set_store_api(_FakeStore(entry={"type": "sse", "url": "u"}))
+    payload = {"other": {"type": "sse", "url": "u"}}
+    assert p._authorize_store_mcp(payload) == payload
+    assert p._authorize_store_mcp(None) is None

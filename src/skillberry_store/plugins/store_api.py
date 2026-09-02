@@ -92,6 +92,13 @@ class StoreAPI:
         """
         self._cfg = cfg
         self._sessions = sessions
+        # Where each tenant's Control MCP is mounted, filled in by the server
+        # once the mounts exist. Held in ONE mutable dict deliberately:
+        # ``for_plugin`` shallow-copies, so every per-plugin view shares this
+        # object and sees a late assignment. Rebinding the attribute instead
+        # would leave the views (created during plugin discovery, before the
+        # mounts exist) permanently empty.
+        self._mcp: Dict[str, Any] = {"mounts": {}, "default": None}
         self.tools_service = services.get("tools")
         self.skills_service = services.get("skills")
         self.snippets_service = services.get("snippets")
@@ -153,6 +160,102 @@ class StoreAPI:
     def slug(self) -> Optional[str]:
         """The plugin this view was created for, or ``None`` if it is shared."""
         return self._slug
+
+    # ── Out-of-process delegation (§4.5) ───────────────────────────────────
+
+    def set_mcp_mounts(
+        self, mounts: Dict[str, str], default: Optional[str] = None
+    ) -> None:
+        """Record where each tenant's Control MCP is mounted.
+
+        Called once by the server after the mounts are created. ``default`` is
+        the single shared mount used in ``disabled`` mode, where no tenant
+        concept exists.
+        """
+        self._mcp["mounts"] = dict(mounts)
+        self._mcp["default"] = default
+
+    def mcp_mount_path(self) -> Optional[str]:
+        """The Control MCP mount path for the ambient subject, or ``None``.
+
+        ``None`` means this identity has no MCP surface — an agent handed a URL
+        built from it would connect to nothing. That is honest rather than
+        convenient: the per-subject mount loop covers configured users and
+        plugin owner tenants, and a subject outside both has no surface.
+        """
+        if not self.acl_enabled:
+            return self._mcp["default"]
+        subject = current_subject()
+        if subject is None or not subject.tenant_id:
+            return None
+        return self._mcp["mounts"].get(subject.tenant_id)
+
+    def internal_token(self, ttl_seconds: Optional[int] = None) -> Optional[str]:
+        """Mint a short-lived bearer token for the ambient subject.
+
+        Context variables stop at the process boundary, so an out-of-process
+        agent needs the identity *materialized*. ``SessionStore.mint`` takes no
+        credential — ``AuthService.login`` does the bcrypt check and then calls
+        it as a separate step — so a plugin sharing the process can mint for the
+        subject it is already running as. No password, no hash, no environment
+        variable, nothing on disk: the credential is derived from identity the
+        store already holds and dies with the process.
+
+        Under P3 this is the *calling* tenant, so the agent's calls re-enter
+        through the PEP as that tenant and are admitted against its own role —
+        nothing is escalated. Under P1 it is the owner tenant.
+
+        Returns ``None`` in ``disabled`` mode: there is no PEP to validate a
+        token and ``/control_sse`` is already unauthenticated, so minting would
+        be pointless. Callers must not inject an empty ``Authorization`` header.
+
+        Raises:
+            PluginIdentityError: if no tenant is in scope (P5). Minting is the
+                first step of an outward call, so it fails rather than
+                producing an anonymous one.
+        """
+        if not self.acl_enabled:
+            return None
+        subject = current_subject()
+        if subject is None or not subject.tenant_id:
+            raise PluginIdentityError(
+                "no tenant in context; cannot mint a token for an outward call"
+            )
+        if self._sessions is None:
+            logger.error(
+                "Plugin %r asked for a token but no session store was injected",
+                self._slug,
+            )
+            return None
+        ttl = ttl_seconds or self._cfg.plugin_token_ttl_seconds
+        token, _expires_at = self._sessions.mint(
+            subject.tenant_id, list(subject.groups), ttl
+        )
+        # Never logged: a minted token is a real bearer token and anything it is
+        # handed to inherits the subject's rights until it expires (§8).
+        logger.info(
+            "Minted a %ss Control MCP token for tenant %s (plugin %r)",
+            ttl,
+            subject.tenant_id,
+            self._slug,
+        )
+        return token
+
+    def mcp_sse_config(self, base_url: str) -> Optional[Dict[str, Any]]:
+        """A Claude-Code MCP server entry for this store, as the ambient subject.
+
+        ``base_url`` is the scheme://host:port the agent can reach this store on
+        — the plugin knows its own deployment shape, this class knows the
+        identity. Returns ``None`` when the ambient subject has no mount.
+        """
+        path = self.mcp_mount_path()
+        if not path:
+            return None
+        entry: Dict[str, Any] = {"type": "sse", "url": f"{base_url.rstrip('/')}{path}"}
+        token = self.internal_token()
+        if token:
+            entry["headers"] = {"Authorization": f"Bearer {token}"}
+        return entry
 
     def for_plugin(self, slug: str) -> "StoreAPI":
         """A view of this store API that knows which plugin is calling.

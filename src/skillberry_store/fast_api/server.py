@@ -351,32 +351,50 @@ class SBS(FastAPI):
         # In `disabled` mode there is no notion of a tenant, so we mount a
         # single MCP at /control_sse with the full curated surface — same
         # as before. In `standalone` mode we additionally mount one MCP
-        # per configured user at /control_sse/<username>, each with its
-        # ``include_operations`` restricted to what that user is
+        # per subject at /control_sse/<name>, each with its
+        # ``include_operations`` restricted to what that subject is
         # authorized to invoke under RBAC. Middleware still enforces on
-        # each tool call — the per-user surface just prevents denied
+        # each tool call — the per-subject surface just prevents denied
         # tools from appearing in the client's tool list.
+        #
+        # "Per subject" rather than "per user": a plugin owner tenant needs an
+        # MCP surface too, and a *virtual* one has no ``standalone.users`` entry
+        # by design (no password hash, no way to log in). Iterating users alone
+        # left it with no mount, which is half of why an agent handed the
+        # store's MCP URL could not use it (plugin-identity §4.5).
         if acl_cfg.mode == "disabled":
             mcp_server = FastApiMCP(self, include_operations=mcp_included_operations)
             mcp_server.mount_sse(mount_path="/control_sse")
+            store_api.set_mcp_mounts({}, default="/control_sse")
         else:
-            from skillberry_store.access_control.mcp_plan import operations_for_user
+            from skillberry_store.access_control.mcp_plan import (
+                operations_for_subject,
+            )
 
             self._mcp_per_user_mounts: List[str] = []
-            for user in acl_cfg.users:
-                allowed_full = set(operations_for_user(self, user, acl_cfg))
+            mcp_mounts: dict = {}
+            for mount_name, subject in _mcp_subjects(acl_cfg, plugin_loader):
+                allowed_full = set(
+                    operations_for_subject(self, subject, acl_cfg)
+                )
                 allowed = sorted(allowed_full & set(mcp_included_operations))
-                mount_path = f"/control_sse/{user.username}"
+                mount_path = f"/control_sse/{mount_name}"
+                if mount_path in self._mcp_per_user_mounts:
+                    continue
                 user_mcp = FastApiMCP(self, include_operations=allowed)
                 user_mcp.mount_sse(mount_path=mount_path)
                 self._mcp_per_user_mounts.append(mount_path)
+                mcp_mounts.setdefault(subject.tenant_id, mount_path)
                 logger.info(
                     "Mounted per-tenant MCP for '%s' at %s exposing %d ops: %s",
-                    user.username,
+                    mount_name,
                     mount_path,
                     len(allowed),
                     ", ".join(allowed) if allowed else "(none)",
                 )
+            # A plugin resolves its own tenant's mount from here when it hands
+            # the store's MCP URL to an out-of-process agent (§4.5).
+            store_api.set_mcp_mounts(mcp_mounts)
 
     def _mcp_included_operations(self) -> List[str]:
         """Operation ids opted in to the Control MCP via ``x-mcp-tool``.
@@ -533,6 +551,38 @@ class SBS(FastAPI):
             access_log=True,
             log_config=log_config,
         )
+
+
+def _mcp_subjects(acl_cfg, plugin_loader) -> List[tuple]:
+    """``(mount_name, Subject)`` for every subject needing an MCP surface.
+
+    Configured users first, keyed by username so existing mount paths are
+    unchanged. Then any plugin owner tenant — the deployment-wide default and
+    every per-plugin record — that no user entry already covers, keyed by its
+    tenant id.
+    """
+    from skillberry_store.access_control.pdp import Subject
+
+    subjects: List[tuple] = []
+    covered = set()
+    for user in acl_cfg.users:
+        subjects.append(
+            (user.username, Subject(tenant_id=user.tenant_id, groups=list(user.groups or [])))
+        )
+        covered.add(user.tenant_id)
+
+    owner_tenants = []
+    if acl_cfg.plugin_owner_tenant:
+        owner_tenants.append(acl_cfg.plugin_owner_tenant)
+    owner_tenants.extend(plugin_loader.config.owners().values())
+    for tenant in owner_tenants:
+        if not tenant or tenant in covered:
+            continue
+        covered.add(tenant)
+        subjects.append(
+            (tenant, Subject(tenant_id=tenant, groups=acl_cfg.groups_for_tenant(tenant)))
+        )
+    return subjects
 
 
 def mcp_operations_from_openapi(openapi_schema: dict) -> List[str]:
