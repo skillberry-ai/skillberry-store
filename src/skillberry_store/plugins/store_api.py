@@ -9,12 +9,35 @@ The view shares the services but knows which plugin is calling — without that,
 an outcome cannot be attributed to a plugin, an autonomous operation cannot
 resolve whose owner tenant applies, and per-plugin authorization has nothing
 to key on (plugin-identity §2.4).
+
+**This class is enforcement point 2.** A core HTTP request is decided once, at
+the PEP. A plugin reaches the store in-process — no HTTP, no router, no
+dependency — so its calls would otherwise never be decided at all. Every named
+method here therefore opens with :meth:`StoreAPI._admit`, which calls the same
+``authorize()`` with the same config against the ambient subject the PEP or the
+event dispatcher published (§2.2).
+
+A plugin *API* call is consequently decided twice: at the door for the pair its
+route declared, and here per object it actually touches. That is deliberate
+rather than redundant — the door refuses a caller early with a clean 403, and
+``_admit`` covers the fan-out a single ``@requires`` pair cannot express (SAST
+scanning a skill reaches its tools *and* its snippets; DAST needs ``tools:get``
+and ``tools:execute`` on the way to a ``skills:update``).
 """
 
 import copy
 from typing import Any, Dict, List, Optional
 import logging
 import warnings
+
+from skillberry_store.access_control.config import AccessControlConfig
+from skillberry_store.access_control.context import current_subject
+from skillberry_store.access_control.pdp import authorize
+from skillberry_store.plugins.errors import (
+    PluginAuthorizationError,
+    PluginIdentityError,
+)
+from skillberry_store.plugins.outcomes import OUTCOME_ERROR, record_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +47,16 @@ _HANDLER_PROPERTY_DEPRECATION = (
     "the named accessors instead — get_tool_module()/update_tool_module() for "
     "module source, and update_tool()/update_skill()/update_snippet() to write a "
     "complete object."
+)
+
+_HANDLER_PROPERTY_REFUSED = (
+    "StoreAPI.{name} is unavailable while access control is enabled: it returns "
+    "the raw ObjectHandler, which reaches write_dict, write_file and the locks "
+    "without passing admission control — enforcement point 2 would report full "
+    "coverage while a caller bypassed it entirely. Use the named accessors "
+    "instead (get_tool_module()/update_tool_module() for module source, "
+    "update_tool()/update_skill()/update_snippet() to write a complete object); "
+    "each of those is admitted by the PDP."
 )
 
 
@@ -38,7 +71,27 @@ def _warn_handler_property(name: str) -> None:
 class StoreAPI:
     """Plugin interface — delegates to service layer."""
 
-    def __init__(self, services: Dict[str, Any]):
+    def __init__(
+        self,
+        services: Dict[str, Any],
+        cfg: AccessControlConfig,
+        sessions: Optional[Any] = None,
+    ):
+        """
+        Args:
+            services: the service-layer registry to delegate to.
+            cfg: access-control config. **Required, deliberately not
+                defaulted.** A ``cfg=None`` default that skipped enforcement
+                would be exactly the fail-open shape the marker system was
+                designed to avoid: a construction site that forgot to pass it
+                would silently disable enforcement point 2 while every test
+                still passed.
+            sessions: the session store, used to mint short-lived tokens for a
+                plugin's out-of-process calls (§4.5). ``None`` means no token
+                can be minted.
+        """
+        self._cfg = cfg
+        self._sessions = sessions
         self.tools_service = services.get("tools")
         self.skills_service = services.get("skills")
         self.snippets_service = services.get("snippets")
@@ -47,6 +100,54 @@ class StoreAPI:
         # Which plugin this view belongs to. ``None`` on the shared instance
         # the server constructs; set on each view handed to a plugin.
         self._slug: Optional[str] = None
+
+    # ── Enforcement point 2 ────────────────────────────────────────────────
+
+    @property
+    def acl_enabled(self) -> bool:
+        """Whether admission control applies to this store API's calls."""
+        return self._cfg.mode != "disabled"
+
+    def _admit(self, resource: str, verb: str, uuid: Optional[str] = None) -> None:
+        """Authorize one store operation for the ambient subject, or raise.
+
+        Raises rather than returning a bool: translating a refusal to HTTP
+        belongs on the app (see :mod:`skillberry_store.plugins.errors`), and a
+        bool would let a caller ignore the answer.
+
+        Records the outcome on the object itself before raising, because on the
+        event path the raise reaches nothing but a log line — background tasks
+        sit outside any request, so the app-level handlers cannot fire (§8).
+        """
+        if not self.acl_enabled:
+            # No tenants exist in this mode, so there is nothing to decide.
+            return
+        subject = current_subject()
+        if subject is None or not subject.tenant_id:
+            reason = (
+                "no tenant in context; assign an owner tenant for autonomous "
+                "work (per plugin by enabling it as that tenant, or "
+                "deployment-wide via plugins.owner_tenant)"
+            )
+            self._record_outcome(uuid, reason)
+            raise PluginIdentityError(reason)
+        decision = authorize(subject, resource, verb, self._cfg)
+        if not decision.allowed:
+            self._record_outcome(uuid, decision.reason)
+            raise PluginAuthorizationError(decision.reason)
+
+    def _record_outcome(self, uuid: Optional[str], reason: str) -> None:
+        record_outcome(
+            {
+                "skills": self.skills_service,
+                "tools": self.tools_service,
+                "snippets": self.snippets_service,
+            },
+            self._slug,
+            uuid,
+            OUTCOME_ERROR,
+            reason,
+        )
 
     @property
     def slug(self) -> Optional[str]:
@@ -74,6 +175,7 @@ class StoreAPI:
         Retained for out-of-tree plugins and for test injection. In-tree callers
         use the named accessors; see :func:`_warn_handler_property`.
         """
+        self._refuse_handler_property("tools")
         _warn_handler_property("tools")
         # For testing: check if attribute was set directly (bypassing property)
         if '_tools' in self.__dict__:
@@ -95,6 +197,7 @@ class StoreAPI:
         Retained for out-of-tree plugins and for test injection. In-tree callers
         use the named accessors; see :func:`_warn_handler_property`.
         """
+        self._refuse_handler_property("skills")
         _warn_handler_property("skills")
         # For testing: check if attribute was set directly (bypassing property)
         if '_skills' in self.__dict__:
@@ -116,6 +219,7 @@ class StoreAPI:
         Retained for out-of-tree plugins and for test injection. In-tree callers
         use the named accessors; see :func:`_warn_handler_property`.
         """
+        self._refuse_handler_property("snippets")
         _warn_handler_property("snippets")
         # For testing: check if attribute was set directly (bypassing property)
         if '_snippets' in self.__dict__:
@@ -130,9 +234,22 @@ class StoreAPI:
         """Allow direct assignment for testing."""
         self._snippets = value
 
+    def _refuse_handler_property(self, name: str) -> None:
+        """Close the escape hatch beside the named methods.
+
+        No in-tree plugin uses these properties, and their setters are how
+        tests inject fakes — so refusing them under ACL closes the hole with no
+        proxy layer, while ``disabled``-mode injection keeps working.
+        """
+        if self.acl_enabled:
+            raise PluginAuthorizationError(
+                _HANDLER_PROPERTY_REFUSED.format(name=name)
+            )
+
     # ── Tools ──────────────────────────────────────────────────────────────
 
     def get_tool(self, uuid: str) -> Optional[Dict[str, Any]]:
+        self._admit("tools", "get", uuid)
         if not self.tools_service:
             return None
         try:
@@ -144,6 +261,7 @@ class StoreAPI:
             return None
 
     def list_tools(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        self._admit("tools", "list")
         if not self.tools_service:
             return []
         # Plugins consume the complete tool dict (module_name,
@@ -158,6 +276,7 @@ class StoreAPI:
         no filename, and for MCP-packaged tools it returns the generated stub
         instead of failing (there is no stored module file for those).
         """
+        self._admit("tools", "get", uuid_or_name)
         if not self.tools_service:
             return None
         try:
@@ -170,6 +289,7 @@ class StoreAPI:
 
     def update_tool_module(self, uuid_or_name: str, content: str) -> bool:
         """Replace a tool's module source. Returns False if it could not be written."""
+        self._admit("tools", "update", uuid_or_name)
         if not self.tools_service:
             return False
         try:
@@ -196,6 +316,7 @@ class StoreAPI:
                 reported an execution error.
             KeyError: If the tool was not found.
         """
+        self._admit("tools", "execute", uuid_or_name)
         if not self.tools_service:
             raise RuntimeError("Tools service not available")
         return await self.tools_service.execute(
@@ -203,6 +324,7 @@ class StoreAPI:
         )
 
     def update_tool_tags(self, uuid: str, tags: List[str]) -> bool:
+        self._admit("tools", "update", uuid)
         if not self.tools_service:
             return False
         try:
@@ -219,11 +341,13 @@ class StoreAPI:
             return False
 
     def create_tool(self, data: Dict[str, Any], module_content: bytes, module_filename: str) -> Dict[str, Any]:
+        self._admit("tools", "create")
         if not self.tools_service:
             raise RuntimeError("Tools service not available")
         return self.tools_service.create(data, module_content, module_filename)
 
     def update_tool_metadata(self, uuid: str, metadata: Dict[str, Any]) -> bool:
+        self._admit("tools", "update", uuid)
         if not self.tools_service:
             return False
         try:
@@ -242,6 +366,7 @@ class StoreAPI:
 
     def update_tool(self, uuid: str, tool_data: Dict[str, Any]) -> bool:
         """Write a complete tool object to the store."""
+        self._admit("tools", "update", uuid)
         # Deliberately not via the public ``tools`` property: that accessor is
         # deprecated for plugin use, and StoreAPI must not trip its own warning.
         handler = self.tools_service.handler if self.tools_service else None
@@ -255,6 +380,7 @@ class StoreAPI:
             return False
 
     def delete_tool(self, uuid_or_name: str) -> bool:
+        self._admit("tools", "delete", uuid_or_name)
         if not self.tools_service:
             return False
         try:
@@ -267,11 +393,13 @@ class StoreAPI:
     # ── Skills ─────────────────────────────────────────────────────────────
 
     def create_skill(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        self._admit("skills", "create")
         if not self.skills_service:
             raise RuntimeError("Skills service not available")
         return self.skills_service.create(data)
 
     def get_skill(self, uuid: str) -> Optional[Dict[str, Any]]:
+        self._admit("skills", "get", uuid)
         if not self.skills_service:
             return None
         try:
@@ -283,6 +411,7 @@ class StoreAPI:
             return None
 
     def list_skills(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        self._admit("skills", "list")
         if not self.skills_service:
             return []
         # Plugins consume the complete skill dict (populated tools /
@@ -291,6 +420,7 @@ class StoreAPI:
         return self.skills_service.list_all(filter_criteria, fields="full")
 
     def update_skill_tags(self, uuid: str, tags: List[str]) -> bool:
+        self._admit("skills", "update", uuid)
         if not self.skills_service:
             return False
         try:
@@ -307,6 +437,7 @@ class StoreAPI:
             return False
 
     def update_skill_metadata(self, uuid: str, metadata: Dict[str, Any]) -> bool:
+        self._admit("skills", "update", uuid)
         if not self.skills_service:
             return False
         try:
@@ -325,6 +456,7 @@ class StoreAPI:
 
     def update_skill(self, uuid: str, skill_data: Dict[str, Any]) -> bool:
         """Write a complete skill object to the store."""
+        self._admit("skills", "update", uuid)
         # Deliberately not via the public ``skills`` property: that accessor is
         # deprecated for plugin use, and StoreAPI must not trip its own warning.
         handler = self.skills_service.handler if self.skills_service else None
@@ -338,6 +470,7 @@ class StoreAPI:
             return False
 
     def delete_skill(self, uuid_or_name: str) -> bool:
+        self._admit("skills", "delete", uuid_or_name)
         if not self.skills_service:
             return False
         try:
@@ -352,6 +485,7 @@ class StoreAPI:
     # ── Snippets ───────────────────────────────────────────────────────────
 
     def get_snippet(self, uuid: str) -> Optional[Dict[str, Any]]:
+        self._admit("snippets", "get", uuid)
         if not self.snippets_service:
             return None
         try:
@@ -363,6 +497,7 @@ class StoreAPI:
             return None
 
     def list_snippets(self, filter_criteria: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        self._admit("snippets", "list")
         if not self.snippets_service:
             return []
         # Plugins consume the complete snippet dict (including
@@ -371,11 +506,13 @@ class StoreAPI:
         return self.snippets_service.list_all(filter_criteria, fields="full")
 
     def create_snippet(self, snippet_data: Dict[str, Any]) -> Dict[str, Any]:
+        self._admit("snippets", "create")
         if not self.snippets_service:
             raise RuntimeError("Snippets service not available")
         return self.snippets_service.create(snippet_data)
 
     def update_snippet_tags(self, uuid: str, tags: List[str]) -> bool:
+        self._admit("snippets", "update", uuid)
         if not self.snippets_service:
             return False
         try:
@@ -393,6 +530,7 @@ class StoreAPI:
 
     def update_snippet(self, uuid: str, snippet_data: Dict[str, Any]) -> bool:
         """Write a complete snippet object to the store."""
+        self._admit("snippets", "update", uuid)
         # Deliberately not via the public ``snippets`` property: that accessor is
         # deprecated for plugin use, and StoreAPI must not trip its own warning.
         handler = self.snippets_service.handler if self.snippets_service else None
@@ -408,11 +546,13 @@ class StoreAPI:
     # ── vMCP ───────────────────────────────────────────────────────────────
 
     def create_vmcp(self, data: Dict[str, Any], env_id: str = "") -> Dict[str, Any]:
+        self._admit("vmcp_servers", "create")
         if not self.vmcp_service:
             raise RuntimeError("vMCP service not available")
         return self.vmcp_service.create(data, env_id=env_id)
 
     def get_vmcp(self, uuid_or_name: str) -> Optional[Dict[str, Any]]:
+        self._admit("vmcp_servers", "get", uuid_or_name)
         if not self.vmcp_service:
             return None
         try:
@@ -421,6 +561,7 @@ class StoreAPI:
             return None
 
     def list_vmcps(self) -> List[Dict[str, Any]]:
+        self._admit("vmcp_servers", "list")
         if not self.vmcp_service:
             return []
         # ``VmcpService.list_all()`` returns a bare list now (see Phase 3).
@@ -434,6 +575,7 @@ class StoreAPI:
         return []
 
     def start_vmcp(self, uuid_or_name: str, env_id: str = "") -> bool:
+        self._admit("vmcp_servers", "execute", uuid_or_name)
         if not self.vmcp_service:
             return False
         try:
@@ -457,6 +599,7 @@ class StoreAPI:
             return False
 
     def delete_vmcp(self, uuid_or_name: str) -> bool:
+        self._admit("vmcp_servers", "delete", uuid_or_name)
         if not self.vmcp_service:
             return False
         try:

@@ -419,3 +419,157 @@ def test_plugin_status_is_unchanged_when_disabled(sbs_factory):
     infos = client.get("/plugins/").json()
     assert infos
     assert all("no owner tenant assigned" not in i["status"] for i in infos)
+
+
+# ── §2.2: enforcement point 2, through a real request ───────────────────── #
+
+FANOUT_YAML = """
+mode: standalone
+standalone:
+  session_ttl_seconds: 3600
+  users:
+    - username: author
+      tenant_id: author
+      password_hash: "__AUTHOR_HASH__"
+      groups: []
+    - username: root
+      tenant_id: root
+      password_hash: "__ROOT_HASH__"
+      groups: [admins]
+roles:
+  - name: skill-author
+    rules:
+      - resources: [skills]
+        verbs: [list, get, search, create, update]
+  - name: admin
+    rules:
+      - resources: ["*"]
+        verbs: ["*"]
+bindings:
+  - name: author-binding
+    subjects: [{kind: tenant, name: author}]
+    roles: [skill-author]
+  - name: root-admin
+    subjects: [{kind: group, name: admins}]
+    roles: [admin]
+"""
+
+
+def _fanout_yaml() -> str:
+    from skillberry_store.access_control.config import _DEFAULT_UNAUTH_PATHS
+
+    entries = list(_DEFAULT_UNAUTH_PATHS) + ["POST /probe-open-fanout"]
+    allow_list = "unauthenticated_paths:\n" + "".join(f"  - {e}\n" for e in entries)
+    return (
+        FANOUT_YAML
+        .replace("__AUTHOR_HASH__", _hash("author-pw"))
+        .replace("__ROOT_HASH__", _hash("root-pw"))
+        + "\n"
+        + allow_list
+    )
+
+
+def _install_fanout_probes(app) -> None:
+    """A stand-in plugin route whose work fans out past what it declared.
+
+    Registered on the app rather than shipped in a plugin because the assertion
+    is about the framework: the door decides the pair the route declared, and
+    ``_admit`` decides each object the work actually reaches.
+    """
+    from skillberry_store.access_control.audit import stamp_rbac_markers
+    from skillberry_store.access_control.decorator import requires
+
+    store = app.state.plugin_loader.store_api.for_plugin("probe")
+
+    @requires("skills", "update")
+    @app.post("/probe-fanout")
+    async def probe_fanout(uuid: str):
+        # Declares skills:update at the door; actually touches a snippet.
+        return {"wrote": store.update_snippet_tags(uuid, ["probe:touched"])}
+
+    @app.post("/probe-open-fanout")
+    async def probe_open_fanout(uuid: str):
+        # Allow-listed, so no PEP runs and no ambient subject exists.
+        return {"wrote": store.update_snippet_tags(uuid, ["probe:touched"])}
+
+    stamp_rbac_markers(app)
+
+
+def _make_snippet(client: TestClient, headers: dict, name: str) -> str:
+    r = client.post(
+        "/snippets/",
+        params={
+            "name": name,
+            "description": "d",
+            "content": "c",
+            "version": "1.0.0",
+            "content_type": "text/plain",
+            "state": "approved",
+        },
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["uuid"]
+
+
+def test_fanout_past_the_declared_pair_is_denied_by_admit(sbs_factory):
+    """The case only ``_admit`` catches: the caller holds the pair the door
+    declared, so it is admitted — then denied on the object that exceeds its
+    grant, with the outcome recorded on that object (§9.1)."""
+    client = sbs_factory(_fanout_yaml())
+    _install_fanout_probes(client.app)
+    root = _token(client, "root", "root-pw")
+    uuid = _make_snippet(client, root, "fanout-target")
+
+    author = _token(client, "author", "author-pw")
+    r = client.post("/probe-fanout", params={"uuid": uuid}, headers=author)
+    assert r.status_code == 403, r.text
+    assert "snippets" in r.json()["detail"]
+
+    # The refusal is visible on the object, not only in the log.
+    obj = client.get(
+        f"/snippets/{uuid}", params={"fields": "full"}, headers=root
+    ).json()
+    assert "probe:error" in obj["tags"]
+    assert obj["extra"]["probe"]["outcome"]["state"] == "error"
+    assert "no role grants" in obj["extra"]["probe"]["outcome"]["reason"]
+
+
+def test_the_declared_pair_alone_is_admitted_at_the_door(sbs_factory):
+    """An admin clears both layers — the door and every object reached."""
+    client = sbs_factory(_fanout_yaml())
+    _install_fanout_probes(client.app)
+    root = _token(client, "root", "root-pw")
+    uuid = _make_snippet(client, root, "fanout-allowed")
+
+    r = client.post("/probe-fanout", params={"uuid": uuid}, headers=root)
+    assert r.status_code == 200, r.text
+    assert r.json()["wrote"] is True
+    obj = client.get(f"/snippets/{uuid}", headers=root).json()
+    assert "probe:touched" in obj["tags"]
+    assert "probe:error" not in obj["tags"]
+
+
+def test_no_ambient_identity_is_a_500_not_a_403(sbs_factory):
+    """P5 on a path the PEP never ran on. Nobody did anything wrong — an owner
+    tenant was never assigned — so it must not send the caller looking at their
+    own permissions."""
+    client = sbs_factory(_fanout_yaml())
+    _install_fanout_probes(client.app)
+    root = _token(client, "root", "root-pw")
+    uuid = _make_snippet(client, root, "fanout-anon")
+
+    r = client.post("/probe-open-fanout", params={"uuid": uuid})
+    assert r.status_code == 500, r.text
+    assert "no tenant in context" in r.json()["detail"]
+
+
+def test_disabled_mode_admits_the_same_plugin_work(sbs_factory):
+    """The whole mechanism is inert without ACL: identical code path, no PDP
+    call, no P5 failure (§2.5)."""
+    client = sbs_factory("mode: disabled\n")
+    _install_fanout_probes(client.app)
+    uuid = _make_snippet(client, {}, "fanout-disabled")
+    r = client.post("/probe-fanout", params={"uuid": uuid})
+    assert r.status_code == 200, r.text
+    assert r.json()["wrote"] is True

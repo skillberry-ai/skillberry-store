@@ -14,7 +14,7 @@ from pydantic import Field, model_validator
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi_mcp import FastApiMCP
 
 from skillberry_store.fast_api.openapi_ids import custom_generate_unique_id
@@ -33,6 +33,10 @@ from skillberry_store.access_control.audit import (
 from skillberry_store.access_control.config import get_config as get_acl_config
 from skillberry_store.access_control.deps import make_enforce_dependency
 from skillberry_store.access_control.sessions import SessionStore
+from skillberry_store.plugins.errors import (
+    PluginAuthorizationError,
+    PluginIdentityError,
+)
 from skillberry_store.tools.configure import (
     configure_logging,
 )
@@ -111,6 +115,22 @@ def _check_vector_db_backend() -> None:
         logger.error("Vector DB backend check failed: %s", problem)
     else:
         logger.info("Vector DB backend %r is available", db_type)
+
+
+async def _plugin_authorization_denied(request, exc: PluginAuthorizationError):
+    """A plugin store operation the caller's identity does not grant -> 403."""
+    logger.info("plugin_store_denied path=%s detail=%s", request.url.path, exc)
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
+async def _plugin_identity_missing(request, exc: PluginIdentityError):
+    """No tenant in scope for a plugin operation (P5) -> 500, not 403.
+
+    Nobody did anything wrong: an owner tenant was never assigned. Saying 403
+    would send the caller looking at their own permissions.
+    """
+    logger.error("plugin_store_no_identity path=%s detail=%s", request.url.path, exc)
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 @asynccontextmanager
@@ -212,6 +232,11 @@ class SBS(FastAPI):
         from skillberry_store.plugins.loader import PluginLoader
         from skillberry_store.plugins.store_api import StoreAPI
 
+        # ``acl_cfg`` is required, not optional: enforcement point 2 lives in
+        # StoreAPI, and a construction site that forgot to pass the config would
+        # silently disable it. ``sessions`` lets a plugin mint a short-lived
+        # token for the ambient subject when it hands work to an out-of-process
+        # agent (plugin-identity §4.5).
         store_api = StoreAPI(
             {
                 "tools": tools_service,
@@ -219,7 +244,9 @@ class SBS(FastAPI):
                 "snippets": snippets_service,
                 "vnfs": vnfs_service,
                 "vmcp": vmcp_service,
-            }
+            },
+            acl_cfg,
+            sessions=sessions,
         )
 
         # acl_cfg supplies the deployment-wide owner tenant for plugin work
@@ -258,6 +285,17 @@ class SBS(FastAPI):
         register_admin_api(self, tags="admin", service=admin_service)
 
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
+
+        # Translate a refused plugin store operation to HTTP once, on the app,
+        # rather than in each of the plugins. A denial is the caller's
+        # authorization failure (403); a missing ambient identity is an operator
+        # misconfiguration, not something the caller did wrong (500). Neither
+        # fires on the event path, where handlers run outside any request — see
+        # plugins/outcomes.py for what covers that.
+        self.add_exception_handler(
+            PluginAuthorizationError, _plugin_authorization_denied
+        )
+        self.add_exception_handler(PluginIdentityError, _plugin_identity_missing)
 
         # ------------------------------------------------------------------
         # Access control (see docs/design/access-control.md).

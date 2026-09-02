@@ -45,6 +45,41 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Declare the resource the action actually touches, not the plugin subsystem — see
   `docs/design/plugin-identity.md` §6.2.
 
+- **Plugin store calls are now authorized, and a plugin with no identity fails.**
+  `StoreAPI` was a privileged in-process interface onto the service layer: a plugin's
+  calls reached no router, so no authorization decision was ever made on them. Every
+  named `StoreAPI` method now consults the same PDP against the ambient tenant. Under
+  `mode: standalone` this changes behavior for deployments working today:
+
+  - **Assign an owner tenant** or the seven auto-triggering plugins (`evaluator`,
+    `security`, `dedupe`, `doc_generator`, `sast`, `provenance`, `kagenti-approver`)
+    stop annotating. Trigger-driven work runs as the *owner* tenant, not as whoever
+    uploaded. The shipped configs set `plugins.owner_tenant: plugin-user` with a
+    `plugin-agent` role; a per-plugin owner is recorded when a tenant enables a plugin
+    through `PATCH /plugins/{name}`. With neither, outward calls fail (P5) rather than
+    proceeding anonymously — the plugin's status message says so, and the framework
+    labels the affected object `<slug>:error`.
+  - **`StoreAPI.tools` / `.skills` / `.snippets` now raise** while access control is
+    enabled. They returned the raw `ObjectHandler`, reaching `write_dict`, `write_file`
+    and the locks without passing admission control. Use the named accessors
+    (`get_tool_module()` / `update_tool_module()`, `update_tool()` / `update_skill()` /
+    `update_snippet()`); each is authorized. They still work in `mode: disabled`, which
+    is how tests inject fakes.
+  - **`skillberry_store.standalone.VirtualMcpServer` now requires `tool_source`** while
+    access control is enabled. Its default source reaches the `ObjectHandler`
+    singletons and the service registry directly — unguarded read and execute over
+    every tool in the store, obtained with one import. Pass a source you got through
+    `StoreAPI`. The core class keeps its fallback for the store's own managed servers.
+  - **`StoreAPI(services)` now requires a config**: `StoreAPI(services, acl_cfg,
+    sessions=...)`. Deliberately not defaulted — a construction site that forgot it
+    would silently disable enforcement while every test still passed.
+
+  Object-level scope is explicitly **not** part of this: any tenant granted a verb
+  holds it over every object of that resource type (§7).
+
+- **`~/.skillberry/plugins.json` gained an `owners` key.** Files written by earlier
+  versions load unchanged; the key is added on the next write.
+
 - **`ENABLE_UI` has been removed.** It had already stopped doing anything: the UI is
   served in-process by FastAPI at `/ui`, and `main()` only ever consulted
   `ENABLE_UI_SUBPROCESS`, so setting `ENABLE_UI=false` silently still served the UI.

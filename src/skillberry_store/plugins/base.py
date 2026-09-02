@@ -6,17 +6,41 @@ from pydantic import BaseModel, Field
 from enum import Enum
 
 from skillberry_store.access_control.decorator import requires
+from skillberry_store.plugins.errors import (
+    PluginAuthorizationError,
+    PluginIdentityError,
+    PluginStoreError,
+)
+from skillberry_store.plugins.outcomes import (
+    OUTCOME_ERROR,
+    OUTCOME_RESULT,
+    OUTCOME_SKIP,
+)
 
 if TYPE_CHECKING:
     from fastapi import APIRouter
 
-# ``requires`` is re-exported here so a plugin author declares an endpoint's
-# (resource, verb) without reaching into ``access_control`` internals. Every
-# plugin route must carry one — the startup coverage audit refuses to boot a
-# ``standalone`` deployment with an unmarked plugin route (plugin-identity §6.2).
+# Re-exported so a plugin author reaches none of these through
+# ``access_control`` internals:
+#
+# * ``requires`` — every plugin route must declare its (resource, verb). The
+#   startup coverage audit refuses to boot a ``standalone`` deployment with an
+#   unmarked plugin route (plugin-identity §6.2).
+# * the ``Plugin*Error`` family — raised by the store API when an outward call
+#   is refused. A plugin normally lets them propagate: the app translates them
+#   to HTTP, and on the event path the framework has already recorded the
+#   outcome on the object.
+# * ``OUTCOME_*`` — the closed three-state outcome vocabulary (§9.1). A plugin
+#   writes its own ``result`` tag; the framework writes ``skip`` and ``error``.
 __all__ = [
+    "OUTCOME_ERROR",
+    "OUTCOME_RESULT",
+    "OUTCOME_SKIP",
+    "PluginAuthorizationError",
     "PluginBase",
+    "PluginIdentityError",
     "PluginMetadata",
+    "PluginStoreError",
     "PluginType",
     "requires",
 ]

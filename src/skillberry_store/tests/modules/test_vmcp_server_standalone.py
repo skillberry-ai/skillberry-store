@@ -329,7 +329,14 @@ async def test_default_source_rejects_manifest_without_uuid():
         await source.execute({"name": "alpha", "module_name": "a.py"}, {}, "")
 
 
-def test_standalone_surface_reexports_the_server():
+def test_standalone_surface_exports_the_server_with_the_fallback_closed():
+    """The plugin-facing export is the core server with one thing removed: the
+    unguarded default tool source. See plugin-identity §6.2 — that fallback
+    reaches the ObjectHandler singletons and the service registry outside
+    StoreAPI, so a plugin would obtain unguarded read and execute over every
+    tool in the store with one import.
+    """
     from skillberry_store.standalone import VirtualMcpServer as Exported
 
-    assert Exported is VirtualMcpServer
+    assert issubclass(Exported, VirtualMcpServer)
+    assert Exported is not VirtualMcpServer
