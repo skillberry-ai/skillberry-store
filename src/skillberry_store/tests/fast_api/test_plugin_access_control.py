@@ -276,3 +276,146 @@ def test_disabled_mode_leaves_the_ambient_subject_unset(sbs_factory):
     client = sbs_factory("mode: disabled\n")
     _install_ambient_probes(client.app)
     assert client.get("/probe-ambient").json()["tenant"] is None
+
+
+# ── §5: owner tenant, end to end ────────────────────────────────────────── #
+
+OWNER_YAML = """
+mode: standalone
+standalone:
+  session_ttl_seconds: 3600
+  users:
+    - username: root
+      tenant_id: root
+      password_hash: "__ROOT_HASH__"
+      groups: [admins]
+plugins:
+  owner_tenant: plugin-user
+  token_ttl_seconds: 60
+roles:
+  - name: admin
+    rules:
+      - resources: ["*"]
+        verbs: ["*"]
+  - name: plugin-agent
+    rules:
+      - resources: [skills, tools, snippets]
+        verbs: [list, get, search, create, update, delete]
+      - resources: [tools]
+        verbs: [execute]
+      - resources: [facets, plugins]
+        verbs: [list, get, search]
+bindings:
+  - name: root-admin
+    subjects: [{kind: group, name: admins}]
+    roles: [admin]
+  - name: plugin-agent-binding
+    subjects: [{kind: tenant, name: plugin-user}]
+    roles: [plugin-agent]
+"""
+
+
+def _owner_yaml() -> str:
+    return OWNER_YAML.replace("__ROOT_HASH__", _hash("root-pw"))
+
+
+def test_deployment_default_owner_is_loaded(sbs_factory):
+    client = sbs_factory(_owner_yaml())
+    cfg = client.app.state.acl_cfg
+    assert cfg.plugin_owner_tenant == "plugin-user"
+    assert cfg.plugin_token_ttl_seconds == 60
+    loader = client.app.state.plugin_loader
+    assert loader.owner_tenant("sast") == "plugin-user"
+
+
+def test_virtual_plugin_user_cannot_log_in(sbs_factory):
+    """``plugin-user`` appears in roles and bindings but has no
+    ``standalone.users`` entry, so no credential for it exists anywhere (§5.3)."""
+    client = sbs_factory(_owner_yaml())
+    r = client.post(
+        "/auth/login", json={"username": "plugin-user", "password": "plugin-user"}
+    )
+    assert r.status_code == 401
+    assert r.json()["detail"] == "invalid_credentials"
+
+
+def test_minted_plugin_user_token_can_create_but_not_administer(sbs_factory):
+    """The identity is unforgeable from outside, but the store can mint a
+    session for it in-process — which is how §4.5 hands an out-of-process agent
+    the owner tenant's identity with no stored secret."""
+    client = sbs_factory(_owner_yaml())
+    cfg = client.app.state.acl_cfg
+    sessions = client.app.state.acl_sessions
+    token, _ = sessions.mint("plugin-user", cfg.plugin_owner_groups, 60)
+    h = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/snippets/",
+        params={
+            "name": "owned",
+            "description": "d",
+            "content": "c",
+            "version": "1.0.0",
+            "content_type": "text/plain",
+            "state": "approved",
+        },
+        headers=h,
+    )
+    assert created.status_code == 200, created.text
+    # plugin-agent never mentions the admin resource.
+    assert client.get("/admin/backup", headers=h).status_code == 403
+
+
+def test_enabling_a_plugin_records_the_acting_tenant_as_owner(sbs_factory):
+    client = sbs_factory(_owner_yaml())
+    loader = client.app.state.plugin_loader
+    slug = next(iter(loader.plugins))
+    assert loader.config.get_owner(slug) is None
+
+    h = _token(client, "root", "root-pw")
+    r = client.patch(f"/plugins/{slug}", json={"enabled": True}, headers=h)
+    assert r.status_code == 200, r.text
+    assert loader.config.get_owner(slug) == "root"
+    assert r.json()["owner_tenant"] == "root"
+    # …and the per-plugin record outranks the deployment-wide default.
+    assert loader.owner_tenant(slug) == "root"
+
+
+def test_disabling_a_plugin_does_not_record_an_owner(sbs_factory):
+    client = sbs_factory(_owner_yaml())
+    loader = client.app.state.plugin_loader
+    slug = next(iter(loader.plugins))
+    h = _token(client, "root", "root-pw")
+    assert (
+        client.patch(f"/plugins/{slug}", json={"enabled": False}, headers=h).status_code
+        == 200
+    )
+    assert loader.config.get_owner(slug) is None
+
+
+def test_disabled_mode_records_no_owner_on_enable(sbs_factory):
+    """No subject on the request, so there is nothing to record (§2.5)."""
+    client = sbs_factory("mode: disabled\n")
+    loader = client.app.state.plugin_loader
+    slug = next(iter(loader.plugins))
+    r = client.patch(f"/plugins/{slug}", json={"enabled": True})
+    assert r.status_code == 200, r.text
+    assert loader.config.get_owner(slug) is None
+    assert r.json()["owner_tenant"] is None
+
+
+def test_plugin_status_names_a_missing_owner_under_acl(sbs_factory):
+    """P5 should be observable before the first trigger fails silently (§8)."""
+    client = sbs_factory(_owner_yaml().replace("  owner_tenant: plugin-user\n", ""))
+    h = _token(client, "root", "root-pw")
+    infos = client.get("/plugins/", headers=h).json()
+    assert infos
+    assert all(i["owner_tenant"] is None for i in infos)
+    assert all("no owner tenant assigned" in i["status"] for i in infos)
+
+
+def test_plugin_status_is_unchanged_when_disabled(sbs_factory):
+    client = sbs_factory("mode: disabled\n")
+    infos = client.get("/plugins/").json()
+    assert infos
+    assert all("no owner tenant assigned" not in i["status"] for i in infos)

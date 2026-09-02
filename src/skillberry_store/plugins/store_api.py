@@ -2,8 +2,16 @@
 
 Thin proxy that delegates to service layer. Provides a stable interface
 for plugins without exposing internal implementation details.
+
+One instance is constructed per process and handed to the plugin loader,
+which gives each plugin its own **per-slug view** via :meth:`StoreAPI.for_plugin`.
+The view shares the services but knows which plugin is calling — without that,
+an outcome cannot be attributed to a plugin, an autonomous operation cannot
+resolve whose owner tenant applies, and per-plugin authorization has nothing
+to key on (plugin-identity §2.4).
 """
 
+import copy
 from typing import Any, Dict, List, Optional
 import logging
 import warnings
@@ -36,6 +44,28 @@ class StoreAPI:
         self.snippets_service = services.get("snippets")
         self.vnfs_service = services.get("vnfs")
         self.vmcp_service = services.get("vmcp")
+        # Which plugin this view belongs to. ``None`` on the shared instance
+        # the server constructs; set on each view handed to a plugin.
+        self._slug: Optional[str] = None
+
+    @property
+    def slug(self) -> Optional[str]:
+        """The plugin this view was created for, or ``None`` if it is shared."""
+        return self._slug
+
+    def for_plugin(self, slug: str) -> "StoreAPI":
+        """A view of this store API that knows which plugin is calling.
+
+        A shallow copy rather than a delegating facade: it shares every service
+        object with the shared instance (so there is one set of handlers and
+        one set of locks) while carrying its own ``_slug``, and it needs no
+        per-method forwarding that a new ``StoreAPI`` method could be forgotten
+        from. A test that injects a fake through the deprecated handler
+        properties writes to its own view rather than to every plugin's.
+        """
+        view = copy.copy(self)
+        view._slug = slug
+        return view
 
     @property
     def tools(self):

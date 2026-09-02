@@ -50,6 +50,10 @@ KNOWN_VERBS = {
 }
 
 DEFAULT_SESSION_TTL_SECONDS = 43200  # 12h
+# Tokens minted for a plugin's own outward calls are short-lived and
+# refreshed on demand rather than held for a session's lifetime — see
+# plugin-identity §8 ("a minted token is a real bearer token").
+DEFAULT_PLUGIN_TOKEN_TTL_SECONDS = 900  # 15m
 
 
 class AccessControlConfigError(Exception):
@@ -100,6 +104,12 @@ class AccessControlConfig:
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
     roles: List[Role] = field(default_factory=list)
     bindings: List[RoleBinding] = field(default_factory=list)
+    # Deployment-wide fallback identity for plugin work that no per-plugin
+    # owner covers (plugin-identity §5.1). Precedence is: per-plugin owner
+    # recorded by PATCH /plugins/{name} → this → none, and P5 applies.
+    plugin_owner_tenant: Optional[str] = None
+    plugin_owner_groups: List[str] = field(default_factory=list)
+    plugin_token_ttl_seconds: int = DEFAULT_PLUGIN_TOKEN_TTL_SECONDS
 
     # -------- lookups -------------------------------------------------- #
     def role(self, name: str) -> Optional[Role]:
@@ -128,6 +138,23 @@ class AccessControlConfig:
                     seen.add(role_name)
                     result.append(role_name)
         return result
+
+    def groups_for_tenant(self, tenant_id: str) -> List[str]:
+        """Groups to attribute to ``tenant_id`` when building a Subject.
+
+        A configured user's own groups win. Otherwise, the plugin owner
+        tenant may declare groups without having a ``standalone.users``
+        entry at all — that is the point of a *virtual* subject (§5.3): its
+        grants are reviewable in the same YAML as every other grant, but no
+        password hash exists for it anywhere, so it cannot be logged into
+        from the network.
+        """
+        for u in self.users:
+            if u.tenant_id == tenant_id:
+                return list(u.groups or [])
+        if tenant_id and tenant_id == self.plugin_owner_tenant:
+            return list(self.plugin_owner_groups)
+        return []
 
     def is_unauthenticated(self, method: str, path: str) -> bool:
         method = method.upper()
@@ -222,6 +249,26 @@ def _resolve_session_ttl(yaml_value: Optional[int]) -> int:
     return DEFAULT_SESSION_TTL_SECONDS
 
 
+def _resolve_plugin_token_ttl(yaml_value: Optional[int]) -> int:
+    env_val = os.environ.get("SBS_PLUGIN_TOKEN_TTL")
+    if env_val:
+        try:
+            return int(env_val)
+        except ValueError:
+            logger.warning(
+                "SBS_PLUGIN_TOKEN_TTL=%r is not an int; ignoring", env_val
+            )
+    if yaml_value is not None:
+        try:
+            return int(yaml_value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "plugins.token_ttl_seconds=%r is not an int; using default",
+                yaml_value,
+            )
+    return DEFAULT_PLUGIN_TOKEN_TTL_SECONDS
+
+
 def load_config(path: Optional[str] = None) -> AccessControlConfig:
     """Load and validate the access-control YAML.
 
@@ -232,6 +279,8 @@ def load_config(path: Optional[str] = None) -> AccessControlConfig:
       (``AccessControlConfigError``), per §5.2 fail-closed principle.
     * Unknown resource/verb tokens in rules -> warn + drop rule, per §5.2.
     * ``mode: delegated`` -> hard fail with a clear "not yet supported" msg.
+    * A top-level ``plugins:`` block supplies the deployment-wide owner
+      tenant for plugin work (see ``plugin_owner_tenant``).
     """
     cfg_path = _resolve_config_path(path)
 
@@ -282,6 +331,20 @@ def load_config(path: Optional[str] = None) -> AccessControlConfig:
     session_ttl = _resolve_session_ttl(standalone.get("session_ttl_seconds"))
     users = _parse_users(standalone.get("users") or [], cfg_path)
 
+    plugins_block = raw.get("plugins") or {}
+    if not isinstance(plugins_block, dict):
+        raise AccessControlConfigError(
+            f"'plugins' block in {cfg_path} must be a mapping"
+        )
+    plugin_owner_tenant = plugins_block.get("owner_tenant")
+    plugin_owner_tenant = (
+        str(plugin_owner_tenant).strip() or None if plugin_owner_tenant else None
+    )
+    plugin_owner_groups = [str(g) for g in (plugins_block.get("owner_groups") or [])]
+    plugin_token_ttl = _resolve_plugin_token_ttl(
+        plugins_block.get("token_ttl_seconds")
+    )
+
     roles = _parse_roles(raw.get("roles") or [], cfg_path)
     bindings = _parse_bindings(raw.get("bindings") or [], cfg_path)
 
@@ -308,6 +371,9 @@ def load_config(path: Optional[str] = None) -> AccessControlConfig:
         session_ttl_seconds=session_ttl,
         roles=roles,
         bindings=bindings,
+        plugin_owner_tenant=plugin_owner_tenant,
+        plugin_owner_groups=plugin_owner_groups,
+        plugin_token_ttl_seconds=plugin_token_ttl,
     )
     logger.info(
         "Loaded access-control config from %s: mode=%s, users=%d, roles=%d, "

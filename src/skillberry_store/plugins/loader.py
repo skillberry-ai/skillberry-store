@@ -5,6 +5,8 @@ from typing import Dict, List, Optional, Any
 from importlib.metadata import entry_points
 from fastapi import FastAPI, Depends, HTTPException
 
+from skillberry_store.access_control.config import AccessControlConfig
+from skillberry_store.access_control.pdp import Subject
 from skillberry_store.plugins.base import PluginBase
 from skillberry_store.plugins.store_api import StoreAPI
 from skillberry_store.plugins.config import PluginConfigStore
@@ -20,19 +22,32 @@ class PluginLoader:
     Each plugin must be a subclass of PluginBase.
     """
     
-    def __init__(self, store_api: StoreAPI, config_store: Optional[PluginConfigStore] = None):
+    def __init__(
+        self,
+        store_api: StoreAPI,
+        config_store: Optional[PluginConfigStore] = None,
+        acl_cfg: Optional[AccessControlConfig] = None,
+    ):
         """Initialize the plugin loader.
 
         Args:
             store_api: StoreAPI instance to inject into plugins
             config_store: persisted enable/disable state (defaults to PluginConfigStore())
+            acl_cfg: access-control config, source of the deployment-wide
+                owner tenant. ``None`` means no deployment-wide default, so a
+                plugin's owner comes from the per-plugin record or nowhere.
         """
         self.store_api = store_api
+        self.acl_cfg = acl_cfg
         self.plugins: Dict[str, PluginBase] = {}
         self.config = config_store or PluginConfigStore()
         # Event dispatch consults admin enablement only; capability is handled
         # by each plugin's own internal guard.
         plugin_events.set_enabled_resolver(self.config.is_enabled)
+        # …and the identity trigger-driven work runs as (P1). Resolved per
+        # dispatch, not captured here: plugins register their handlers inside
+        # __init__, before any tenant, session or config reload exists (§5.2).
+        plugin_events.set_owner_resolver(self.owner_subject)
     
     def discover_plugins(self) -> List[str]:
         """Discover and load all available plugins.
@@ -78,8 +93,11 @@ class PluginLoader:
                 for func in self._handler_snapshot() - before:
                     plugin_events.register_handler_owner(func, entry_point.name)
 
-                # Inject store API
-                plugin.set_store_api(self.store_api)
+                # Inject a per-plugin view of the store API. The view shares
+                # the services but knows its own slug, which is what lets
+                # enforcement point 2 attribute an outcome to a plugin and
+                # resolve *whose* owner tenant applies (§2.4).
+                plugin.set_store_api(self.store_api.for_plugin(entry_point.name))
 
                 # Store the plugin
                 self.plugins[entry_point.name] = plugin
@@ -108,6 +126,43 @@ class PluginLoader:
         for handlers in plugin_events._event_handlers.values():
             snapshot.update(handlers)
         return snapshot
+
+    # ── Owner tenant (P1, §5) ──────────────────────────────────────────── #
+
+    def owner_tenant(self, slug: str) -> Optional[str]:
+        """The tenant a plugin's autonomous work runs as, or ``None``.
+
+        Precedence: the per-plugin record written when a tenant enabled the
+        plugin → the deployment-wide default from the access-control config →
+        none, at which point P5 applies and the plugin's outward calls fail.
+        """
+        recorded = self.config.get_owner(slug)
+        if recorded:
+            return recorded
+        if self.acl_cfg is not None:
+            return self.acl_cfg.plugin_owner_tenant
+        return None
+
+    def owner_subject(self, slug: str) -> Optional[Subject]:
+        """``owner_tenant`` as a PDP Subject, with that tenant's groups."""
+        tenant = self.owner_tenant(slug)
+        if not tenant:
+            return None
+        groups = (
+            self.acl_cfg.groups_for_tenant(tenant) if self.acl_cfg is not None else []
+        )
+        return Subject(tenant_id=tenant, groups=groups)
+
+    def record_owner(self, slug: str, tenant_id: Optional[str]) -> None:
+        """Record the acting tenant as this plugin's owner (no-op if absent).
+
+        Called when a tenant enables a plugin. In ``disabled`` mode there is no
+        subject on the request, so there is nothing to record and nothing is
+        written (§2.5).
+        """
+        if not tenant_id:
+            return
+        self.config.set_owner(slug, tenant_id)
 
     def is_active(self, slug: str) -> bool:
         """Effective enablement: plugin is capable AND admin-enabled."""
@@ -169,6 +224,16 @@ class PluginLoader:
         
         metadata = plugin.metadata
         ui_config = plugin.get_ui_config()
+        owner = self.owner_tenant(plugin_name)
+        status = plugin.get_status_message()
+        # P5 is meant to be observable rather than merely fatal: an operator
+        # should be able to see that a plugin has no identity before its first
+        # trigger fails silently on the event path (§5.1, §8).
+        if self._acl_enabled() and not owner:
+            status = (
+                f"{status} — no owner tenant assigned; "
+                "autonomous actions will fail"
+            )
         
         return {
             "slug": plugin_name,  # Entry point name used in URLs
@@ -180,13 +245,17 @@ class PluginLoader:
             "homepage": metadata.homepage,
             "enabled": self.is_active(plugin_name),
             "admin_enabled": self.config.is_enabled(plugin_name),
-            "status": plugin.get_status_message(),
+            "status": status,
+            "owner_tenant": owner,
             "has_router": plugin.get_router() is not None,
             "has_cli": plugin.get_cli_commands() is not None,
             "has_ui": ui_config is not None,
             "ui_config": ui_config,
         }
     
+    def _acl_enabled(self) -> bool:
+        return self.acl_cfg is not None and self.acl_cfg.mode != "disabled"
+
     def list_plugins(self) -> List[Dict[str, Any]]:
         """List all loaded plugins.
         

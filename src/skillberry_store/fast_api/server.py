@@ -222,7 +222,9 @@ class SBS(FastAPI):
             }
         )
 
-        plugin_loader = PluginLoader(store_api=store_api)
+        # acl_cfg supplies the deployment-wide owner tenant for plugin work
+        # (plugin-identity §5.1); the loader resolves it lazily per dispatch.
+        plugin_loader = PluginLoader(store_api=store_api, acl_cfg=acl_cfg)
         discovered = plugin_loader.discover_plugins()
         logger.info(f"Discovered {len(discovered)} plugins: {discovered}")
 

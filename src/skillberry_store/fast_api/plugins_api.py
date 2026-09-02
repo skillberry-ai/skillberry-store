@@ -2,7 +2,7 @@
 
 import logging
 from typing import List, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 from skillberry_store.access_control.decorator import requires
@@ -100,8 +100,20 @@ def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"
         summary="Enable or disable a plugin",
         response_model=Dict[str, Any],
     )
-    async def update_plugin(plugin_name: str, body: PluginEnabledUpdate):
+    async def update_plugin(
+        request: Request, plugin_name: str, body: PluginEnabledUpdate
+    ):
         """Toggle a plugin's admin enablement (global, persisted, live).
+
+        Enabling also records the acting tenant as the plugin's **owner
+        tenant** — the identity its autonomous work runs as (plugin-identity
+        §5.1, P1). This endpoint already requires ``plugins:update``, and "the
+        tenant that enabled it" is the closest real record of ownership the
+        store has: plugins are discovered from entry points and instantiated
+        before any tenant exists.
+
+        In ``mode: disabled`` there is no subject on the request, so nothing is
+        recorded — the enablement toggle behaves exactly as before.
 
         Args:
             plugin_name: Name/slug of the plugin
@@ -122,6 +134,11 @@ def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"
         except KeyError:
             raise HTTPException(
                 status_code=404, detail=f"Plugin '{plugin_name}' not found"
+            )
+        if body.enabled:
+            subject = getattr(request.state, "subject", None)
+            plugin_loader.record_owner(
+                plugin_name, getattr(subject, "tenant_id", None)
             )
         return plugin_loader.get_plugin_info(plugin_name)
 
