@@ -378,6 +378,14 @@ class SBS(FastAPI):
                 allowed = sorted(allowed_full & set(mcp_included_operations))
                 mount_path = f"/control_sse/{mount_name}"
                 if mount_path in self._mcp_per_user_mounts:
+                    # A username and a plugin owner tenant that spell the same
+                    # mount. Keep the first (its surface is already mounted)
+                    # rather than serving one subject the other's tool list.
+                    logger.warning(
+                        "Skipping duplicate Control MCP mount %s for subject %s",
+                        mount_path,
+                        subject.tenant_id,
+                    )
                     continue
                 user_mcp = FastApiMCP(self, include_operations=allowed)
                 user_mcp.mount_sse(mount_path=mount_path)

@@ -144,6 +144,16 @@ class StoreAPI:
             raise PluginAuthorizationError(decision.reason)
 
     def _record_outcome(self, uuid: Optional[str], reason: str) -> None:
+        """Label the object with this plugin's failure, above plugin code.
+
+        Deliberately not gated by the identity that was just refused — that is
+        the whole point (§9.1). One consequence worth naming: a refused *read*
+        also writes, so a caller who cannot read an object can still cause a
+        fixed ``<slug>:error`` tag on it. The tag vocabulary is closed and the
+        reason comes from the PDP, never from the caller, so the write is
+        bounded; recording it is what keeps a refusal distinguishable from
+        "never ran".
+        """
         record_outcome(
             {
                 "skills": self.skills_service,

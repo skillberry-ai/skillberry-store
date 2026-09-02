@@ -148,8 +148,13 @@ def walk_foreign_plugin_routes(
             )
 
 
-def _api_routes(app_or_router) -> Iterable[APIRoute]:
-    """Every ``APIRoute`` on the app, plugin sub-routers included."""
+def api_routes(app_or_router) -> Iterable[APIRoute]:
+    """Every ``APIRoute`` on the app, plugin sub-routers included.
+
+    The path-less view of :func:`walk_api_routes`, for callers that only need
+    the route objects. Shared with ``mcp_plan`` so there is one walk of the
+    route table rather than three that drift apart.
+    """
     for walked in walk_api_routes(app_or_router):
         yield walked.route
 
@@ -161,7 +166,7 @@ def stamp_rbac_markers(app: FastAPI) -> int:
     Safe to call more than once — repeat calls are idempotent.
     """
     stamped = 0
-    for route in _api_routes(app):
+    for route in api_routes(app):
         marker = get_marker(route.endpoint)
         if marker is None:
             continue
