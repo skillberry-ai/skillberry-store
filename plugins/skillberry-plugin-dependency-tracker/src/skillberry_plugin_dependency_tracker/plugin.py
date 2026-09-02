@@ -150,11 +150,11 @@ class SkillberryPluginDependencyTracker(PluginBase):
         if not module or self._store_api is None:
             return None
         try:
-            source = self.store.tools.read_file(
-                tool.get("uuid"), module, raw_content=True
-            )
+            source = self.store.get_tool_module(tool.get("uuid"))
         except Exception as e:
             logger.debug("dep-tracker: could not read tool module: %s", e)
+            return None
+        if source is None:
             return None
         return (module, source)
 

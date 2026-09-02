@@ -414,3 +414,119 @@ def test_delete_skill_returns_false_on_unexpected_error(mock_services):
     assert store_api.delete_skill("some-uuid") is False
 
 # Made with Bob
+
+
+# ── module content + execution accessors ──────────────────────────────────────
+
+
+def test_get_tool_module_returns_source(mock_services):
+    """get_tool_module delegates to the service, which resolves the filename."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    mock_services["tools"].get_module.return_value = "def t():\n    pass\n"
+    store_api = StoreAPI(mock_services)
+
+    assert store_api.get_tool_module("test-uuid") == "def t():\n    pass\n"
+    mock_services["tools"].get_module.assert_called_once_with("test-uuid")
+
+
+def test_get_tool_module_missing_returns_none(mock_services):
+    """A missing tool yields None rather than raising, matching get_tool."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    mock_services["tools"].get_module.side_effect = KeyError("not found")
+    store_api = StoreAPI(mock_services)
+
+    assert store_api.get_tool_module("nonexistent") is None
+
+
+def test_get_tool_module_no_service_returns_none():
+    """Without a tools service the accessor degrades quietly."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    assert StoreAPI({}).get_tool_module("test-uuid") is None
+
+
+def test_update_tool_module_writes(mock_services):
+    """update_tool_module passes content through to the service."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    store_api = StoreAPI(mock_services)
+
+    assert store_api.update_tool_module("test-uuid", "print('fixed')\n") is True
+    mock_services["tools"].set_module.assert_called_once_with(
+        "test-uuid", "print('fixed')\n"
+    )
+
+
+def test_update_tool_module_failure_returns_false(mock_services):
+    """A service error is reported as False, not raised."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    mock_services["tools"].set_module.side_effect = ValueError("no module file")
+    store_api = StoreAPI(mock_services)
+
+    assert store_api.update_tool_module("mcp-tool", "x") is False
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_delegates(mock_services):
+    """execute_tool runs the tool through the store's own execution path."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    async def _execute(uuid_or_name, parameters, env_id=""):
+        return {"return value": f"{uuid_or_name}:{parameters}:{env_id}"}
+
+    mock_services["tools"].execute = _execute
+    store_api = StoreAPI(mock_services)
+
+    result = await store_api.execute_tool("test-uuid", {"a": 1}, env_id="env")
+    assert result == {"return value": "test-uuid:{'a': 1}:env"}
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_without_service_raises():
+    """No tools service is a programming error, not a silent no-op."""
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    with pytest.raises(RuntimeError, match="Tools service not available"):
+        await StoreAPI({}).execute_tool("test-uuid")
+
+
+# ── deprecated handler properties ─────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("name", ["tools", "skills", "snippets"])
+def test_handler_properties_warn(mock_services, name):
+    """The raw-handler accessors still work, but plugins must be steered off them."""
+    import warnings
+
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    store_api = StoreAPI(mock_services)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        handler = getattr(store_api, name)
+
+    assert handler is mock_services[name].handler
+    assert len(caught) == 1
+    assert issubclass(caught[0].category, DeprecationWarning)
+    assert name in str(caught[0].message)
+
+
+def test_store_api_write_paths_do_not_warn(mock_services):
+    """StoreAPI must not trip its own deprecation on internal handler access."""
+    import warnings
+
+    from skillberry_store.plugins.store_api import StoreAPI
+
+    store_api = StoreAPI(mock_services)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        store_api.update_tool("u", {"uuid": "u"})
+        store_api.update_skill("u", {"uuid": "u"})
+        store_api.update_snippet("u", {"uuid": "u"})
+
+    assert [w for w in caught if issubclass(w.category, DeprecationWarning)] == []

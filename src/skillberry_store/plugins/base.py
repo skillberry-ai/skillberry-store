@@ -146,6 +146,15 @@ class PluginBase(ABC):
         self._store_api = store_api
     
     @property
+    def store_available(self) -> bool:
+        """Whether the store API has been injected yet.
+
+        Use this to branch on availability; ``store`` raises when it is absent,
+        so it cannot answer the question itself.
+        """
+        return self._store_api is not None
+
+    @property
     def store(self) -> Any:
         """Access to store API for querying/updating content."""
         if self._store_api is None:

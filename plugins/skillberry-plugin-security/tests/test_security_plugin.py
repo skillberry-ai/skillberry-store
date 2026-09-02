@@ -111,7 +111,6 @@ def test_build_context_snippet_includes_content():
 async def test_write_security_adds_tag_and_metadata_to_tool():
     plugin = SkillberryPluginSecurity()
     mock_store = MagicMock()
-    mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
 
     obj = {"uuid": "tool-1", "name": "t", "description": "", "tags": ["keeper"], "extra": {}}
@@ -119,7 +118,7 @@ async def test_write_security_adds_tag_and_metadata_to_tool():
 
     await plugin._write_security_to_store("tool-1", "tool", obj, evaluation)
 
-    written = mock_store.tools.write_dict.call_args[0][1]
+    written = mock_store.update_tool.call_args[0][1]
     assert "security-score:6" in written["tags"]
     assert "keeper" in written["tags"]
     assert written["extra"]["evaluation"]["security"]["score"] == 6
@@ -130,7 +129,6 @@ async def test_write_security_adds_tag_and_metadata_to_tool():
 async def test_write_security_preserves_quality_and_performance_metadata():
     plugin = SkillberryPluginSecurity()
     mock_store = MagicMock()
-    mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
 
     obj = {
@@ -147,7 +145,7 @@ async def test_write_security_preserves_quality_and_performance_metadata():
 
     await plugin._write_security_to_store("tool-1", "tool", obj, evaluation)
 
-    written = mock_store.tools.write_dict.call_args[0][1]
+    written = mock_store.update_tool.call_args[0][1]
     assert "quality-score:8" in written["tags"]
     assert "performance-score:7" in written["tags"]
     assert "security-score:5" in written["tags"]
@@ -161,7 +159,6 @@ async def test_write_security_preserves_quality_and_performance_metadata():
 async def test_write_security_replaces_old_security_tag_on_snippet():
     plugin = SkillberryPluginSecurity()
     mock_store = MagicMock()
-    mock_store.snippets = MagicMock()
     plugin.set_store_api(mock_store)
 
     obj = {
@@ -173,7 +170,7 @@ async def test_write_security_replaces_old_security_tag_on_snippet():
 
     await plugin._write_security_to_store("snip-1", "snippet", obj, evaluation)
 
-    written = mock_store.snippets.write_dict.call_args[0][1]
+    written = mock_store.update_snippet.call_args[0][1]
     tags = written["tags"]
     assert "security-score:9" in tags
     assert "security-score:2" not in tags
@@ -184,7 +181,6 @@ async def test_write_security_replaces_old_security_tag_on_snippet():
 async def test_write_security_uses_skills_writer_for_skill():
     plugin = SkillberryPluginSecurity()
     mock_store = MagicMock()
-    mock_store.skills = MagicMock()
     plugin.set_store_api(mock_store)
 
     obj = {"uuid": "skill-1", "name": "s", "description": "", "tags": [], "extra": {}}
@@ -192,8 +188,8 @@ async def test_write_security_uses_skills_writer_for_skill():
 
     await plugin._write_security_to_store("skill-1", "skill", obj, evaluation)
 
-    assert mock_store.skills.write_dict.called
-    assert not mock_store.tools.write_dict.called if hasattr(mock_store, 'tools') else True
+    assert mock_store.update_skill.called
+    assert not mock_store.update_tool.called
 
 
 # ── evaluate_security ────────────────────────────────────────────────────────
@@ -225,7 +221,6 @@ async def test_evaluate_security_tool_returns_both_fields():
         "programming_language": "python", "packaging_format": "code",
         "params": {}, "tags": [], "extra": {},
     }
-    mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(score=7))
 
@@ -243,13 +238,12 @@ async def test_evaluate_security_writes_tag_and_metadata():
         "uuid": "tool-1", "name": "t", "description": "",
         "tags": ["existing-tag"], "extra": {},
     }
-    mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value=_llm_json(score=5))
 
     await plugin.evaluate_security("tool-1", "tool")
 
-    written = mock_store.tools.write_dict.call_args[0][1]
+    written = mock_store.update_tool.call_args[0][1]
     assert "security-score:5" in written["tags"]
     assert "existing-tag" in written["tags"]
     assert written["extra"]["evaluation"]["security"]["score"] == 5
@@ -273,7 +267,6 @@ async def test_evaluate_security_raises_runtime_error_on_bad_llm_response():
     mock_store.get_tool.return_value = {
         "uuid": "t1", "name": "t", "description": "", "tags": [], "extra": {},
     }
-    mock_store.tools = MagicMock()
     plugin.set_store_api(mock_store)
     plugin.llm_client.generate_async = AsyncMock(return_value="not json at all")
 
@@ -395,9 +388,6 @@ async def test_skill_content_added_also_evaluates_referenced_tools_and_snippets(
         "uuid": "snip-b", "name": "snip_b", "description": "",
         "content": "hello", "content_type": "text/plain", "tags": [], "extra": {},
     }
-    mock_store.skills = MagicMock()
-    mock_store.tools = MagicMock()
-    mock_store.snippets = MagicMock()
 
     from skillberry_store.plugins import events as events_module
 
@@ -411,9 +401,9 @@ async def test_skill_content_added_also_evaluates_referenced_tools_and_snippets(
         handler = events_module._event_handlers["content_added:skill"][0]
         await handler(uuid="skill-1")
 
-        assert mock_store.skills.write_dict.called
-        assert mock_store.tools.write_dict.called
-        assert mock_store.snippets.write_dict.called
+        assert mock_store.update_skill.called
+        assert mock_store.update_tool.called
+        assert mock_store.update_snippet.called
     finally:
         events_module._event_handlers.clear()
         events_module._event_handlers.update(saved)

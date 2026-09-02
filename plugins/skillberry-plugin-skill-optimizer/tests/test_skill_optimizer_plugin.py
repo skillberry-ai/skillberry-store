@@ -129,7 +129,7 @@ def mock_store():
     })
     store.list_skills = Mock(return_value=[{"name": "other-skill"}])
     store.tools = Mock()
-    store.tools.read_file = Mock(return_value="def my_tool():\n    pass\n")
+    store.get_tool_module = Mock(return_value="def my_tool():\n    pass\n")
     store.create_tool = Mock(return_value={"uuid": "new-tool-uuid", "name": "my_tool"})
     store.create_snippet = Mock(return_value={"uuid": "new-snip-uuid", "name": "my_snip"})
     store.create_skill = Mock(return_value={

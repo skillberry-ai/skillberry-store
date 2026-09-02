@@ -1,4 +1,5 @@
 import lancedb
+from lancedb.expr import col
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import shutil
@@ -62,7 +63,7 @@ class LanceDB(VectorDBInterface):
         ]
     
     def delete_vector(self, id: str) -> None:
-        self.table.delete(f'id = "{id}"')
+        self.table.delete(col("id") == id)
     
     def load_index(self) -> None:
         if os.path.exists(self.db_path):

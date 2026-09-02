@@ -63,11 +63,11 @@ def _mock_store(tool=None, skill=None, snippet=None):
     store.get_skill.return_value = skill
     store.get_snippet.return_value = snippet
     store.tools = MagicMock()
-    store.tools.read_file.return_value = "import os\neval(input())\n"
-    store.tools.write_dict.return_value = {"success": True}
+    store.get_tool_module.return_value = "import os\neval(input())\n"
+    store.update_tool.return_value = True
     store.skills = MagicMock()
     store.snippets = MagicMock()
-    store.snippets.write_dict.return_value = {"success": True}
+    store.update_snippet.return_value = True
     return store
 
 
@@ -102,17 +102,57 @@ def test_strip_sast_tags_removes_only_sast():
         assert plugin._strip_sast_tags(tags) == ["python", "security-score:4"]
 
 
+def test_strip_sast_tags_removes_numeric_counters():
+    """Counters use a `sast-` prefix, so stripping must cover both families or a
+    re-scan leaves a stale count behind for the policy plugin to read."""
+    with _make_plugin() as plugin:
+        tags = ["python", "sast-high:2", "sast-findings:2", "security-score:4"]
+        assert plugin._strip_sast_tags(tags) == ["python", "security-score:4"]
+
+
 def test_summary_tags_clean_when_empty():
     with _make_plugin() as plugin:
-        assert plugin._summary_tags(
-            {"low": 0, "medium": 0, "high": 0, "critical": 0}
-        ) == ["sast:clean"]
+        tags = plugin._summary_tags({"low": 0, "medium": 0, "high": 0, "critical": 0})
+        assert "sast:clean" in tags
+        assert not any(t.startswith("sast:") and t != "sast:clean" for t in tags)
 
 
 def test_summary_tags_counts():
     with _make_plugin() as plugin:
         tags = plugin._summary_tags({"low": 1, "medium": 0, "high": 2, "critical": 0})
         assert "sast:low:1" in tags and "sast:high:2" in tags
+
+
+def test_summary_tags_emit_numeric_counters_including_zeros():
+    """kagenti-approver fails a condition whose tag is absent, so every severity
+    needs an explicit count — otherwise a clean object can never be approved."""
+    with _make_plugin() as plugin:
+        tags = plugin._summary_tags({"low": 1, "medium": 0, "high": 2, "critical": 0})
+        assert "sast-low:1" in tags
+        assert "sast-medium:0" in tags
+        assert "sast-high:2" in tags
+        assert "sast-critical:0" in tags
+        assert "sast-findings:3" in tags
+
+
+def test_numeric_counters_are_parseable_by_kagenti_approver():
+    """The counters exist to be read by the approver's `<key>:<number>` parser;
+    the display tags are not (`sast:high:2` -> value "high:2", not a number)."""
+    kagenti = pytest.importorskip(
+        "skillberry_plugin_kagenti_approver.plugin",
+        reason="kagenti-approver not installed",
+    )
+    with _make_plugin() as plugin:
+        clean = plugin._summary_tags({"low": 0, "medium": 0, "high": 0, "critical": 0})
+        dirty = plugin._summary_tags({"low": 0, "medium": 0, "high": 1, "critical": 0})
+
+    criteria = kagenti.parse_criteria("sast-high<1,sast-critical<1")
+    assert kagenti.evaluate_criteria(criteria, kagenti.extract_scores(clean)) is True
+    assert kagenti.evaluate_criteria(criteria, kagenti.extract_scores(dirty)) is False
+    # An object that was never scanned carries no counters -> fail closed.
+    assert (
+        kagenti.evaluate_criteria(criteria, kagenti.extract_scores(["python"])) is False
+    )
 
 
 # ── engine selection precedence ──────────────────────────────────────────────
@@ -183,7 +223,7 @@ async def test_scan_object_writes_findings_and_preserves_security():
     assert result["engines"]["bandit"]["status"] == "ok"
 
     # write_dict was called; inspect what we persisted.
-    written = store.tools.write_dict.call_args[0][1]
+    written = store.update_tool.call_args[0][1]
     assert written["extra"]["evaluation"]["sast"]["summary"]["high"] == 1
     # security evaluation preserved, not clobbered:
     assert written["extra"]["evaluation"]["security"]["score"] == 4
@@ -328,10 +368,10 @@ async def test_scan_objects_skill_fans_out_to_children():
     store.get_tool.side_effect = lambda u: tool if u == "t1" else None
     store.get_snippet.side_effect = lambda u: snippet if u == "n1" else None
     store.tools = MagicMock()
-    store.tools.read_file.return_value = "eval(input())\n"
-    store.tools.write_dict.return_value = {"success": True}
+    store.get_tool_module.return_value = "eval(input())\n"
+    store.update_tool.return_value = True
     store.snippets = MagicMock()
-    store.snippets.write_dict.return_value = {"success": True}
+    store.update_snippet.return_value = True
 
     with _make_plugin(_FakeEngine(findings=[])) as plugin:
         plugin.set_store_api(store)
@@ -341,7 +381,7 @@ async def test_scan_objects_skill_fans_out_to_children():
     # skill itself (no code) + its tool + its snippet
     assert scanned_types == ["skill", "snippet", "tool"]
     # skill aggregate written back
-    assert store.skills.write_dict.called
+    assert store.update_skill.called
 
 
 @pytest.mark.asyncio
@@ -376,20 +416,20 @@ async def test_scan_objects_writes_skill_aggregate_tags_and_extra():
     store.get_tool.side_effect = lambda u: tool if u == "t1" else None
     store.get_snippet.return_value = None
     store.tools = MagicMock()
-    store.tools.read_file.return_value = "assert False\n"
-    store.tools.write_dict.return_value = {"success": True}
+    store.get_tool_module.return_value = "assert False\n"
+    store.update_tool.return_value = True
     store.snippets = MagicMock()
-    store.snippets.write_dict.return_value = {"success": True}
+    store.update_snippet.return_value = True
     store.skills = MagicMock()
-    store.skills.write_dict.return_value = {"success": True}
+    store.update_skill.return_value = True
 
     with _make_plugin(_FakeEngine(findings=[finding])) as plugin:
         plugin.set_store_api(store)
         await plugin.scan_objects(["sk"])
 
     # skills.write_dict must have been called with the skill's uuid
-    assert store.skills.write_dict.called
-    written_obj = store.skills.write_dict.call_args[0][1]
+    assert store.update_skill.called
+    written_obj = store.update_skill.call_args[0][1]
     assert written_obj["extra"]["evaluation"]["sast"]["summary"]["high"] == 1
     assert any(t.startswith("sast:high:") for t in written_obj["tags"])
 
@@ -519,10 +559,10 @@ async def test_fix_object_writes_code_and_records_extra():
     assert result["status"] == "fixed"
     assert result["new_code"] == "print('fixed')\n"
     # code overwritten in the tool's module file
-    store.tools.write_file.assert_called_once()
-    assert store.tools.write_file.call_args[0][2] == "print('fixed')\n"
+    store.update_tool_module.assert_called_once()
+    assert store.update_tool_module.call_args[0][1] == "print('fixed')\n"
     # fix recorded in extra
-    written = store.tools.write_dict.call_args[0][1]
+    written = store.update_tool.call_args[0][1]
     assert written["extra"]["evaluation"]["sast_fix"]["model"]
     assert "high" in written["extra"]["evaluation"]["sast_fix"]["severities"]
 

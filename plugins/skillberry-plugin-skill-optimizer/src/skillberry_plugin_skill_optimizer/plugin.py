@@ -376,10 +376,9 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             for tool in tools:
                 if tool.get("module_name"):
                     try:
-                        content = self.store.tools.read_file(
-                            tool["uuid"], tool["module_name"], raw_content=True
-                        )
-                        tool_modules[tool["name"]] = content
+                        content = self.store.get_tool_module(tool["uuid"])
+                        if content is not None:
+                            tool_modules[tool["name"]] = content
                     except Exception as e:
                         logger.warning(f"Could not read module for tool '{tool['name']}': {e}")
 

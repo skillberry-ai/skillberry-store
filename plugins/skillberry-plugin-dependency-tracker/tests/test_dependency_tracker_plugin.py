@@ -10,23 +10,17 @@ from skillberry_plugin_dependency_tracker.plugin import (
 from skillberry_store.plugins.base import PluginType
 
 
-class _Tools:
-    """Stand-in for store.tools, backed by an in-memory module map."""
-
-    def __init__(self, modules):
-        # (uuid, filename) -> source
-        self._modules = modules
-
-    def read_file(self, uuid, filename, raw_content=False):
-        return self._modules[(uuid, filename)]
-
-
 class FakeStore:
-    """In-memory store with get_/update_ round-trip and tools.read_file."""
+    """In-memory store mirroring the StoreAPI surface (get_/update_ + module read)."""
 
     def __init__(self, objects=None, modules=None):
         self._objs = objects or {}
-        self.tools = _Tools(modules or {})
+        # {(uuid, filename): source} is accepted for readability at the call
+        # sites; StoreAPI reaches module source by uuid alone.
+        self._modules = {uuid: src for (uuid, _fn), src in (modules or {}).items()}
+
+    def get_tool_module(self, uuid):
+        return self._modules.get(uuid)
 
     def get_skill(self, uuid):
         return copy.deepcopy(self._objs.get(("skill", uuid)))
@@ -275,16 +269,21 @@ async def test_local_modules_not_counted_as_missing(monkeypatch):
         modules={
             ("mr", "merge_runs.py"): "def merge_runs():\n    pass\n",
             ("user", "u.py"): (
-                "from helpers.merge_runs import merge_runs\n" "import lxml.etree\n"
+                "from helpers.merge_runs import merge_runs\n"
+                # Deliberately a name no distribution can provide. Using a real
+                # package here made the test depend on it being ABSENT from the
+                # venv, which silently inverted the assertion once anything
+                # pulled it in as a transitive dependency.
+                "import sbs_absent_external.etree\n"
             ),
         },
     )
     p = _plugin(store, monkeypatch)
     block = (await p.scan("skill", "sk3"))["dependencies"]
     reasons = {u["import_name"]: u["reason"] for u in block["unresolved_imports"]}
-    # `helpers` recognized as first-party, lxml flagged as a real missing pkg
+    # `helpers` recognized as first-party, the unknown import flagged as missing
     assert reasons.get("helpers") == "local_module"
-    assert reasons.get("lxml") == "no_distribution"
+    assert reasons.get("sbs_absent_external") == "no_distribution"
     assert block["summary"]["local_module_count"] == 1
     assert block["summary"]["missing_count"] == 1
     # tag reflects only the real missing external

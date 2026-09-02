@@ -246,11 +246,9 @@ class SkillberryPluginDocGenerator(PluginBase):
             module = obj.get("module_name")
             if module and self._store_api is not None:
                 try:
-                    blobs.append(
-                        self.store.tools.read_file(
-                            obj.get("uuid"), module, raw_content=True
-                        )
-                    )
+                    source = self.store.get_tool_module(obj.get("uuid"))
+                    if source is not None:
+                        blobs.append(source)
                 except Exception as e:
                     logger.debug("doc-gen: could not read tool module: %s", e)
             return blobs
@@ -261,11 +259,9 @@ class SkillberryPluginDocGenerator(PluginBase):
                     tool = self.store.get_tool(tool_uuid)
                     module = (tool or {}).get("module_name")
                     if tool and module:
-                        blobs.append(
-                            self.store.tools.read_file(
-                                tool_uuid, module, raw_content=True
-                            )
-                        )
+                        source = self.store.get_tool_module(tool_uuid)
+                        if source is not None:
+                            blobs.append(source)
                 except Exception as e:
                     logger.debug("doc-gen: could not read child tool: %s", e)
             for snippet_uuid in obj.get("snippet_uuids") or []:
