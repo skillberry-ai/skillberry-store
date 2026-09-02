@@ -193,3 +193,86 @@ def test_unmarked_route_still_requires_a_token(sbs_factory):
         return {}
 
     assert client.get("/late-unmarked-anon").status_code == 401
+
+
+# ── §4: the ambient subject ─────────────────────────────────────────────── #
+
+def _ambient_yaml() -> str:
+    """The standalone config plus one extra allow-listed path for the probe.
+
+    Spelling out ``unauthenticated_paths`` replaces the built-in default list
+    rather than extending it, so the defaults are repeated here — omitting them
+    would leave ``/docs``, ``/openapi.json`` and friends unmarked and fail the
+    startup audit.
+    """
+    from skillberry_store.access_control.config import _DEFAULT_UNAUTH_PATHS
+
+    entries = list(_DEFAULT_UNAUTH_PATHS) + ["GET /probe-open"]
+    allow_list = "unauthenticated_paths:\n" + "".join(
+        f"  - {e}\n" for e in entries
+    )
+    return standalone_yaml() + "\n" + allow_list
+
+
+def _install_ambient_probes(app) -> None:
+    """Register two probes that report the ambient subject back to the test.
+
+    Registered after boot (and re-stamped) rather than shipped as real
+    endpoints: the assertion is about what the PEP publishes, and a probe is
+    the only way to observe a context variable from outside the process.
+    """
+    from skillberry_store.access_control.audit import stamp_rbac_markers
+    from skillberry_store.access_control.context import current_subject
+    from skillberry_store.access_control.decorator import requires
+
+    @requires("skills", "get")
+    @app.get("/probe-ambient")
+    async def probe_ambient():
+        s = current_subject()
+        return {"tenant": s.tenant_id if s else None}
+
+    @app.get("/probe-open")
+    async def probe_open():
+        s = current_subject()
+        return {"tenant": s.tenant_id if s else None}
+
+    stamp_rbac_markers(app)
+
+
+def test_authenticated_request_publishes_the_calling_tenant(sbs_factory):
+    client = sbs_factory(_ambient_yaml())
+    _install_ambient_probes(client.app)
+    h = _token(client, "reader", "reader-pw")
+    r = client.get("/probe-ambient", headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["tenant"] == "reader"
+
+
+def test_allowlisted_request_observes_no_ambient_subject(sbs_factory):
+    """P5 depends on an empty context reading as ``None``: a leaked value would
+    let an autonomous operation silently inherit an earlier caller's identity
+    instead of failing."""
+    client = sbs_factory(_ambient_yaml())
+    _install_ambient_probes(client.app)
+    # Authenticate first, so a leak would have something to leak.
+    h = _token(client, "root", "root-pw")
+    assert client.get("/probe-ambient", headers=h).json()["tenant"] == "root"
+    assert client.get("/probe-open").json()["tenant"] is None
+
+
+def test_ambient_subject_does_not_leak_across_tenants(sbs_factory):
+    client = sbs_factory(_ambient_yaml())
+    _install_ambient_probes(client.app)
+    reader = _token(client, "reader", "reader-pw")
+    root = _token(client, "root", "root-pw")
+    assert client.get("/probe-ambient", headers=reader).json()["tenant"] == "reader"
+    assert client.get("/probe-ambient", headers=root).json()["tenant"] == "root"
+    assert client.get("/probe-ambient", headers=reader).json()["tenant"] == "reader"
+
+
+def test_disabled_mode_leaves_the_ambient_subject_unset(sbs_factory):
+    """No PEP is installed, so nothing sets it — and ``_admit`` returns on its
+    first line rather than tripping P5 (§2.5)."""
+    client = sbs_factory("mode: disabled\n")
+    _install_ambient_probes(client.app)
+    assert client.get("/probe-ambient").json()["tenant"] is None

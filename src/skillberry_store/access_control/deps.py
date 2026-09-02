@@ -43,6 +43,7 @@ from fastapi import HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from skillberry_store.access_control.config import AccessControlConfig
+from skillberry_store.access_control.context import set_current_subject
 from skillberry_store.access_control.mapper import UnmarkedRouteError, try_map_request
 from skillberry_store.access_control.pdp import Subject, authorize
 from skillberry_store.access_control.sessions import SessionStore
@@ -79,9 +80,10 @@ def make_enforce_dependency(
 
       1. Short-circuit the unauth allow-list.
       2. Resolve the bearer token to a ``Subject``.
-      3. Map the matched route to ``(resource, verb)``.
-      4. Call the PDP and raise 403 on deny.
-      5. Stash the ``Subject`` on ``request.state`` for handlers.
+      3. Publish it as the ambient subject (``CURRENT_SUBJECT``).
+      4. Map the matched route to ``(resource, verb)``.
+      5. Call the PDP and raise 403 on deny.
+      6. Stash the ``Subject`` on ``request.state`` for handlers.
     """
 
     async def enforce(
@@ -103,6 +105,14 @@ def make_enforce_dependency(
         subject = Subject(
             tenant_id=session.tenant_id, groups=list(session.groups)
         )
+        # Publish the caller as the ambient subject before anything else runs.
+        # Everything downstream in this request's task — the endpoint, a
+        # plugin's handler, StoreAPI._admit — reads it from here rather than
+        # threading a tenant_id through every call site (P3, §4.1). Deliberately
+        # not reset afterwards: each request runs in its own asyncio task with
+        # its own copied context, so the value cannot outlive the request or
+        # leak into a sibling one.
+        set_current_subject(subject)
 
         try:
             mapped = try_map_request(request)
