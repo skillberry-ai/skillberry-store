@@ -21,7 +21,12 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 from .sources import resolve_source
 from .sources.base import Background
@@ -382,6 +387,7 @@ class SkillberryPluginProvenance(PluginBase):
         class RecheckRequest(BaseModel):
             uuid: str
 
+        @requires("skills", "update")
         @router.post("/check")
         async def check_endpoint(request: CheckRequest):
             """Gather provenance/background for a URL (pre-import) or uuid (post)."""
@@ -398,6 +404,7 @@ class SkillberryPluginProvenance(PluginBase):
                 raise HTTPException(status_code=500, detail=str(e))
             return {"success": True, "message": _confidence_message(data), "data": data}
 
+        @requires("skills", "update")
         @router.post("/recheck")
         async def recheck_endpoint(request: RecheckRequest):
             """Re-check a stored skill and report drift vs. its baseline."""

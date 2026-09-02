@@ -138,7 +138,12 @@ def _materialize_skill_upload(base: str, files: list) -> int:
         written += 1
     return written
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 from skillberry_store.plugins.claude_credentials import (
     load_claude_settings, settings_env, has_api_access, build_agent_env,
 )
@@ -237,12 +242,14 @@ class SkillberryPluginAskRunspace(PluginBase):
             use_runspace_server: bool = False
             runspace_server_url: Optional[str] = None
 
+        @requires("plugins", "get")
         @router.get("/presets")
         async def presets():
             # Append the editable store-usage guidance under each preset's prompt so
             # selecting one fills the request box with {preset}\n\n{guidance}.
             return [{**p, "prompt": _compose_prompt(p["prompt"])} for p in PRESETS]
 
+        @requires("plugins", "update")
         @router.post("/upload-skills")
         async def upload_skills(files: list[UploadFile] = File(...)):
             # The browser cannot hand us a real server path, so the UI uploads a
@@ -343,6 +350,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                 if not keep:
                     shutil.rmtree(tmp, ignore_errors=True)
 
+        @requires("skills", "create")
         @router.post("/run")
         async def run(req: RunRequest):
             if not req.request or not req.request.strip():
@@ -356,6 +364,7 @@ class SkillberryPluginAskRunspace(PluginBase):
             return {"success": True, "message": "Task is starting…",
                     "data": {"job_id": job_id, "status": "pending"}}
 
+        @requires("plugins", "get")
         @router.get("/status/{job_id}")
         async def status(job_id: str):
             task = self._jobs.get(job_id)
@@ -373,6 +382,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                 return {"job_id": job_id, "status": "failed", "detail": str(exc)}
             return {"job_id": job_id, "status": "ready", **task.result()}
 
+        @requires("plugins", "update")
         @router.post("/cleanup/{job_id}")
         async def cleanup_workspace(job_id: str):
             path = self._workspaces.pop(job_id, None)

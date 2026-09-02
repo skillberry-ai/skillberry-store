@@ -10,7 +10,12 @@ from typing import Any, Dict, List, Optional
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 from skillberry_store.fast_api.server_utils import mcp_content
 
 logger = logging.getLogger(__name__)
@@ -195,6 +200,7 @@ class SkillberryPluginMcpImporter(PluginBase):
             skill_name: Optional[str] = None
             tags: Optional[List[str]] = None
 
+        @requires("tools", "create")
         @router.post("/import-tools")
         async def import_tools(request: ImportRequest):
             """Import all tools from the given MCP SSE server into the store."""

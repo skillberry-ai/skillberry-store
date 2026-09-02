@@ -8,7 +8,12 @@ import logging
 import json
 from typing import Dict, Any, Optional, List
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +314,7 @@ Return ONLY the JSON object, no other text."""
             uuid: str
             content_type: str  # "tool", "skill", or "snippet"
 
+        @requires("skills", "update")
         @router.post("/evaluate")
         async def evaluate_endpoint(request: EvaluateRequest):
             """Evaluate a store object and store quality/performance scores."""

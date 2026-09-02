@@ -7,7 +7,12 @@ import os
 import logging
 from typing import Dict, Any, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +163,7 @@ Return ONLY the JSON, no other text."""
             description: str
             name: Optional[str] = None
         
+        @requires("snippets", "create")
         @router.post("/create-snippet")
         async def create_snippet_endpoint(request: CreateSnippetRequest):
             """Create a code snippet from a description."""

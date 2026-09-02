@@ -10,6 +10,41 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking
 
+- **Every plugin API route must now declare `@requires(resource, verb)`.** The startup
+  RBAC coverage audit could not see plugin routes at all: FastAPI >= 0.137 nests
+  `include_router()` routes under a private `_IncludedRouter` instead of flattening them
+  into `app.routes`, so the audit's walker missed all of them — and so did the marker
+  stamper, which is why every plugin action endpoint returned **500** under
+  `mode: standalone`. The walker now descends that nesting, all 31 bundled plugin routes
+  carry markers, and a plugin call is decided (200/403/404) instead of aborting.
+
+  This reaches **third-party plugins in every mode, including `mode: disabled`**. An
+  unmarked plugin route now:
+
+  - **fails startup** under `mode: standalone` — an unmarked route there is a live
+    authorization hole;
+  - **logs a warning** under `mode: disabled`, where no PEP is installed and therefore no
+    decision is being skipped, so the deployment still boots.
+
+  Unmarked *core* routes keep failing startup in every mode, as before. A route object
+  inside a plugin router that is not an `APIRoute` (a websocket, a Starlette `Mount`) is
+  reported on the same terms: a `Mount` sits outside the FastAPI dependency chain
+  entirely and would answer with no token at all.
+
+  To migrate a plugin, import the decorator from the plugin contract and put it *above*
+  the route decorator:
+
+  ```python
+  from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType, requires
+
+  @requires("skills", "update")     # what the action does to the store
+  @router.post("/scan")
+  async def scan(...): ...
+  ```
+
+  Declare the resource the action actually touches, not the plugin subsystem — see
+  `docs/design/plugin-identity.md` §6.2.
+
 - **`ENABLE_UI` has been removed.** It had already stopped doing anything: the UI is
   served in-process by FastAPI at `/ui`, and `main()` only ever consulted
   `ENABLE_UI_SUBPROCESS`, so setting `ENABLE_UI=false` silently still served the UI.

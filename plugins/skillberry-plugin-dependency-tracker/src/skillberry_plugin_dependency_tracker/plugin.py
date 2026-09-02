@@ -25,7 +25,12 @@ import platform
 import re
 from typing import Any, Dict, List, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 from .resolver import build_resolver
 from .resolver.base import OBJECT_TYPES
@@ -358,6 +363,7 @@ class SkillberryPluginDependencyTracker(PluginBase):
             if not (uuid and uuid.strip()):
                 raise HTTPException(status_code=400, detail="uuid is required")
 
+        @requires("tools", "update")
         @router.post("/resolve-dependencies")
         async def scan_endpoint(request: ScanRequest):
             """Resolve & record external Python dependencies for an object."""

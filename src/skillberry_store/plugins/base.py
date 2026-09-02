@@ -5,8 +5,21 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 from enum import Enum
 
+from skillberry_store.access_control.decorator import requires
+
 if TYPE_CHECKING:
     from fastapi import APIRouter
+
+# ``requires`` is re-exported here so a plugin author declares an endpoint's
+# (resource, verb) without reaching into ``access_control`` internals. Every
+# plugin route must carry one — the startup coverage audit refuses to boot a
+# ``standalone`` deployment with an unmarked plugin route (plugin-identity §6.2).
+__all__ = [
+    "PluginBase",
+    "PluginMetadata",
+    "PluginType",
+    "requires",
+]
 
 
 class PluginType(str, Enum):
