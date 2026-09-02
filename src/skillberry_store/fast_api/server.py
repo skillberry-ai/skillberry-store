@@ -374,9 +374,7 @@ class SBS(FastAPI):
             self._mcp_per_user_mounts: List[str] = []
             mcp_mounts: dict = {}
             for mount_name, subject in _mcp_subjects(acl_cfg, plugin_loader):
-                allowed_full = set(
-                    operations_for_subject(self, subject, acl_cfg)
-                )
+                allowed_full = set(operations_for_subject(self, subject, acl_cfg))
                 allowed = sorted(allowed_full & set(mcp_included_operations))
                 mount_path = f"/control_sse/{mount_name}"
                 if mount_path in self._mcp_per_user_mounts:
@@ -567,7 +565,10 @@ def _mcp_subjects(acl_cfg, plugin_loader) -> List[tuple]:
     covered = set()
     for user in acl_cfg.users:
         subjects.append(
-            (user.username, Subject(tenant_id=user.tenant_id, groups=list(user.groups or [])))
+            (
+                user.username,
+                Subject(tenant_id=user.tenant_id, groups=list(user.groups or [])),
+            )
         )
         covered.add(user.tenant_id)
 
@@ -580,7 +581,10 @@ def _mcp_subjects(acl_cfg, plugin_loader) -> List[tuple]:
             continue
         covered.add(tenant)
         subjects.append(
-            (tenant, Subject(tenant_id=tenant, groups=acl_cfg.groups_for_tenant(tenant)))
+            (
+                tenant,
+                Subject(tenant_id=tenant, groups=acl_cfg.groups_for_tenant(tenant)),
+            )
         )
     return subjects
 

@@ -137,9 +137,7 @@ def register_plugins_api(app: FastAPI, plugin_loader: Any, tags: str = "plugins"
             )
         if body.enabled:
             subject = getattr(request.state, "subject", None)
-            plugin_loader.record_owner(
-                plugin_name, getattr(subject, "tenant_id", None)
-            )
+            plugin_loader.record_owner(plugin_name, getattr(subject, "tenant_id", None))
         return plugin_loader.get_plugin_info(plugin_name)
 
 
