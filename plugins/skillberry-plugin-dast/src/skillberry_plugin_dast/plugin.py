@@ -429,7 +429,15 @@ class SkillberryPluginDast(PluginBase):
         nested ``asyncio.to_thread``), so a blocking call (sync ``time.sleep``,
         hung subprocess, infinite loop) is abandoned cleanly when we stop waiting
         — it does not keep an event-loop executor alive and deadlock scan exit.
+
+        The work runs inside a *copy of the caller's context*, because a bare
+        ``threading.Thread`` starts with an empty one. ``asyncio.to_thread``
+        copies the context for you; ``threading.Thread`` does not. Anything the
+        work reaches that reads ambient context — the store's request-scoped
+        state, and the twin's store-backed tool execution in particular — would
+        otherwise observe defaults instead of the caller's values.
         """
+        import contextvars
         import threading
 
         box: Dict[str, Any] = {}
@@ -440,7 +448,8 @@ class SkillberryPluginDast(PluginBase):
             except Exception as e:  # surface the error to the caller
                 box["error"] = e
 
-        th = threading.Thread(target=_worker, daemon=True)
+        ctx = contextvars.copy_context()
+        th = threading.Thread(target=ctx.run, args=(_worker,), daemon=True)
         th.start()
         th.join(self._exec_timeout)
         if th.is_alive():

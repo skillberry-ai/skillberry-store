@@ -390,6 +390,50 @@ async def test_scan_missing_object_raises(monkeypatch):
         await p.scan("skill", "nope")
 
 
+def test_run_bounded_propagates_context(monkeypatch):
+    """Bounded work sees the caller's contextvars, not a fresh empty context.
+
+    A bare ``threading.Thread`` starts with an empty context, so anything the
+    work reaches that reads ambient state — the twin's store-backed tool
+    execution above all — would observe defaults instead of the caller's values.
+    """
+    import contextvars
+
+    var = contextvars.ContextVar("dast_test_var", default="unset")
+    var.set("set-by-caller")
+
+    p = _plugin(FakeStore(), monkeypatch)
+    assert p._run_bounded(var.get) == "set-by-caller"
+
+
+def test_run_bounded_isolates_writes_from_the_caller(monkeypatch):
+    """The copy is a copy: a ``set`` inside the work does not leak back out."""
+    import contextvars
+
+    var = contextvars.ContextVar("dast_test_var2", default="unset")
+    var.set("caller")
+
+    def _work():
+        var.set("worker")
+        return var.get()
+
+    p = _plugin(FakeStore(), monkeypatch)
+    assert p._run_bounded(_work) == "worker"
+    assert var.get() == "caller"
+
+
+def test_run_bounded_still_surfaces_errors_and_results(monkeypatch):
+    """Context propagation must not disturb the result/exception plumbing."""
+    p = _plugin(FakeStore(), monkeypatch)
+    assert p._run_bounded(lambda: 42) == 42
+
+    def _boom():
+        raise RuntimeError("from the worker")
+
+    with pytest.raises(RuntimeError, match="from the worker"):
+        p._run_bounded(_boom)
+
+
 @pytest.mark.asyncio
 async def test_scan_records_coverage_caveats(monkeypatch):
     store = FakeStore(
