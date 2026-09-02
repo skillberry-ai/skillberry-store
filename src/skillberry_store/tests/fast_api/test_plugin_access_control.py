@@ -159,3 +159,37 @@ def test_read_only_plugin_route_allowed_for_base_user(sbs_factory):
         "/plugins/dast/scan-status", params={"uuid": "nope"}, headers=h
     )
     assert r.status_code in (200, 404), r.text
+
+
+# ── §10 step 2: the mapper is fail-safe, not fail-crash ─────────────────── #
+
+
+def test_route_added_after_startup_without_marker_is_403(sbs_factory, caplog):
+    """The startup audit makes this unreachable for routes registered before
+    boot. A route added afterwards is the case the backstop exists for, and an
+    unmarked route must deny rather than 500 — there is no declared intent for
+    the PDP to decide against."""
+    client = sbs_factory(standalone_yaml())
+
+    @client.app.get("/late-unmarked")
+    async def late():  # pragma: no cover - reached, but through the PEP
+        return {"reached": True}
+
+    h = _token(client, "root", "root-pw")
+    with caplog.at_level("ERROR"):
+        r = client.get("/late-unmarked", headers=h)
+    assert r.status_code == 403, r.text
+    assert r.json()["detail"] == "route_missing_access_control_marker"
+    assert "access_denied_unmarked_route" in caplog.text
+
+
+def test_unmarked_route_still_requires_a_token(sbs_factory):
+    """Authentication comes first: an unmarked route must not become a way to
+    skip the 401."""
+    client = sbs_factory(standalone_yaml())
+
+    @client.app.get("/late-unmarked-anon")
+    async def late():  # pragma: no cover
+        return {}
+
+    assert client.get("/late-unmarked-anon").status_code == 401

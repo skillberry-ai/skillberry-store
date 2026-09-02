@@ -26,6 +26,12 @@ Design points:
 * In ``mode: disabled`` the dep is not installed at all, so the OpenAPI
   schema publishes no security requirements — identical to the
   pre-ACL baseline.
+* A matched route with no ``@requires`` marker is **denied with a 403 and
+  an audit line**, never allowed and never a 500 (plugin-identity §10
+  step 2). The startup coverage audit should make this unreachable; a
+  route registered after startup is the case that can still get here, and
+  fail-safe is the only defensible answer for one — there is no declared
+  intent to decide against.
 """
 
 from __future__ import annotations
@@ -37,7 +43,7 @@ from fastapi import HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from skillberry_store.access_control.config import AccessControlConfig
-from skillberry_store.access_control.mapper import try_map_request
+from skillberry_store.access_control.mapper import UnmarkedRouteError, try_map_request
 from skillberry_store.access_control.pdp import Subject, authorize
 from skillberry_store.access_control.sessions import SessionStore
 
@@ -98,7 +104,24 @@ def make_enforce_dependency(
             tenant_id=session.tenant_id, groups=list(session.groups)
         )
 
-        mapped = try_map_request(request)
+        try:
+            mapped = try_map_request(request)
+        except UnmarkedRouteError as e:
+            # Fail-safe, not fail-crash: an unmarked route declares no intent,
+            # so there is nothing the PDP could decide. Deny and say so in the
+            # log — a 500 here previously leaked the defect to the caller as a
+            # server error while telling the operator nothing actionable.
+            logger.error(
+                "access_denied_unmarked_route tenant=%s method=%s path=%s "
+                "detail=%s (apply @requires above the route, or allow-list it)",
+                subject.tenant_id,
+                request.method,
+                request.url.path,
+                e,
+            )
+            raise HTTPException(
+                status_code=403, detail="route_missing_access_control_marker"
+            )
         if mapped is None:
             request.state.subject = subject
             return
