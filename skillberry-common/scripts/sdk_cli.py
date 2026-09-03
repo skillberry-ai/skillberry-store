@@ -202,31 +202,47 @@ def _store_bearer(api_name: str, token: str) -> None:
     _write_config(config, path)
 
 
-def _auth_disabled(api_url: str) -> bool:
-    """Return True only when the server explicitly reports auth is disabled.
+def _preflight(api_url: str) -> tuple[bool, Optional[str]]:
+    """Return ``(auth_disabled, login_info)`` from a single GET /auth/whoami.
 
-    Preflight probe against ``GET /auth/whoami``: in ``disabled`` mode the
-    server returns 503 with ``{"detail": "auth_disabled"}`` (see
-    docs/design/access-control.md §7 and the ``auth_api.py`` handler).
-    Any other status — 401 when standalone-auth is on but the client
-    isn't signed in, 200 when a valid bearer is already present, network
-    errors — returns False so the caller can proceed and surface the
-    real error itself.
+    One probe, two facts — the request count is unchanged from when this
+    only reported the first:
+
+    * ``auth_disabled`` is True only when the server explicitly says so:
+      in ``disabled`` mode it answers 503 with ``{"detail":
+      "auth_disabled"}`` (see docs/design/access-control.md §7 and the
+      ``auth_api.py`` handler). Any other status — 401 when
+      standalone-auth is on but the client isn't signed in, 200 when a
+      valid bearer is already present — returns False so the caller can
+      proceed and surface the real error itself.
+    * ``login_info`` is the operator's login message, which rides the 401
+      this probe gets when standalone auth is on (see §8 of
+      docs/design/login-info.md). ``None`` on a server that predates the
+      feature or has no message configured.
+
+    Never raises: a server that is down, a non-JSON body and a malformed
+    one all yield ``(False, None)``, so the caller behaves exactly as it
+    did before the message existed.
     """
     url = f"{api_url.rstrip('/')}/auth/whoami"
     try:
         urllib.request.urlopen(url, timeout=5).read()
     except urllib.error.HTTPError as e:
-        if e.code != 503:
-            return False
+        if e.code not in (401, 503):
+            return False, None
         try:
-            detail = json.loads(e.read().decode("utf-8")).get("detail")
+            body = json.loads(e.read().decode("utf-8"))
         except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
-            return False
-        return detail == "auth_disabled"
+            return False, None
+        if not isinstance(body, dict):
+            return False, None
+        if e.code == 503:
+            return body.get("detail") == "auth_disabled", None
+        login_info = body.get("login_info")
+        return False, login_info if isinstance(login_info, str) and login_info else None
     except (urllib.error.URLError, OSError):
-        return False
-    return False
+        return False, None
+    return False, None
 
 
 def _do_login(api_name: str, api_url: str) -> int:
@@ -236,12 +252,20 @@ def _do_login(api_name: str, api_url: str) -> int:
     # currently registered (respects `sbs connect <alt>`), falling back
     # to the compiled-in default.
     effective_url = _registered_base(api_name) or api_url
-    if _auth_disabled(effective_url):
+    auth_disabled, login_info = _preflight(effective_url)
+    if auth_disabled:
         print(
             f"Authentication is disabled on {effective_url}; no login required.",
             file=sys.stderr,
         )
         return 2
+
+    # The operator's login message, printed once before the prompt and never
+    # after a failed attempt — which is what makes the CLI match the UI, where
+    # the banner is likewise pre-attempt only. stderr keeps stdout clean for
+    # the `Signed in as ...` line.
+    if login_info:
+        print(login_info, file=sys.stderr)
 
     username = input("Username: ").strip()
     password = getpass.getpass("Password: ")
