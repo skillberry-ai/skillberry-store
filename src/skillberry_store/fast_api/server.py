@@ -175,9 +175,7 @@ def _inject_login_info(index_html: bytes, message: str) -> bytes:
     return injected.encode("utf-8")
 
 
-def _html_bytes_response(
-    request: Request, body: bytes, cache_control: str
-) -> Response:
+def _html_bytes_response(request: Request, body: bytes, cache_control: str) -> Response:
     """Serve pre-rendered HTML bytes, suppressing the body for HEAD.
 
     ``FileResponse`` handles HEAD itself (``send_header_only``); a plain
