@@ -11,12 +11,13 @@ import uvicorn
 from pydantic_settings import BaseSettings
 from pydantic import Field, model_validator
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi_mcp import FastApiMCP
 
+from skillberry_store.fast_api.login_info import LoginInfoPage
 from skillberry_store.fast_api.openapi_ids import custom_generate_unique_id
 from skillberry_store.fast_api.skills_api import register_skills_api
 from skillberry_store.fast_api.snippets_api import register_snippets_api
@@ -406,6 +407,12 @@ class SBS(FastAPI):
             _INDEX_CACHE_CONTROL = "no-cache, must-revalidate"
             ui_root = ui_dist.resolve()
 
+            # Operator login message, rendered into index.html once at startup
+            # and inert when none is configured (fast_api/login_info.py).
+            login_info_page = LoginInfoPage.build(
+                ui_root, getattr(self.state.acl_cfg, "login_info", None)
+            )
+
             # GET *and* HEAD: FastAPI's @app.get registers GET only (unlike
             # Starlette's plain Route, which implies HEAD), so a HEAD would
             # otherwise 405 instead of answering with the cache directives set
@@ -413,7 +420,7 @@ class SBS(FastAPI):
             @self.api_route(
                 "/ui/{path:path}", methods=["GET", "HEAD"], include_in_schema=False
             )
-            async def _ui_spa_fallback(path: str):
+            async def _ui_spa_fallback(request: Request, path: str):
                 # Real static assets (JS, CSS, fonts, images) are served from
                 # disk. Anything else falls back to index.html so React Router
                 # can handle the route client-side (/ui/skills, /ui/tools/:uuid).
@@ -434,8 +441,18 @@ class SBS(FastAPI):
                         if asset.suffix == ".html"
                         else _ASSET_CACHE_CONTROL
                     )
-                    return FileResponse(asset, headers={"Cache-Control": cache_control})
-                return FileResponse(
+                    # None unless this asset is the entry point AND a login
+                    # message is configured; everything else keeps its
+                    # FileResponse (and with it Range support).
+                    injected = login_info_page.response_for_asset(
+                        request, asset, cache_control
+                    )
+                    return injected or FileResponse(
+                        asset, headers={"Cache-Control": cache_control}
+                    )
+                return login_info_page.response_for_fallback(
+                    request, _INDEX_CACHE_CONTROL
+                ) or FileResponse(
                     ui_root / "index.html",
                     headers={"Cache-Control": _INDEX_CACHE_CONTROL},
                 )
