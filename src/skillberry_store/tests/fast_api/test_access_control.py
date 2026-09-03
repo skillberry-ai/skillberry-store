@@ -447,3 +447,111 @@ def test_per_user_mcp_paths_are_unauth_allowlisted(fresh_sbs_factory):
     assert cfg.is_unauthenticated("GET", "/control_sse/alice")
     assert cfg.is_unauthenticated("POST", "/control_sse/alice/messages/")
     assert cfg.is_unauthenticated("GET", "/control_sse/root")
+
+
+# ------------------ login-information message ---------------------------- #
+# docs/design/login-info.md §8: the message rides GET /auth/whoami's 401,
+# and the POST /auth/login contract does not move.
+
+LOGIN_INFO_MESSAGE = "Shared eval box — do not store secrets."
+
+LOGIN_INFO_BLOCK = f"""  login_info:
+    enabled: true
+    message: "{LOGIN_INFO_MESSAGE}"
+"""
+
+
+def _standalone_with_login_info() -> str:
+    """The default standalone config with the login message switched on."""
+    return _standalone_yaml().replace(
+        "  session_ttl_seconds: 3600\n",
+        "  session_ttl_seconds: 3600\n" + LOGIN_INFO_BLOCK,
+    )
+
+
+def test_whoami_401_carries_the_login_message(fresh_sbs_factory):
+    """The CLI's preflight probe: no header at all."""
+    client = fresh_sbs_factory(_standalone_with_login_info())
+    r = client.get("/auth/whoami")
+    assert r.status_code == 401
+    assert r.json() == {
+        "detail": "missing_authorization",
+        "login_info": LOGIN_INFO_MESSAGE,
+    }
+
+
+def test_whoami_401_on_a_bad_token_carries_the_login_message(fresh_sbs_factory):
+    """An expired/unknown session is exactly when a client wants re-auth context."""
+    client = fresh_sbs_factory(_standalone_with_login_info())
+    r = client.get("/auth/whoami", headers={"Authorization": "Bearer nope"})
+    assert r.status_code == 401
+    assert r.json() == {
+        "detail": "invalid_or_expired_token",
+        "login_info": LOGIN_INFO_MESSAGE,
+    }
+
+
+def test_whoami_401_has_no_login_info_key_when_the_feature_is_off(fresh_sbs_factory):
+    """Off by default must be byte-identical to before the feature existed."""
+    client = fresh_sbs_factory(_standalone_yaml())
+    r = client.get("/auth/whoami")
+    assert r.status_code == 401
+    assert r.json() == {"detail": "missing_authorization"}
+
+
+def test_whoami_200_is_unchanged_with_the_feature_on(fresh_sbs_factory):
+    """The message rides the 401 only; a signed-in caller sees no extra key."""
+    client = fresh_sbs_factory(_standalone_with_login_info())
+    token = client.post(
+        "/auth/login", json={"username": "alice", "password": "alice-pw"}
+    ).json()["token"]
+    r = client.get("/auth/whoami", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert "login_info" not in r.json()
+    assert r.json()["tenant_id"] == "alice"
+
+
+def test_login_401_body_is_untouched_with_the_feature_on(fresh_sbs_factory):
+    """Regression for §8: `detail` must stay a plain string on POST /auth/login.
+
+    The UI renders it directly as an alert title and the CLI string-matches
+    it, so widening this body to carry the message would break both.
+    """
+    client = fresh_sbs_factory(_standalone_with_login_info())
+    r = client.post("/auth/login", json={"username": "alice", "password": "wrong"})
+    assert r.status_code == 401
+    assert r.json() == {"detail": "invalid_credentials"}
+
+
+def test_422_bodies_are_untouched_with_the_feature_on(fresh_sbs_factory):
+    """No global exception handler was installed — validation errors are stock.
+
+    Checked on two endpoints: a second one failing the same way is what
+    proves the mechanism stayed local to the `whoami` handler.
+    """
+    client = fresh_sbs_factory(_standalone_with_login_info())
+
+    login_422 = client.post("/auth/login", json={})
+    assert login_422.status_code == 422
+    assert "login_info" not in login_422.text
+    assert isinstance(login_422.json()["detail"], list)
+
+    token = client.post(
+        "/auth/login", json={"username": "bob", "password": "bob-pw"}
+    ).json()["token"]
+    other_422 = client.post(
+        "/snippets/", json={}, headers={"Authorization": f"Bearer {token}"}
+    )
+    assert other_422.status_code == 422
+    assert "login_info" not in other_422.text
+
+
+def test_disabled_mode_whoami_still_503_with_a_populated_block(fresh_sbs_factory):
+    """§9: nothing in `disabled` mode — there is no login to annotate."""
+    client = fresh_sbs_factory(
+        "mode: disabled\nstandalone:\n" + LOGIN_INFO_BLOCK
+    )
+    r = client.get("/auth/whoami")
+    assert r.status_code == 503
+    assert r.json() == {"detail": "auth_disabled"}
+    assert client.app.state.acl_cfg.login_info is None
