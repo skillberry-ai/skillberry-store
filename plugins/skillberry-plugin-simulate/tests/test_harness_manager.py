@@ -2,7 +2,12 @@ import socket
 from unittest.mock import MagicMock, patch
 
 from skillberry_plugin_simulate.config import SimulateConfig
-from skillberry_plugin_simulate.harness_manager import HarnessManager, find_free_port
+from skillberry_plugin_simulate.harness_manager import (
+    HARNESS_LOGS_MOUNT,
+    HARNESS_SKILLS_MOUNT,
+    HarnessManager,
+    find_free_port,
+)
 
 
 def _config():
@@ -59,6 +64,62 @@ def test_llm_api_base_included_only_when_set():
     mgr.start(rest_port=8600, mcp_port=8700)
     env = docker_client.containers.run.call_args.kwargs["environment"]
     assert env["LLM_API_BASE"] == "https://azure/v1"
+
+
+def test_volumes_use_the_image_mount_points_and_are_writable():
+    """The harness image bakes HARNESS_SKILLS_FOLDER=/app/skills-store and
+    HARNESS_LOG_DESTINATION=/app/logs, so a bind anywhere else is ignored.
+    skills-store must be rw — the harness generates its skill artifacts there."""
+    docker_client = MagicMock()
+    docker_client.containers.run.return_value = MagicMock(id="x")
+    mgr = HarnessManager(_config(), docker_client=docker_client)
+    mgr.start(rest_port=8600, mcp_port=8700)
+
+    volumes = docker_client.containers.run.call_args.kwargs["volumes"]
+    assert volumes["/data/skills"] == {"bind": "/app/skills-store", "mode": "rw"}
+    assert volumes["/data/logs"] == {"bind": "/app/logs", "mode": "rw"}
+    assert HARNESS_SKILLS_MOUNT == "/app/skills-store"
+    assert HARNESS_LOGS_MOUNT == "/app/logs"
+
+
+def test_unset_mount_paths_are_omitted():
+    docker_client = MagicMock()
+    docker_client.containers.run.return_value = MagicMock(id="x")
+    cfg = _config()
+    cfg.skills_store_path = None
+    cfg.logs_path = None
+    mgr = HarnessManager(cfg, docker_client=docker_client)
+    mgr.start(rest_port=8600, mcp_port=8700)
+    assert docker_client.containers.run.call_args.kwargs["volumes"] == {}
+
+
+def test_harness_llm_overrides_passed_through_when_set():
+    docker_client = MagicMock()
+    docker_client.containers.run.return_value = MagicMock(id="x")
+    cfg = _config()
+    cfg.llm_provider = "openai"
+    cfg.llm_skill_generation_model = "gateway/gpt-4.1"
+    cfg.llm_simulation_model = "gateway/gpt-4.1-mini"
+    mgr = HarnessManager(cfg, docker_client=docker_client)
+    mgr.start(rest_port=8600, mcp_port=8700)
+
+    env = docker_client.containers.run.call_args.kwargs["environment"]
+    assert env["HARNESS_LLM_PROVIDER"] == "openai"
+    assert env["HARNESS_LLM_SKILL_GENERATION_MODEL"] == "gateway/gpt-4.1"
+    assert env["HARNESS_LLM_SIMULATION_MODEL"] == "gateway/gpt-4.1-mini"
+
+
+def test_harness_llm_overrides_omitted_when_unset():
+    """Unset overrides must not appear at all, so the image's harness.yaml wins."""
+    docker_client = MagicMock()
+    docker_client.containers.run.return_value = MagicMock(id="x")
+    mgr = HarnessManager(_config(), docker_client=docker_client)
+    mgr.start(rest_port=8600, mcp_port=8700)
+
+    env = docker_client.containers.run.call_args.kwargs["environment"]
+    assert "HARNESS_LLM_PROVIDER" not in env
+    assert "HARNESS_LLM_SKILL_GENERATION_MODEL" not in env
+    assert "HARNESS_LLM_SIMULATION_MODEL" not in env
 
 
 def test_stop_removes_container():
