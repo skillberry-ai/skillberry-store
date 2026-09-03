@@ -23,7 +23,12 @@ import os
 import platform
 from typing import Any, Dict, List, Optional, Tuple
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 from .engine import (
     SHIM_SOURCE,
@@ -663,6 +668,7 @@ class SkillberryPluginDast(PluginBase):
             if not (uuid and uuid.strip()):
                 raise HTTPException(status_code=400, detail="uuid is required")
 
+        @requires("skills", "update")
         @router.post("/scan")
         async def scan_endpoint(request: ScanRequest):
             """Run a DAST scan over a skill's entry points (detect-and-report)."""
@@ -684,6 +690,7 @@ class SkillberryPluginDast(PluginBase):
                 "data": data,
             }
 
+        @requires("plugins", "get")
         @router.get("/scan-status")
         async def scan_status(uuid: str):
             """Live progress of an in-flight scan for ``uuid`` (for the UI label).

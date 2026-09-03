@@ -15,6 +15,7 @@ from typing import Iterable, List
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
+from skillberry_store.access_control.audit import api_routes
 from skillberry_store.access_control.config import AccessControlConfig, User
 from skillberry_store.access_control.mapper import (
     UnmarkedRouteError,
@@ -27,10 +28,13 @@ logger = logging.getLogger(__name__)
 
 
 def _mcp_marked_routes(app: FastAPI) -> Iterable[APIRoute]:
-    """Yield every APIRoute the store exposes on the Control MCP."""
-    for route in app.routes:
-        if not isinstance(route, APIRoute):
-            continue
+    """Yield every APIRoute the store exposes on the Control MCP.
+
+    Uses the shared route walker so plugin sub-routers are visible here
+    too (plugin-identity §6.1). Nothing changes observably until a plugin
+    route opts into ``x-mcp-tool``; today none do.
+    """
+    for route in api_routes(app):
         extra = route.openapi_extra or {}
         if not extra.get("x-mcp-tool"):
             continue

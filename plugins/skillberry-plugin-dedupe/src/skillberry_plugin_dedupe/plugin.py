@@ -7,7 +7,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,10 +70,12 @@ class SkillberryPluginDedupe(PluginBase):
 
         router = APIRouter()
 
+        @requires("plugins", "list")
         @router.get("/decisions")
         async def list_decisions():
             return list(self._pending_decisions.values())
 
+        @requires("plugins", "update")
         @router.post("/decisions/{uuid}/keep")
         async def keep_decision(uuid: str):
             decision = self._pending_decisions.pop(uuid, None)
@@ -81,6 +88,7 @@ class SkillberryPluginDedupe(PluginBase):
                 "message": f"Skill '{decision['skill_name']}' marked as kept. Duplicate tags remain."
             }
 
+        @requires("skills", "delete")
         @router.post("/decisions/{uuid}/delete")
         async def delete_decision(uuid: str):
             decision = self._pending_decisions.pop(uuid, None)

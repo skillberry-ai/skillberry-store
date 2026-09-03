@@ -30,19 +30,42 @@ def _rewrite_localhost_for_container(mcp_servers: Optional[Dict[str, Any]]) -> O
 STORE_SERVER_NAME = "skillberry-store"
 
 
-def _store_mcp_url() -> str:
-    """Connectable SSE URL of this store's control-plane MCP (mounted at /control_sse)."""
+DEFAULT_STORE_MCP_PATH = "/control_sse"
+
+
+def _store_base_url() -> str:
+    """Scheme://host:port an agent on this machine can reach this store on."""
     host = os.getenv("SBS_HOST", "0.0.0.0") or "localhost"
     if host in ("0.0.0.0", "::"):
         host = "localhost"
     port = os.getenv("SBS_PORT", "8000")
-    return f"http://{host}:{port}/control_sse"
+    return f"http://{host}:{port}"
 
 
-def _default_mcp_servers_json() -> str:
-    """Prefill for the mcp_servers field: the store's own MCP so the agent can use it."""
+def _store_mcp_url(mount_path: Optional[str] = None) -> str:
+    """Connectable SSE URL of this store's control-plane MCP.
+
+    ``mount_path`` defaults to the bare ``/control_sse``, which is what is
+    mounted in ``mode: disabled``. Under ``standalone`` the store mounts one MCP
+    per subject and the bare path is **not mounted at all** — the caller must
+    pass the path for the identity the agent will act as, which
+    ``StoreAPI.mcp_mount_path()`` resolves. Handing out the bare path under ACL
+    is half of why an agent given this URL could not use the store
+    (plugin-identity §4.5, defect C).
+    """
+    return f"{_store_base_url()}{mount_path or DEFAULT_STORE_MCP_PATH}"
+
+
+def _default_mcp_servers_json(mount_path: Optional[str] = None) -> str:
+    """Prefill for the mcp_servers field: the store's own MCP so the agent can use it.
+
+    Carries a URL but deliberately **no credential**: the prefill is shown in
+    the UI and echoed back with the request, and a bearer token has no business
+    living there. The token is minted and injected per run instead — short-lived,
+    never round-tripped through a form.
+    """
     return json.dumps(
-        {STORE_SERVER_NAME: {"type": "sse", "url": _store_mcp_url()}},
+        {STORE_SERVER_NAME: {"type": "sse", "url": _store_mcp_url(mount_path)}},
         indent=2,
     )
 
@@ -138,7 +161,12 @@ def _materialize_skill_upload(base: str, files: list) -> int:
         written += 1
     return written
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 from skillberry_store.plugins.claude_credentials import (
     load_claude_settings, settings_env, has_api_access, build_agent_env,
 )
@@ -237,12 +265,14 @@ class SkillberryPluginAskRunspace(PluginBase):
             use_runspace_server: bool = False
             runspace_server_url: Optional[str] = None
 
+        @requires("plugins", "get")
         @router.get("/presets")
         async def presets():
             # Append the editable store-usage guidance under each preset's prompt so
             # selecting one fills the request box with {preset}\n\n{guidance}.
             return [{**p, "prompt": _compose_prompt(p["prompt"])} for p in PRESETS]
 
+        @requires("plugins", "update")
         @router.post("/upload-skills")
         async def upload_skills(files: list[UploadFile] = File(...)):
             # The browser cannot hand us a real server path, so the UI uploads a
@@ -343,6 +373,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                 if not keep:
                     shutil.rmtree(tmp, ignore_errors=True)
 
+        @requires("skills", "create")
         @router.post("/run")
         async def run(req: RunRequest):
             if not req.request or not req.request.strip():
@@ -351,11 +382,15 @@ class SkillberryPluginAskRunspace(PluginBase):
                 req.mcp_servers = _parse_mcp_servers(req.mcp_servers)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
+            # Materialize the ambient identity for the out-of-process agent
+            # while we are still inside the request that carries it.
+            req.mcp_servers = self._authorize_store_mcp(req.mcp_servers)
             job_id = str(uuid.uuid4())
             self._jobs[job_id] = asyncio.create_task(_execute(job_id, req), name=f"ask-runspace-{job_id}")
             return {"success": True, "message": "Task is starting…",
                     "data": {"job_id": job_id, "status": "pending"}}
 
+        @requires("plugins", "get")
         @router.get("/status/{job_id}")
         async def status(job_id: str):
             task = self._jobs.get(job_id)
@@ -373,6 +408,7 @@ class SkillberryPluginAskRunspace(PluginBase):
                 return {"job_id": job_id, "status": "failed", "detail": str(exc)}
             return {"job_id": job_id, "status": "ready", **task.result()}
 
+        @requires("plugins", "update")
         @router.post("/cleanup/{job_id}")
         async def cleanup_workspace(job_id: str):
             path = self._workspaces.pop(job_id, None)
@@ -382,6 +418,58 @@ class SkillberryPluginAskRunspace(PluginBase):
             return {"success": True, "message": "Workspace deleted", "data": {"deleted": path}}
 
         return router
+
+    def _store_mcp_mount_path(self) -> Optional[str]:
+        """This caller's Control MCP mount, or the shared one without ACL."""
+        if not self.store_available:
+            return None
+        try:
+            return self.store.mcp_mount_path()
+        except Exception as e:  # noqa: BLE001 - a prefill must never 500
+            logger.warning("ask-runspace: could not resolve the store MCP mount: %s", e)
+            return None
+
+    def _authorize_store_mcp(
+        self, mcp_servers: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Point the store entry at this caller's mount and attach a token.
+
+        Two independent things were broken, so fixing one left it broken: the
+        agent had no credential (the SSE handshake is allow-listed, but every
+        re-dispatched tool call goes through the PEP and 401s), and the URL it
+        was given was not mounted under ``standalone``. This repairs both, for
+        whichever identity is ambient — the calling tenant on this path (P3), so
+        the agent's calls re-enter as that tenant and are admitted against its
+        own role. Nothing is escalated.
+
+        In ``disabled`` mode there is no token to mint and ``/control_sse`` is
+        already unauthenticated, so the config is returned untouched — an empty
+        ``Authorization`` header would be worse than none.
+        """
+        if not mcp_servers or not self.store_available:
+            return mcp_servers
+        entry = mcp_servers.get(STORE_SERVER_NAME)
+        if not isinstance(entry, dict):
+            return mcp_servers
+        try:
+            resolved = self.store.mcp_sse_config(_store_base_url())
+        except Exception as e:  # noqa: BLE001 - includes PluginIdentityError
+            logger.warning(
+                "ask-runspace: no store MCP credential for this run: %s", e
+            )
+            return mcp_servers
+        if resolved is None:
+            logger.warning(
+                "ask-runspace: this identity has no Control MCP mount; the agent "
+                "will not be able to reach the store"
+            )
+            return mcp_servers
+        updated = {**entry, **resolved}
+        # Preserve any headers the caller set, without letting them shadow ours.
+        caller_headers = entry.get("headers")
+        if isinstance(caller_headers, dict):
+            updated["headers"] = {**caller_headers, **(resolved.get("headers") or {})}
+        return {**mcp_servers, STORE_SERVER_NAME: updated}
 
     def get_ui_config(self) -> Optional[Dict[str, Any]]:
         return {
@@ -439,7 +527,9 @@ class SkillberryPluginAskRunspace(PluginBase):
                                 "type": "string",
                                 "format": "textarea",
                                 "title": "MCP servers (JSON)",
-                                "default": _default_mcp_servers_json(),
+                                "default": _default_mcp_servers_json(
+                                    self._store_mcp_mount_path()
+                                ),
                                 "description": (
                                     "JSON object of MCP servers exposed to the agent (Claude Code "
                                     "format). Prefilled with this store's own MCP server so the "

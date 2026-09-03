@@ -76,7 +76,12 @@ def test_plugin_loader_discover_single_plugin():
     assert len(discovered) == 1
     assert "test_plugin" in loader.plugins
     assert isinstance(loader.plugins["test_plugin"], MockPlugin)
-    assert loader.plugins["test_plugin"]._store_api is mock_store_api
+    # The plugin gets a per-slug VIEW of the store API, not the shared instance.
+    mock_store_api.for_plugin.assert_called_once_with("test_plugin")
+    assert (
+        loader.plugins["test_plugin"]._store_api
+        is mock_store_api.for_plugin.return_value
+    )
 
 
 def test_plugin_loader_discover_disabled_plugin():

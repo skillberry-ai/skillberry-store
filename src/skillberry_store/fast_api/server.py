@@ -14,7 +14,7 @@ from pydantic import Field, model_validator
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi_mcp import FastApiMCP
 
 from skillberry_store.fast_api.login_info import LoginInfoPage
@@ -34,6 +34,10 @@ from skillberry_store.access_control.audit import (
 from skillberry_store.access_control.config import get_config as get_acl_config
 from skillberry_store.access_control.deps import make_enforce_dependency
 from skillberry_store.access_control.sessions import SessionStore
+from skillberry_store.plugins.errors import (
+    PluginAuthorizationError,
+    PluginIdentityError,
+)
 from skillberry_store.tools.configure import (
     configure_logging,
 )
@@ -112,6 +116,22 @@ def _check_vector_db_backend() -> None:
         logger.error("Vector DB backend check failed: %s", problem)
     else:
         logger.info("Vector DB backend %r is available", db_type)
+
+
+async def _plugin_authorization_denied(request, exc: PluginAuthorizationError):
+    """A plugin store operation the caller's identity does not grant -> 403."""
+    logger.info("plugin_store_denied path=%s detail=%s", request.url.path, exc)
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
+async def _plugin_identity_missing(request, exc: PluginIdentityError):
+    """No tenant in scope for a plugin operation (P5) -> 500, not 403.
+
+    Nobody did anything wrong: an owner tenant was never assigned. Saying 403
+    would send the caller looking at their own permissions.
+    """
+    logger.error("plugin_store_no_identity path=%s detail=%s", request.url.path, exc)
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 @asynccontextmanager
@@ -213,6 +233,11 @@ class SBS(FastAPI):
         from skillberry_store.plugins.loader import PluginLoader
         from skillberry_store.plugins.store_api import StoreAPI
 
+        # ``acl_cfg`` is required, not optional: enforcement point 2 lives in
+        # StoreAPI, and a construction site that forgot to pass the config would
+        # silently disable it. ``sessions`` lets a plugin mint a short-lived
+        # token for the ambient subject when it hands work to an out-of-process
+        # agent (plugin-identity §4.5).
         store_api = StoreAPI(
             {
                 "tools": tools_service,
@@ -220,10 +245,14 @@ class SBS(FastAPI):
                 "snippets": snippets_service,
                 "vnfs": vnfs_service,
                 "vmcp": vmcp_service,
-            }
+            },
+            acl_cfg,
+            sessions=sessions,
         )
 
-        plugin_loader = PluginLoader(store_api=store_api)
+        # acl_cfg supplies the deployment-wide owner tenant for plugin work
+        # (plugin-identity §5.1); the loader resolves it lazily per dispatch.
+        plugin_loader = PluginLoader(store_api=store_api, acl_cfg=acl_cfg)
         discovered = plugin_loader.discover_plugins()
         logger.info(f"Discovered {len(discovered)} plugins: {discovered}")
 
@@ -257,6 +286,17 @@ class SBS(FastAPI):
         register_admin_api(self, tags="admin", service=admin_service)
 
         register_plugins_api(self, plugin_loader=plugin_loader, tags="plugins")
+
+        # Translate a refused plugin store operation to HTTP once, on the app,
+        # rather than in each of the plugins. A denial is the caller's
+        # authorization failure (403); a missing ambient identity is an operator
+        # misconfiguration, not something the caller did wrong (500). Neither
+        # fires on the event path, where handlers run outside any request — see
+        # plugins/outcomes.py for what covers that.
+        self.add_exception_handler(
+            PluginAuthorizationError, _plugin_authorization_denied
+        )
+        self.add_exception_handler(PluginIdentityError, _plugin_identity_missing)
 
         # ------------------------------------------------------------------
         # Access control (see docs/design/access-control.md).
@@ -312,32 +352,56 @@ class SBS(FastAPI):
         # In `disabled` mode there is no notion of a tenant, so we mount a
         # single MCP at /control_sse with the full curated surface — same
         # as before. In `standalone` mode we additionally mount one MCP
-        # per configured user at /control_sse/<username>, each with its
-        # ``include_operations`` restricted to what that user is
+        # per subject at /control_sse/<name>, each with its
+        # ``include_operations`` restricted to what that subject is
         # authorized to invoke under RBAC. Middleware still enforces on
-        # each tool call — the per-user surface just prevents denied
+        # each tool call — the per-subject surface just prevents denied
         # tools from appearing in the client's tool list.
+        #
+        # "Per subject" rather than "per user": a plugin owner tenant needs an
+        # MCP surface too, and a *virtual* one has no ``standalone.users`` entry
+        # by design (no password hash, no way to log in). Iterating users alone
+        # left it with no mount, which is half of why an agent handed the
+        # store's MCP URL could not use it (plugin-identity §4.5).
         if acl_cfg.mode == "disabled":
             mcp_server = FastApiMCP(self, include_operations=mcp_included_operations)
             mcp_server.mount_sse(mount_path="/control_sse")
+            store_api.set_mcp_mounts({}, default="/control_sse")
         else:
-            from skillberry_store.access_control.mcp_plan import operations_for_user
+            from skillberry_store.access_control.mcp_plan import (
+                operations_for_subject,
+            )
 
             self._mcp_per_user_mounts: List[str] = []
-            for user in acl_cfg.users:
-                allowed_full = set(operations_for_user(self, user, acl_cfg))
+            mcp_mounts: dict = {}
+            for mount_name, subject in _mcp_subjects(acl_cfg, plugin_loader):
+                allowed_full = set(operations_for_subject(self, subject, acl_cfg))
                 allowed = sorted(allowed_full & set(mcp_included_operations))
-                mount_path = f"/control_sse/{user.username}"
+                mount_path = f"/control_sse/{mount_name}"
+                if mount_path in self._mcp_per_user_mounts:
+                    # A username and a plugin owner tenant that spell the same
+                    # mount. Keep the first (its surface is already mounted)
+                    # rather than serving one subject the other's tool list.
+                    logger.warning(
+                        "Skipping duplicate Control MCP mount %s for subject %s",
+                        mount_path,
+                        subject.tenant_id,
+                    )
+                    continue
                 user_mcp = FastApiMCP(self, include_operations=allowed)
                 user_mcp.mount_sse(mount_path=mount_path)
                 self._mcp_per_user_mounts.append(mount_path)
+                mcp_mounts.setdefault(subject.tenant_id, mount_path)
                 logger.info(
                     "Mounted per-tenant MCP for '%s' at %s exposing %d ops: %s",
-                    user.username,
+                    mount_name,
                     mount_path,
                     len(allowed),
                     ", ".join(allowed) if allowed else "(none)",
                 )
+            # A plugin resolves its own tenant's mount from here when it hands
+            # the store's MCP URL to an out-of-process agent (§4.5).
+            store_api.set_mcp_mounts(mcp_mounts)
 
     def _mcp_included_operations(self) -> List[str]:
         """Operation ids opted in to the Control MCP via ``x-mcp-tool``.
@@ -510,6 +574,44 @@ class SBS(FastAPI):
             access_log=True,
             log_config=log_config,
         )
+
+
+def _mcp_subjects(acl_cfg, plugin_loader) -> List[tuple]:
+    """``(mount_name, Subject)`` for every subject needing an MCP surface.
+
+    Configured users first, keyed by username so existing mount paths are
+    unchanged. Then any plugin owner tenant — the deployment-wide default and
+    every per-plugin record — that no user entry already covers, keyed by its
+    tenant id.
+    """
+    from skillberry_store.access_control.pdp import Subject
+
+    subjects: List[tuple] = []
+    covered = set()
+    for user in acl_cfg.users:
+        subjects.append(
+            (
+                user.username,
+                Subject(tenant_id=user.tenant_id, groups=list(user.groups or [])),
+            )
+        )
+        covered.add(user.tenant_id)
+
+    owner_tenants = []
+    if acl_cfg.plugin_owner_tenant:
+        owner_tenants.append(acl_cfg.plugin_owner_tenant)
+    owner_tenants.extend(plugin_loader.config.owners().values())
+    for tenant in owner_tenants:
+        if not tenant or tenant in covered:
+            continue
+        covered.add(tenant)
+        subjects.append(
+            (
+                tenant,
+                Subject(tenant_id=tenant, groups=acl_cfg.groups_for_tenant(tenant)),
+            )
+        )
+    return subjects
 
 
 def mcp_operations_from_openapi(openapi_schema: dict) -> List[str]:

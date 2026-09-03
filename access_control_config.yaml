@@ -77,4 +77,57 @@ roles:
       - resources: ["*"]
         verbs: ["*"]
 
-bindings: []
+  # Identity a plugin's autonomous work runs as (plugin-identity §5.3). Content
+  # authorship, tool execution and virtual-server publication — nothing more. It
+  # never mentions the `admin` resource, so /admin/backup, /admin/restore and
+  # /admin/purge-all are out of reach by construction rather than by omission.
+  - name: plugin-agent
+    rules:
+      - resources: [skills, tools, snippets]
+        verbs: [list, get, search, create, update, delete]
+                                                     # delete: `simulate` removes
+                                                     # the sim skill/tools it
+                                                     # created, on teardown
+      - resources: [tools]
+        verbs: [execute]                             # StoreAPI.execute_tool —
+                                                     # dast's benign twin runs the
+                                                     # skill's own tools through
+                                                     # the store's execution path
+      - resources: [vmcp_servers, vnfs_servers]
+        verbs: [list, get, create, update, delete, execute]
+                                                     # execute == start; this is
+                                                     # what export over vNFS /
+                                                     # WebDAV / vMCP requires
+      - resources: [facets, plugins]
+        verbs: [list, get, search]
+
+bindings:
+
+  # `plugin-user` is deliberately a VIRTUAL subject: it appears in roles and
+  # bindings so its grants are reviewable in the same file as every other grant,
+  # but it has NO `standalone.users` entry — therefore no password hash, and no
+  # way to log in from the network. `POST /auth/login` as plugin-user returns
+  # invalid_credentials like any unknown user, so the identity is unforgeable
+  # from outside: no credential for it exists anywhere.
+  - name: plugin-agent-binding
+    subjects:
+      - kind: tenant
+        name: plugin-user
+    roles: [plugin-agent]
+
+# --- Plugin identity ----------------------------------------------------
+# Deployment-wide fallback identity for plugin work that no per-plugin owner
+# covers. Precedence: the owner recorded when a tenant enabled the plugin (see
+# PATCH /plugins/{name}) -> this -> none, in which case the plugin's outward
+# calls FAIL rather than proceeding anonymously (P5).
+#
+# Shipping a default matters: with triggers running as the owner tenant, a
+# deployment with no default has seven auto-triggering plugins whose first
+# import fails silently on the event path.
+plugins:
+  owner_tenant: plugin-user
+  # Groups to attribute to the owner tenant (it has no users entry of its own).
+  owner_groups: []
+  # Tokens minted for a plugin's out-of-process calls are short-lived and
+  # refreshed on demand rather than held for a session's lifetime.
+  token_ttl_seconds: 900

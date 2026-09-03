@@ -26,6 +26,12 @@ Design points:
 * In ``mode: disabled`` the dep is not installed at all, so the OpenAPI
   schema publishes no security requirements — identical to the
   pre-ACL baseline.
+* A matched route with no ``@requires`` marker is **denied with a 403 and
+  an audit line**, never allowed and never a 500 (plugin-identity §10
+  step 2). The startup coverage audit should make this unreachable; a
+  route registered after startup is the case that can still get here, and
+  fail-safe is the only defensible answer for one — there is no declared
+  intent to decide against.
 """
 
 from __future__ import annotations
@@ -37,7 +43,8 @@ from fastapi import HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from skillberry_store.access_control.config import AccessControlConfig
-from skillberry_store.access_control.mapper import try_map_request
+from skillberry_store.access_control.context import set_current_subject
+from skillberry_store.access_control.mapper import UnmarkedRouteError, try_map_request
 from skillberry_store.access_control.pdp import Subject, authorize
 from skillberry_store.access_control.sessions import SessionStore
 
@@ -73,9 +80,10 @@ def make_enforce_dependency(
 
       1. Short-circuit the unauth allow-list.
       2. Resolve the bearer token to a ``Subject``.
-      3. Map the matched route to ``(resource, verb)``.
-      4. Call the PDP and raise 403 on deny.
-      5. Stash the ``Subject`` on ``request.state`` for handlers.
+      3. Publish it as the ambient subject (``CURRENT_SUBJECT``).
+      4. Map the matched route to ``(resource, verb)``.
+      5. Call the PDP and raise 403 on deny.
+      6. Stash the ``Subject`` on ``request.state`` for handlers.
     """
 
     async def enforce(
@@ -97,8 +105,33 @@ def make_enforce_dependency(
         subject = Subject(
             tenant_id=session.tenant_id, groups=list(session.groups)
         )
+        # Publish the caller as the ambient subject before anything else runs.
+        # Everything downstream in this request's task — the endpoint, a
+        # plugin's handler, StoreAPI._admit — reads it from here rather than
+        # threading a tenant_id through every call site (P3, §4.1). Deliberately
+        # not reset afterwards: each request runs in its own asyncio task with
+        # its own copied context, so the value cannot outlive the request or
+        # leak into a sibling one.
+        set_current_subject(subject)
 
-        mapped = try_map_request(request)
+        try:
+            mapped = try_map_request(request)
+        except UnmarkedRouteError as e:
+            # Fail-safe, not fail-crash: an unmarked route declares no intent,
+            # so there is nothing the PDP could decide. Deny and say so in the
+            # log — a 500 here previously leaked the defect to the caller as a
+            # server error while telling the operator nothing actionable.
+            logger.error(
+                "access_denied_unmarked_route tenant=%s method=%s path=%s "
+                "detail=%s (apply @requires above the route, or allow-list it)",
+                subject.tenant_id,
+                request.method,
+                request.url.path,
+                e,
+            )
+            raise HTTPException(
+                status_code=403, detail="route_missing_access_control_marker"
+            )
         if mapped is None:
             request.state.subject = subject
             return

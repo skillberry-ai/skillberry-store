@@ -422,6 +422,31 @@ def test_run_bounded_isolates_writes_from_the_caller(monkeypatch):
     assert var.get() == "caller"
 
 
+def test_run_bounded_carries_the_ambient_subject_to_a_store_call(monkeypatch):
+    """The case that fails without ``copy_context()``: enforcement point 2.
+
+    The MCP scope runs ``twin.drive_tool`` inside the bounded worker thread, and
+    the twin's ``StoreApiToolSource`` executes through ``StoreAPI.execute_tool``
+    — which reads the ambient subject and raises ``PluginIdentityError`` (P5) on
+    an empty context. Every twin-mediated tool call would fail, and
+    ``_run_handler`` would swallow it into a log line. See plugin-identity §4.2a.
+    """
+    from skillberry_store.access_control.context import (
+        current_subject,
+        set_current_subject,
+    )
+    from skillberry_store.access_control.pdp import Subject
+
+    set_current_subject(Subject(tenant_id="plugin-user"))
+    try:
+        p = _plugin(FakeStore(), monkeypatch)
+        observed = p._run_bounded(current_subject)
+        assert observed is not None, "worker thread saw an empty context"
+        assert observed.tenant_id == "plugin-user"
+    finally:
+        set_current_subject(None)
+
+
 def test_run_bounded_still_surfaces_errors_and_results(monkeypatch):
     """Context propagation must not disturb the result/exception plumbing."""
     p = _plugin(FakeStore(), monkeypatch)

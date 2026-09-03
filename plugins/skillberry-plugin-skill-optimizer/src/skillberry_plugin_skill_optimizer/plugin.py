@@ -14,7 +14,12 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 from skillberry_store.plugins.claude_credentials import (
     load_claude_settings,
     settings_env,
@@ -585,6 +590,7 @@ class SkillberryPluginSkillOptimizer(PluginBase):
             max_turns: Optional[int] = None
             optimization_goal: Optional[str] = None
 
+        @requires("skills", "create")
         @router.post("/optimize-skill")
         async def optimize_skill_endpoint(request: OptimizeSkillRequest):
             """Optimize an existing skill using RunSpace."""

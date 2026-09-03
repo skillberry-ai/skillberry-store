@@ -32,7 +32,12 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 from .models import (
     MODE_ENRICHED,
@@ -653,6 +658,7 @@ class SkillberryPluginDocGenerator(PluginBase):
             if not (uuid and uuid.strip()):
                 raise HTTPException(status_code=400, detail="uuid is required")
 
+        @requires("skills", "update")
         @router.post("/generate")
         async def generate_endpoint(request: GenerateRequest):
             """Generate/enrich docs for an object (proposed unless apply=True)."""
@@ -680,6 +686,7 @@ class SkillberryPluginDocGenerator(PluginBase):
             )
             return {"success": True, "message": msg, "data": data}
 
+        @requires("skills", "update")
         @router.post("/refresh")
         async def refresh_endpoint(request: RefreshRequest):
             """Detect drift and propose refreshed docs for an object."""

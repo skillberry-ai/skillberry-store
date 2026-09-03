@@ -14,7 +14,12 @@ import uuid
 from typing import Dict, Any, Literal, Optional
 from pathlib import Path
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 from skillberry_store.plugins.claude_credentials import (
     load_claude_settings,
     settings_env,
@@ -512,6 +517,7 @@ The skill should be production-ready and well-documented."""
             execution_mode: Optional[str] = None
             max_turns: Optional[int] = None
         
+        @requires("skills", "create")
         @router.post("/generate-skill")
         async def generate_skill_endpoint(request: GenerateSkillRequest):
             """Generate an Anthropic skill from a description."""

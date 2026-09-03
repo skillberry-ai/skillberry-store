@@ -15,7 +15,12 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 from .engines import available_engine_names, get_engines
 from .engines.base import SEVERITIES
@@ -754,6 +759,7 @@ class SkillberryPluginSast(PluginBase):
             object_uuids: List[str]
             severities: Optional[List[str]] = None
 
+        @requires("tools", "update")
         @router.post("/scan")
         async def scan_endpoint(request: ScanRequest):
             """Scan a store object and persist SAST findings."""
@@ -777,6 +783,7 @@ class SkillberryPluginSast(PluginBase):
 
             return {"success": True, "data": result}
 
+        @requires("tools", "update")
         @router.post("/fix")
         async def fix_endpoint(request: FixRequest):
             """Fix selected objects' findings (at given severities) with the LLM."""

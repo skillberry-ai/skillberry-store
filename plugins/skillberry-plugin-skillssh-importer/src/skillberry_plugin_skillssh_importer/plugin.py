@@ -29,7 +29,12 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -584,6 +589,7 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                 None, description="Vercel OIDC token; falls back to SKILLS_SH_TOKEN env var"
             )
 
+        @requires("plugins", "search")
         @router.post("/search")
         async def search(request: SearchRequest):
             """Search the skills.sh directory. Returns up to ``limit`` skill entries."""
@@ -610,6 +616,7 @@ class SkillberryPluginSkillsShImporter(PluginBase):
 
         # ── Skill description (lazy) ─────────────────────────────────────────
 
+        @requires("plugins", "get")
         @router.get("/skill-description/{skill_id:path}")
         async def skill_description(skill_id: str):
             """Return the description extracted from a skill's SKILL.md.
@@ -644,6 +651,7 @@ class SkillberryPluginSkillsShImporter(PluginBase):
                 None, description="Vercel OIDC token; falls back to SKILLS_SH_TOKEN env var"
             )
 
+        @requires("skills", "create")
         @router.post("/import")
         async def import_skills(request: ImportRequest):
             """Import one or more skills from skills.sh into the store.

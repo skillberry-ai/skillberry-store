@@ -9,7 +9,12 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-from skillberry_store.plugins.base import PluginBase, PluginMetadata, PluginType
+from skillberry_store.plugins.base import (
+    PluginBase,
+    PluginMetadata,
+    PluginType,
+    requires,
+)
 from skillberry_plugin_simulate.config import SimulateConfig
 from skillberry_plugin_simulate.harness_client import HarnessClient
 from skillberry_plugin_simulate.harness_manager import HarnessManager
@@ -92,6 +97,7 @@ class SkillberryPluginSimulate(PluginBase):
         class SkillRequest(BaseModel):
             skill_uuid: str
 
+        @requires("skills", "create")
         @router.post("/simulate")
         async def simulate(request: SimulateRequest):
             job_id = str(uuid.uuid4())
@@ -106,6 +112,7 @@ class SkillberryPluginSimulate(PluginBase):
                 "data": {"job_id": job_id, "status": "pending"},
             }
 
+        @requires("plugins", "get")
         @router.get("/status/{job_id}")
         async def simulate_status(job_id: str):
             task = self._jobs.get(job_id)
@@ -122,6 +129,7 @@ class SkillberryPluginSimulate(PluginBase):
                 return {"job_id": job_id, "status": "failed", "detail": str(exc)}
             return {"job_id": job_id, "status": "ready", **task.result()}
 
+        @requires("plugins", "update")
         @router.post("/toggle")
         async def toggle(request: SkillRequest):
             try:
@@ -131,6 +139,7 @@ class SkillberryPluginSimulate(PluginBase):
             except ValueError as e:
                 raise HTTPException(status_code=409, detail=str(e))
 
+        @requires("skills", "delete")
         @router.post("/teardown")
         async def teardown(request: SkillRequest):
             try:
@@ -138,6 +147,7 @@ class SkillberryPluginSimulate(PluginBase):
             except KeyError:
                 raise HTTPException(status_code=404, detail=f"No simulation for skill {request.skill_uuid}")
 
+        @requires("vmcp_servers", "get")
         @router.get("/active/{skill_uuid}")
         async def active(skill_uuid: str):
             try:
