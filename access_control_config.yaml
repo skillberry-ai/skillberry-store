@@ -33,6 +33,22 @@ standalone:
   #   password_hash: "$2b$12$..."
   #   groups: [team-blue]
 
+  # Informational message shown at login (UI sign-in screen and `sbs login`).
+  # Both controls are independent: `enabled` gates the display, `message` holds
+  # the text, so a message can be committed here ahead of being switched on.
+  # Plain text only — line breaks via the `|` block scalar, capped at 1024
+  # characters / 10 lines. See docs/design/login-info.md.
+  #
+  # WARNING: this message is served PRE-AUTHENTICATION to anyone who can reach
+  # /ui/ or GET /auth/whoami. It must contain NO SECRETS. That it sits in the
+  # same file as the bcrypt password hashes does not make it confidential.
+  #
+  # login_info:
+  #   enabled: false
+  #   message: |
+  #     This is a shared evaluation deployment — do not store secrets here.
+  #     Access requests: ops@example.com
+
 # --- RBAC ---------------------------------------------------------------
 roles:
   - name: reader

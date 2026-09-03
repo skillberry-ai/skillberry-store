@@ -157,6 +157,16 @@ standalone:
       tenant_id: bob
       password_hash: "$2b$12$..."
       groups: [team-red, admins]
+  # Informational message shown at login, on the UI sign-in screen and before
+  # the `sbs login` prompt. Optional; off unless `enabled` is true. Served
+  # PRE-AUTHENTICATION, so it must contain no secrets. Belongs here because it
+  # annotates the in-store login flow, which exists only in this mode.
+  # See docs/design/login-info.md.
+  login_info:
+    enabled: false                      # master gate; default false
+    message: |                          # plain text; `|` preserves line breaks
+      This is a shared evaluation deployment — do not store secrets here.
+      Access requests: ops@example.com
 
 # --- RBAC ------------------------------------------------------------
 # Roles are pure (resources, verbs) permission bundles. No object-selection
@@ -245,10 +255,11 @@ Notes:
 * Malformed / missing file with `mode: standalone` → **hard fail at startup** ("fail closed"). Rather than boot in an unsafe state, refuse to start.
 * Unknown resource / verb names in rules → warning, rule dropped (fail-safe, does not brick startup for a typo).
 * `"*"` is supported for both `resources` and `verbs`.
+* Malformed `standalone.login_info` (not a mapping, non-string `message`, non-boolean `enabled`, or `enabled: true` with no usable text) → warning, value dropped, **server still boots**. A login banner must never be able to fail the server closed, so this key follows the warn-and-drop convention above rather than the fail-closed one. `login_info` outside `standalone` mode is dropped at debug level, since the same file is routinely shared across deployments that differ only in `mode`. See [login-info.md](login-info.md) §4.2.
 
 ### 5.3 Environment variable precedence
 
-Two env vars are read by the server; both override the YAML on conflict (env-first, following the FastAPI/Pydantic-settings convention already in use in [server.py `SBSettings`](../../src/skillberry_store/fast_api/server.py)):
+Three env vars are read by the server; each overrides the YAML on conflict (env-first, following the FastAPI/Pydantic-settings convention already in use in [server.py `SBSettings`](../../src/skillberry_store/fast_api/server.py)):
 
 | Variable | Effect | Precedence |
 |---|---|---|

@@ -26,6 +26,17 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Operator-configured login message, injected into index.html by the server
+  // (see §6 of docs/design/login-info.md). Read once in a state initializer:
+  // the DOM value is fixed for the page's lifetime because the config is only
+  // re-read on a server restart. Note that `make ui-dev` serves Vite's own
+  // index.html and so never carries the tag.
+  const [loginInfo] = useState<string | null>(
+    () =>
+      document
+        .querySelector('meta[name="sbs-login-info"]')
+        ?.getAttribute('content') || null
+  );
 
   // Already signed in: redirect out of the login page.
   if (mode === 'disabled' || token) {
@@ -56,6 +67,27 @@ export function LoginPage() {
         <CardBody>
           <Form onSubmit={submit}>
             <Stack hasGutter>
+              {loginInfo && (
+                <StackItem>
+                  {/* Rendered verbatim: no heading, no label, no splitting.
+                      PatternFly's Alert requires a `title`, so the whole
+                      message goes there as a node — `fontWeight: normal`
+                      undoes the heading weight it would otherwise apply, and
+                      `pre-line` is what makes the configured line breaks
+                      render. React escapes the text, which is the second
+                      barrier after the server's html.escape. */}
+                  <Alert
+                    variant="info"
+                    isInline
+                    data-testid="login-info"
+                    title={
+                      <span style={{ whiteSpace: 'pre-line', fontWeight: 'normal' }}>
+                        {loginInfo}
+                      </span>
+                    }
+                  />
+                </StackItem>
+              )}
               {error && (
                 <StackItem>
                   <Alert variant="danger" isInline title={error} />

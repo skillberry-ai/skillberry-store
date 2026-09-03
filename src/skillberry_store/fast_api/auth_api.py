@@ -10,9 +10,10 @@ See §7.2 and §10.4 of docs/design/access-control.md.
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Union
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from skillberry_store.access_control.config import AccessControlConfig
@@ -124,7 +125,7 @@ def register_auth_api(
         response_model=WhoAmIResponse,
         openapi_extra={"x-cli-name": "whoami"},
     )
-    async def whoami(request: Request) -> WhoAmIResponse:
+    async def whoami(request: Request) -> Union[WhoAmIResponse, JSONResponse]:
         """Return the caller's identity and the roles bound to it.
 
         Populates the UI's "Signed in as ..." indicator and drives any
@@ -138,6 +139,16 @@ def register_auth_api(
         returns 503 ``auth_disabled`` and any bearer on the request is
         ignored.
 
+        When an operator has configured a login message
+        (``standalone.login_info``), both 401 branches carry it as an
+        additive ``login_info`` key alongside the unchanged ``detail``:
+        this is the request ``sbs login`` already makes before prompting,
+        and the natural "you are not authenticated, here is context"
+        moment. See §8 of docs/design/login-info.md. Handled locally
+        rather than through an ``app.exception_handler`` so the blast
+        radius is this one function and ``POST /auth/login``'s 401 body
+        stays byte-identical.
+
         Args:
             request: The incoming request; ``Authorization: Bearer`` is
                 resolved directly (this endpoint is in the unauth
@@ -145,11 +156,21 @@ def register_auth_api(
                 ``request.state.subject`` for it).
 
         Returns:
-            WhoAmIResponse: ``tenant_id``, ``groups``, and ``roles``.
+            WhoAmIResponse: ``tenant_id``, ``groups``, and ``roles``. Or,
+            on a 401 with a login message configured, a ``JSONResponse``
+            carrying ``detail`` plus ``login_info``.
 
         Raises:
             HTTPException: 401 in ``standalone`` mode when the header is
                 missing / malformed, or the token is expired / unknown.
         """
-        result = service.whoami(request.headers.get("authorization"))
+        try:
+            result = service.whoami(request.headers.get("authorization"))
+        except HTTPException as e:
+            if e.status_code == 401 and cfg.login_info:
+                return JSONResponse(
+                    {"detail": e.detail, "login_info": cfg.login_info},
+                    status_code=401,
+                )
+            raise
         return WhoAmIResponse(**result)

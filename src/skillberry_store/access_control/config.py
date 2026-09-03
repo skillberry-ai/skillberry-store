@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Set, TYPE_CHECKING
+from typing import Any, Iterable, List, Optional, Set, TYPE_CHECKING
 
 import yaml
 
@@ -54,6 +54,18 @@ DEFAULT_SESSION_TTL_SECONDS = 43200  # 12h
 # refreshed on demand rather than held for a session's lifetime — see
 # plugin-identity §8 ("a minted token is a real bearer token").
 DEFAULT_PLUGIN_TOKEN_TTL_SECONDS = 900  # 15m
+
+# Login-information message caps (§5 of docs/design/login-info.md). A block
+# scalar makes a 40-line message easy to write by accident; an unbounded one
+# would push the login form out of the viewport and bloat the injected HTML.
+LOGIN_INFO_MAX_CHARS = 1024
+LOGIN_INFO_MAX_LINES = 10
+
+# Truthy spellings accepted for config booleans, matching the convention
+# already used for env-var flags elsewhere in the repo (``main.py``,
+# ``tools/configure.py``). YAML parses bare ``true``/``false`` as bools, so
+# this only ever catches quoted values.
+_TRUTHY = ("true", "1", "yes", "on")
 
 
 class AccessControlConfigError(Exception):
@@ -104,6 +116,11 @@ class AccessControlConfig:
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
     roles: List[Role] = field(default_factory=list)
     bindings: List[RoleBinding] = field(default_factory=list)
+    # Canonical, already-sanitized login message; ``None`` means "show
+    # nothing". The gate being off, a malformed/absent message, and any mode
+    # other than ``standalone`` all collapse into ``None``, so no surface
+    # needs a gate check of its own — see §5 of docs/design/login-info.md.
+    login_info: Optional[str] = None
     # Deployment-wide fallback identity for plugin work that no per-plugin
     # owner covers (plugin-identity §5.1). Precedence is: per-plugin owner
     # recorded by PATCH /plugins/{name} → this → none, and P5 applies.
@@ -330,6 +347,7 @@ def load_config(path: Optional[str] = None) -> AccessControlConfig:
         )
     session_ttl = _resolve_session_ttl(standalone.get("session_ttl_seconds"))
     users = _parse_users(standalone.get("users") or [], cfg_path)
+    login_info = _parse_login_info(standalone.get("login_info"), cfg_path, mode)
 
     plugins_block = raw.get("plugins") or {}
     if not isinstance(plugins_block, dict):
@@ -371,6 +389,7 @@ def load_config(path: Optional[str] = None) -> AccessControlConfig:
         session_ttl_seconds=session_ttl,
         roles=roles,
         bindings=bindings,
+        login_info=login_info,
         plugin_owner_tenant=plugin_owner_tenant,
         plugin_owner_groups=plugin_owner_groups,
         plugin_token_ttl_seconds=plugin_token_ttl,
@@ -385,6 +404,141 @@ def load_config(path: Optional[str] = None) -> AccessControlConfig:
         len(cfg.bindings),
     )
     return cfg
+
+
+def _coerce_login_info_enabled(raw: Any, cfg_path: str) -> bool:
+    """Coerce ``login_info.enabled`` to a bool, warning on junk values."""
+    if isinstance(raw, bool):
+        return raw
+    if raw is None:
+        return False
+    if isinstance(raw, str) and raw.strip().lower() in _TRUTHY:
+        return True
+    logger.warning(
+        "standalone.login_info.enabled=%r in %s is not a boolean; treating as "
+        "false",
+        raw,
+        cfg_path,
+    )
+    return False
+
+
+def _sanitize_login_info(message: str, cfg_path: str) -> str:
+    """Normalize, strip control characters from, and cap a login message.
+
+    Steps 3-6 of §5 in docs/design/login-info.md. The result is safe to
+    ``print()`` to a TTY: the only control character that survives is
+    ``\n``, so a configured ANSI escape sequence cannot reposition the
+    cursor or recolor the terminal.
+    """
+    # Step 3: normalize line endings (a config edited on Windows carries CRLF).
+    message = message.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Step 4: strip C0 and C1 control characters, allow-listing only "\n".
+    # Tabs go too: they do nothing under CSS `pre-line` and nothing a space
+    # cannot do in a terminal, so allowing them would widen the allow-list
+    # for no gain.
+    message = "".join(
+        ch
+        for ch in message
+        if ch == "\n" or not ("\x00" <= ch <= "\x1f" or "\x7f" <= ch <= "\x9f")
+    )
+
+    # Step 5: cap length and line count, warning about whichever limit hit.
+    if len(message) > LOGIN_INFO_MAX_CHARS:
+        logger.warning(
+            "standalone.login_info.message in %s exceeds the %d-character "
+            "limit (%d); truncating",
+            cfg_path,
+            LOGIN_INFO_MAX_CHARS,
+            len(message),
+        )
+        message = message[:LOGIN_INFO_MAX_CHARS]
+    lines = message.split("\n")
+    if len(lines) > LOGIN_INFO_MAX_LINES:
+        logger.warning(
+            "standalone.login_info.message in %s exceeds the %d-line limit "
+            "(%d); truncating",
+            cfg_path,
+            LOGIN_INFO_MAX_LINES,
+            len(lines),
+        )
+        message = "\n".join(lines[:LOGIN_INFO_MAX_LINES])
+
+    # Step 6.
+    return message.strip()
+
+
+def _parse_login_info(raw: Any, cfg_path: str, mode: str) -> Optional[str]:
+    """Resolve ``standalone.login_info`` to a canonical message or ``None``.
+
+    ``None`` is the only "off" state and every drop condition collapses into
+    it, so the UI, CLI and REST surfaces carry no gate or mode checks of
+    their own (§5 of docs/design/login-info.md).
+
+    Never raises. A banner must not be able to stop the server from booting,
+    so every malformed shape is warned about and dropped rather than turned
+    into an ``AccessControlConfigError`` — the warn-and-drop half of §5.2 of
+    docs/design/access-control.md, not its fail-closed half.
+    """
+    # Step 1: only `standalone` has an in-store login to annotate. A block
+    # present in a `disabled` config is normal — the same file is routinely
+    # shared across deployments that differ only in `mode` — so it is
+    # debug-logged, not warned.
+    if mode != "standalone":
+        if raw is not None:
+            logger.debug(
+                "Ignoring standalone.login_info in %s: mode=%s has no in-store "
+                "login",
+                cfg_path,
+                mode,
+            )
+        return None
+
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "standalone.login_info in %s must be a mapping, got %r; ignoring",
+            cfg_path,
+            raw,
+        )
+        return None
+
+    enabled = _coerce_login_info_enabled(raw.get("enabled"), cfg_path)
+    message = raw.get("message")
+
+    if message is not None and not isinstance(message, str):
+        logger.warning(
+            "standalone.login_info.message in %s must be a string, got %r; "
+            "ignoring",
+            cfg_path,
+            message,
+        )
+        message = None
+
+    if not enabled:
+        if message:
+            # The steady state for a message staged ahead of being switched
+            # on. Setting the text and enabling its display are deliberately
+            # independent controls (§4.1), so this must not be noisy.
+            logger.debug(
+                "standalone.login_info.message is set in %s but enabled is "
+                "false; not showing it",
+                cfg_path,
+            )
+        return None
+
+    sanitized = _sanitize_login_info(message, cfg_path) if message else ""
+    if not sanitized:
+        logger.warning(
+            "standalone.login_info.enabled is true in %s but the message is "
+            "missing or empty after sanitization; no login message will be "
+            "shown",
+            cfg_path,
+        )
+        return None
+    return sanitized
 
 
 def _parse_users(raw_users: Iterable, cfg_path: str) -> List[User]:
