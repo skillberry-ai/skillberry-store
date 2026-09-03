@@ -1,20 +1,22 @@
 import asyncio
+import html
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, List, Literal
+from typing import Any, List, Literal, Optional
 
 import uvicorn
 
 from pydantic_settings import BaseSettings
 from pydantic import Field, model_validator
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi_mcp import FastApiMCP
 
 from skillberry_store.fast_api.openapi_ids import custom_generate_unique_id
@@ -133,6 +135,63 @@ def ui_dist_dir() -> Path:
     otherwise be dead code (PR #308 review issue #7).
     """
     return Path(__file__).parent.parent / "ui" / "dist"
+
+
+# Name of the <meta> tag the SPA reads the login message from. Serve-time
+# injection, not a Vite build input: the runtime image cannot rebuild the
+# bundle (DEPLOY_ONLY drops ui-build from `make run`), and the standalone
+# access-control config is realistically mounted or edited at runtime — so a
+# baked message would be stale exactly where the feature matters most. See §3
+# and §6.1 of docs/design/login-info.md.
+LOGIN_INFO_META_NAME = "sbs-login-info"
+
+_HEAD_CLOSE_RE = re.compile(r"</head\s*>", re.IGNORECASE)
+
+
+def _inject_login_info(index_html: bytes, message: str) -> bytes:
+    """Return ``index_html`` with a login-info ``<meta>`` tag before ``</head>``.
+
+    The operator's text is escaped into an inert attribute value rather than
+    into an inline ``<script>``: an attribute cannot execute, while
+    ``window.__SBS_LOGIN_INFO__ = "..."`` would put operator text in a
+    JavaScript parsing context. React then escapes it a second time when the
+    login page renders it as a text child.
+
+    A bundle whose HTML has no ``</head>`` is served unmodified with a
+    warning — a banner is not worth failing a page load over.
+    """
+    tag = (
+        f'<meta name="{LOGIN_INFO_META_NAME}" '
+        f'content="{html.escape(message, quote=True)}">'
+    )
+    text = index_html.decode("utf-8")
+    injected, count = _HEAD_CLOSE_RE.subn(lambda m: tag + m.group(0), text, count=1)
+    if not count:
+        logger.warning(
+            "UI entry point has no </head>; serving it without the login "
+            "message <meta> tag"
+        )
+        return index_html
+    return injected.encode("utf-8")
+
+
+def _html_bytes_response(
+    request: Request, body: bytes, cache_control: str
+) -> Response:
+    """Serve pre-rendered HTML bytes, suppressing the body for HEAD.
+
+    ``FileResponse`` handles HEAD itself (``send_header_only``); a plain
+    ``Response`` always sends its body, and the ``/ui/{path:path}`` route
+    serves GET *and* HEAD. Starlette skips populating its own
+    ``content-length`` when the caller supplies one, so a HEAD can report the
+    GET body's length without sending it. See §6.2 of
+    docs/design/login-info.md.
+    """
+    headers = {"Cache-Control": cache_control}
+    if request.method == "HEAD":
+        headers["Content-Length"] = str(len(body))
+        return Response(content=b"", media_type="text/html", headers=headers)
+    return Response(content=body, media_type="text/html", headers=headers)
 
 
 class SBS(FastAPI):
@@ -406,6 +465,22 @@ class SBS(FastAPI):
             _INDEX_CACHE_CONTROL = "no-cache, must-revalidate"
             ui_root = ui_dist.resolve()
 
+            # Login-information banner (docs/design/login-info.md §6). Rendered
+            # once, here at startup: the value cannot change without a restart
+            # (§4.4), so there is no per-request work. When no message is
+            # configured this stays None and the handler below is byte-identical
+            # to before the feature existed — index.html goes out through the
+            # same FileResponse, with its ETag, Last-Modified and Range support
+            # intact.
+            _index_path = (ui_root / "index.html").resolve()
+            _injected_index: Optional[bytes] = None
+            login_info = getattr(self.state.acl_cfg, "login_info", None)
+            if login_info and _index_path.is_file():
+                _injected_index = _inject_login_info(
+                    _index_path.read_bytes(), login_info
+                )
+                logger.info("Login message will be injected into %s", _index_path)
+
             # GET *and* HEAD: FastAPI's @app.get registers GET only (unlike
             # Starlette's plain Route, which implies HEAD), so a HEAD would
             # otherwise 405 instead of answering with the cache directives set
@@ -413,7 +488,7 @@ class SBS(FastAPI):
             @self.api_route(
                 "/ui/{path:path}", methods=["GET", "HEAD"], include_in_schema=False
             )
-            async def _ui_spa_fallback(path: str):
+            async def _ui_spa_fallback(request: Request, path: str):
                 # Real static assets (JS, CSS, fonts, images) are served from
                 # disk. Anything else falls back to index.html so React Router
                 # can handle the route client-side (/ui/skills, /ui/tools/:uuid).
@@ -434,7 +509,22 @@ class SBS(FastAPI):
                         if asset.suffix == ".html"
                         else _ASSET_CACHE_CONTROL
                     )
+                    # Both branches that serve HTML must serve the injected
+                    # copy: injecting in only one would show the banner on
+                    # /ui/login (the SPA fallback below) and not on the
+                    # literal /ui/index.html. Matched on the resolved path
+                    # rather than on the .html suffix because only the entry
+                    # point has a rendered copy — any additional HTML file
+                    # keeps going through FileResponse.
+                    if _injected_index is not None and asset == _index_path:
+                        return _html_bytes_response(
+                            request, _injected_index, cache_control
+                        )
                     return FileResponse(asset, headers={"Cache-Control": cache_control})
+                if _injected_index is not None:
+                    return _html_bytes_response(
+                        request, _injected_index, _INDEX_CACHE_CONTROL
+                    )
                 return FileResponse(
                     ui_root / "index.html",
                     headers={"Cache-Control": _INDEX_CACHE_CONTROL},
