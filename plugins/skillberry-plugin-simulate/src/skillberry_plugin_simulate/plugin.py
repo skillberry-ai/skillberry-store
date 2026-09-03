@@ -134,7 +134,7 @@ class SkillberryPluginSimulate(PluginBase):
         @router.post("/teardown")
         async def teardown(request: SkillRequest):
             try:
-                return self._get_orchestrator().teardown(request.skill_uuid)
+                return await self._get_orchestrator().teardown(request.skill_uuid)
             except KeyError:
                 raise HTTPException(status_code=404, detail=f"No simulation for skill {request.skill_uuid}")
 
