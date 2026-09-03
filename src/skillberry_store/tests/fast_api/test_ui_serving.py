@@ -496,10 +496,10 @@ def test_the_built_bundle_reads_the_meta_name_the_server_writes():
     """Server and SPA must agree on the tag name, or the banner silently vanishes.
 
     The name is a string literal on both sides — `LOGIN_INFO_META_NAME` in
-    server.py and the `querySelector` in LoginPage.tsx — with nothing to keep
-    them in step. This asserts the built JS actually contains it.
+    fast_api/login_info.py and the `querySelector` in LoginPage.tsx — with
+    nothing to keep them in step. This asserts the built JS actually contains it.
     """
-    from skillberry_store.fast_api.server import LOGIN_INFO_META_NAME
+    from skillberry_store.fast_api.login_info import LOGIN_INFO_META_NAME
 
     bundled_js = "".join(
         p.read_text(errors="replace") for p in (REAL_DIST / "assets").glob("*.js")

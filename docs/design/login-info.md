@@ -169,6 +169,8 @@ Step 4 is load-bearing. The CLI prints this string straight to a TTY, so a messa
 
 ### 6.1 Serve-time injection into `index.html`
 
+The mechanics live in their own module, [`fast_api/login_info.py`](../../src/skillberry_store/fast_api/login_info.py) — the tag, the injection, and the response type that replaces `FileResponse`. `server.py` builds one `LoginInfoPage` where `acl_cfg` is in scope and asks it for a response in the two branches that serve HTML; when no message is configured every ask answers `None` and the route falls through to the `FileResponse` it always used. That keeps a small feature from adding ~90 lines to the server's central module, and lets the injection be unit-tested with no app and no HTTP (§12.2).
+
 The server already serves the SPA entry point itself, with a no-cache directive, in [`_ui_spa_fallback`](../../src/skillberry_store/fast_api/server.py#L413-L442). When `cfg.login_info` is set, it injects one tag before `</head>`:
 
 ```html
@@ -177,7 +179,7 @@ The server already serves the SPA entry point itself, with a no-cache directive,
 
 Mechanics:
 
-* **Rendered once, at startup**, inside `SBS.__init__` where `acl_cfg` is already in scope (it is loaded at [the top of the constructor](../../src/skillberry_store/fast_api/server.py#L148) and the `/ui` routes are registered in the same function). The injected bytes are held in a closure variable. The value cannot change without a restart (§4.4), so there is no per-request work.
+* **Rendered once, at startup**, inside `SBS.__init__` where `acl_cfg` is already in scope (it is loaded at [the top of the constructor](../../src/skillberry_store/fast_api/server.py#L148) and the `/ui` routes are registered in the same function). The injected bytes are held on the `LoginInfoPage` the route closes over. The value cannot change without a restart (§4.4), so there is no per-request work.
 * **Both paths that serve HTML must serve the injected copy.** `_ui_spa_fallback` returns `index.html` from two branches — the on-disk hit for a literal `GET /ui/index.html`, and the SPA fallback for `/ui/login`. Injecting in only one would show the banner on `/ui/login` and not on `/ui/index.html`. The `asset.suffix == ".html"` test that already selects the cache directive is the right hook for both.
 * **`<meta content>`, never an inline `<script>`.** An attribute value is inert; escaped operator text cannot execute. A `window.__SBS_LOGIN_INFO__ = "..."` script tag would put operator text in a JavaScript parsing context, which is a strictly worse position to defend.
 * **Injection point** is `</head>`, matched case-insensitively on the first occurrence. The bundle's [`index.html`](../../src/skillberry_store/ui/dist/index.html) is Vite-generated and always has one. If it is somehow absent, log a warning and serve the file unmodified — the banner is not worth failing a page load over.
@@ -370,7 +372,9 @@ Parsing, validation, and sanitization against temp YAML files, no HTTP. `tests/a
 * Caps: a 2000-character message truncates to 1024 with a warning; a 20-line message truncates to 10 with a warning naming the line limit.
 * Idempotence: sanitizing an already-sanitized value is a no-op.
 
-### 12.2 Integration — `tests/fast_api/test_ui_serving.py` (extend)
+### 12.2 Injection — `tests/fast_api/test_login_info_page.py` (new, unit) and `tests/fast_api/test_ui_serving.py` (extend, integration)
+
+The unit tests drive `fast_api/login_info.py` directly — no app, no HTTP — so a failure points at the injection or the response construction rather than at the route: escaping, the `</head>` match (case, whitespace, first occurrence only, absent), the inert cases (no message, no bundle), that a second `.html` file is not served the entry point's bytes, and the HEAD content-length. The integration tests below then cover the same behavior through the real route:
 
 * Feature on: `GET /ui/` **and** `GET /ui/index.html` both carry `<meta name="sbs-login-info">` with the expected content — the two-branch trap from §6.1.
 * Feature off: no such tag, and the response is still a `FileResponse` (assert `etag`/`accept-ranges` present, proving the untouched path).
@@ -420,7 +424,7 @@ There are no unit tests for [`sdk_cli.py`](../../skillberry-common/scripts/sdk_c
 | Area | Files | ~LOC |
 |---|---|---|
 | YAML parse + validate + sanitize + config field | `access_control/config.py` | ~65 |
-| `index.html` injection (render-once, both branches, HEAD) | `fast_api/server.py` | ~45 |
+| `index.html` injection (render-once, both branches, HEAD) | `fast_api/login_info.py` (new) + ~20 lines of call sites in `fast_api/server.py` | ~145 |
 | `whoami` 401 body | `fast_api/auth_api.py` | ~10 |
 | UI alert | `ui/src/pages/LoginPage.tsx` | ~15 |
 | CLI `_auth_disabled` → `_preflight` | `skillberry-common/scripts/sdk_cli.py` (+ generated copy) | ~30 |
