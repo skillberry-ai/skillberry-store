@@ -485,3 +485,63 @@ def test_missing_head_close_tag_warns_and_still_serves(ui_client_factory, caplog
     assert "id='root'" in resp.text
     assert "sbs-login-info" not in resp.text
     assert "</head>" in caplog.text
+
+
+# --------------------------------------------------------------------------- #
+# End-to-end: the real bundle, the real injection, the real meta name
+# --------------------------------------------------------------------------- #
+
+@requires_built_bundle
+def test_the_built_bundle_reads_the_meta_name_the_server_writes():
+    """Server and SPA must agree on the tag name, or the banner silently vanishes.
+
+    The name is a string literal on both sides — `LOGIN_INFO_META_NAME` in
+    server.py and the `querySelector` in LoginPage.tsx — with nothing to keep
+    them in step. This asserts the built JS actually contains it.
+    """
+    from skillberry_store.fast_api.server import LOGIN_INFO_META_NAME
+
+    bundled_js = "".join(
+        p.read_text(errors="replace") for p in (REAL_DIST / "assets").glob("*.js")
+    )
+
+    assert bundled_js, "no JS in the built bundle"
+    assert LOGIN_INFO_META_NAME in bundled_js, (
+        f"the SPA never looks for meta[name={LOGIN_INFO_META_NAME!r}]; the "
+        "server's injected tag would be dead HTML"
+    )
+
+
+@requires_built_bundle
+def test_the_real_bundle_entry_point_gets_the_message_injected(tmp_path, monkeypatch):
+    """The whole serving path against the bundle `make ui-build` produced."""
+    from skillberry_store.access_control import config as acl_config
+    from skillberry_store.modules import object_handler
+    from skillberry_store.services import registry
+
+    message = "Shared eval box — do not store secrets."
+    cfg_path = tmp_path / "acl.yaml"
+    cfg_path.write_text(
+        "mode: standalone\n"
+        "standalone:\n"
+        "  users: []\n"
+        f'  login_info:\n    enabled: true\n    message: "{message}"\n'
+    )
+    monkeypatch.setenv("SBS_ACCESS_CONTROL_CONFIG", str(cfg_path))
+    acl_config.reset_config_cache()
+
+    clean_test_tmp_dir()
+    object_handler.clear_object_handlers()
+    registry.clear_services()
+    try:
+        with TestClient(SBS()) as client:
+            for path in ("/ui/", "/ui/index.html", "/ui/login"):
+                resp = client.get(path)
+                assert resp.status_code == 200, path
+                assert _login_info_content(resp.text) == message, path
+                assert resp.headers["cache-control"] == INDEX_CACHE, path
+                assert '<div id="root"></div>' in resp.text, path
+    finally:
+        object_handler.clear_object_handlers()
+        registry.clear_services()
+        acl_config.reset_config_cache()
