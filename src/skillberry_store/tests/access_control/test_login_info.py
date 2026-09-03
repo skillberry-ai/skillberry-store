@@ -437,3 +437,34 @@ def test_sanitizing_an_already_sanitized_value_is_a_no_op(tmp_path):
 
     once = _sanitize_login_info("  a\r\n\x1b[31mb\t \n c  ", "cfg.yaml")
     assert _sanitize_login_info(once, "cfg.yaml") == once
+
+
+# --------------------------------------------------------------------------- #
+# The shipped configs (§11, §12.6)
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "access_control_config.yaml",
+        "access_control_config.yaml.disabled",
+        "access_control_config.yaml.standalone",
+    ],
+)
+def test_shipped_configs_document_the_key_without_enabling_it(filename):
+    """Off by default: the shipped files carry the schema, not a live banner.
+
+    They also carry the "no secrets" note, because the message is served
+    pre-authentication and the file it lives in also holds bcrypt password
+    hashes — adjacency to secrets must not be mistaken for confidentiality
+    (§10).
+    """
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[4] / filename
+    assert path.is_file(), f"shipped config missing: {filename}"
+    text = path.read_text()
+
+    assert "login_info" in text, "the key is not documented for operators"
+    assert "NO SECRETS" in text, "the pre-authentication warning is missing"
+    assert load_config(str(path)).login_info is None

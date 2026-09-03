@@ -8,6 +8,31 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+
+- **Login information message.** An operator can show a short informational
+  message at login — the `/etc/issue.net` tradition — by setting
+  `standalone.login_info` in `access_control_config.yaml`:
+
+  ```yaml
+  standalone:
+    login_info:
+      enabled: true
+      message: |
+        This is a shared evaluation deployment — do not store secrets here.
+        Access requests: ops@example.com
+  ```
+
+  The same text appears on the UI sign-in screen, before the `sbs login`
+  prompt, and on `GET /auth/whoami`'s 401 body. `enabled` and `message` are
+  independent controls, so a message can be committed ahead of being switched
+  on; the default is off, and with it off behavior is unchanged. The message is
+  served **pre-authentication**, so it must contain no secrets. It is read at
+  config load, so changing it needs the same restart that adding a user does,
+  and it is not baked into the UI bundle — no `make ui-build` needed after an
+  edit. `standalone` mode only: neither `disabled` nor `delegated` has an
+  in-store login. See `docs/design/login-info.md`.
+
 ### Breaking
 
 - **`ENABLE_UI` has been removed.** It had already stopped doing anything: the UI is
