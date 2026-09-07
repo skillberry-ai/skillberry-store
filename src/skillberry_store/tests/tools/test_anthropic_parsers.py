@@ -56,12 +56,21 @@ class TestTextParser:
         assert description.endswith("...")
     
     def test_extract_tags(self):
-        """Test extracting tags from file path."""
+        """Test extracting tags from a file name."""
         tags = extract_tags("skills/pptx/utils.py", "utils.py", "test_skill")
         assert "py" in tags
         assert "anthropic" in tags
-        assert "pptx" in tags
-        assert "utils.py" in tags
+
+    def test_extract_tags_omits_path_segments(self):
+        """Path segments and the bare file name are not tags of their own.
+
+        The path is carried by the ``file:<path>`` tag the callers prepend, so
+        re-emitting each segment only cluttered the tag picker.
+        """
+        tags = extract_tags("skills/pptx/utils.py", "utils.py", "test_skill")
+        assert tags == ["py", "anthropic"]
+        for absent in ("skills", "pptx", "utils.py", "test_skill"):
+            assert absent not in tags
     
     def test_strip_frontmatter(self):
         """Test stripping YAML frontmatter."""
@@ -107,7 +116,10 @@ This is the actual content."""
         assert snippets[0].content == content
         assert "file:docs/test.md" in snippets[0].tags
         assert "skill:test_skill" in snippets[0].tags
-    
+        # The path lives only in the file: tag - no bare segment tags.
+        assert "test.md" not in snippets[0].tags
+        assert "docs" not in snippets[0].tags
+
     def test_parse_text_file_multiple_paragraphs(self):
         """Test parsing text file into multiple snippets."""
         content = "First paragraph.\n\nSecond paragraph."
@@ -254,6 +266,10 @@ def subtract(a, b):
         assert tools[0].programming_language == "python"
         assert "file:scripts/utils.py" in tools[0].tags
         assert "skill:test_skill" in tools[0].tags
+        # The path lives only in the file: tag - no bare segment tags.
+        for tool in tools:
+            assert "utils.py" not in tool.tags
+            assert "scripts" not in tool.tags
 
     def test_parse_code_file_python_multi_function_module_content_is_full_file(self):
         """Test that each tool's module_content is the full file when multiple functions exist."""
@@ -320,6 +336,11 @@ calculate() {
         assert tools[0].name == "greet"
         assert tools[1].name == "calculate"
         assert tools[0].programming_language == "bash"
+        # The path lives only in the file: tag - no bare segment tags.
+        for tool in tools:
+            assert "file:scripts/script.sh" in tool.tags
+            assert "script.sh" not in tool.tags
+            assert "scripts" not in tool.tags
 
     def test_parse_code_file_bash_multi_function_module_content_is_full_file(self):
         """Test that each bash tool's module_content is the full file when multiple functions exist."""

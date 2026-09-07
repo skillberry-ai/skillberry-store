@@ -162,6 +162,19 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Anthropic skill import no longer turns every path segment into a tag.**
+  Importing a skill tagged each generated tool and snippet with `file:<path>`
+  *and* with one bare tag per segment of that same path — so
+  `scripts/check_bounding_boxes.py` produced `scripts` and
+  `check_bounding_boxes.py` alongside it. Nothing consumed the bare tags (the
+  exporter reads the `file:` tag to rebuild the skill layout), but they
+  dominated the UI's tag picker: on a 580-snippet store, 239 of 638 distinct
+  tags were file names. The file extension (`md`, `py`) is still tagged; the
+  path is now recorded only in `file:<path>`.
+
+  Items imported before this change keep their old tags — the store is not
+  migrated. Re-import a skill to drop them, or strip any tag that exactly
+  matches a segment of the item's own `file:` tag.
 - UI sourcemaps are no longer emitted by default. The bundle is served on the same
   unauthenticated port as the API, so shipping maps published the frontend source to
   anyone who could reach the service. Build with `VITE_SOURCEMAP=true make ui-build`

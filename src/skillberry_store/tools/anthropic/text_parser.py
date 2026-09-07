@@ -69,12 +69,22 @@ def generate_description(content: str) -> str:
 
 
 def extract_tags(file_path: str, file_name: str, skill_name: str = "") -> List[str]:
-    """Extract tags from filename and path.
+    """Extract tags from a file name.
+
+    The source path is *not* split into per-segment tags. It is already
+    recorded verbatim in the ``file:<path>`` tag the callers prepend, and that
+    tag is what :mod:`skillberry_store.tools.anthropic.exporter` reads back to
+    reconstruct the skill layout. Emitting the segments as well produced one
+    bare tag per directory and per file name (``scripts``,
+    ``check_bounding_boxes.py``), which nothing consumed and which crowded the
+    UI's tag picker out of usefulness.
 
     Args:
-        file_path: The full file path
+        file_path: The full file path. Retained for signature compatibility;
+            no tags are derived from it.
         file_name: The file name
-        skill_name: The skill name (optional)
+        skill_name: The skill name (optional). Callers add their own
+            ``skill:<name>`` tag; nothing is derived from it here.
 
     Returns:
         List of extracted tags
@@ -85,11 +95,6 @@ def extract_tags(file_path: str, file_name: str, skill_name: str = "") -> List[s
     parts = file_name.split(".")
     if len(parts) > 1:
         tags.append(parts[-1])
-
-    # Add directory names as tags (excluding common ones)
-    excluded_dirs = {".", "..", "src", "docs"}
-    path_parts = [p for p in file_path.split("/") if p and p not in excluded_dirs]
-    tags.extend(path_parts)
 
     # Add 'anthropic' tag to identify source
     tags.append("anthropic")

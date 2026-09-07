@@ -513,7 +513,7 @@ def parse_code_file(
                 "python",
                 "anthropic",
                 "script",
-            ] + [p for p in file_path.split("/") if p and p not in (".", "..")]
+            ]
 
             tools.append(
                 ParsedTool(
@@ -559,7 +559,7 @@ def parse_code_file(
                 f"skill:{skill_name}",
                 "python",
                 "anthropic",
-            ] + [p for p in file_path.split("/") if p and p not in (".", "..")]
+            ]
 
             tools.append(
                 ParsedTool(
@@ -601,7 +601,7 @@ def parse_code_file(
                     f"skill:{skill_name}",
                     "python",
                     "anthropic",
-                ] + [p for p in file_path.split("/") if p and p not in (".", "..")]
+                ]
 
                 tools.append(
                     ParsedTool(
@@ -642,7 +642,7 @@ def parse_code_file(
                 "bash",
                 "anthropic",
                 "script",
-            ] + [p for p in file_path.split("/") if p and p not in (".", "..")]
+            ]
 
             tools.append(
                 ParsedTool(
@@ -671,7 +671,7 @@ def parse_code_file(
                 f"skill:{skill_name}",
                 "bash",
                 "anthropic",
-            ] + [p for p in file_path.split("/") if p and p not in (".", "..")]
+            ]
 
             tools.append(
                 ParsedTool(
@@ -696,7 +696,7 @@ def parse_code_file(
                     f"skill:{skill_name}",
                     "bash",
                     "anthropic",
-                ] + [p for p in file_path.split("/") if p and p not in (".", "..")]
+                ]
 
                 tools.append(
                     ParsedTool(
