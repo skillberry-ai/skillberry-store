@@ -41,9 +41,16 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20260722-2">
+  <link rel="stylesheet" href="style.css?v=20260909-1">
 </head>
 <body>
+
+  <!-- ANNOUNCEMENT (duplicated across pages) -->
+  <a class="announce" href="https://itnext.io/skillberry-store-the-open-source-control-plane-for-agent-skills-99be3aab6229?postPublishedType=repub" target="_blank" rel="noopener">
+    <span class="announce-tag">New</span>
+    <span class="announce-text">Introducing Skillberry Store<span class="hide-sm"> — the open-source control plane for agent skills</span></span>
+    <span class="announce-cta">Read the blog ↗</span>
+  </a>
 
   <!-- NAV (duplicated across pages) -->
   <nav class="nav">
@@ -58,6 +65,7 @@
         <a href="plugins.html">Plugins</a>
         <a href="architecture.html" class="hide-sm">Architecture</a>
         <a href="cli.html" class="hide-sm">CLI</a>
+        <a href="https://skillberry-store-demo-adv.onrender.com" class="demo" target="_blank" rel="noopener"><span class="hide-sm">Live </span>Demo ↗</a>
         <a href="https://github.com/skillberry-ai/skillberry-store" class="gh">GitHub ↗</a>
       </div>
     </div>
@@ -77,8 +85,9 @@
         <p class="lead">Skillberry Store is a central place to manage every tool your AI agents need. Upload once, execute anywhere, and manage everything from a single service — tools, skills, and snippets with semantic search, lifecycle management, virtual MCP servers, and a rich plugin ecosystem.</p>
         <div class="cta">
           <a class="btn btn-primary" href="getting-started.html">Get started →</a>
-          <a class="btn btn-ghost" href="features.html">Explore features</a>
+          <a class="btn btn-ghost" href="https://skillberry-store-demo-adv.onrender.com" target="_blank" rel="noopener">Try the live demo ↗</a>
         </div>
+        <p class="caption" style="text-align:left;margin:-.4rem 0 1.2rem">Shared free instance — the first load may take a few seconds to wake.</p>
         <pre><code>pip install skillberry-store
 make docker-run   <span style="color:#7f90ad"># UI → :8002 · API docs → :8000/docs</span></code></pre>
       </div>
@@ -212,6 +221,7 @@ make docker-run   <span style="color:#7f90ad"># UI → :8002 · API docs → :80
 make docker-run</code></pre>
         <div class="cta" style="justify-content:center">
           <a class="btn btn-primary" href="getting-started.html">Get started →</a>
+          <a class="btn btn-ghost" href="https://skillberry-store-demo-adv.onrender.com" target="_blank" rel="noopener">Try the live demo ↗</a>
           <a class="btn btn-ghost" href="https://github.com/skillberry-ai/skillberry-store">View on GitHub ↗</a>
         </div>
       </div>
@@ -226,6 +236,11 @@ make docker-run</code></pre>
         <p>A smart skills repository for agentic workflows. Manage, execute, and organize every tool your AI agents need.</p>
       </div>
       <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="https://skillberry-store-demo-adv.onrender.com" target="_blank" rel="noopener">Live demo ↗</a>
+          <a href="https://itnext.io/skillberry-store-the-open-source-control-plane-for-agent-skills-99be3aab6229?postPublishedType=repub" target="_blank" rel="noopener">Introduction blog ↗</a>
+        </div>
         <div class="footer-col">
           <h4>Docs</h4>
           <a href="getting-started.html">Getting Started</a>

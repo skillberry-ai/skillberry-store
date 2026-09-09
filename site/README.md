@@ -28,12 +28,15 @@ voiceover script, and code) — nothing is borrowed from other projects.
 - **Relative links** between pages and assets (the site is served at the project
   sub-path `/skillberry-store/`). Absolute URLs appear only in
   `canonical` / OpenGraph / `sitemap.xml`.
-- **Nav + footer are duplicated** in every HTML file (no includes/partials). When
-  you change the nav or footer, edit every page. Consider a small build script if
-  the site grows past ~10 pages.
+- **Announcement strip + nav + footer are duplicated** in every HTML file (no
+  includes/partials). When you change any of the three, edit every page. Consider
+  a small build script if the site grows past ~10 pages. The `.announce` strip at
+  the top of each `<body>` carries the current launch news (the introduction
+  blog); retire it by deleting that block from all six pages — the same links
+  live permanently in the footer's **Resources** column.
 - **Cache-busting:** the stylesheet is linked as `style.css?v=YYYYMMDD-N`. Bump
   this query string whenever you edit `style.css`, or browsers serve the stale
-  copy. (Current: `?v=20260722-2`.)
+  copy. (Current: `?v=20260909-1`.)
 - **Fonts** load from Google Fonts (Red Hat Display + JetBrains Mono).
 - Set the `active` class on the current page's nav link.
 

@@ -2,6 +2,7 @@
 
 <p>
   <a href="https://skillberry-ai.github.io/skillberry-store/"><img src="https://img.shields.io/badge/site-live-0066CC" alt="site"></a>
+  <a href="https://skillberry-store-demo-adv.onrender.com"><img src="https://img.shields.io/badge/demo-live-3E8635" alt="live demo"></a>
   <a href="https://github.com/skillberry-ai/skillberry-store/actions/workflows/push.yml"><img src="https://github.com/skillberry-ai/skillberry-store/actions/workflows/push.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/skillberry-ai/skillberry-store/stargazers"><img src="https://img.shields.io/github/stars/skillberry-ai/skillberry-store?style=flat&label=stars&color=0066CC" alt="GitHub stars"></a>
   <img src="https://img.shields.io/badge/status-beta%20(0.x)-orange" alt="status">
@@ -15,6 +16,14 @@ This service implements a smart skills repository for agentic workflows. Manage,
 ![Skillberry Store demo](https://i.imgur.com/hpsGpnc.gif)
 
 ▶ [Watch full highlights video](https://github.com/user-attachments/assets/eab2f9f1-1196-4858-b4ca-72d6c664d9f3)
+
+### Try it now
+
+|   |   |
+|---|---|
+| **[▶ Live demo](https://skillberry-store-demo-adv.onrender.com)** | A running instance — no install. Shared free instance, so the first load may take a few seconds to wake. |
+| **[📖 Introduction blog](https://itnext.io/skillberry-store-the-open-source-control-plane-for-agent-skills-99be3aab6229?postPublishedType=repub)** | Skillberry Store: the open-source control plane for agent skills. |
+| **[🌐 Website & docs](https://skillberry-ai.github.io/skillberry-store/)** | Feature tour, architecture, and CLI reference. |
 
 ## Features ✨
 

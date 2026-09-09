@@ -88,6 +88,38 @@ pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
 
 hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
 
+/* ---------- Announcement strip ---------- */
+/* Sits above the sticky nav on every page and scrolls away with the hero.
+   Retire it by deleting the .announce block from each HTML file. */
+.announce {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: .6rem;
+  padding: .55rem 1.5rem;
+  background: var(--navy);
+  color: #cfdcf0;
+  font-size: .92rem;
+  font-weight: 500;
+  text-align: center;
+}
+.announce:hover { color: #fff; text-decoration: none; }
+.announce:hover .announce-cta { text-decoration: underline; }
+.announce-tag {
+  font-family: var(--mono);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: .18rem .55rem;
+  border-radius: 100px;
+  background: var(--accent);
+  color: #fff;
+  flex-shrink: 0;
+}
+.announce-cta { font-weight: 700; color: #fff; white-space: nowrap; }
+
 /* ---------- Nav ---------- */
 .nav {
   position: sticky;
@@ -140,6 +172,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
   gap: .4rem;
 }
 .nav-links a.gh:hover { border-color: var(--accent); }
+/* Filled pill — the nav's primary action. Never hidden on small screens;
+   below 620px the inner .hide-sm span drops so it reads just "Demo". */
+.nav-links a.demo {
+  background: var(--accent);
+  color: #fff;
+  white-space: nowrap;
+}
+.nav-links a.demo:hover { background: var(--accent-dark); color: #fff; }
 
 /* ---------- Layout ---------- */
 .page { max-width: var(--maxw); margin: 0 auto; padding: 0 1.5rem; }
@@ -421,6 +461,9 @@ table.table code { white-space: nowrap; }
   .nav-links { gap: .1rem; }
   .nav-links a { padding: .35rem .5rem; font-size: .88rem; }
   .nav-links a.hide-sm { display: none; }
+  .nav-links a .hide-sm { display: none; }   /* 'Live Demo' → 'Demo' */
+  .announce { padding: .5rem 1rem; font-size: .84rem; gap: .45rem; }
+  .announce .hide-sm { display: none; }
   .cta-band { padding: 2rem 1.25rem; }
   .footer .page { flex-direction: column; }
 }
