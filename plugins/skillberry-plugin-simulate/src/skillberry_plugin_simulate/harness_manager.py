@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 
 HARNESS_REST_CONTAINER_PORT = 8086  # fixed inside the harness image
 
+# Mount points inside the harness image. Its Dockerfile bakes
+# HARNESS_SKILLS_FOLDER=/app/skills-store and HARNESS_LOG_DESTINATION=/app/logs,
+# so a bind anywhere else is simply ignored by the harness.
+HARNESS_SKILLS_MOUNT = "/app/skills-store"
+HARNESS_LOGS_MOUNT = "/app/logs"
+
 
 def find_free_port(port_range: Tuple[int, int], exclude: Set[int]) -> int:
     """Return the first bindable TCP port in [lo, hi] not in `exclude`."""
@@ -44,12 +50,23 @@ class HarnessManager:
         environment = {"LLM_API_KEY": self._config.llm_api_key}
         if self._config.llm_api_base:
             environment["LLM_API_BASE"] = self._config.llm_api_base
+        # HARNESS_* overrides win over the harness.yaml baked into the image.
+        for var, value in (
+            ("HARNESS_LLM_PROVIDER", self._config.llm_provider),
+            ("HARNESS_LLM_SKILL_GENERATION_MODEL", self._config.llm_skill_generation_model),
+            ("HARNESS_LLM_SIMULATION_MODEL", self._config.llm_simulation_model),
+        ):
+            if value:
+                environment[var] = value
 
         volumes: Dict[str, Dict[str, str]] = {}
         if self._config.skills_store_path:
-            volumes[self._config.skills_store_path] = {"bind": "/skills-store", "mode": "ro"}
+            # Read-write: the harness generates its skill artifacts (SKILL.md,
+            # schema.json, db.json, api.json) into this directory, and reuses
+            # them as a cache on later runs. A read-only bind fails generation.
+            volumes[self._config.skills_store_path] = {"bind": HARNESS_SKILLS_MOUNT, "mode": "rw"}
         if self._config.logs_path:
-            volumes[self._config.logs_path] = {"bind": "/logs", "mode": "rw"}
+            volumes[self._config.logs_path] = {"bind": HARNESS_LOGS_MOUNT, "mode": "rw"}
 
         container = self._docker.containers.run(
             self._config.harness_image,

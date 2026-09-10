@@ -69,7 +69,8 @@ def test_toggle_delegates_to_registry(tmp_path):
     assert orch.toggle("skill-1")["active"] == "sim"
 
 
-def test_teardown_deletes_sim_artifacts_and_stops_harness(tmp_path):
+@pytest.mark.asyncio
+async def test_teardown_deletes_sim_artifacts_and_stops_harness(tmp_path):
     store = MagicMock()
     harness_mgr = MagicMock()
     store.get_vmcp.return_value = {
@@ -80,7 +81,7 @@ def test_teardown_deletes_sim_artifacts_and_stops_harness(tmp_path):
     orch, reg = _orch(tmp_path, store, harness_mgr=harness_mgr)
     reg.upsert("skill-1", real_vmcp_uuid="real-vmcp", sim_vmcp_uuid="sim-vmcp")
 
-    out = orch.teardown("skill-1")
+    out = await orch.teardown("skill-1")
 
     store.delete_vmcp.assert_called_once_with("sim-vmcp")
     store.delete_tool.assert_called_once_with("sim-t1")

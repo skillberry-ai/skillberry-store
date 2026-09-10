@@ -6,7 +6,11 @@ import pytest
 from skillberry_plugin_simulate.config import SimulateConfig
 from skillberry_plugin_simulate.harness_client import HarnessClient
 from skillberry_plugin_simulate.openapi_synth import OpenApiSynthesizer
-from skillberry_plugin_simulate.orchestrator import SimulateOrchestrator
+from skillberry_plugin_simulate.orchestrator import (
+    SimulateOrchestrator,
+    simulation_name,
+    tools_fingerprint,
+)
 from skillberry_plugin_simulate.registry import ActiveVmcpRegistry
 from skillberry_plugin_simulate.sim_manifests import SIMULATION_TAG
 
@@ -38,14 +42,20 @@ def _orch(tmp_path, store):
         "container_id": "c1", "rest_port": 8600, "mcp_port": 8700, "rest_url": "http://127.0.0.1:8600",
     }
 
+    created = {}
+
     def ready_handler(request):
         if request.method == "POST":
-            return httpx.Response(200, json={"status": "starting"})
+            import json
+            created["body"] = json.loads(request.content)
+            return httpx.Response(202, json={"status": "pending"})
         return httpx.Response(200, json={"status": "ready", "mcp_url": "http://127.0.0.1:8700/sse"})
 
     def client_factory(rest_url):
         transport = httpx.MockTransport(ready_handler)
         return HarnessClient(httpx.AsyncClient(transport=transport, base_url=rest_url))
+
+    harness_mgr.created = created
 
     reg = ActiveVmcpRegistry(str(tmp_path / "reg.json"))
     return SimulateOrchestrator(
@@ -213,3 +223,58 @@ async def test_simulate_tears_down_existing_simulation_before_starting_new(tmp_p
     store.delete_skill.assert_any_call("old-sim-skill")
     store.delete_tool.assert_any_call("old-sim-t1")
     assert reg.get("skill-1") is not None  # new simulation registered
+
+
+# --- harness simulation name (generated-skill cache key) ---
+
+@pytest.mark.asyncio
+async def test_simulate_names_the_simulation_after_skill_and_tool_surface(tmp_path):
+    """The harness caches generated artifacts under <skills-store>/<name>/ and
+    skips LLM generation on a hit, so the name must change when tools change."""
+    store = _store()
+    orch, harness_mgr, _ = _orch(tmp_path, store)
+
+    await orch.simulate("skill-1")
+
+    tools = [store.get_tool.return_value]
+    assert harness_mgr.created["body"]["name"] == simulation_name(
+        "weather", tools_fingerprint(tools)
+    )
+
+
+def test_simulation_name_changes_with_the_tool_surface():
+    base = [{"name": "get_weather", "params": {"type": "object"}}]
+    changed = [{"name": "get_weather", "params": {"type": "object", "properties": {"city": {}}}}]
+    assert simulation_name("weather", tools_fingerprint(base)) != simulation_name(
+        "weather", tools_fingerprint(changed)
+    )
+
+
+def test_simulation_name_distinguishes_same_named_skills():
+    """Two skills sharing a display name must not share a cache directory."""
+    a = [{"name": "alpha", "params": {}}]
+    b = [{"name": "beta", "params": {}}]
+    assert simulation_name("weather", tools_fingerprint(a)) != simulation_name(
+        "weather", tools_fingerprint(b)
+    )
+
+
+def test_simulation_name_survives_the_harness_64_char_cap():
+    """The harness truncates names to 64 chars; the fingerprint must not be the
+    part that gets cut, or long-named skills would all collide."""
+    fingerprint = "abcdef1234567890"
+    name = simulation_name("x" * 200, fingerprint)
+    assert len(name) <= 64
+    assert name.endswith(f"-{fingerprint[:8]}")
+
+
+def test_simulation_name_is_a_valid_agent_skills_name():
+    """Must match what the harness's own sanitizer would produce, so the name we
+    compute is the directory it actually uses."""
+    import re
+    name = simulation_name("Weather / Forecast  (v2)!!", "abcdef1234567890")
+    assert re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", name), name
+
+
+def test_simulation_name_falls_back_when_base_is_all_punctuation():
+    assert simulation_name("///", "abcdef1234567890") == "simulation-abcdef12"

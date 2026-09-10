@@ -1,7 +1,9 @@
 """Orchestrates the simulate/teardown/toggle/resolve flows for the plugin."""
+import asyncio
 import hashlib
 import json
 import logging
+import re
 from typing import Any, Callable, Dict, List, Optional
 
 from skillberry_plugin_simulate.config import SimulateConfig
@@ -24,6 +26,34 @@ def tools_fingerprint(tools: List[Dict[str, Any]]) -> str:
         (t.get("name", ""), json.dumps(t.get("params", {}), sort_keys=True)) for t in tools
     )
     return hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest()
+
+
+# The harness sanitizes the simulation name with its own Agent-Skills rules and
+# truncates to 64 chars (skills/generation/naming.py). Mirroring that here keeps
+# the name we compute identical to the one it stores artifacts under, and
+# reserving room for the suffix stops truncation from eating the fingerprint.
+_MAX_HARNESS_NAME_LEN = 64
+_FINGERPRINT_LEN = 8
+_NON_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(raw: str) -> str:
+    return _NON_SLUG_RE.sub("-", (raw or "").lower()).strip("-")
+
+
+def simulation_name(base_name: str, fingerprint: str) -> str:
+    """Harness simulation name for a skill's current tool surface.
+
+    The harness caches generated skill artifacts under
+    `<skills-store>/<name>/` and skips LLM generation on a hit. Every
+    simulation shares one mounted skills-store, so the name has to be unique
+    per skill *and* per tool surface: without the fingerprint, two skills
+    with the same display name collide, and re-simulating a skill whose tools
+    changed silently reuses stale artifacts.
+    """
+    suffix = f"-{fingerprint[:_FINGERPRINT_LEN]}"
+    stem = _slugify(base_name)[: _MAX_HARNESS_NAME_LEN - len(suffix)].strip("-")
+    return f"{stem or 'simulation'}{suffix}"
 
 
 class SimulateOrchestrator:
@@ -91,16 +121,23 @@ class SimulateOrchestrator:
 
         if self._registry.get(skill_uuid):
             logger.info("Tearing down existing simulation for skill %s before re-simulating", skill_uuid)
-            self.teardown(skill_uuid)
+            await self.teardown(skill_uuid)
 
+        fingerprint = tools_fingerprint(tools)
         spec = self._synth.synthesize(tools, title=base_name)
         rest_port, mcp_port = self._harness_manager.allocate_ports()
-        harness = self._harness_manager.start(rest_port=rest_port, mcp_port=mcp_port)
+        # docker-py is synchronous and pulls the image when it is missing, which
+        # on a cold host is a multi-hundred-MB download — never on the event loop.
+        harness = await asyncio.to_thread(
+            self._harness_manager.start, rest_port=rest_port, mcp_port=mcp_port
+        )
         container_id = harness["container_id"]
 
         try:
             client = self._harness_client_factory(harness["rest_url"])
-            await client.create_simulation(spec, mcp_port=mcp_port)
+            await client.create_simulation(
+                spec, mcp_port=mcp_port, name=simulation_name(base_name, fingerprint)
+            )
             harness_mcp_url = await client.wait_until_ready(
                 timeout=self._config.ready_timeout_seconds,
                 interval=self._config.poll_interval_seconds,
@@ -133,7 +170,7 @@ class SimulateOrchestrator:
                         "simulation_of": real_vmcp_uuid,
                         "simulation_of_skill": skill_uuid,
                         "sim_skill_uuid": sim_skill["uuid"],
-                        "tools_fingerprint": tools_fingerprint(tools),
+                        "tools_fingerprint": fingerprint,
                         "harness": {
                             "container_id": container_id,
                             "rest_url": harness["rest_url"],
@@ -151,7 +188,7 @@ class SimulateOrchestrator:
             )
         except Exception:
             logger.warning("simulate() failed after harness start — stopping container %s", container_id)
-            self._harness_manager.stop(container_id)
+            await asyncio.to_thread(self._harness_manager.stop, container_id)
             raise
 
         logger.info("Simulated vMCP %s created for skill %s", sim_vmcp["uuid"], skill_uuid)
@@ -187,7 +224,7 @@ class SimulateOrchestrator:
         new_active = self._registry.toggle(skill_uuid)
         return {"success": True, "skill_uuid": skill_uuid, "active": new_active}
 
-    def teardown(self, skill_uuid: str) -> Dict[str, Any]:
+    async def teardown(self, skill_uuid: str) -> Dict[str, Any]:
         entry = self._registry.get(skill_uuid)
         if entry is None:
             raise KeyError(skill_uuid)
@@ -204,7 +241,7 @@ class SimulateOrchestrator:
                     self._store.delete_tool(tool_uuid)
                 self._store.delete_skill(sim_skill_uuid)
             if container_id:
-                self._harness_manager.stop(container_id)
+                await asyncio.to_thread(self._harness_manager.stop, container_id)
         self._registry.remove(skill_uuid)
         return {"success": True, "skill_uuid": skill_uuid}
 
