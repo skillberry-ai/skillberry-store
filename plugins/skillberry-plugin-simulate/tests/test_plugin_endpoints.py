@@ -75,7 +75,7 @@ def test_toggle_endpoint():
 
 def test_teardown_endpoint():
     orch = MagicMock()
-    orch.teardown.return_value = {"success": True, "skill_uuid": "skill-1"}
+    orch.teardown = AsyncMock(return_value={"success": True, "skill_uuid": "skill-1"})
     client = _app_with_plugin(orch)
     resp = client.post("/plugins/simulate/teardown", json={"skill_uuid": "skill-1"})
     assert resp.status_code == 200
