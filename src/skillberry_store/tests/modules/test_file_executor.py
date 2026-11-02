@@ -1074,3 +1074,96 @@ async def test_execute_modes(
 
     result = await executor.execute_file(params)
     assert result["return value"] == expected
+
+
+# --- MCP call results (isError, multi-item content, structuredContent) ---
+
+from mcp.types import CallToolResult, ImageContent, TextContent
+
+from skillberry_store.modules.file_executor import mcp_call_result_to_dict
+
+
+def test_mcp_result_is_error_becomes_error():
+    result = CallToolResult(
+        content=[TextContent(type="text", text="City Atlantis not found")],
+        isError=True,
+    )
+    assert mcp_call_result_to_dict(result) == {"error": "City Atlantis not found"}
+
+
+def test_mcp_result_is_error_without_text_still_errors():
+    result = CallToolResult(content=[], isError=True)
+    assert "error" in mcp_call_result_to_dict(result)
+
+
+def test_mcp_result_joins_all_text_items_and_skips_non_text():
+    result = CallToolResult(
+        content=[
+            TextContent(type="text", text="first"),
+            ImageContent(type="image", data="AAAA", mimeType="image/png"),
+            TextContent(type="text", text="second"),
+        ]
+    )
+    assert mcp_call_result_to_dict(result) == {"return value": "first\nsecond"}
+
+
+def test_mcp_result_keeps_structured_content():
+    result = CallToolResult(
+        content=[TextContent(type="text", text='{"t": 52}')],
+        structuredContent={"t": 52},
+    )
+    assert mcp_call_result_to_dict(result) == {
+        "return value": '{"t": 52}',
+        "structured": {"t": 52},
+    }
+
+
+def test_execute_mcp_tool_maps_is_error(monkeypatch):
+    """End to end through FileExecutor's MCP path, with the SSE client mocked."""
+    import asyncio
+    import contextlib
+
+    from mcp.types import Tool
+
+    import skillberry_store.modules.file_executor as fe
+
+    class FakeSession:
+        def __init__(self, *_a):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+
+        async def initialize(self):
+            return None
+
+        async def list_tools(self):
+            class R:
+                tools = [Tool(name="get_weather", inputSchema={"type": "object"})]
+
+            return R()
+
+        async def call_tool(self, name, arguments=None):
+            return CallToolResult(
+                content=[TextContent(type="text", text="boom")], isError=True
+            )
+
+    @contextlib.asynccontextmanager
+    async def fake_sse(_url, **_kw):
+        yield (None, None)
+
+    monkeypatch.setattr(fe, "sse_client", fake_sse)
+    monkeypatch.setattr(fe, "ClientSession", FakeSession)
+
+    manifest = {
+        "name": "get_weather",
+        "packaging_format": "mcp",
+        "packaging_params": {"mcp_url": "http://x/sse", "mcp_tool_name": "get_weather"},
+    }
+    content = "def get_weather(city: str):\n    pass\n"
+    executor = FileExecutor(name="get_weather", file_content=content, file_manifest=manifest)
+    out = asyncio.run(executor.execute_python_file_in_mcp_server({"city": "Boston"}))
+    assert out == {"error": "boom"}

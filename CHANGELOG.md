@@ -482,6 +482,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A remote MCP tool that reports an error is now an error.** Executing an `mcp`
+  tool used to return `content[0].text` and ignore the result's `isError` flag, so
+  a failing remote tool looked successful (`{"return value": "<error text>"}`).
+  Now an `isError: true` result is returned as `{"error": "<text>"}`, which
+  `POST /tools/{id}/execute` reports as HTTP 500 like any other failed execution.
+  Every text content item is joined with newlines instead of keeping only the
+  first, and `structuredContent` is returned as `"structured"` when the server
+  sends it. **Behavior change:** a client that parsed error text out of a
+  successful response must now read the error response instead.
+
 - **A Claude Code agent handed the store's MCP URL can now use it under access
   control.** Two independent things were broken, so fixing either alone left it
   broken: the agent had no credential (the SSE handshake is allow-listed, but every

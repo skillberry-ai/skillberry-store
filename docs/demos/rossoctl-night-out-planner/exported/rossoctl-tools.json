@@ -1,0 +1,61 @@
+{
+  "schema": "skillberry.ai/rossoctl-tools/v1",
+  "tools": [
+    {
+      "tool": "reservation-tool",
+      "port": 18002,
+      "path": "/mcp",
+      "mcp_tools": [
+        {
+          "name": "cancel_reservation",
+          "store_tool": "cancel_reservation",
+          "script": "scripts/cancel_reservation.py",
+          "schema_sha256": "2042e1c1f25750970ab43d9203717dab3b59312e6f15a655f46a3f6bcd57d724",
+          "read_only": false
+        },
+        {
+          "name": "check_availability",
+          "store_tool": "check_availability",
+          "script": "scripts/check_availability.py",
+          "schema_sha256": "cff2421c669c81350849301c21bdd5eb77ef2a09acc0492a20608462ca8aa88f",
+          "read_only": true
+        },
+        {
+          "name": "list_reservations",
+          "store_tool": "list_reservations",
+          "script": "scripts/list_reservations.py",
+          "schema_sha256": "3650825729c923c1ddd78f7489f0c21dc1b0c6c61bbfd2dce2075b58c6c83da7",
+          "read_only": true
+        },
+        {
+          "name": "place_reservation",
+          "store_tool": "place_reservation",
+          "script": "scripts/place_reservation.py",
+          "schema_sha256": "53542bf293bc05bd77ac76a5dbb5057120be174ba9a2d5017fa66a57f4de949a",
+          "read_only": false
+        },
+        {
+          "name": "search_restaurants",
+          "store_tool": "search_restaurants",
+          "script": "scripts/search_restaurants.py",
+          "schema_sha256": "e58f7761b3426bbe5a99572411382a050773c7333a90c5d1a7efcea1ca0e6037",
+          "read_only": true
+        }
+      ]
+    },
+    {
+      "tool": "weather-tool",
+      "port": 18001,
+      "path": "/mcp",
+      "mcp_tools": [
+        {
+          "name": "get_weather",
+          "store_tool": "get_weather",
+          "script": "scripts/get_weather.py",
+          "schema_sha256": "5f118feb63f080e5bd34bc71f32b2e9efba28cc852774cb88f549245301bb7b7",
+          "read_only": true
+        }
+      ]
+    }
+  ]
+}

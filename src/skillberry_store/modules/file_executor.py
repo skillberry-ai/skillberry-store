@@ -180,6 +180,29 @@ def detect_tool_dependencies(
         return []
 
 
+def mcp_call_result_to_dict(result) -> dict:
+    """Map an MCP ``CallToolResult`` to the executor's result dict.
+
+    All text content items are joined with newlines. A result with ``isError``
+    set becomes ``{"error": ...}``, so a failing remote tool is reported as a
+    failure rather than as a successful return value. ``structuredContent``,
+    when the server sends it, is returned alongside the text.
+    """
+    texts = [
+        item.text
+        for item in (getattr(result, "content", None) or [])
+        if getattr(item, "type", None) == "text"
+    ]
+    text = "\n".join(texts)
+    if getattr(result, "isError", False):
+        return {"error": text or "MCP tool reported an error"}
+    out = {"return value": text}
+    structured = getattr(result, "structuredContent", None)
+    if structured is not None:
+        out["structured"] = structured
+    return out
+
+
 class FileExecutor:
     def __init__(
         self,
@@ -431,7 +454,7 @@ class FileExecutor:
                                 logger.info(
                                     f"[execute_mcp_tool] Tool execution completed successfully"
                                 )
-                                return _return_value.content[0].text
+                                return _return_value
 
                         logger.warning(
                             f"[execute_mcp_tool] Tool '{_function_name}' not found in MCP server"
@@ -542,7 +565,7 @@ class FileExecutor:
                 )
 
             logger.info(f"Python code executed successfully: {return_value}")
-            return {"return value": f"{return_value}"}
+            return mcp_call_result_to_dict(return_value)
         except HTTPException:
             raise
         except Exception as e:

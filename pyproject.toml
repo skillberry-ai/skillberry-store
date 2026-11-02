@@ -225,6 +225,10 @@ plugin-skillssh-importer = [
   "skillberry-plugin-skillssh-importer>=0.1.0",
 ]
 
+plugin-rossoctl-tools = [
+  "skillberry-plugin-rossoctl-tools>=0.2.0",
+]
+
 # Install all plugins
 plugins-all = [
   "skillberry-plugin-creator>=0.2.0",
@@ -243,6 +247,7 @@ plugins-all = [
   "skillberry-plugin-ask-runspace>=0.1.0",
   "skillberry-plugin-dast[hypothesis]>=0.1.0",
   "skillberry-plugin-skillssh-importer>=0.1.0",
+  "skillberry-plugin-rossoctl-tools>=0.2.0",
 ]
 
 test = [
@@ -267,6 +272,7 @@ skillberry-plugin-dependency-tracker = { path = "plugins/skillberry-plugin-depen
 skillberry-plugin-ask-runspace = { path = "plugins/skillberry-plugin-ask-runspace", editable = true }
 skillberry-plugin-dast = { path = "plugins/skillberry-plugin-dast", editable = true }
 skillberry-plugin-skillssh-importer = { path = "plugins/skillberry-plugin-skillssh-importer", editable = true }
+skillberry-plugin-rossoctl-tools = { path = "plugins/skillberry-plugin-rossoctl-tools", editable = true }
 llm-client = { path = "skillberry-common/packages/llm-client", editable = true }
 
 [build-system]

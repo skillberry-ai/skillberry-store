@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillberry-plugin-rossoctl-tools"
+version = "0.2.0"
+description = "Skillberry Store plugin: compose skills from rossoctl tools and generate the rossoctl agent that uses them"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.28",
+]
+
+[project.entry-points."skillberry_store.plugins"]
+rossoctl-tools = "skillberry_plugin_rossoctl_tools.plugin:SkillberryPluginRossoctlTools"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    # The MCP client generic_agent uses, for the recipe e2e test.
+    "langchain-mcp-adapters>=0.3.0",
+]
+
+[tool.setuptools]
+packages = ["skillberry_plugin_rossoctl_tools"]
+package-dir = {"" = "src"}

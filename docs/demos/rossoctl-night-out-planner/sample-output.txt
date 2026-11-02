@@ -1,0 +1,55 @@
+
+[1m== 1. Tools: weather-tool and reservation-tool, deployed as rossoctl tools[0m
+team1: weather-tool, reservation-tool (Available); team2: weather-tool only
+
+[1m== 2. rossoctl backend from main (1cac9f3f Merge pull request #2638 from s-and-p-team/docs/aia), unmodified[0m
+rossoctl features: {'skills': True, 'externalSkills': True}
+
+[1m== 3. skillberry-store with the rossoctl-tools plugin (local execution mode)[0m
+plugin rossoctl-tools - Ready
+
+[1m== 4. Import the tools and compose the skill[0m
+tools: ['get_weather', 'search_restaurants', 'check_availability', 'place_reservation', 'cancel_reservation', 'list_reservations'] | errors: []
+
+[1m== 5. Store-side test: the proxy code tool runs in the store and calls rossoctl /invoke[0m
+search_restaurants -> ['Trattoria di Mare']
+rossoctl /invoke calls: 1
+
+[1m== 6. The deployment recipe for team1 (skill + MCP_URLS)[0m
+ok: True | missing: []
+  reservation-tool: present=True ready=True port=18002
+  weather-tool: present=True ready=True port=18001
+request.skills: ['night-out-planner']
+  MCP_URLS=http://reservation-tool-mcp.team1.svc.cluster.local:18002/mcp,http://weather-tool-mcp.team1.svc.cluster.local:18001/mcp
+  MCP_TRANSPORT=streamable_http
+
+[1m== 7. rossoctl autosync creates the skill in team1[0m
+external night-out-planner
+
+[1m== 8. Create the agent in rossoctl with the recipe (+ the user's model settings)[0m
+rossoctl: Agent 'night-out' deployed as deployment successfully.
+  image: ghcr.io/rossoctl/examples/generic_agent:latest
+  MCP_URLS: http://reservation-tool-mcp.team1.svc.cluster.local:18002/mcp,http://weather-tool-mcp.team1.svc.cluster.local:18001/mcp
+  SKILL_FOLDERS: /app/skills/night-out-planner
+  init containers: ['fetch-skill-0']
+  annotation rossoctl.io/skills: ["night-out-planner"]
+
+[1m== 9. The agent: fetch the skill like the init container, connect to MCP_URLS like generic_agent[0m
+rossoctl-tools.json
+scripts
+SKILL.md
+SKILL.md Tools section present: True | mentions MCP tools: True
+MCP tools the agent sees: ['cancel_reservation', 'check_availability', 'get_weather', 'list_reservations', 'place_reservation', 'search_restaurants']
+search_restaurants -> ['Trattoria di Mare']
+19:00 available: [True] | free dinner: ['18:30', '19:00', '20:00', '20:30']
+place_reservation -> confirmation RES001000 status confirmed
+get_weather -> {"time": "2026-10-27T09:45", "interval": 900, "temperature": 44.8, "windspeed": 7.2, "winddirection": 19, "is_day": 0, "
+
+[1m== 10. Portability: the recipe for team2 reports what is missing before anything is created[0m
+team2 ok: False | missing: ['reservation-tool'] | MCP_URLS: ['http://weather-tool-mcp.team2.svc.cluster.local:18001/mcp']
+after deploying it: team2 ok: True | missing: []
+
+[1m== 11. rossoctl is unmodified[0m
+  changed files in the rossoctl checkout: 0
+
+[1m== Demo complete. Logs: /tmp/rossoctl-tools-demo/logs[0m

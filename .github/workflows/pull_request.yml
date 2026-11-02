@@ -32,3 +32,33 @@ jobs:
       run: |
           source .venv/bin/activate
           make ci-pull-request
+
+  # Core must work, and stay free of rossoctl knowledge, with NO plugins
+  # installed (docs/design/rossoctl-skills.md §5.1, §8). `make test` installs
+  # plugins-all, so this job installs only [dev,pytest]. The first run below
+  # includes tests/test_core_has_no_rossoctl.py.
+  core-without-plugins:
+    name: core-without-plugins
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v6.3.0
+      with:
+        python-version: "3.11"
+    - name: checkout
+      uses: actions/checkout@v7.0.0
+    - name: install core only
+      run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip uv
+          uv pip install -e ".[dev,pytest]"
+    - name: core tests (no plugins)
+      env:
+        EXECUTE_PYTHON_LOCALLY: "true"
+      run: |
+          source .venv/bin/activate
+          pytest src/skillberry_store/tests -m "not integration" \
+            --ignore=src/skillberry_store/tests/e2e \
+            --deselect src/skillberry_store/tests/fast_api/test_plugin_access_control.py
+

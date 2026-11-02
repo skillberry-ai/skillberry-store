@@ -1,0 +1,129 @@
+# reservation-tool from rossoctl/examples, as rossoctl's weather-tool deploy script creates its tool.
+# Apply with: kubectl apply -n <namespace> -f reservation-tool.yaml (the OTEL/MLflow names below use team1).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reservation-tool
+  
+  labels:
+    protocol.rossoctl.io/mcp: ""
+    rossoctl.io/transport: streamable_http
+    rossoctl.io/framework: Python
+    app.kubernetes.io/name: reservation-tool
+    app.kubernetes.io/managed-by: e2e-test
+  annotations:
+    rossoctl.io/description: "Restaurant reservation MCP tool (mock provider, no API keys)"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: reservation-tool
+  template:
+    metadata:
+      labels:
+        protocol.rossoctl.io/mcp: ""
+        rossoctl.io/transport: streamable_http
+        rossoctl.io/framework: Python
+        app.kubernetes.io/name: reservation-tool
+    spec:
+      serviceAccountName: reservation-tool
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp
+          image: ghcr.io/rossoctl/examples/reservation_tool:latest
+          imagePullPolicy: Always
+          env:
+            - name: PORT
+              value: "8000"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.rossoctl-system.svc.cluster.local:8335"
+            - name: OTEL_SERVICE_NAME
+              value: "reservation-tool"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=team1,mlflow.experimentName=team1"
+            - name: MLFLOW_EXPERIMENT_NAME
+              value: "team1"
+            - name: KEYCLOAK_URL
+              value: "http://keycloak.keycloak.svc.cluster.local:8080"
+            - name: UV_NO_CACHE
+              value: "1"
+            - name: LLM_API_BASE
+              value: "http://dockerhost:11434/v1"
+            - name: LLM_API_KEY
+              value: "dummy"
+            - name: LLM_MODEL
+              value: "qwen2.5:0.5b"
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: cache
+              mountPath: /app/.cache
+            - name: tmp
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # Note: runAsUser removed for OpenShift compatibility
+            # OpenShift assigns UID from namespace's allowed range
+      volumes:
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reservation-tool-mcp
+  
+  labels:
+    rossoctl.io/type: tool
+    protocol.rossoctl.io/mcp: ""
+    app.kubernetes.io/name: reservation-tool
+    app.kubernetes.io/managed-by: e2e-test
+spec:
+  type: ClusterIP
+  selector:
+    rossoctl.io/type: tool
+    app.kubernetes.io/name: reservation-tool
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+---
+apiVersion: agent.rossoctl.dev/v1alpha1
+kind: AgentRuntime
+metadata:
+  name: reservation-tool
+  
+  labels:
+    app.kubernetes.io/name: reservation-tool
+    app.kubernetes.io/managed-by: e2e-test
+spec:
+  type: tool
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: reservation-tool
