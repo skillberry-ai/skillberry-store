@@ -4,7 +4,7 @@ Status: **Implemented, revision 8 ("option 0")**
 Owner: skillberry-store, `rossoctl-tools` plugin. **rossoctl: no change. skillberry-store core: C1 only.**
 
 Revision notes:
-* **r8:** the design and implementation are rebuilt around **option 0** of [the pitch](../rossoctl-skills-pitch.md#rung-0-no-rossoctl-change-ship-the-wiring-with-the-skill).
+* **r8:** the design and implementation are rebuilt around **option 0** ("step 0") of [the pitch](../rossoctl-skills-pitch.md#step-0--done-the-skill-and-its-tools-in-one-agent-request-no-rossoctl-change).
   - The skill is delivered by rossoctl as today.
   - The rossoctl tools it needs reach the agent as **MCP tools**, configured on the agent with the existing `MCP_URLS` / `MCP_URL` env vars, in the same create request that links the skill.
   - The plugin produces that create request (the **deployment recipe**).
@@ -94,7 +94,7 @@ All decisions taken in r8, numbered for reference. The implementation follows th
 | D17 | **Stage 2 (promoting store code tools to rossoctl tools) is deferred.** The r6 approach remains valid: existing `POST /tools` and a store-owned runner. | Out of option 0's scope. |
 | D18 | **The demo runs against unmodified rossoctl `main`**, and is scripted in the plugin's tests. | It proves D1. |
 | D19 | **The r4 rossoctl branch is retired.** The local `rossoctl-skills` branch of the fork is reset to `main`; the r4 commits are kept on `rossoctl-skills-r4-archive`. The remote fork is unchanged until the owner approves a push. | D1. Nothing is lost, and nothing changes on a shared remote without consent. |
-| D20 | **The r4 `rossoctl/examples` commit** (Claude Code skill linking, the `run_skill_script` tool) stays on a local branch. It isn't part of option 0. It's the starting point for pitch rung 1. | Option 0 needs no agent change. |
+| D20 | **The r4 `rossoctl/examples` commit** (Claude Code skill linking, the `run_skill_script` tool) stays on a local branch. It isn't part of option 0. It's the starting point for pitch step 1. | Option 0 needs no agent change. |
 | D21 | **`generic_agent`'s MCP client (`langchain-mcp-adapters`) is a plugin dev dependency.** The e2e test uses it to prove the recipe's wiring works with the real agent's client, and it skips without it. | The strongest check available without an LLM. |
 | D22 | **The instructions in the demo skill name MCP tools**, not scripts. The generated Tools section mentions the scripts for script-capable agents. | Option 0's agent path is MCP. |
 
@@ -559,13 +559,11 @@ kind delete cluster --name rossoctl
 rm -rf $DEMO
 ```
 
-## 10. Later rungs
+## 10. Next steps
 
-[The pitch](../rossoctl-skills-pitch.md) lists the next steps, cheapest first. Each one is opt-in and would get its own design:
-1. agents that run skill scripts, where the proxies already in the package become usable;
-2. a skill-runner agent type;
-3. skills in the agent contract;
-4. rossoctl acting on a skill's tool dependencies;
-5. CRD support.
+[The pitch](../rossoctl-skills-pitch.md) lists the next steps, ranked by how much each asks of rossoctl. Each one is opt-in and would get its own design:
+1. **`rossoctl/examples` only:** `claude_agent` and `generic_agent` use the skills they're given, so the bundled proxy scripts become usable (D20);
+2. **docs only:** describe skills in "Bring your own agent";
+3. **a small, flagged backend change:** rossoctl wires a skill's tools at agent create. Only if steps 0–2 prove the pattern, and only with the rossoctl maintainers' agreement (P-1).
 
-Stage 2, promotion (D17), is independent of these.
+Out of scope: CRD-level skill or tool fields, automatic AuthBridge routes, and a new maintained agent image. Stage 2, promotion (D17), is independent of these.
