@@ -566,4 +566,4 @@ rm -rf $DEMO
 2. **docs only:** describe skills in "Bring your own agent";
 3. **a small, flagged backend change:** rossoctl wires a skill's tools at agent create. Only if steps 0–2 prove the pattern, and only with the rossoctl maintainers' agreement (P-1).
 
-Out of scope: CRD-level skill or tool fields, automatic AuthBridge routes, and a new maintained agent image. Stage 2, promotion (D17), is independent of these.
+Stage 2, promotion (D17), is independent of these.

@@ -72,16 +72,11 @@ Only if steps 0–2 prove the pattern. This makes step 0 automatic:
 - It sits behind a feature flag and is off by default. The user's own `envVars` always win.
 
 *Why it's small:*
-- it uses no new resource, CRD or operator change;
+- it uses no new resource, and needs no operator change;
 - it reuses the agent's existing env-var path;
 - it's one function at agent create, plus one autosync field.
 
 We have a prototype and are glad to contribute it if there is interest. Until then, the store's recipe covers it.
-
-### Out of scope
-
-- **CRD-level skill or tool fields, and automatic AuthBridge routes:** too large for the value, and rossoctl's to decide.
-- **A new maintained "skill agent" image:** step 1 gets most of that value by changing existing examples.
 
 ## Ask
 
