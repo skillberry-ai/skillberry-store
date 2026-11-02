@@ -34,8 +34,9 @@ jobs:
           make ci-pull-request
 
   # Core must work, and stay free of rossoctl knowledge, with NO plugins
-  # installed (docs/design/rossoctl-skills.md §7.4, §14.6). `make test` installs
-  # plugins-all, so this job installs only [dev,pytest].
+  # installed (docs/design/rossoctl-skills.md §5.1, §8). `make test` installs
+  # plugins-all, so this job installs only [dev,pytest]. The first run below
+  # includes tests/test_core_has_no_rossoctl.py.
   core-without-plugins:
     name: core-without-plugins
     runs-on: ubuntu-latest
@@ -60,7 +61,4 @@ jobs:
           pytest src/skillberry_store/tests -m "not integration" \
             --ignore=src/skillberry_store/tests/e2e \
             --deselect src/skillberry_store/tests/fast_api/test_plugin_access_control.py
-          pytest src/skillberry_store/tests/test_core_has_no_rossoctl.py \
-            src/skillberry_store/tests/modules/test_tool_providers.py \
-            src/skillberry_store/tests/tools/test_mcp_proxy.py
 
